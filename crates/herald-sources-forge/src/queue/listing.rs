@@ -4,27 +4,55 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use super::{Named, PAGE, Page};
+use crate::Forge;
+
+/// What GitHub's open pull requests are read as, listed without GraphQL.
+pub(super) const GITHUB: &str = "GitHub's listed open pull requests";
 
 /// What Forgejo's open pull requests are read as.
-pub(super) const WHAT: &str = "Forgejo's open pull requests";
+pub(super) const FORGEJO: &str = "Forgejo's open pull requests";
 
-/// What a bot's login ends with on Forgejo, which names no account kind.
+/// What a bot's login ends with, where the forge names no account kind.
 const BOT_SUFFIX: &str = "[bot]";
 
-/// The path, under a repository, of the `number`th page of its open pull
-/// requests, the most recently updated first.
-pub(super) fn path(number: usize) -> String {
-    format!("/pulls?state=open&sort=recentupdate&limit={PAGE}&page={number}")
+/// The account kind GitHub names a bot by.
+const BOT_KIND: &str = "Bot";
+
+/// The path, under a repository on `forge`, of the `number`th page of its
+/// open pull requests, the most recently updated first.
+pub(super) fn path(forge: Forge, number: usize) -> String {
+    match forge {
+        Forge::Forgejo => {
+            format!("/pulls?state=open&sort=recentupdate&limit={PAGE}&page={number}")
+        }
+        Forge::GitHub | Forge::GitLab => {
+            format!("/pulls?state=open&sort=updated&direction=desc&per_page={PAGE}&page={number}")
+        }
+    }
 }
 
 #[derive(Deserialize)]
 struct User {
     login: String,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+}
+
+impl User {
+    /// Whether it is a bot or an app.
+    fn bot(&self) -> bool {
+        self.kind.as_deref() == Some(BOT_KIND) || self.login.ends_with(BOT_SUFFIX)
+    }
 }
 
 #[derive(Deserialize)]
 struct Label {
     name: String,
+}
+
+#[derive(Deserialize)]
+struct Head {
+    sha: String,
 }
 
 #[derive(Deserialize)]
@@ -42,6 +70,7 @@ struct Listed {
     #[serde(default)]
     requested_reviewers: Vec<User>,
     mergeable: Option<bool>,
+    head: Option<Head>,
 }
 
 impl Listed {
@@ -64,10 +93,7 @@ impl Listed {
             number: self.number,
             title: self.title,
             url: self.html_url,
-            bot: self
-                .user
-                .as_ref()
-                .is_some_and(|user| user.login.ends_with(BOT_SUFFIX)),
+            bot: self.user.as_ref().is_some_and(User::bot),
             author: self.user.map(|user| user.login),
             draft: self.draft,
             labels: self.labels.into_iter().map(|label| label.name).collect(),
@@ -78,16 +104,23 @@ impl Listed {
             mergeable,
             queued: false,
             forge: None,
+            head: self.head.map(|head| head.sha),
+            unread: false,
         }
     }
 }
 
-/// The page of open pull requests `body` holds, parsing no more than
-/// `parse` bytes, named by `named`: a repository it does not know the
-/// visibility of is taken as private.
-pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, SourceError> {
+/// The page of open pull requests `body` holds, read as `what`, parsing no
+/// more than `parse` bytes, named by `named`: a repository it does not
+/// know the visibility of is taken as private.
+pub(super) fn page(
+    what: &'static str,
+    body: &[u8],
+    parse: usize,
+    named: Named<'_>,
+) -> Result<Page, SourceError> {
     let (project, repository, known) = named;
-    let listed: Vec<Listed> = herald_wire::read(WHAT, parse, body)?;
+    let listed: Vec<Listed> = herald_wire::read(what, parse, body)?;
     let seen = known.unwrap_or(Visibility::Private);
     Ok(Page {
         pulls: listed

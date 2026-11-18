@@ -141,8 +141,10 @@ fn mergeability_and_the_merge_state_are_read_and_a_queue_wins() {
     ])) {
         assert_eq!((turn, status.as_str()), (wanted, named));
     }
-    let queued = pull(json!({ "isInMergeQueue": true, "mergeStateStatus": "CLEAN" }));
-    assert!(queued.queued);
+    let queued =
+        pull(json!({ "isInMergeQueue": true, "mergeStateStatus": "CLEAN", "headRefOid": "abc" }));
+    assert!(queued.queued && !queued.unread);
+    assert_eq!(queued.head.as_deref(), Some("abc"));
     assert_eq!(
         queued.forge,
         Some((Turn::Queued, "IN_MERGE_QUEUE".to_owned()))

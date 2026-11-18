@@ -7,10 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::members::Visibility;
 
-mod bump;
 mod view;
 
-pub use bump::{Bump, BumpPattern, NotABumpPattern, SHIPPED_BUMPS, bumped};
 pub use view::{Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, View, board};
 
 /// Whose turn an open pull request is.
@@ -111,6 +109,7 @@ pub enum Mergeable {
 
 /// An open pull request, as a view reads it from any forge.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Pull {
     /// The project it is announced as.
     pub project: String,
@@ -147,6 +146,11 @@ pub struct Pull {
     /// The state the forge's own status maps to, with the status as the
     /// forge names it, where the forge gives one.
     pub forge: Option<(Turn, String)>,
+    /// Its head commit's sha, where the forge names it.
+    pub head: Option<String>,
+    /// Whether it was listed past the most a view reads in full, so its
+    /// reviews and checks are not known.
+    pub unread: bool,
 }
 
 /// The rules herald tells whose turn a pull request is by, each of which
@@ -209,6 +213,8 @@ pub enum Reason {
     Forge(String),
     /// The label that put it there.
     Label(String),
+    /// It was listed past the most a view reads in full.
+    Unread,
     /// Nothing tells.
     Untold,
 }
@@ -229,6 +235,7 @@ impl Reason {
             Self::Ready => "ready".to_owned(),
             Self::Forge(status) => format!("forge: {status}"),
             Self::Label(label) => format!("label: {label}"),
+            Self::Unread => "unread".to_owned(),
             Self::Untold => "untold".to_owned(),
         }
     }
@@ -241,6 +248,9 @@ impl Pull {
     pub fn waiting(&self, rules: &Rules) -> (Turn, Reason) {
         if rules.draft && self.draft {
             return (Turn::Draft, Reason::Draft);
+        }
+        if self.unread {
+            return (Turn::Unknown, Reason::Unread);
         }
         if rules.queued && self.queued {
             return (Turn::Queued, Reason::Queued);

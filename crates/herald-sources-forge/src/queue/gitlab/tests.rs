@@ -75,6 +75,11 @@ fn authors_labels_drafts_and_bots_are_read() {
         .bot
     );
     assert!(one(&json!({ "author": { "username": "renovate-bot" } }), None).bot);
+    let headed = one(&json!({ "sha": "abc" }), None);
+    assert_eq!(
+        (headed.head.as_deref(), headed.unread),
+        (Some("abc"), false)
+    );
 }
 
 #[test]

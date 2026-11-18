@@ -11,7 +11,7 @@ fn one(fields: &Value, known: Option<Visibility>) -> Pull {
         listed[key] = value.clone();
     }
     let body = Value::from(vec![listed]).to_string();
-    page(body.as_bytes(), 1 << 20, ("r", "o/r", known))
+    page(FORGEJO, body.as_bytes(), 1 << 20, ("r", "o/r", known))
         .unwrap()
         .pulls
         .remove(0)
@@ -35,6 +35,7 @@ fn a_bare_pull_reads_as_a_private_unasked_one_of_its_repository() {
         (pull.review, pull.checks, pull.mergeable, pull.forge),
         (Review::Unasked, Checks::Absent, Mergeable::Unknown, None)
     );
+    assert_eq!((pull.head, pull.unread), (None, false));
     assert_eq!(
         one(&json!({}), Some(Visibility::Public)).visibility,
         Visibility::Public
@@ -62,18 +63,36 @@ fn authors_labels_reviewers_drafts_and_mergeability_are_read() {
         Mergeable::Conflict
     );
     assert!(one(&json!({ "user": { "login": "renovate[bot]" } }), None).bot);
+    assert!(
+        one(
+            &json!({ "user": { "login": "dependabot", "type": "Bot" } }),
+            None
+        )
+        .bot
+    );
+    assert!(!one(&json!({ "user": { "login": "ann", "type": "User" } }), None).bot);
+    assert_eq!(
+        one(&json!({ "head": { "sha": "abc" } }), None)
+            .head
+            .as_deref(),
+        Some("abc")
+    );
 }
 
 #[test]
 fn a_page_is_asked_by_its_number_and_reads_within_its_size() {
     assert_eq!(
-        path(3),
+        path(Forge::Forgejo, 3),
         "/pulls?state=open&sort=recentupdate&limit=100&page=3"
     );
+    assert_eq!(
+        path(Forge::GitHub, 2),
+        "/pulls?state=open&sort=updated&direction=desc&per_page=100&page=2"
+    );
     assert!(matches!(
-        page(b"[]", 1, ("r", "o/r", None)),
+        page(GITHUB, b"[]", 1, ("r", "o/r", None)),
         Err(SourceError::TooLarge {
-            what: WHAT,
+            what: GITHUB,
             limit: 1
         })
     ));

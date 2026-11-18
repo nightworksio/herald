@@ -19,6 +19,8 @@ pub(crate) fn pull() -> Pull {
         mergeable: Mergeable::Clean,
         queued: false,
         forge: None,
+        head: Some("abc123".to_owned()),
+        unread: false,
     }
 }
 
@@ -94,6 +96,26 @@ fn the_first_rule_that_holds_tells_whose_turn_it_is() {
     );
     rules.approval = false;
     assert_eq!(worst.waiting(&rules), (Turn::WaitingOnMerge, Reason::Ready));
+}
+
+#[test]
+fn one_listed_past_the_most_read_in_full_is_unknown_unless_a_draft() {
+    let unread = Pull {
+        unread: true,
+        ..pull()
+    };
+    assert_eq!(
+        unread.waiting(&Rules::default()),
+        (Turn::Unknown, Reason::Unread)
+    );
+    let drafted = Pull {
+        draft: true,
+        ..unread
+    };
+    assert_eq!(
+        drafted.waiting(&Rules::default()),
+        (Turn::Draft, Reason::Draft)
+    );
 }
 
 #[test]
@@ -274,6 +296,7 @@ fn every_reason_is_written_as_a_row_names_it() {
         Reason::Ready,
         Reason::Forge("blocked".to_owned()),
         Reason::Label("needs-work".to_owned()),
+        Reason::Unread,
         Reason::Untold,
     ]
     .iter()
@@ -293,6 +316,7 @@ fn every_reason_is_written_as_a_row_names_it() {
             "ready",
             "forge: blocked",
             "label: needs-work",
+            "unread",
             "untold",
         ]
     );

@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use jiff::{SignedDuration, Timestamp};
 
-use super::bump::{Bump, BumpPattern, SHIPPED_BUMPS, bumped};
 use super::{Pull, Reason, Rules, Turn};
+use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::glob::Glob;
 
 /// What a view does with a bot's pull requests.
@@ -209,9 +209,9 @@ impl View {
         }
     }
 
-    /// The bump `pull` proposes, by the view's patterns, then `shipped`.
-    fn bump_of(&self, shipped: &[BumpPattern], pull: &Pull) -> Option<Bump> {
-        bumped(&self.bumps, &pull.title).or_else(|| bumped(shipped, &pull.title))
+    /// The bump `pull` proposes, by the view's patterns, then herald's.
+    fn bump_of(&self, pull: &Pull) -> Option<Bump> {
+        read_bump(&self.bumps, &pull.title)
     }
 }
 
@@ -239,16 +239,12 @@ pub fn board(view: &View, pulls: &[Pull], now: Timestamp) -> Board {
         .map(|state| (state, rows.iter().filter(|row| row.state == state).count()))
         .collect();
     let stale = rows.iter().filter(|row| row.stale).count();
-    let shipped: Vec<BumpPattern> = SHIPPED_BUMPS
-        .iter()
-        .filter_map(|text| BumpPattern::new(text).ok())
-        .collect();
     let mut groups: BTreeMap<(usize, String), Vec<Row>> = BTreeMap::new();
     let mut batches: BTreeMap<Option<Bump>, Vec<Row>> = BTreeMap::new();
     for row in rows {
         if view.bots == Bots::Batch && row.pull.bot {
             batches
-                .entry(view.bump_of(&shipped, &row.pull))
+                .entry(view.bump_of(&row.pull))
                 .or_default()
                 .push(row);
             continue;

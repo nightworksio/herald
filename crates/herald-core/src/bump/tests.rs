@@ -1,8 +1,9 @@
 use super::*;
 
 fn shipped() -> Vec<BumpPattern> {
-    SHIPPED_BUMPS
+    Bumper::ALL
         .iter()
+        .flat_map(|bumper| bumper.patterns())
         .map(|text| BumpPattern::new(text).unwrap())
         .collect()
 }
@@ -149,4 +150,21 @@ fn the_first_pattern_that_reads_a_title_names_its_bump() {
     );
     assert_eq!(bumped(&patterns, "Bump b"), bump("b", None));
     assert_eq!(bumped(&[], "Bump b"), None);
+}
+
+#[test]
+fn every_shipped_reader_is_named_and_every_pattern_of_it_is_one() {
+    let names: Vec<&str> = Bumper::ALL.iter().map(|bumper| bumper.name()).collect();
+    assert_eq!(names, ["dependabot", "renovate"]);
+    assert_eq!(SHIPPED.len(), shipped().len());
+    assert_eq!(SHIPPED.len(), 3);
+}
+
+#[test]
+fn a_config_s_own_patterns_read_before_the_shipped_readers() {
+    let own = vec![BumpPattern::new("Bump {package} *").unwrap()];
+    let title = "Bump serde from 1 to 2";
+    assert_eq!(read_bump(&own, title), bump("serde", None));
+    assert_eq!(read_bump(&[], title), bump("serde", Some("2")));
+    assert_eq!(read_bump(&[], "Fix a typo"), None);
 }

@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Named, PAGE, Page};
+use super::{FAILED, Named, PAGE, Page};
 use crate::graphql::posted;
 
 /// What GitHub's open pull requests are read as.
@@ -18,7 +18,7 @@ const MOST_NAMED: usize = 50;
 /// recently updated first.
 fn query() -> String {
     format!(
-        "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: 1) {{ totalCount }} mergeable mergeStateStatus isInMergeQueue commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }} }} }} }} }}"
+        "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: 1) {{ totalCount }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }} }} }} }} }}"
     )
 }
 
@@ -113,17 +113,11 @@ struct Check {
 impl Check {
     /// Its name, where it failed.
     fn failed(self) -> Option<String> {
-        let failed = matches!(
-            self.conclusion.as_deref().or(self.state.as_deref()),
-            Some(
-                "FAILURE"
-                    | "TIMED_OUT"
-                    | "CANCELLED"
-                    | "ACTION_REQUIRED"
-                    | "STARTUP_FAILURE"
-                    | "ERROR"
-            )
-        );
+        let failed = self
+            .conclusion
+            .as_deref()
+            .or(self.state.as_deref())
+            .is_some_and(|state| FAILED.contains(&state));
         failed.then(|| self.name.or(self.context)).flatten()
     }
 }
@@ -145,6 +139,7 @@ struct Node {
     merge_state_status: Option<String>,
     #[serde(default)]
     is_in_merge_queue: bool,
+    head_ref_oid: Option<String>,
     commits: Option<Connection<Commit>>,
 }
 
@@ -240,6 +235,8 @@ impl Node {
             mergeable,
             queued: self.is_in_merge_queue,
             forge,
+            head: self.head_ref_oid,
+            unread: false,
         }
     }
 }

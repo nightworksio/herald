@@ -1,4 +1,5 @@
 use super::*;
+use crate::bump::Bump;
 use crate::queue::tests::pull;
 use crate::queue::{Checks, Mergeable, Review};
 

@@ -8,6 +8,7 @@ mod activity;
 mod address;
 mod announce;
 mod bounds;
+mod bump;
 mod chunk;
 mod credentials;
 mod cursor;
@@ -66,6 +67,7 @@ pub use bounds::{
     Attempts, Count, Counted, Inbound, LookedUpPins, PinLookups, ReadBack, ReadBackPages, Sandbox,
     WriteAttempts,
 };
+pub use bump::{Bump, BumpPattern, Bumper, NotABumpPattern, bumped, read_bump};
 pub use chunk::{Room, chunk, size};
 pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, Proof, Tombstone, Unheld, fresh};
@@ -117,8 +119,8 @@ pub use profile::{
 };
 pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
 pub use queue::{
-    Batch, Board, Bots, Bump, BumpPattern, Checks, Deciding, GroupBy, Grouped, Mergeable,
-    NotABumpPattern, Pull, Reason, Review, Row, Rules, SHIPPED_BUMPS, Turn, View, board, bumped,
+    Batch, Board, Bots, Checks, Deciding, GroupBy, Grouped, Mergeable, Pull, Reason, Review, Row,
+    Rules, Turn, View, board,
 };
 pub use rate::{Per, Rate};
 pub use render::{

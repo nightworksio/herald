@@ -1,18 +1,58 @@
+//! Reading the change a bot's pull request proposes from its title: the
+//! package and the version it goes to, so the same bump in every
+//! repository is one.
+
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::LazyLock;
 
 /// The longest title a bump pattern reads, in characters.
 const LONGEST_TITLE: usize = 256;
 
-/// The patterns herald reads a bot's bump titles by, before a view's own:
-/// Dependabot's `Bump x from 1 to 2` and Renovate's
-/// `Update dependency x to v2`, with or without a conventional prefix and
-/// a trailing note.
-pub const SHIPPED_BUMPS: [&str; 3] = [
-    "*bump {package} from * to {to}*",
-    "*update dependency {package} to {to}*",
-    "*update {package} to {to}*",
-];
+/// A bot herald ships a reader of bump titles for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bumper {
+    /// Dependabot: `Bump x from 1 to 2`.
+    Dependabot,
+    /// Renovate: `Update dependency x to v2`, or `Update x to v2`.
+    Renovate,
+}
+
+impl Bumper {
+    /// Every shipped reader, in the order titles are read by them.
+    pub const ALL: [Self; 2] = [Self::Dependabot, Self::Renovate];
+
+    /// Its name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Dependabot => "dependabot",
+            Self::Renovate => "renovate",
+        }
+    }
+
+    /// The patterns it reads titles by, each with or without a
+    /// conventional prefix and a trailing note.
+    #[must_use]
+    pub const fn patterns(self) -> &'static [&'static str] {
+        match self {
+            Self::Dependabot => &["*bump {package} from * to {to}*"],
+            Self::Renovate => &[
+                "*update dependency {package} to {to}*",
+                "*update {package} to {to}*",
+            ],
+        }
+    }
+}
+
+/// Every shipped reader's patterns, in the order [`Bumper::ALL`] lists them.
+static SHIPPED: LazyLock<Vec<BumpPattern>> = LazyLock::new(|| {
+    Bumper::ALL
+        .iter()
+        .flat_map(|bumper| bumper.patterns())
+        .filter_map(|text| BumpPattern::new(text).ok())
+        .collect()
+});
 
 /// One part of a bump pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,6 +259,13 @@ pub struct Bump {
 #[must_use]
 pub fn bumped(patterns: &[BumpPattern], title: &str) -> Option<Bump> {
     patterns.iter().find_map(|pattern| pattern.read(title))
+}
+
+/// The bump `title` names by the first of `own` that reads it, then by
+/// herald's shipped readers.
+#[must_use]
+pub fn read_bump(own: &[BumpPattern], title: &str) -> Option<Bump> {
+    bumped(own, title).or_else(|| bumped(&SHIPPED, title))
 }
 
 #[cfg(test)]

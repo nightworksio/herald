@@ -9,15 +9,86 @@ use herald_wire::answered;
 use crate::forge::authorized;
 use crate::{Forge, Origin, Token};
 
-mod forgejo;
+mod detail;
 mod github;
 mod gitlab;
+mod listing;
 
 /// The most open pull requests one page lists, on every forge.
 pub const PAGE: usize = 100;
 
 /// The most open pull requests a repository's listing reads by default.
-pub const MOST_PULLS: usize = 500;
+pub const MOST_OPEN: usize = 500;
+
+/// The most open pull requests of a repository read in full by default,
+/// where each takes requests of its own.
+pub const MOST_PULLS: usize = 100;
+
+/// The requests each pull request read in full takes: its reviews and its
+/// head's checks.
+pub const PER_PULL: usize = 2;
+
+/// What a failed check or status ends in, on every forge, ignoring case.
+pub(crate) const FAILED: [&str; 6] = [
+    "FAILURE",
+    "TIMED_OUT",
+    "CANCELLED",
+    "ACTION_REQUIRED",
+    "STARTUP_FAILURE",
+    "ERROR",
+];
+
+/// How a repository's open pull requests are read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadPath {
+    /// GitHub's GraphQL, a page at a time, everything a view needs in each.
+    Graphql,
+    /// GitLab's listing, everything a view needs in each page.
+    Listing,
+    /// A REST listing, then each pull request's reviews and checks.
+    Detailed,
+}
+
+impl ReadPath {
+    /// The path a repository on `forge` is read by, `tokened` where its
+    /// source reads with a token: GitHub's GraphQL needs one.
+    #[must_use]
+    pub const fn of(forge: Forge, tokened: bool) -> Self {
+        match (forge, tokened) {
+            (Forge::GitHub, true) => Self::Graphql,
+            (Forge::GitLab, _) => Self::Listing,
+            (Forge::GitHub | Forge::Forgejo, false) | (Forge::Forgejo, true) => Self::Detailed,
+        }
+    }
+
+    /// Its name, as doctor shows it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Graphql => "graphql",
+            Self::Listing => "listing",
+            Self::Detailed => "rest",
+        }
+    }
+
+    /// The most requests a round of it takes for a repository listing at
+    /// most `most_open` and reading at most `most_pulls` in full.
+    #[must_use]
+    pub const fn most_requests(self, most_open: usize, most_pulls: usize) -> usize {
+        let pages = most_open.div_ceil(PAGE);
+        match self {
+            Self::Graphql | Self::Listing => pages,
+            Self::Detailed => {
+                let read = if most_pulls < most_open {
+                    most_pulls
+                } else {
+                    most_open
+                };
+                pages + read * PER_PULL
+            }
+        }
+    }
+}
 
 /// How a repository's open pull requests are listed.
 #[derive(Debug, Clone, Copy)]
@@ -34,7 +105,10 @@ pub struct Opened<'a> {
     /// is taken as private.
     pub visibility: Option<Visibility>,
     /// The most it lists.
-    pub most: usize,
+    pub most_open: usize,
+    /// The most it reads in full, where each takes requests of its own;
+    /// those past it read as unknown.
+    pub most_pulls: usize,
 }
 
 /// What a page names its pull requests by: the project they are shown as,
@@ -49,17 +123,24 @@ pub(crate) struct Page {
 }
 
 impl Opened<'_> {
+    /// The path it reads by.
+    #[must_use]
+    pub const fn read_path(&self) -> ReadPath {
+        ReadPath::of(self.origin.forge(), self.token.is_some())
+    }
+
     /// The request for the page after `after`.
     fn request(&self, after: Option<&str>, number: usize) -> Request {
         let parse = self.origin.reading().parse;
-        match self.origin.forge() {
-            Forge::GitHub => authorized(
-                Forge::GitHub,
+        let forge = self.origin.forge();
+        match self.read_path() {
+            ReadPath::Graphql => authorized(
+                forge,
                 github::request(self.graphql, self.origin.path(), after, parse),
                 self.token,
             ),
-            Forge::GitLab => self.origin.get(&gitlab::path(number), self.token),
-            Forge::Forgejo => self.origin.get(&forgejo::path(number), self.token),
+            ReadPath::Listing => self.origin.get(&gitlab::path(number), self.token),
+            ReadPath::Detailed => self.origin.get(&listing::path(forge, number), self.token),
         }
     }
 
@@ -67,11 +148,47 @@ impl Opened<'_> {
     fn read(&self, body: &[u8]) -> Result<Page, herald_wire::SourceError> {
         let parse = self.origin.reading().parse;
         let named = (self.project, self.origin.path(), self.visibility);
-        match self.origin.forge() {
-            Forge::GitHub => github::page(body, parse, named),
-            Forge::GitLab => gitlab::page(body, parse, named),
-            Forge::Forgejo => forgejo::page(body, parse, named),
+        match self.read_path() {
+            ReadPath::Graphql => github::page(body, parse, named),
+            ReadPath::Listing => gitlab::page(body, parse, named),
+            ReadPath::Detailed => listing::page(self.what(), body, parse, named),
         }
+    }
+
+    /// The body of the answer to `request`, read as `what`.
+    async fn asked(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        request: Request,
+        what: &'static str,
+    ) -> Result<Vec<u8>, Unpolled> {
+        let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
+        answered(what, &answer).map_err(Unpolled::unreadable)?;
+        Ok(answer.body)
+    }
+
+    /// `pull` with its reviews and its head's checks read.
+    async fn detailed(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: &mut Pull,
+    ) -> Result<(), Unpolled> {
+        let forge = self.origin.forge();
+        let parse = self.origin.reading().parse;
+        let asked = self
+            .origin
+            .get(&detail::reviews_path(forge, pull.number), self.token);
+        let body = self.asked(http, asked, detail::REVIEWS).await?;
+        let requested = pull.review == herald_core::Review::Requested;
+        pull.review = detail::reviews(&body, parse, requested).map_err(Unpolled::unreadable)?;
+        if let Some(sha) = pull.head.as_deref() {
+            let asked = self
+                .origin
+                .get(&detail::checks_path(forge, sha), self.token);
+            let body = self.asked(http, asked, detail::CHECKS).await?;
+            pull.checks = detail::checks(forge, &body, parse).map_err(Unpolled::unreadable)?;
+        }
+        Ok(())
     }
 
     /// Its open pull requests, at most `most`, asked through `http` a page
@@ -84,16 +201,13 @@ impl Opened<'_> {
         let what = self.what();
         let mut pulls = Vec::new();
         let mut after: Option<String> = None;
-        for number in 1..=self.most.div_ceil(PAGE) {
-            let answer = http
-                .send(self.request(after.as_deref(), number))
-                .await
-                .map_err(Unpolled::unreachable)?;
-            answered(what, &answer).map_err(Unpolled::unreadable)?;
-            let page = self.read(&answer.body).map_err(Unpolled::unreadable)?;
+        for number in 1..=self.most_open.div_ceil(PAGE) {
+            let asked = self.request(after.as_deref(), number);
+            let body = self.asked(http, asked, what).await?;
+            let page = self.read(&body).map_err(Unpolled::unreadable)?;
             let more = match self.origin.forge() {
-                Forge::GitHub => page.next.is_some(),
-                Forge::GitLab => page.pulls.len() >= PAGE,
+                Forge::GitHub if self.read_path() == ReadPath::Graphql => page.next.is_some(),
+                Forge::GitHub | Forge::GitLab => page.pulls.len() >= PAGE,
                 Forge::Forgejo => !page.pulls.is_empty(),
             };
             pulls.extend(page.pulls);
@@ -102,16 +216,26 @@ impl Opened<'_> {
                 break;
             }
         }
-        pulls.truncate(self.most);
+        pulls.truncate(self.most_open);
+        if self.read_path() == ReadPath::Detailed {
+            for (read, pull) in pulls.iter_mut().enumerate() {
+                if read < self.most_pulls {
+                    self.detailed(http, pull).await?;
+                } else {
+                    pull.unread = true;
+                }
+            }
+        }
         Ok(pulls)
     }
 
     /// What its listing is read as.
     const fn what(&self) -> &'static str {
         match self.origin.forge() {
-            Forge::GitHub => github::WHAT,
+            Forge::GitHub if self.token.is_some() => github::WHAT,
+            Forge::GitHub => listing::GITHUB,
             Forge::GitLab => gitlab::WHAT,
-            Forge::Forgejo => forgejo::WHAT,
+            Forge::Forgejo => listing::FORGEJO,
         }
     }
 }

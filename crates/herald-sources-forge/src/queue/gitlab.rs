@@ -39,6 +39,7 @@ struct Request {
     #[serde(default)]
     has_conflicts: bool,
     detailed_merge_status: Option<String>,
+    sha: Option<String>,
 }
 
 /// What GitLab's detailed merge status says of the reviews and checks.
@@ -108,6 +109,8 @@ impl Request {
             mergeable,
             queued: false,
             forge: (!status.is_empty()).then(|| (forge_turn(&status), status)),
+            head: self.sha,
+            unread: false,
         }
     }
 }
