@@ -346,3 +346,38 @@ fn a_view_read_now_is_the_board_of_every_source_it_reads() {
         .collect();
     assert_eq!(repositories, ["o/closed", "o/open"]);
 }
+
+#[test]
+fn a_report_whose_window_cannot_be_read_back_stops_and_one_whose_window_cannot_be_kept_says_so() {
+    let config = config("");
+    let unread = crate::harness::Failing {
+        fault: crate::harness::Fault::Cursors,
+        ..healthy()
+    };
+    let swept = reported(&config, &unread, &Script::default());
+    assert!(
+        matches!(&swept[0].outcome, Sweep::Stopped(Stop::Store(_))),
+        "{swept:?}"
+    );
+    let unkept = crate::harness::Failing {
+        fault: crate::harness::Fault::WritesCursors,
+        ..healthy()
+    };
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/closed", "PUBLIC")),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC")),
+        POSTED,
+        TEAM,
+    ]);
+    let swept = reported(&config, &unkept, &script);
+    assert!(
+        matches!(
+            &swept[0].outcome,
+            Sweep::Reported {
+                cursor: Remembered::Failed(_),
+                ..
+            }
+        ),
+        "{swept:?}"
+    );
+}
