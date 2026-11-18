@@ -515,7 +515,16 @@ fn failure(name: &str, error: &minijinja::Error) -> TemplateError {
     }
 }
 
+/// `showing` as JSON, with the keys a template reads as `view` and no
+/// other, as `herald queue --format json` prints it.
+#[must_use]
+pub fn view_json(showing: Showing<'_>) -> String {
+    serde_json::to_string_pretty(&shown::view_value(showing)).unwrap_or_default()
+}
+
 mod shown;
+
+pub use shown::waited;
 
 #[cfg(test)]
 mod tests;

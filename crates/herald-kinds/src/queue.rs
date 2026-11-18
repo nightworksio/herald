@@ -38,6 +38,9 @@ pub struct QueueCost {
     pub path: &'static str,
     /// The most requests a round takes.
     pub requests: usize,
+    /// Whether each pull request takes requests of its own, those past
+    /// [`Most::pulls`] reading as unknown.
+    pub detailed: bool,
     /// Whether it reads whether each can be merged; a batch of bumps counts
     /// none green where it does not.
     pub mergeability: bool,

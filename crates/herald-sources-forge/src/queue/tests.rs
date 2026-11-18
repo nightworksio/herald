@@ -288,7 +288,7 @@ fn each_forge_and_credential_reads_by_its_path_at_its_cost() {
 #[test]
 fn a_cost_names_its_path_requests_and_whether_it_reads_mergeability() {
     let most = herald_kinds::Most::default();
-    let costs: Vec<(&str, usize, bool)> = [
+    let costs: Vec<(&str, usize, bool, bool)> = [
         (Forge::GitHub, true),
         (Forge::GitHub, false),
         (Forge::GitLab, false),
@@ -297,16 +297,16 @@ fn a_cost_names_its_path_requests_and_whether_it_reads_mergeability() {
     .into_iter()
     .map(|(forge, tokened)| {
         let cost = cost(forge, tokened, most);
-        (cost.path, cost.requests, cost.mergeability)
+        (cost.path, cost.requests, cost.detailed, cost.mergeability)
     })
     .collect();
     assert_eq!(
         costs,
         [
-            ("graphql", 5, true),
-            ("rest", 205, false),
-            ("listing", 5, true),
-            ("rest", 205, true)
+            ("graphql", 5, false, true),
+            ("rest", 205, true, false),
+            ("listing", 5, false, true),
+            ("rest", 205, true, true)
         ]
     );
 }

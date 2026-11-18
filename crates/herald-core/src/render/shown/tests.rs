@@ -101,3 +101,20 @@ fn a_wait_is_written_in_its_largest_whole_unit() {
     assert_eq!(waited(SignedDuration::from_hours(24)), "1d");
     assert_eq!(waited(SignedDuration::from_hours(24 * 15)), "15d");
 }
+
+#[test]
+fn a_view_as_json_holds_the_keys_a_template_reads() {
+    let board = shown();
+    let json: serde_json::Value = serde_json::from_str(&crate::render::view_json(Showing {
+        view: "queue",
+        board: &board,
+    }))
+    .unwrap();
+    let mut keys: Vec<&String> = json.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        ["batches", "counts", "groups", "name", "stale", "total"]
+    );
+    assert_eq!(json["groups"][0]["rows"][0]["number"], 7);
+}

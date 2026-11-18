@@ -126,7 +126,7 @@ pub use queue::{
 pub use rate::{Per, Rate};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
-    Templates,
+    Templates, view_json, waited,
 };
 pub use report::{REPORT_PREFIX, ReportSchedule, report_event, report_identity, zone};
 pub use retention::Retention;

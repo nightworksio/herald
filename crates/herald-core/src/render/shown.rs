@@ -7,8 +7,9 @@ use minijinja::{Value, context};
 use crate::queue::{Batch, Grouped, Row, Showing};
 
 /// How long `waited` is, in its largest whole unit: days, hours or
-/// minutes.
-fn waited(waited: SignedDuration) -> String {
+/// minutes, as a report and `herald queue` write it.
+#[must_use]
+pub fn waited(waited: SignedDuration) -> String {
     let minutes = waited.as_mins();
     match (minutes / (24 * 60), minutes / 60) {
         (0, 0) => format!("{minutes}m"),

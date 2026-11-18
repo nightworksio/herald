@@ -73,6 +73,16 @@ pub(crate) enum Reading {
     /// Print the kind of store the config keeps its records in, as
     /// `[store] kind` writes it.
     Store,
+    /// Print a view's open pull requests: whose turn each is, why, and how
+    /// long it has waited.
+    Queue {
+        /// The view, as `[views.<name>]` names it; `queue`, every source's,
+        /// where absent.
+        view: Option<String>,
+        /// How it is printed.
+        #[arg(long, value_enum, default_value_t = QueueFormat::Table)]
+        format: QueueFormat,
+    },
     #[command(flatten)]
     Set(Setting),
     /// Trust another herald by the keys you confirm, list and check those
@@ -359,4 +369,13 @@ impl RunForge {
             Self::Forgejo => Forge::Forgejo,
         }
     }
+}
+
+/// How `herald queue` prints a view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum QueueFormat {
+    /// A table to read.
+    Table,
+    /// JSON, with the keys a report's template reads as `view`.
+    Json,
 }

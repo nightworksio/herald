@@ -2,9 +2,9 @@
 //! open pull requests read from every source it names, and announced
 //! through the routes naming the report (ADR-0055).
 
-use herald_config::{Config, Report};
+use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Cursor, Identity, Pull, RouteId, Showing, SourceName, Visibility, board, report_event,
+    Board, Cursor, Identity, Pull, RouteId, Showing, SourceName, Visibility, board, report_event,
 };
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
 use jiff::Timestamp;
@@ -17,25 +17,20 @@ use crate::prepare::Connected;
 /// this run reads.
 const UNREAD_SOURCE: &str = "the view reads a source this run does not poll";
 
-/// The open pull requests of every source `report`'s view reads, the
-/// first that could not be read stopping it.
+/// The open pull requests of every source `view` reads, the first that
+/// could not be read stopping it.
 async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
-    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    report: &Report,
+    (_, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    view: &ViewConfig,
 ) -> Result<Vec<Pull>, Stop> {
     let mut pulls = Vec::new();
-    let Some(view) = config.views.get(&report.view) else {
-        return Ok(pulls);
-    };
     for name in &view.sources {
-        let Some((queue, http)) = connected
+        let (queue, http) = connected
             .sources
             .iter()
             .find(|(source, _)| source.name == *name)
             .and_then(|(source, http)| source.queue.as_ref().map(|queue| (queue, http)))
-        else {
-            return Err(Stop::Source(UNREAD_SOURCE.to_owned()));
-        };
+            .ok_or_else(|| Stop::Source(UNREAD_SOURCE.to_owned()))?;
         ports.budget.allows(ports.clock.now(), 1)?;
         let read = queue.opened(http, view.most).await.map_err(halted)?;
         pulls.extend(read);
@@ -43,9 +38,41 @@ async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     Ok(pulls)
 }
 
+/// The board of the view `name`, its sources' open pull requests read now
+/// with each installation's token minted first, as `herald queue` shows
+/// it (ADR-0055).
+///
+/// # Errors
+///
+/// Where the config has no such view, or a source it reads could not be
+/// read.
+pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    ports: &Ports<'_, S, C, G>,
+    name: &str,
+) -> Result<Board, Stop> {
+    let Some(view) = config.views.get(name) else {
+        let names: Vec<String> = config
+            .views
+            .keys()
+            .map(|name| format!("\"{name}\""))
+            .collect();
+        return Err(Stop::Source(format!(
+            "no view is named \"{name}\"; the views are {}",
+            names.join(", ")
+        )));
+    };
+    let flow = (config, connected, ports);
+    crate::poll::minting(flow, |_| true).await;
+    let pulls = read_pulls(flow, view).await?;
+    Ok(board(&view.view, &pulls, ports.clock.now()))
+}
+
 /// What one announcement of a report shows: the pull requests, who may see
 /// them, and the routes it may reach, where only some.
 struct Part<'a> {
+    view: &'a ViewConfig,
     pulls: &'a [Pull],
     visibility: Visibility,
     routes: Option<&'a [RouteId]>,
@@ -59,12 +86,7 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     part: Part<'_>,
     run: &str,
 ) -> Result<Fresh, Stop> {
-    let view = config.views.get(&report.view).map(|view| &view.view);
-    let shown = board(
-        view.unwrap_or(&herald_core::View::default()),
-        part.pulls,
-        ports.clock.now(),
-    );
+    let shown = board(&part.view.view, part.pulls, ports.clock.now());
     let event = report_event(name, &report.view, &shown, start)
         .map_err(|problem| Stop::Source(problem.to_string()))?;
     let seen = event
@@ -114,7 +136,8 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
     if cursor.is_some_and(|cursor| cursor.seen.first() == Some(&identity)) {
         return None;
     }
-    let pulls = match read_pulls(flow, report).await {
+    let view = config.views.get(&report.view)?;
+    let pulls = match read_pulls(flow, view).await {
         Ok(pulls) => pulls,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
@@ -146,6 +169,7 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
     let mut announced = Vec::new();
     for (shown, visibility, routes) in &audiences {
         let part = Part {
+            view,
             pulls: shown,
             visibility: *visibility,
             routes: routes.as_deref(),

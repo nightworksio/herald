@@ -283,6 +283,7 @@ pub const fn cost(
     herald_kinds::QueueCost {
         path: path.name(),
         requests: path.most_requests(most.open, most.pulls),
+        detailed: matches!(path, ReadPath::Detailed),
         mergeability: !matches!((forge, path), (Forge::GitHub, ReadPath::Detailed)),
     }
 }

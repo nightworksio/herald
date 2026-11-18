@@ -236,3 +236,48 @@ fn a_source_that_cannot_be_read_stops_the_report_until_the_next_round() {
         "{swept:?}"
     );
 }
+
+#[test]
+fn a_report_that_makes_no_event_stops_and_one_with_no_view_read_is_refused() {
+    let config = config("[reports.\"\"]");
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/closed", "PUBLIC")),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC")),
+        (GRAPHQL, 502, ""),
+    ]);
+    let swept = reported(&config, &healthy(), &script);
+    assert_eq!(swept[0].source, SourceName::new(""));
+    assert!(
+        matches!(&swept[0].outcome, Sweep::Stopped(Stop::Source(_))),
+        "{swept:?}"
+    );
+    let unread = herald_flows::queue;
+    let secrets = FakeSecrets::default()
+        .with("HERALD_DISCORD_TOKEN", "hunter2")
+        .with("HERALD_GITHUB_TOKEN", "ghp_x");
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Announces)).unwrap();
+    let connected: Connected<Script> = prepared
+        .connect(|_| Ok::<_, ()>(Script::default()))
+        .unwrap();
+    let clock = FakeClock::at(NOON);
+    let store = healthy();
+    let ports = Ports {
+        store: &store,
+        clock: &clock,
+        signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
+    };
+    assert_eq!(
+        pollster::block_on(unread(&config, &connected, &ports, "queue")),
+        Err(Stop::Source(
+            "the view reads a source this run does not poll".to_owned()
+        ))
+    );
+    assert_eq!(
+        pollster::block_on(unread(&config, &connected, &ports, "missing")),
+        Err(Stop::Source(
+            "no view is named \"missing\"; the views are \"queue\"".to_owned()
+        ))
+    );
+}
