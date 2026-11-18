@@ -171,6 +171,58 @@ fn pages_backfill_and_namespaces_keep_within_their_bounds() {
         refused(pages(HeraldOptions::PAGES_ALLOWED + 1)),
         "pages: pages is at most 20; lower it"
     );
+    let tombstones = |tombstones: usize| HeraldFile {
+        tombstones: NonZeroUsize::new(tombstones),
+        ..file()
+    };
+    assert_eq!(
+        HeraldKind::checked(file()).map(|options| options.tombstones),
+        Ok(HeraldOptions::TOMBSTONES)
+    );
+    assert_eq!(
+        HeraldKind::checked(tombstones(HeraldOptions::TOMBSTONES_ALLOWED))
+            .map(|options| options.tombstones),
+        Ok(4000)
+    );
+    assert_eq!(
+        refused(tombstones(HeraldOptions::TOMBSTONES_ALLOWED + 1)),
+        "tombstones: tombstones is at most 4000; lower it"
+    );
+    let peer = |tombstones: usize, peer: usize| HeraldFile {
+        tombstones: NonZeroUsize::new(tombstones),
+        peer_tombstones: NonZeroUsize::new(peer),
+        ..file()
+    };
+    let kept = |file: HeraldFile| {
+        HeraldKind::checked(file).map(|options| (options.tombstones, options.peer_tombstones))
+    };
+    assert_eq!(kept(file()), Ok((1000, 250)));
+    assert_eq!(kept(tombstones(100)), Ok((100, 100)));
+    assert_eq!(kept(peer(100, 100)), Ok((100, 100)));
+    let share = |share: usize| HeraldFile {
+        peer_share: NonZeroUsize::new(share),
+        ..file()
+    };
+    assert_eq!(
+        HeraldKind::checked(file()).map(|options| options.peer_share),
+        Ok(1000)
+    );
+    assert_eq!(
+        HeraldKind::checked(share(4000)).map(|options| options.peer_share),
+        Ok(4000)
+    );
+    assert_eq!(
+        HeraldKind::checked(share(30)).map(|options| options.share()),
+        Ok(Some(30))
+    );
+    assert_eq!(
+        refused(share(4001)),
+        "peer_share: peer_share is at most 4000; lower it"
+    );
+    assert_eq!(
+        refused(peer(100, 101)),
+        "peer_tombstones: peer_tombstones is at most tombstones, 100; lower it or raise tombstones"
+    );
     let backfill = |backfill: usize| HeraldFile {
         backfill,
         ..pages(2)

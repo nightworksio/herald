@@ -381,7 +381,7 @@ fn a_release_entering_the_feed_again_changed_is_an_edit() {
         proved_at(
             &released,
             (DOMAIN, &OLD),
-            NOON + jiff::SignedDuration::from_mins(minutes),
+            NOON - jiff::SignedDuration::from_hours(1) + jiff::SignedDuration::from_mins(minutes),
         )
     };
     pulled(

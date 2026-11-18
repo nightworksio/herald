@@ -90,6 +90,16 @@ mod told {
             ["gate: stopped: no. The next poll asks again."]
         );
         assert_eq!(
+            swept(Sweep::Refused("upstream".to_owned())),
+            [
+                "gate: took no new release of upstream this pull, as it keeps as many tombstones of its releases as peer_share lets it; the next pull reads them again"
+            ]
+        );
+        assert_eq!(
+            swept(Sweep::Ahead("upstream".to_owned())),
+            ["gate: passed over an envelope of upstream whose proof was made too far ahead of now"]
+        );
+        assert_eq!(
             swept(Sweep::Unkept("the sqlite store refused it".to_owned())),
             [
                 "gate: the installation token it reads with was minted but not kept, as the sqlite store refused it. This run reads with it; the next mints it again."

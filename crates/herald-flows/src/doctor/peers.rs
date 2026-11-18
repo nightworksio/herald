@@ -2,7 +2,7 @@
 
 use herald_config::{Config, Rotation};
 use herald_peers::multibase::ed25519_public;
-use herald_ports::Published;
+use herald_ports::{Cursors, Published};
 
 use super::{Findings, Gap, gap};
 
@@ -62,6 +62,45 @@ pub async fn handed_over<P: Published>(config: &Config, published: &P) -> Findin
                 format!("peers.{name}.rotation"),
                 error.to_string(),
             )),
+        }
+    }
+    findings
+}
+
+/// Each instance whose tombstones of its releases a herald source keeps as
+/// many of as its `peer_share` lets it, and each whose envelope its last pull passed over
+/// as proved too far ahead, as `cursors` keeps them: a note naming it; or a
+/// gap where the cursor cannot be read.
+pub async fn shared<C: Cursors>(config: &Config, cursors: &C) -> Findings {
+    let mut findings = Findings::default();
+    for (name, share) in config
+        .sources
+        .iter()
+        .filter_map(|(name, source)| Some((name, source.share()?)))
+    {
+        let cursor = match cursors.cursor(name).await {
+            Ok(Some(cursor)) => cursor.value,
+            Ok(None) => continue,
+            Err(error) => {
+                findings.gaps.push(gap(
+                    "reading what a herald source holds of each instance",
+                    format!("sources.{}", name.as_str()),
+                    error.to_string(),
+                ));
+                continue;
+            }
+        };
+        for (maker, held) in cursor.held().iter().filter(|(_, held)| **held >= share) {
+            findings.notes.push(format!(
+                "sources.{}: it keeps {held} tombstones of releases {maker} withdrew, all peer_share lets it, so a pull takes no new release of it; raise peer_share to take them.",
+                name.as_str()
+            ));
+        }
+        for maker in &cursor.ahead {
+            findings.notes.push(format!(
+                "sources.{}: its last pull passed over an envelope of {maker} whose proof was made too far ahead of now.",
+                name.as_str()
+            ));
         }
     }
     findings

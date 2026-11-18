@@ -75,6 +75,10 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
             announced,
         });
     }
+    if let Some(polled) = &polled {
+        withdrawn.extend(polled.refused.iter().cloned().map(Sweep::Refused));
+        withdrawn.extend(polled.ahead.iter().cloned().map(Sweep::Ahead));
+    }
     let found = announced_found(
         (config, connected, ports),
         (source, within, None),

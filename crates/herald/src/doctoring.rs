@@ -12,7 +12,7 @@ use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
     Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded,
-    handed_over, kept_tokens, keys, online, trial,
+    handed_over, kept_tokens, keys, online, shared, trial,
 };
 use herald_ports::{Clock as _, Keyring, Secrets as _, Store};
 use schemars::JsonSchema;
@@ -91,7 +91,8 @@ impl<H: Host> Through<H> for Keeping {
 }
 
 /// Whether each peer whose rotation is signed handed over to keys
-/// herald.toml does not pin, as the store keeps them (ADR-0049).
+/// herald.toml does not pin, and which instances' tombstones fill a herald
+/// source's share, as the store keeps them (ADR-0049).
 struct Rotating;
 
 impl<H: Host> Through<H> for Rotating {
@@ -102,7 +103,9 @@ impl<H: Host> Through<H> for Rotating {
         serving: &ServingOn<'_, H, S, K>,
         _: &str,
     ) -> Findings {
-        handed_over(serving.config, &serving.ports.store.published()).await
+        let mut findings = handed_over(serving.config, &serving.ports.store.published()).await;
+        findings.extend(shared(serving.config, &serving.ports.store.cursors()).await);
+        findings
     }
 }
 

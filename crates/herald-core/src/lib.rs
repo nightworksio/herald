@@ -67,7 +67,7 @@ pub use bounds::{
 };
 pub use chunk::{Room, chunk, size};
 pub use credentials::{basic, bot_or_webhook};
-pub use cursor::{Cursor, Polled, fresh};
+pub use cursor::{Cursor, Polled, Proof, Tombstone, Unheld, fresh};
 pub use declined::Declined;
 pub use duration::Duration;
 pub use escaping::{Escaping, safe_url, unreserved};

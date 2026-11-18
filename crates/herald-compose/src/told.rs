@@ -19,6 +19,12 @@ pub fn polled(swept: &Swept) -> Vec<String> {
         Sweep::Unkept(why) => vec![format!(
             "{source}: the installation token it reads with was minted but not kept, as {why}. This run reads with it; the next mints it again."
         )],
+        Sweep::Refused(maker) => vec![format!(
+            "{source}: took no new release of {maker} this pull, as it keeps as many tombstones of its releases as peer_share lets it; the next pull reads them again"
+        )],
+        Sweep::Ahead(maker) => vec![format!(
+            "{source}: passed over an envelope of {maker} whose proof was made too far ahead of now"
+        )],
         Sweep::Stopped(stop) => vec![format!(
             "{source}: stopped: {}. The next poll asks again.",
             why(stop)

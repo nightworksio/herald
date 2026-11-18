@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_core::{
-    Attribute, Cursor, Draft, Event, Identity, Kind, KindSpecs, Origin, Polled, Visibility, media,
-    status,
+    Attribute, Cursor, Draft, Event, Identity, Kind, KindSpecs, Origin, Polled, Proof, Tombstone,
+    Unheld, Visibility, media, status,
 };
 use herald_kinds::{Peering, PublicKey, Pull, Pulling, Trust, Unpulled};
 use herald_peers::answer::{Answer, Bounds, Unanswered, checked, entity_tag, unchanged};
@@ -75,6 +75,7 @@ impl Pulled {
             relisted: true,
             ..Polled::default()
         };
+        let mut shares = Shares::of(cursor, self.0.peer_share);
         let mut before: Option<u64> = None;
         for _ in 0..self.0.pages {
             let url = before.map_or_else(
@@ -98,8 +99,12 @@ impl Pulled {
                     break;
                 }
                 polled.sequence.get_or_insert(*sequence);
-                self.taken((pulling, trust, cursor), envelope, &mut polled)
-                    .await?;
+                self.taken(
+                    (pulling, trust, cursor),
+                    (*sequence, envelope),
+                    (&mut polled, &mut shares),
+                )
+                .await?;
                 before = Some(*sequence);
             }
             let found = polled.events.len() + polled.passed.len();
@@ -107,6 +112,20 @@ impl Pulled {
                 break;
             }
         }
+        let makers = match self.0.verify {
+            Verify::Hop => trust.origins.len().saturating_add(1),
+            Verify::Origin => 1,
+        };
+        polled.each = Some((self.remembered() / makers).max(1));
+        polled.unheld = Unheld {
+            most: self.0.tombstones,
+            each: self.0.peer_tombstones,
+        };
+        if let Some(capped) = shares.capped {
+            polled.sequence = polled.sequence.map(|sequence| sequence.min(capped));
+            polled.etag = None;
+        }
+        polled.refused = shares.refused;
         polled.watched = polled.events.len();
         Ok(Some(polled))
     }
@@ -114,14 +133,19 @@ impl Pulled {
     /// `envelope` taken into `polled`, once its proof holds for the
     /// instance that made it and is newer than any `cursor` or `polled`
     /// took of its identity: its event, or the identity it withdraws where
-    /// `cursor` took it; or
+    /// `cursor` took an event of it, else only its proof, as one a later
+    /// tombstone pushes out; or
     /// its identity passed where the event is of no kind the config
-    /// declares or the envelope came by a path the source does not take.
+    /// declares or the envelope came by a path the source does not take;
+    /// nothing where its proof was made too far ahead, the instance that
+    /// made it named in `polled.ahead`, or where it would take a new
+    /// identity of an instance `shares` holds as many of as it may, read
+    /// again from its place in the feed, `sequence`.
     async fn taken(
         &self,
         (pulling, trust, cursor): (Pulling<'_>, &Trust, Option<&Cursor>),
-        envelope: &Value,
-        polled: &mut Polled,
+        (sequence, envelope): (u64, &Value),
+        (polled, shares): (&mut Polled, &mut Shares),
     ) -> Result<(), Unpulled> {
         let carried = reading::carried(envelope).map_err(unreadable)?;
         let (identity, path) = match &carried {
@@ -135,24 +159,55 @@ impl Pulled {
             return Ok(());
         };
         let (granted, identity) = self.namespaced(identity, maker.name, maker.peer);
-        let created = proved(pulling, maker.domain, maker.keys, envelope).await?;
-        let newer = !polled.proved.contains_key(&identity)
+        let Some(created) =
+            proved((pulling, trust.skew), maker.domain, maker.keys, envelope).await?
+        else {
+            named(&mut polled.ahead, maker.name);
+            return Ok(());
+        };
+        let newer = !polled.proved.iter().any(|proof| proof.identity == identity)
             && cursor.is_none_or(|cursor| cursor.newer(&identity, created));
         if !newer {
             return Ok(());
         }
-        polled.proved.insert(identity.clone(), created);
-        match carried {
-            Carried::Event(event) => {
-                match self.event(*event, (identity.clone(), granted), &maker, pulling.specs) {
-                    Some(event) => polled.events.push(event),
-                    None => polled.passed.push(identity),
+        let held = cursor.is_some_and(|cursor| cursor.took(&identity));
+        if matches!(carried, Carried::Event(_))
+            && !shares.admits(
+                maker.name,
+                cursor.and_then(|cursor| cursor.proof(&identity)),
+            )
+        {
+            shares.refuse(maker.name, sequence);
+            return Ok(());
+        }
+        let (event, tombstone) = match carried {
+            Carried::Event(event) => (
+                self.event(*event, (identity.clone(), granted), &maker, pulling.specs),
+                None,
+            ),
+            Carried::Withdrawn { .. } if held => {
+                if !cursor
+                    .and_then(|cursor| cursor.proof(&identity))
+                    .is_some_and(Proof::held)
+                {
+                    shares.hold(maker.name);
                 }
+                (None, Some(Tombstone::Held))
             }
-            Carried::Withdrawn { .. } if cursor.is_some_and(|cursor| cursor.took(&identity)) => {
-                polled.withdrawn.push(identity);
-            }
-            Carried::Withdrawn { .. } => {}
+            Carried::Withdrawn { .. } => (None, Some(Tombstone::Unheld)),
+        };
+        polled.proved.push(Proof {
+            identity: identity.clone(),
+            created,
+            maker: maker.name.to_owned(),
+            tombstone: tombstone.clone(),
+            passed: event.is_none() && tombstone.is_none(),
+        });
+        match (event, tombstone) {
+            (Some(event), _) => polled.events.push(event),
+            (None, None) => polled.passed.push(identity),
+            (None, Some(Tombstone::Held)) => polled.withdrawn.push(identity),
+            (None, Some(Tombstone::Unheld)) => {}
         }
         Ok(())
     }
@@ -297,6 +352,68 @@ impl Pulled {
     }
 }
 
+/// How many tombstones of identities its source took a pull holds of each
+/// instance, those its cursor holds counted; the instances it took no more
+/// new identities of, and the place in the feed just before the first
+/// envelope it took no more of.
+#[derive(Debug)]
+struct Shares {
+    held: BTreeMap<String, usize>,
+    share: usize,
+    refused: Vec<String>,
+    capped: Option<u64>,
+}
+
+impl Shares {
+    /// The shares of a pull after `cursor`, which takes no new identity of
+    /// an instance whose tombstones it holds `share` of.
+    fn of(cursor: Option<&Cursor>, share: usize) -> Self {
+        Self {
+            held: cursor
+                .map(|cursor| {
+                    cursor
+                        .held()
+                        .into_iter()
+                        .map(|(maker, held)| (maker.to_owned(), held))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            share,
+            refused: Vec::new(),
+            capped: None,
+        }
+    }
+
+    /// Whether `maker` may have the pull take an envelope of an identity
+    /// whose proof the cursor keeps as `kept`: always where it holds the
+    /// identity already, else while it holds fewer than `share` of its
+    /// tombstones.
+    fn admits(&self, maker: &str, kept: Option<&Proof>) -> bool {
+        kept.is_some_and(|kept| kept.tombstone != Some(Tombstone::Unheld))
+            || self.held.get(maker).copied().unwrap_or_default() < self.share
+    }
+
+    /// `maker` holds one more tombstone of an identity its source took.
+    fn hold(&mut self, maker: &str) {
+        *self.held.entry(maker.to_owned()).or_default() += 1;
+    }
+
+    /// `maker` refused an envelope at `sequence`, which a later pull reads
+    /// again.
+    fn refuse(&mut self, maker: &str, sequence: u64) {
+        named(&mut self.refused, maker);
+        let before = sequence.saturating_sub(1);
+        self.capped = Some(self.capped.map_or(before, |capped| capped.min(before)));
+    }
+}
+
+/// `names` with `name`, once.
+fn named(names: &mut Vec<String>, name: &str) {
+    if !names.iter().any(|named| named == name) {
+        names.push(name.to_owned());
+    }
+}
+
 /// The instance that made an envelope: its name in identities, its domain,
 /// the keys that stand for it, and whether it is the pulled peer itself.
 #[derive(Debug, Clone, Copy)]
@@ -381,13 +498,14 @@ async fn fetched(
 }
 
 /// When `envelope`'s proof was made, once it holds for one of `keys`, of
-/// the instance on `domain`.
+/// the instance on `domain`; nothing where it was made more than `skew`
+/// seconds ahead of the round, which no proof may be.
 async fn proved(
-    pulling: Pulling<'_>,
+    (pulling, skew): (Pulling<'_>, i64),
     domain: &str,
     keys: &[PublicKey],
     envelope: &Value,
-) -> Result<Timestamp, Unpulled> {
+) -> Result<Option<Timestamp>, Unpulled> {
     let shown = proof::shown(envelope).map_err(unreadable)?;
     let key = keys
         .iter()
@@ -406,12 +524,13 @@ async fn proved(
             "an envelope's proof does not hold".to_owned(),
         ));
     }
-    shown.created.parse().map_err(|_| {
+    let created: Timestamp = shown.created.parse().map_err(|_| {
         Unpulled::Unreadable(format!(
             "an envelope's proof was made at {}, which is no time",
             shown.created
         ))
-    })
+    })?;
+    Ok((created.as_second() <= pulling.now.as_second().saturating_add(skew)).then_some(created))
 }
 
 /// Whether `path` is `namespace` or lies under it, on a `/` boundary.

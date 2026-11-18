@@ -4959,6 +4959,24 @@
                 "herald-example-net"
               ]
             },
+            "peer_share": {
+              "description": "How many tombstones of identities it took, which it never forgets,\nit keeps of any one instance before it takes no new identity of it:\n1000 where absent, and at most 4000. A pull reads such an envelope\nagain later; a tombstone of an identity it took is always taken.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "peer_tombstones": {
+              "description": "How many tombstones of identities it never took it keeps of any one\ninstance: 250 where absent, or `tombstones` where that is fewer, and\nat most `tombstones`.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "tombstones": {
+              "description": "How many tombstones of identities it never took it keeps the proof\nof in all, so no older envelope of them is taken again, apart from\nthose of identities it took, which it never forgets: 1000 where\nabsent, and at most 4000. It forgets those taken first.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "url": {
               "description": "The full URL of a feed of an instance that is no peer, whose keys\n`keys` pins; in place of `peer` and `feed`.",
               "type": "string",

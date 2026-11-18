@@ -75,6 +75,14 @@ pub enum Sweep {
         /// What its route did.
         announced: Vec<Announced>,
     },
+    /// A pull took no new identity of the instance it names, as the source
+    /// keeps as many tombstones of its releases as `peer_share` lets it, and
+    /// reads that envelope again in a later pull (ADR-0049).
+    Refused(String),
+    /// A pull passed an envelope of the instance it names over, as its
+    /// proof was made further ahead of the round than any may be
+    /// (ADR-0049).
+    Ahead(String),
     /// The installation token the source reads with was minted for the
     /// round but not kept in the store, for this reason; the next run
     /// mints it again (ADR-0041).

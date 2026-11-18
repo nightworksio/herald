@@ -1,6 +1,6 @@
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, RouteId, Schedule,
-    Shown, Signal, SourceName, State, Step, Subscription, Validators,
+    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, Proof, RouteId,
+    Schedule, Shown, Signal, SourceName, State, Step, Subscription, Tombstone, Validators,
 };
 use std::collections::BTreeMap;
 use std::fmt;
@@ -220,9 +220,21 @@ fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
         listings: BTreeMap::from([("check-suite".to_owned(), validators)]),
         newest: Some(NOON),
         sequence: Some(7),
+        ahead: vec!["conformance".to_owned()],
         proved: identities
             .into_iter()
-            .map(|identity| (identity, NOON))
+            .zip(
+                [Some(Tombstone::Held), Some(Tombstone::Unheld), None]
+                    .into_iter()
+                    .cycle(),
+            )
+            .map(|(identity, tombstone)| Proof {
+                passed: tombstone.is_none(),
+                identity,
+                created: NOON,
+                maker: "conformance".to_owned(),
+                tombstone,
+            })
             .collect(),
     }
 }

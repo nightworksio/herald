@@ -62,6 +62,23 @@ pub struct HeraldFile {
     /// taken as herald/<peer>/<identity>. None where absent.
     #[serde(default)]
     pub namespaces: Vec<String>,
+    /// How many tombstones of identities it never took it keeps the proof
+    /// of in all, so no older envelope of them is taken again, apart from
+    /// those of identities it took, which it never forgets: 1000 where
+    /// absent, and at most 4000. It forgets those taken first.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub tombstones: Option<NonZeroUsize>,
+    /// How many tombstones of identities it never took it keeps of any one
+    /// instance: 250 where absent, or `tombstones` where that is fewer, and
+    /// at most `tombstones`.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub peer_tombstones: Option<NonZeroUsize>,
+    /// How many tombstones of identities it took, which it never forgets,
+    /// it keeps of any one instance before it takes no new identity of it:
+    /// 1000 where absent, and at most 4000. A pull reads such an envelope
+    /// again later; a tombstone of an identity it took is always taken.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub peer_share: Option<NonZeroUsize>,
 }
 
 /// A `herald` source, checked: whose feed it pulls, where, and what it
@@ -88,6 +105,9 @@ pub struct HeraldOptions {
     pub(crate) pages: usize,
     pub(crate) verify: Verify,
     pub(crate) namespaces: Vec<String>,
+    pub(crate) tombstones: usize,
+    pub(crate) peer_tombstones: usize,
+    pub(crate) peer_share: usize,
 }
 
 impl HeraldOptions {
@@ -95,6 +115,20 @@ impl HeraldOptions {
     pub const PAGES: usize = 5;
     /// The most pages one pull may read: four times the default.
     pub const PAGES_ALLOWED: usize = 4 * Self::PAGES;
+    /// How many tombstones a source keeps where `tombstones` is unset.
+    pub const TOMBSTONES: usize = 1000;
+    /// The most tombstones a source may keep: four times the default.
+    pub const TOMBSTONES_ALLOWED: usize = 4 * Self::TOMBSTONES;
+    /// How many tombstones of identities it never took a source keeps of
+    /// one instance where `peer_tombstones` is unset: a quarter of the
+    /// default `tombstones`, or `tombstones` where that is fewer.
+    pub const PEER_TOMBSTONES: usize = Self::TOMBSTONES / 4;
+    /// How many tombstones of identities it took a source keeps of one
+    /// instance before it takes no new identity of it, where `peer_share`
+    /// is unset.
+    pub const PEER_SHARE: usize = 1000;
+    /// The most `peer_share` may be: four times the default.
+    pub const PEER_SHARE_ALLOWED: usize = 4 * Self::PEER_SHARE;
 
     /// The options `file` writes, where they are sound.
     ///
@@ -109,6 +143,37 @@ impl HeraldOptions {
             return Err(Fault::at(
                 "pages",
                 format!("pages is at most {}; lower it", Self::PAGES_ALLOWED),
+            ));
+        }
+        let tombstones = file.tombstones.map_or(Self::TOMBSTONES, NonZeroUsize::get);
+        if tombstones > Self::TOMBSTONES_ALLOWED {
+            return Err(Fault::at(
+                "tombstones",
+                format!(
+                    "tombstones is at most {}; lower it",
+                    Self::TOMBSTONES_ALLOWED
+                ),
+            ));
+        }
+        let peer_tombstones = file
+            .peer_tombstones
+            .map_or(Self::PEER_TOMBSTONES.min(tombstones), NonZeroUsize::get);
+        if peer_tombstones > tombstones {
+            return Err(Fault::at(
+                "peer_tombstones",
+                format!(
+                    "peer_tombstones is at most tombstones, {tombstones}; lower it or raise tombstones"
+                ),
+            ));
+        }
+        let peer_share = file.peer_share.map_or(Self::PEER_SHARE, NonZeroUsize::get);
+        if peer_share > Self::PEER_SHARE_ALLOWED {
+            return Err(Fault::at(
+                "peer_share",
+                format!(
+                    "peer_share is at most {}; lower it",
+                    Self::PEER_SHARE_ALLOWED
+                ),
             ));
         }
         let most = pages.saturating_mul(PAGE_MOST);
@@ -166,6 +231,9 @@ impl HeraldOptions {
             pages,
             verify: file.verify,
             namespaces: file.namespaces,
+            tombstones,
+            peer_tombstones,
+            peer_share,
         })
     }
 

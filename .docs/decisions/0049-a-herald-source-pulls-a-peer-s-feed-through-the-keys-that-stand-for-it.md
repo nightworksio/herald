@@ -58,15 +58,37 @@ peer that rotates its keys without trusting whoever answers on the day.
    kind's shape, is passed over. An edited Release that enters the feed
    again is an edit, as a forge's is (ADR-0034), the digests of what the
    source saw kept for every identity it still remembers.
-6. **No envelope turns an event back.** The cursor keeps when the proof of
-   the newest envelope it took of each identity was made, for as many
-   identities as it remembers. An envelope, or a tombstone, whose proof is
-   no newer is passed over, and so is every place a page lists an identity
-   after its first, so neither a replayed envelope nor one a peer relays
-   edits, withdraws or brings back an event taken under a newer proof.
+6. **No envelope turns an event back.** A proof made more than
+   `[server] inbound.replay_window` ahead of the round is no proof: its
+   envelope is passed over, nothing of it kept, its maker named in the
+   poll's outcome and by doctor, and the pull reads on. The cursor keeps
+   when the proof of the newest envelope it took of each identity was
+   made, and by which instance, in the order it took them: every identity
+   it took an event of, neither passed over nor only seen, that a
+   tombstone withdrew, never forgotten, so no older envelope of a
+   withdrawn release is taken again; the tombstones of identities it never
+   took, the ones taken last, at most `peer_tombstones` (250, at most
+   `tombstones`) of any one instance and `tombstones` (1000, at most 4000)
+   in all, however many tombstones of identities it took any instance
+   has it keep; and of the rest the ones each
+   instance made that it took last, as many as it remembers shared out
+   evenly among the instances whose envelopes it takes, so neither an
+   instance taking many identities nor any time a peer writes in a proof
+   decides which proofs of another it forgets. A tombstone of an identity
+   the source took is always taken: withdrawing is the safe direction.
+   Each instance may have it keep at most `peer_share` (1000, at most
+   4000) tombstones of releases it withdrew, which are never forgotten: a
+   pull takes no new identity of an instance at its share, names it in
+   its outcome, and keeps its sequence before that envelope, its `ETag`
+   dropped, so a later pull reads it again once the share is raised;
+   doctor names each instance at its share. An envelope, or a tombstone,
+   whose proof is no newer is passed over, and so is every place a page
+   lists an identity after its first, so neither a replayed envelope nor
+   one a peer relays edits, withdraws or brings back an event taken under
+   a newer proof.
 7. **A tombstone withdraws only what its own source announced.** Once
-   its proof holds, and only for an identity the source took, its identity
-   is withdrawn from every route taking the source as the route's
+   its proof holds, and only for an identity the source took an event
+   of, its identity is withdrawn from every route taking the source as the route's
    `withdraw` says (ADR-0048). Each ledger entry names the source whose
    event it announced, and a tombstone withdraws only a post, or a place
    in a group, whose entry names its own source: one another source
