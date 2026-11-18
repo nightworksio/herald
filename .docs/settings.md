@@ -21,6 +21,305 @@ The HTTP API's apps, by name.
 | `apps.<name>.routes` | array of string | The routes it announces to, each naming the app among its sources; every such route where it names none. |
 | `apps.<name>.tokens` | array of [TokenHash](#tokenhash) | The SHA-256 of each of the app's tokens, written `sha256:` and 64 lowercase hex digits, as `herald token new` prints it. A token is rotated by adding the new one before the old one is removed. |
 
+## `boards`
+
+The living boards, by name: each a report and a route that keeps one post of it, edited each window and pinned.
+
+### `boards.<name>`: A route to a Discord destination
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `boards.<name>` | table | A route to a Discord destination. |
+| `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.channel` | string | The channel's id. A bot needs one; a webhook posts where it was made. |
+| `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
+| `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `boards.<name>.destination` | string | The destination it announces to. |
+| `boards.<name>.edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `boards.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `boards.<name>.forum` | boolean | Whether the channel is a forum, where each announcement is a post of its own. |
+| `boards.<name>.group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `boards.<name>.group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `boards.<name>.group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `boards.<name>.group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `boards.<name>.group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `boards.<name>.group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `boards.<name>.group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `boards.<name>.group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
+| `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes.<name>` | array of string |  |
+| `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties.<name>` | array of string |  |
+| `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
+| `boards.<name>.mentions` | table | Who it mentions. |
+| `boards.<name>.mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `boards.<name>.mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
+| `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.subscribe` | table | The opt-in role members subscribe to, where the route offers one. |
+| `boards.<name>.subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
+| `boards.<name>.subscribe.role` | string | The opt-in role `subscribe` gives a member and `unsubscribe` takes away, by id. The route mentions it with its announcements. |
+| `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `boards.<name>.thread` | table | The thread to open for each announcement. |
+| `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+| `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
+### `boards.<name>`: A route to a Mastodon destination
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `boards.<name>` | table | A route to a Mastodon destination. |
+| `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.content_warning` | string | The content warning each status is shown behind. |
+| `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
+| `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `boards.<name>.destination` | string | The destination it announces to. |
+| `boards.<name>.edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `boards.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `boards.<name>.group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `boards.<name>.group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `boards.<name>.group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `boards.<name>.group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `boards.<name>.group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `boards.<name>.group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `boards.<name>.group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `boards.<name>.group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
+| `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `boards.<name>.language` | string | The language each status is written in, as an ISO 639 code. |
+| `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `boards.<name>.limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
+| `boards.<name>.link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
+| `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes.<name>` | array of string |  |
+| `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties.<name>` | array of string |  |
+| `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
+| `boards.<name>.mentions` | table | Who it mentions. |
+| `boards.<name>.mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `boards.<name>.mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
+| `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `boards.<name>.thread` | table | The thread to open for each announcement. |
+| `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.title` | integer | The longest title, a status's first line, in characters; 100 where unset. |
+| `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.visibility` | [Visibility](#visibility) | Who sees each status. |
+| `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+| `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
+### `boards.<name>`: A route to a Matrix destination
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `boards.<name>` | table | A route to a Matrix destination. |
+| `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
+| `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `boards.<name>.destination` | string | The destination it announces to. |
+| `boards.<name>.edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `boards.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `boards.<name>.group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `boards.<name>.group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `boards.<name>.group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `boards.<name>.group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `boards.<name>.group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `boards.<name>.group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `boards.<name>.group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `boards.<name>.group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
+| `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes.<name>` | array of string |  |
+| `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties.<name>` | array of string |  |
+| `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
+| `boards.<name>.mentions` | table | Who it mentions. |
+| `boards.<name>.mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `boards.<name>.mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
+| `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
+| `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `boards.<name>.thread` | table | The thread to open for each announcement. |
+| `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+| `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
+### `boards.<name>`: A route to a Slack destination
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `boards.<name>` | table | A route to a Slack destination. |
+| `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.channel` | string | The channel's id, such as `C0123456789`, which the bot has joined. A bot needs one; a webhook posts where it was made. |
+| `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
+| `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `boards.<name>.destination` | string | The destination it announces to. |
+| `boards.<name>.edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `boards.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `boards.<name>.group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `boards.<name>.group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `boards.<name>.group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `boards.<name>.group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `boards.<name>.group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `boards.<name>.group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `boards.<name>.group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `boards.<name>.group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
+| `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes.<name>` | array of string |  |
+| `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties.<name>` | array of string |  |
+| `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
+| `boards.<name>.mentions` | table | Who it mentions. |
+| `boards.<name>.mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `boards.<name>.mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
+| `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
+| `boards.<name>.subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
+| `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `boards.<name>.thread` | table | The thread to open for each announcement. |
+| `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+| `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
+### `boards.<name>`: A route announcing as one of herald's own ActivityPub actors
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `boards.<name>` | table | A route announcing as one of herald's own ActivityPub actors. |
+| `boards.<name>.actor` | string | The actor the route announces as, such as `php-mutation-gate`, which is followed as `@php-mutation-gate@<domain>`; or a template naming each project's own actor from `event.project`, such as `{{ event.project }}`. A project whose name is no actor's name is not announced on the route. |
+| `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.content_warning` | string | The content warning each Note is shown behind. |
+| `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
+| `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `boards.<name>.destination` | string | The destination it announces to. |
+| `boards.<name>.edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `boards.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `boards.<name>.group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `boards.<name>.group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `boards.<name>.group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `boards.<name>.group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `boards.<name>.group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `boards.<name>.group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `boards.<name>.group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `boards.<name>.group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
+| `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `boards.<name>.language` | string | The language each Note is written in, as an ISO 639 code. |
+| `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes.<name>` | array of string |  |
+| `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties.<name>` | array of string |  |
+| `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
+| `boards.<name>.mentions` | table | Who it mentions. |
+| `boards.<name>.mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `boards.<name>.mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
+| `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `boards.<name>.thread` | table | The thread to open for each announcement. |
+| `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.visibility` | [Audience](#audience) | Who sees each Note on the timelines. |
+| `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+| `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
+### `boards.<name>`: A route publishing its events to a feed of herald's own
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `boards.<name>` | table | A route publishing its events to a feed of herald's own. |
+| `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
+| `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `boards.<name>.destination` | string | The destination it announces to. |
+| `boards.<name>.edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `boards.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `boards.<name>.group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `boards.<name>.group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `boards.<name>.group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `boards.<name>.group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `boards.<name>.group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `boards.<name>.group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `boards.<name>.group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `boards.<name>.group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
+| `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes.<name>` | array of string |  |
+| `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties.<name>` | array of string |  |
+| `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
+| `boards.<name>.mentions` | table | Who it mentions. |
+| `boards.<name>.mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `boards.<name>.mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
+| `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `boards.<name>.thread` | table | The thread to open for each announcement. |
+| `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+| `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
 ## `destinations`
 
 The places herald posts to, by name.
@@ -366,6 +665,7 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -378,7 +678,7 @@ Which events go where, rendered how.
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
-| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
@@ -415,6 +715,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
 | `routes[].link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
+| `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -427,7 +728,7 @@ Which events go where, rendered how.
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
-| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
@@ -459,6 +760,7 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -471,7 +773,7 @@ Which events go where, rendered how.
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
-| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
@@ -503,6 +805,7 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -515,7 +818,7 @@ Which events go where, rendered how.
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
-| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
@@ -550,6 +853,7 @@ Which events go where, rendered how.
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].language` | string | The language each Note is written in, as an ISO 639 code. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -562,7 +866,7 @@ Which events go where, rendered how.
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
-| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
@@ -593,6 +897,7 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -605,7 +910,7 @@ Which events go where, rendered how.
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
-| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
@@ -616,6 +921,20 @@ Which events go where, rendered how.
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
+
+## `rules`
+
+The rules routes name among their sources, by name: each a view watched once a window, nudging each pull request that waited past a stage.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `rules.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `rules.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `rules.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `rules.<name>.most` | integer | The most pull requests it nudges a window, the longest waiting first: 20 where absent; the rest wait for the next window. |
+| `rules.<name>.stages` | array of [Duration](#duration) | How long an open pull request waits, since anyone last acted on it, before each nudge, such as `["2d", "7d"]`: each fires once a spell of waiting. |
+| `rules.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `rules.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
 ## `run`
 
@@ -1601,13 +1920,13 @@ One character, as a config writes it.
 
 Who may see a package's version where its own visibility and its repository's differ.
 
+### Pin
+
+Whether a route pins, and how it finds its earlier pin.
+
 ### PinLookups
 
 How many pins the destination looks up, one request each, as it finds the route's earlier pins, 25 by default.
-
-### Pinning
-
-How a route keeps its newest announcement pinned: each pin unpins the route's earlier one, found as this says (ADR-0011).
 
 ### Prefer
 

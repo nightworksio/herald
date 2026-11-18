@@ -72,3 +72,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0052](0052-a-forge-source-announces-its-pull-requests.md) | A forge source announces its pull requests | Accepted |
 | [0053](0053-a-forge-source-announces-its-issues.md) | A forge source announces its issues | Accepted |
 | [0055](0055-a-report-announces-a-view-of-open-pull-requests-once-a-window.md) | A report announces a view of open pull requests once a window | Accepted |
+| [0056](0056-a-board-keeps-one-post-of-a-report-and-a-rule-nudges-each-pull-request-past-its-stages.md) | A board keeps one post of a report, and a rule nudges each pull request past its stages | Accepted |

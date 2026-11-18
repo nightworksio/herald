@@ -537,9 +537,10 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
         let edits = self.route.reached.profile().features.edits;
         let delivery = &self.route.config.route.delivery;
         let revising = entry.map(|entry| {
-            let revised = match subject.group {
-                Some(_) => regrouped(entry, revision, edits),
-                None => revise(entry, revision, delivery, edits),
+            let revised = if subject.group.is_some() || delivery.living {
+                regrouped(entry, revision, edits)
+            } else {
+                revise(entry, revision, delivery, edits)
             };
             (entry, revised)
         });

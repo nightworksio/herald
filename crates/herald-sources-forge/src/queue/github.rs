@@ -20,7 +20,7 @@ const MOST_NAMED: usize = 50;
 /// recently updated first.
 fn query() -> String {
     format!(
-        "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: 1) {{ totalCount }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }} }} }} }} }}"
+        "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }} }} }} }} }}"
     )
 }
 
@@ -77,8 +77,34 @@ struct Author {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Count {
+struct Requests {
     total_count: u64,
+    #[serde(default)]
+    nodes: Vec<Asked>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Asked {
+    requested_reviewer: Option<Reviewer>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Reviewer {
+    login: Option<String>,
+    combined_slug: Option<String>,
+}
+
+impl Requests {
+    /// The login of each reviewer asked, or a team's `org/team`.
+    fn reviewers(self) -> Vec<String> {
+        self.nodes
+            .into_iter()
+            .filter_map(|request| request.requested_reviewer)
+            .filter_map(|reviewer| reviewer.login.or(reviewer.combined_slug))
+            .collect()
+    }
 }
 
 #[derive(Deserialize)]
@@ -131,7 +157,7 @@ struct Node {
     author: Option<Author>,
     labels: Option<Connection<Label>>,
     review_decision: Option<String>,
-    review_requests: Option<Count>,
+    review_requests: Option<Requests>,
     mergeable: Option<String>,
     merge_state_status: Option<String>,
     #[serde(default)]
@@ -185,7 +211,12 @@ impl Node {
     fn read(self, (project, repository): (&str, &str), seen: Visibility) -> Pull {
         let requested = self
             .review_requests
+            .as_ref()
             .is_some_and(|requests| requests.total_count > 0);
+        let reviewers = self
+            .review_requests
+            .map(Requests::reviewers)
+            .unwrap_or_default();
         let review = match self.review_decision.as_deref() {
             Some("APPROVED") => Review::Approved,
             Some("CHANGES_REQUESTED") => Review::ChangesRequested,
@@ -228,6 +259,7 @@ impl Node {
             opened: self.created_at,
             updated: self.updated_at,
             review,
+            reviewers,
             checks: checks(rollup),
             mergeable,
             queued: self.is_in_merge_queue,

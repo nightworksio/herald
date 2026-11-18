@@ -219,7 +219,7 @@ body = "{{ event.body }}"
         let error = errors(EXAMPLE);
         assert!(
             error.contains(
-                "routes[1].sources: no source, app or report is named \"ci\"; the sources, apps and reports are \"gate\""
+                "routes[1].sources: no source, app, report or rule is named \"ci\"; the sources, apps, reports and rules are \"gate\""
             ),
             "{error}"
         );
@@ -228,7 +228,7 @@ body = "{{ event.body }}"
                 .replace("sources = [\"gate\"]", "sources = [\"nobody\"]"),
         );
         assert!(
-            error.contains("the sources, apps and reports are \"ci\", \"gate\""),
+            error.contains("the sources, apps, reports and rules are \"ci\", \"gate\""),
             "{error}"
         );
     }

@@ -30,12 +30,14 @@ impl Kind {
     pub const ISSUE: Self = Self(Cow::Borrowed("issue"));
     /// A report of a view's open pull requests, for one window.
     pub const REPORT: Self = Self(Cow::Borrowed("report"));
+    /// A nudge: an open pull request that waited past a rule's stage.
+    pub const NUDGE: Self = Self(Cow::Borrowed("nudge"));
 
     /// Whether only herald itself announces its events, as a report from a
-    /// view: no app and no other herald's feed gives one.
+    /// view or a rule's nudge: no app and no other herald's feed gives one.
     #[must_use]
     pub fn own(&self) -> bool {
-        *self == Self::REPORT
+        *self == Self::REPORT || *self == Self::NUDGE
     }
 
     /// The kind named `name`.
@@ -228,6 +230,21 @@ pub const VIEW: &str = "view";
 pub const PULLS: &str = "pulls";
 /// How many of the open pull requests a report shows are stale.
 pub const STALE: &str = "stale";
+/// How long a nudged pull request waited past which its rule's stage fires,
+/// as `2d`.
+pub const STAGE: &str = "stage";
+/// Whose turn a nudged pull request is, as a view names the state.
+pub const TURN: &str = "turn";
+/// Why a nudged pull request is in its state, as `check-failed: test`.
+pub const REASON: &str = "reason";
+/// How long a nudged pull request has waited, as `3d`.
+pub const WAITED: &str = "waited";
+/// When a nudged pull request's spell of waiting began.
+pub const SPELL: &str = "spell";
+/// The full path of a nudged pull request's repository.
+pub const REPOSITORY: &str = "repository";
+/// The logins whose turn a nudged pull request is, joined by `, `.
+pub const WAITING_ON: &str = "waiting_on";
 /// Whether a pull request's or an issue's author is a bot or an app.
 pub const BOT: &str = "bot";
 /// The branch a pull request merges into.
@@ -397,6 +414,27 @@ fn reported() -> BTreeMap<String, AttributeSpec> {
     ]
     .into_iter()
     .map(|(name, ty)| (name.to_owned(), AttributeSpec { ty, required: true }))
+    .collect()
+}
+
+/// The attributes of a nudge: the rule and stage that fired, and the pull
+/// request that waited.
+fn nudged() -> BTreeMap<String, AttributeSpec> {
+    [
+        (RULE, AttributeType::Text, true),
+        (STAGE, AttributeType::Text, true),
+        (TURN, AttributeType::Text, true),
+        (REASON, AttributeType::Text, true),
+        (WAITED, AttributeType::Text, true),
+        (SPELL, AttributeType::Text, true),
+        (REPOSITORY, AttributeType::Text, true),
+        (NUMBER, AttributeType::Number, true),
+        (AUTHOR, AttributeType::Text, false),
+        (BOT, AttributeType::Flag, true),
+        (WAITING_ON, AttributeType::Text, false),
+    ]
+    .into_iter()
+    .map(|(name, ty, required)| (name.to_owned(), AttributeSpec { ty, required }))
     .collect()
 }
 
@@ -580,6 +618,13 @@ impl KindSpec {
                 false,
                 Vec::new(),
                 reported(),
+            ),
+            Self::new(
+                Kind::NUDGE,
+                "An open pull request that waited past a rule's stage.",
+                false,
+                buttons(&[PULL_LINK]),
+                nudged(),
             ),
         ]
     }

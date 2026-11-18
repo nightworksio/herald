@@ -2,6 +2,8 @@
 //! open pull requests read from every source it names, and announced
 //! through the routes naming the report (ADR-0055).
 
+use std::collections::BTreeMap;
+
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
     Board, Cursor, Identity, Pull, RouteId, Showing, SourceName, Visibility, board, report_event,
@@ -16,6 +18,25 @@ use crate::prepare::Connected;
 /// Why a report's view could not be read: a source it names is not one
 /// this run reads.
 const UNREAD_SOURCE: &str = "the view reads a source this run does not poll";
+
+/// The open pull requests each view a round read, by the view's name, so
+/// a report and a rule watching one view read it once a round.
+pub(crate) type Reads = BTreeMap<String, Vec<Pull>>;
+
+/// The open pull requests of the view `name`, read once a round into
+/// `reads`.
+pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
+    flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    (name, view): (&str, &ViewConfig),
+    reads: &mut Reads,
+) -> Result<Vec<Pull>, Stop> {
+    if let Some(pulls) = reads.get(name) {
+        return Ok(pulls.clone());
+    }
+    let pulls = read_pulls(flow, view).await?;
+    reads.insert(name.to_owned(), pulls.clone());
+    Ok(pulls)
+}
 
 /// The open pull requests of every source `view` reads, the first that
 /// could not be read stopping it.
@@ -70,12 +91,14 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// What one announcement of a report shows: the pull requests, who may see
-/// them, and the routes it may reach, where only some.
+/// them, the routes it may reach, where only some, and whether those keep
+/// one living post of it.
 struct Part<'a> {
     view: &'a ViewConfig,
     pulls: &'a [Pull],
     visibility: Visibility,
-    routes: Option<&'a [RouteId]>,
+    routes: &'a [RouteId],
+    living: bool,
 }
 
 /// `report`'s window that began at `start`, showing `part`, announced to
@@ -87,11 +110,11 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     run: &str,
 ) -> Result<Fresh, Stop> {
     let shown = board(&part.view.view, part.pulls, ports.clock.now());
-    let event = report_event(name, &report.view, &shown, start)
+    let event = report_event((name, &report.view), &shown, start, part.living)
         .map_err(|problem| Stop::Source(problem.to_string()))?
         .seen_as(part.visibility);
     let within = Within {
-        routes: part.routes,
+        routes: Some(part.routes),
         view: Some(Showing {
             view: &report.view,
             board: &shown,
@@ -107,33 +130,152 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     })
 }
 
+/// The window that began at `start`, where the cursor of the report or
+/// rule `name` has not yet remembered it: its identity, and the cursor as
+/// the store keeps it.
+pub(crate) async fn due<S: Store, C: Clock, G: Signer>(
+    ports: &Ports<'_, S, C, G>,
+    name: &str,
+    start: Timestamp,
+) -> Result<Option<(Identity, Option<Versioned<Cursor>>)>, Stop> {
+    let record = ports
+        .store
+        .cursors()
+        .cursor(&SourceName::new(name))
+        .await
+        .map_err(stored)?;
+    let identity = Identity::new(herald_core::report_identity(name, start));
+    let seen = record
+        .as_ref()
+        .is_some_and(|record| record.value.seen.first() == Some(&identity));
+    Ok((!seen).then_some((identity, record)))
+}
+
+/// What became of the cursor of the report or rule `name` once `announced`
+/// went out: the window `identity` remembered over `record` where no route
+/// stopped, and kept where one did.
+pub(crate) async fn settled<S: Store, C: Clock, G: Signer>(
+    ports: &Ports<'_, S, C, G>,
+    (name, identity): (&str, Identity),
+    record: Option<&Versioned<Cursor>>,
+    announced: &[Fresh],
+) -> Remembered {
+    let stopped = announced
+        .iter()
+        .flat_map(|fresh| &fresh.announced)
+        .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. }));
+    if stopped {
+        return Remembered::Kept;
+    }
+    let advanced = Cursor {
+        seen: vec![identity],
+        ..Cursor::default()
+    };
+    let written = ports
+        .store
+        .cursors()
+        .put_cursor(
+            &SourceName::new(name),
+            &advanced,
+            record.map(|record| record.version),
+        )
+        .await;
+    remembered(written, "the cursor")
+}
+
+/// The routes of `connected` that keep a living post of a report: those
+/// that ask to and reach a destination that edits.
+fn living<H>(connected: &Connected<H>) -> Vec<RouteId> {
+    connected
+        .routes
+        .iter()
+        .filter(|(route, _)| {
+            route.config.route.delivery.living && route.reached.profile().features.edits
+        })
+        .map(|(route, _)| route.config.route.id.clone())
+        .collect()
+}
+
+/// Who of the routes of `config` naming the report `name` is shown which
+/// of `pulls`, the strictest of them seen as `strictest`: every row to
+/// those `private` names, or to all where it names none, and the public
+/// repositories' rows to the rest where there are any; each audience
+/// parted into the routes that keep a living post and those that do not.
+fn audiences(
+    (config, name): (&Config, &str),
+    pulls: &[Pull],
+    (strictest, private): (Visibility, Option<Vec<RouteId>>),
+    living: &[RouteId],
+) -> Vec<(Vec<Pull>, Visibility, Vec<RouteId>, bool)> {
+    let every: Vec<RouteId> = config
+        .routes
+        .iter()
+        .filter(|route| {
+            route
+                .route
+                .filter
+                .sources
+                .iter()
+                .any(|source| source.as_str() == name)
+        })
+        .map(|route| route.route.id.clone())
+        .collect();
+    let shown = match private {
+        None => vec![(pulls.to_vec(), strictest, every)],
+        Some(private) => {
+            let public: Vec<RouteId> = every
+                .iter()
+                .filter(|id| !private.contains(id))
+                .cloned()
+                .collect();
+            let open: Vec<Pull> = pulls
+                .iter()
+                .filter(|pull| pull.visibility == Visibility::Public)
+                .cloned()
+                .collect();
+            let open = (!open.is_empty()).then_some((open, Visibility::Public, public));
+            let private = private
+                .into_iter()
+                .filter(|id| every.contains(id))
+                .collect();
+            std::iter::once((pulls.to_vec(), strictest, private))
+                .chain(open)
+                .collect()
+        }
+    };
+    shown
+        .into_iter()
+        .flat_map(|(pulls, visibility, routes)| {
+            let (lives, posts): (Vec<RouteId>, Vec<RouteId>) =
+                routes.into_iter().partition(|id| living.contains(id));
+            [
+                (pulls.clone(), visibility, lives, true),
+                (pulls, visibility, posts, false),
+            ]
+        })
+        .filter(|(_, _, routes, _)| !routes.is_empty())
+        .collect()
+}
+
 /// The report `name`, where its window began and was not yet announced:
 /// where `[doctor] private_to_public` refuses and it read a repository
 /// not everyone may see, its private routes are shown every row and the
 /// rest only the public repositories' rows, and nothing where it read no
-/// public repository's.
+/// public repository's; a living route is shown it as its one post.
 async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (name, report): (&str, &Report),
     run: &str,
+    reads: &mut Reads,
 ) -> Option<Sweep> {
-    let (config, _, ports) = flow;
-    let now = ports.clock.now();
-    let start = report.schedule.window(now)?;
-    let source = SourceName::new(name);
-    let record = match ports.store.cursors().cursor(&source).await {
-        Ok(record) => record,
-        Err(error) => return Some(Sweep::Stopped(stored(error))),
+    let (config, connected, _) = flow;
+    let start = report.schedule.window(flow.2.clock.now())?;
+    let (identity, record) = match due(flow.2, name, start).await {
+        Ok(due) => due?,
+        Err(stop) => return Some(Sweep::Stopped(stop)),
     };
-    let identity = Identity::new(herald_core::report_identity(name, start));
-    let cursor = record
-        .as_ref()
-        .map(|record: &Versioned<Cursor>| &record.value);
-    if cursor.is_some_and(|cursor| cursor.seen.first() == Some(&identity)) {
-        return None;
-    }
     let view = config.views.get(&report.view)?;
-    let pulls = match read_pulls(flow, view).await {
+    let pulls = match view_pulls(flow, (&report.view, view), reads).await {
         Ok(pulls) => pulls,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
@@ -142,58 +284,27 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
         .map(|pull| pull.visibility)
         .max()
         .unwrap_or(Visibility::Public);
-    let audiences = match crate::poll::bounded(config, strictest) {
-        None => vec![(pulls.clone(), strictest, None)],
-        Some(private) => {
-            let public: Vec<RouteId> = config
-                .routes
-                .iter()
-                .map(|route| route.route.id.clone())
-                .filter(|id| !private.contains(id))
-                .collect();
-            let open: Vec<Pull> = pulls
-                .iter()
-                .filter(|pull| pull.visibility == Visibility::Public)
-                .cloned()
-                .collect();
-            let shown = (!open.is_empty()).then_some((open, Visibility::Public, Some(public)));
-            std::iter::once((pulls.clone(), strictest, Some(private)))
-                .chain(shown)
-                .collect()
-        }
-    };
+    let private = crate::poll::bounded(config, strictest);
     let mut announced = Vec::new();
-    for (shown, visibility, routes) in &audiences {
+    for (shown, visibility, routes, living) in audiences(
+        (config, name),
+        &pulls,
+        (strictest, private),
+        &living(connected),
+    ) {
         let part = Part {
             view,
-            pulls: shown,
-            visibility: *visibility,
-            routes: routes.as_deref(),
+            pulls: &shown,
+            visibility,
+            routes: &routes,
+            living,
         };
         match announced_part(flow, (name, report, start), part, run).await {
             Ok(fresh) => announced.push(fresh),
             Err(stop) => return Some(Sweep::Stopped(stop)),
         }
     }
-    let settled = !announced
-        .iter()
-        .flat_map(|fresh| &fresh.announced)
-        .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. }));
-    let cursor = if settled {
-        let advanced = Cursor {
-            seen: vec![identity],
-            ..Cursor::default()
-        };
-        let expected = record.as_ref().map(|record| record.version);
-        let written = ports
-            .store
-            .cursors()
-            .put_cursor(&source, &advanced, expected)
-            .await;
-        remembered(written, "the report's cursor")
-    } else {
-        Remembered::Kept
-    };
+    let cursor = settled(flow.2, (name, identity), record.as_ref(), &announced).await;
     Some(Sweep::Reported {
         pulls: pulls.len(),
         announced,
@@ -202,14 +313,25 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// Every report of `config` whose window began and was not yet announced,
-/// announced once every route has it.
+/// announced once every route has it, then every rule's nudges, each view
+/// read once.
 pub(crate) async fn reported<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     run: &str,
 ) -> Vec<Swept> {
     let mut swept = Vec::new();
+    let mut reads = Reads::new();
     for (name, report) in &flow.0.reports {
-        if let Some(outcome) = reported_one(flow, (name, report), run).await {
+        if let Some(outcome) = reported_one(flow, (name, report), run, &mut reads).await {
+            swept.push(Swept {
+                source: SourceName::new(name),
+                member: None,
+                outcome,
+            });
+        }
+    }
+    for (name, rule) in &flow.0.rules {
+        if let Some(outcome) = crate::rules::nudged(flow, (name, rule), run, &mut reads).await {
             swept.push(Swept {
                 source: SourceName::new(name),
                 member: None,

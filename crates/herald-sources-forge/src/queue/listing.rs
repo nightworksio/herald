@@ -77,6 +77,11 @@ impl Listed {
             opened: self.created_at,
             updated: self.updated_at,
             review,
+            reviewers: self
+                .requested_reviewers
+                .into_iter()
+                .map(|reviewer| reviewer.login)
+                .collect(),
             checks: Checks::Absent,
             mergeable,
             queued: false,

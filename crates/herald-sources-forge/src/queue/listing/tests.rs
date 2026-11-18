@@ -54,6 +54,7 @@ fn authors_labels_reviewers_drafts_and_mergeability_are_read() {
     assert_eq!(pull.author.as_deref(), Some("ann"));
     assert!(pull.draft && !pull.bot);
     assert_eq!(pull.labels, ["a"]);
+    assert_eq!(pull.reviewers, ["bob"]);
     assert_eq!(
         (pull.review, pull.mergeable),
         (Review::Requested, Mergeable::Clean)

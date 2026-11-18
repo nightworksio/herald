@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_nine_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_ten_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -107,7 +107,8 @@ fn herald_ships_nine_kinds_and_only_releases_and_package_versions_are_versioned(
             ("alert", false),
             ("pull-request", false),
             ("issue", false),
-            ("report", false)
+            ("report", false),
+            ("nudge", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -134,6 +135,7 @@ fn herald_ships_nine_kinds_and_only_releases_and_package_versions_are_versioned(
             Some(&signalled),
             Some(&signalled),
             Some(&signalled),
+            None,
             None
         ]
     );
@@ -217,7 +219,9 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     let private: Vec<bool> = shipped.iter().map(|spec| spec.private).collect();
     assert_eq!(
         private,
-        [false, false, false, false, false, true, false, false, false]
+        [
+            false, false, false, false, false, true, false, false, false, false
+        ]
     );
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
     let required: Vec<&str> = alert
@@ -351,6 +355,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "pull-request",
             "issue",
             "report",
+            "nudge",
             "deploy"
         ]
     );
@@ -448,7 +453,9 @@ fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
     let own: Vec<bool> = shipped.iter().map(|spec| spec.kind.own()).collect();
     assert_eq!(
         own,
-        [false, false, false, false, false, false, false, false, true]
+        [
+            false, false, false, false, false, false, false, false, true, true
+        ]
     );
     assert_eq!(report.links, []);
     let attributes: Vec<(&str, AttributeType, bool)> = report
@@ -462,6 +469,35 @@ fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
             ("pulls", AttributeType::Number, true),
             ("stale", AttributeType::Number, true),
             ("view", AttributeType::Text, true)
+        ]
+    );
+}
+
+#[test]
+fn a_nudge_names_its_rule_stage_and_pull_request_and_links_the_pull_request() {
+    let shipped = KindSpec::shipped();
+    let nudge = &shipped[9];
+    assert_eq!(nudge.kind, Kind::NUDGE);
+    assert_eq!(nudge.links, [LinkSpec::named("pull")]);
+    let attributes: Vec<(&str, AttributeType, bool)> = nudge
+        .attributes
+        .iter()
+        .map(|(name, spec)| (name.as_str(), spec.ty, spec.required))
+        .collect();
+    assert_eq!(
+        attributes,
+        [
+            ("author", AttributeType::Text, false),
+            ("bot", AttributeType::Flag, true),
+            ("number", AttributeType::Number, true),
+            ("reason", AttributeType::Text, true),
+            ("repository", AttributeType::Text, true),
+            ("rule", AttributeType::Text, true),
+            ("spell", AttributeType::Text, true),
+            ("stage", AttributeType::Text, true),
+            ("turn", AttributeType::Text, true),
+            ("waited", AttributeType::Text, true),
+            ("waiting_on", AttributeType::Text, false)
         ]
     );
 }

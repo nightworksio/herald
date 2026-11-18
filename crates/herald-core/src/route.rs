@@ -257,6 +257,9 @@ pub struct Delivery {
     /// How it gathers the events that share a key into one announcement,
     /// where it does.
     pub group: Option<Grouping>,
+    /// Whether it keeps one post of each report it takes, edited each
+    /// window where the destination edits (ADR-0056).
+    pub living: bool,
 }
 
 /// An event filter leading to a destination, a template and how to deliver.

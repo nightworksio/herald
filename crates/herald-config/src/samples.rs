@@ -80,6 +80,7 @@ pub fn sample_boards() -> [Board; 2] {
         opened,
         updated: opened,
         review: Review::Requested,
+        reviewers: vec!["sample-reviewer".to_owned()],
         checks: Checks::Passed,
         mergeable: Mergeable::Clean,
         queued: false,

@@ -83,17 +83,18 @@ pub enum Sweep {
     /// proof was made further ahead of the round than any may be
     /// (ADR-0049).
     Ahead(String),
-    /// A report's window began, and its view was announced (ADR-0055).
+    /// A report's window began, and its view was announced (ADR-0055); or
+    /// a rule's, and its nudges were (ADR-0056).
     Reported {
         /// How many open pull requests its view's sources listed.
         pulls: usize,
         /// The report as each route was shown it, and what every route did
         /// with it: every row to a private route, and where `[doctor]
         /// private_to_public` refuses, only the public repositories' rows to
-        /// the rest.
+        /// the rest; or each nudge, and what every route did with it.
         announced: Vec<Fresh>,
-        /// What became of the report's cursor, which remembers the window
-        /// once every route has it.
+        /// What became of the report's or rule's cursor, which remembers
+        /// the window once every route has it.
         cursor: Remembered,
     },
     /// The installation token the source reads with was minted for the

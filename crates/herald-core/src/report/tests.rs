@@ -171,7 +171,7 @@ fn a_report_is_an_event_of_its_window_private_where_a_row_is_not_public() {
     use crate::queue::{View, board};
     let start = Timestamp::from_second(86_400).unwrap();
     let shown = board(&View::default(), &[pull()], start);
-    let event = report_event("daily", "queue", &shown, start).unwrap();
+    let event = report_event(("daily", "queue"), &shown, start, false).unwrap();
     assert_eq!(
         event.identity().as_str(),
         "report/daily/1970-01-02T00:00:00Z"
@@ -192,10 +192,22 @@ fn a_report_is_an_event_of_its_window_private_where_a_row_is_not_public() {
         ..pull()
     };
     let shown = board(&View::default(), &[pull(), hidden], start);
-    let event = report_event("daily", "queue", &shown, start).unwrap();
+    let event = report_event(("daily", "queue"), &shown, start, false).unwrap();
     assert_eq!(event.visibility(), Some(Visibility::Private));
     assert_eq!(
-        report_event(" ", "queue", &shown, start),
+        report_event((" ", "queue"), &shown, start, false),
         Err(Problem::NoProject)
     );
+}
+
+#[test]
+fn a_living_report_names_no_window_so_every_window_edits_one_post() {
+    use crate::queue::tests::pull;
+    use crate::queue::{View, board};
+    let start = Timestamp::from_second(86_400).unwrap();
+    let shown = board(&View::default(), &[pull()], start);
+    let event = report_event(("daily", "queue"), &shown, start, true).unwrap();
+    assert_eq!(event.identity().as_str(), "report/daily");
+    assert_eq!(living_identity("daily"), "report/daily");
+    assert_eq!(event.occurred(), start);
 }

@@ -89,6 +89,14 @@ fn the_review_decision_and_requests_tell_the_review() {
         review(json!({ "reviewDecision": "APPROVED", "reviewRequests": { "totalCount": 2 } })),
         Review::Approved
     );
+    let asked = one(&json!({ "reviewRequests": { "totalCount": 4, "nodes": [
+        { "requestedReviewer": { "login": "ann" } },
+        { "requestedReviewer": { "combinedSlug": "o/core" } },
+        { "requestedReviewer": {} },
+        { "requestedReviewer": null }
+    ] } }));
+    assert_eq!(asked.reviewers, ["ann", "o/core"]);
+    assert_eq!(one(&json!({})).reviewers, Vec::<String>::new());
 }
 
 #[test]

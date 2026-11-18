@@ -15,6 +15,13 @@
         "$ref": "#/$defs/App"
       }
     },
+    "boards": {
+      "description": "The living boards, by name: each a report and a route that keeps\none post of it, edited each window and pinned.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Board"
+      }
+    },
     "destinations": {
       "description": "The places herald posts to, by name.",
       "type": "object",
@@ -75,6 +82,13 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/Route"
+      }
+    },
+    "rules": {
+      "description": "The rules routes name among their sources, by name: each a view\nwatched once a window, nudging each pull request that waited past a\nstage.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Rule"
       }
     },
     "run": {
@@ -185,6 +199,11 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
         "match": {
           "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
           "$ref": "#/$defs/Match"
@@ -194,8 +213,8 @@
           "$ref": "#/$defs/Mentions"
         },
         "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "$ref": "#/$defs/Pinning"
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -466,6 +485,768 @@
           "description": "Everyone who looks, kept off the public timelines.",
           "type": "string",
           "const": "unlisted"
+        }
+      ]
+    },
+    "Board": {
+      "description": "A board: a report's keys, and a living route's to its destination but its id, sources and living, which the board gives itself.",
+      "anyOf": [
+        {
+          "description": "A route to a Discord destination.",
+          "type": "object",
+          "properties": {
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "channel": {
+              "description": "The channel's id. A bot needs one; a webhook posts where it was made.",
+              "type": "string"
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "forum": {
+              "description": "Whether the channel is a forum, where each announcement is a post of\nits own.",
+              "type": "boolean",
+              "default": false
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "subscribe": {
+              "description": "The opt-in role members subscribe to, where the route offers one.",
+              "$ref": "#/$defs/DiscordSubscribe"
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination"
+          ]
+        },
+        {
+          "description": "A route to a Mastodon destination.",
+          "type": "object",
+          "properties": {
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "content_warning": {
+              "description": "The content warning each status is shown behind.",
+              "type": "string"
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "language": {
+              "description": "The language each status is written in, as an ISO 639 code.",
+              "type": "string"
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "limit": {
+              "description": "The most characters the server takes in a status, Mastodon's own\n500 where it is not given.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "link_length": {
+              "description": "The characters the server counts a link as, however long it is: its\n`characters_reserved_per_url`, Mastodon's own 23 where unset.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "title": {
+              "description": "The longest title, a status's first line, in characters; 100 where\nunset.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who sees each status.",
+              "$ref": "#/$defs/Visibility"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination"
+          ]
+        },
+        {
+          "description": "A route to a Matrix destination.",
+          "type": "object",
+          "properties": {
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "room": {
+              "description": "The room's id, such as `!abcdefg:matrix.org`, which the bot has\njoined.",
+              "type": "string",
+              "examples": [
+                "!abcdefg:matrix.org"
+              ]
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination",
+            "room"
+          ]
+        },
+        {
+          "description": "A route to a Slack destination.",
+          "type": "object",
+          "properties": {
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "channel": {
+              "description": "The channel's id, such as `C0123456789`, which the bot has joined. A\nbot needs one; a webhook posts where it was made.",
+              "type": "string"
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "subscribe": {
+              "description": "How the route offers subscribing, where it mentions its subscribers.",
+              "$ref": "#/$defs/SlackSubscribe"
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination"
+          ]
+        },
+        {
+          "description": "A route announcing as one of herald's own ActivityPub actors.",
+          "type": "object",
+          "properties": {
+            "actor": {
+              "description": "The actor the route announces as, such as `php-mutation-gate`, which\nis followed as `@php-mutation-gate@<domain>`; or a template naming\neach project's own actor from `event.project`, such as\n`{{ event.project }}`. A project whose name is no actor's name is\nnot announced on the route.",
+              "type": "string",
+              "examples": [
+                "php-mutation-gate"
+              ]
+            },
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "content_warning": {
+              "description": "The content warning each Note is shown behind.",
+              "type": "string"
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "language": {
+              "description": "The language each Note is written in, as an ISO 639 code.",
+              "type": "string"
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who sees each Note on the timelines.",
+              "$ref": "#/$defs/Audience"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination",
+            "actor"
+          ]
+        },
+        {
+          "description": "A route publishing its events to a feed of herald's own.",
+          "type": "object",
+          "properties": {
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination"
+          ]
         }
       ]
     },
@@ -1169,6 +1950,11 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
         "match": {
           "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
           "$ref": "#/$defs/Match"
@@ -1178,8 +1964,8 @@
           "$ref": "#/$defs/Mentions"
         },
         "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "$ref": "#/$defs/Pinning"
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -1661,6 +2447,11 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
         "match": {
           "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
           "$ref": "#/$defs/Match"
@@ -1670,8 +2461,8 @@
           "$ref": "#/$defs/Mentions"
         },
         "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "$ref": "#/$defs/Pinning"
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -2035,6 +2826,11 @@
           "format": "uint",
           "minimum": 0
         },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
         "match": {
           "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
           "$ref": "#/$defs/Match"
@@ -2044,8 +2840,8 @@
           "$ref": "#/$defs/Mentions"
         },
         "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "$ref": "#/$defs/Pinning"
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -2318,6 +3114,11 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
         "match": {
           "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
           "$ref": "#/$defs/Match"
@@ -2327,8 +3128,8 @@
           "$ref": "#/$defs/Mentions"
         },
         "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "$ref": "#/$defs/Pinning"
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -2599,6 +3400,19 @@
       "required": [
         "url",
         "keys"
+      ]
+    },
+    "Pin": {
+      "description": "Whether a route pins, and how it finds its earlier pin.",
+      "anyOf": [
+        {
+          "description": "`true` pins, finding the earlier pin by its marker; `false` pins\nnothing.",
+          "type": "boolean"
+        },
+        {
+          "description": "Pins, finding the earlier pin as this says.",
+          "$ref": "#/$defs/Pinning"
+        }
       ]
     },
     "PinLookups": {
@@ -2920,6 +3734,60 @@
           "description": "A route publishing its events to a feed of herald's own.",
           "$ref": "#/$defs/HeraldRoute"
         }
+      ]
+    },
+    "Rule": {
+      "description": "`[rules.<name>]`: a view watched once a window, and a nudge for each\npull request that waited past a stage, through the routes naming the\nrule among their sources.",
+      "type": "object",
+      "properties": {
+        "at": {
+          "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+          "type": "string",
+          "examples": [
+            "09:00"
+          ]
+        },
+        "days": {
+          "description": "The days windows begin on, every day where empty.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Day"
+          }
+        },
+        "every": {
+          "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+          "$ref": "#/$defs/Duration"
+        },
+        "most": {
+          "description": "The most pull requests it nudges a window, the longest waiting\nfirst: 20 where absent; the rest wait for the next window.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "stages": {
+          "description": "How long an open pull request waits, since anyone last acted on\nit, before each nudge, such as `[\"2d\", \"7d\"]`: each fires once a\nspell of waiting.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Duration"
+          },
+          "maxItems": 16,
+          "minItems": 1
+        },
+        "view": {
+          "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+          "type": "string"
+        },
+        "zone": {
+          "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+          "type": "string",
+          "examples": [
+            "Europe/Amsterdam"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "stages"
       ]
     },
     "Rules": {
@@ -3436,6 +4304,11 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
         "match": {
           "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
           "$ref": "#/$defs/Match"
@@ -3445,8 +4318,8 @@
           "$ref": "#/$defs/Mentions"
         },
         "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "$ref": "#/$defs/Pinning"
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",

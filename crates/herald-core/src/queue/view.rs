@@ -108,6 +108,22 @@ pub struct Row {
     pub stale: bool,
 }
 
+impl Row {
+    /// The logins whose turn it is: its author's where it is a draft or
+    /// waits on them, each reviewer asked where it waits on review, and
+    /// nobody's otherwise.
+    #[must_use]
+    pub fn waiting_on(&self) -> Vec<&str> {
+        match self.state {
+            Turn::Draft | Turn::WaitingOnAuthor => {
+                self.pull.author.iter().map(String::as_str).collect()
+            }
+            Turn::WaitingOnReview => self.pull.reviewers.iter().map(String::as_str).collect(),
+            _ => Vec::new(),
+        }
+    }
+}
+
 /// The rows that share what a view groups by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grouped {

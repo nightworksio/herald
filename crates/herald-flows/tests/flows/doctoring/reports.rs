@@ -84,3 +84,55 @@ fn each_report_names_how_its_view_reads_each_source_at_what_cost_and_who_sees_it
         "{allowed:?}"
     );
 }
+
+#[test]
+fn each_rule_names_its_reads_and_stages_and_a_living_route_that_cannot_edit_is_named() {
+    let config = loaded(
+        r#"version = 1
+[store]
+kind = "sqlite"
+[destinations.slack]
+kind = "slack"
+webhook = { secret = "HERALD_SLACK_WEBHOOK" }
+[destinations.discord]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = { secret = "HERALD_GITHUB_TOKEN" }
+[rules.waiting]
+stages = ["2d", "1w"]
+most = 5
+zone = "Europe/Amsterdam"
+[boards.hooked]
+destination = "slack"
+private = true
+[boards.edited]
+destination = "discord"
+channel = "1566200000000000100"
+private = true
+[[routes]]
+id = "nudges"
+sources = ["waiting"]
+destination = "slack"
+template = "herald:nudge"
+private = false
+"#,
+    );
+    let notes: Vec<String> = on(&config, &server(), &Here::default())
+        .notes
+        .into_iter()
+        .filter(|note| note.contains("rule") || note.contains("living"))
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            "The rule waiting reads the view queue of graphed by graphql, at most 5 requests a round.",
+            "The rule waiting reads its times in Europe/Amsterdam from the time zone database bundled into this build, about 207 KB (49 KB compressed).",
+            "The route nudges is not private, so it is shown the rule waiting's rows of public repositories alone, and nothing where the view reads none.",
+            "The rule waiting nudges at most 5 pull requests a window, once each past 2d, 1w, naming logins without mentioning anyone.",
+            "The route hooked is living, but its destination cannot edit a post, so each window of its report is posted anew.",
+        ]
+    );
+}

@@ -16,6 +16,8 @@ mod announce;
 #[cfg(test)]
 mod at_once;
 #[cfg(test)]
+mod boards;
+#[cfg(test)]
 mod doctor;
 #[cfg(test)]
 mod doctoring;

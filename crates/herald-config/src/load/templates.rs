@@ -14,7 +14,9 @@ use super::route::Read;
 use super::{Loader, Value};
 use crate::file::TemplateFile;
 use crate::samples::{sample_boards, samples_from};
-use crate::views::{BUILT_IN_VIEW, QUEUE_BODY, QUEUE_TEMPLATE, QUEUE_TITLE};
+use crate::views::{
+    BUILT_IN_VIEW, NUDGE_BODY, NUDGE_TEMPLATE, NUDGE_TITLE, QUEUE_BODY, QUEUE_TEMPLATE, QUEUE_TITLE,
+};
 
 /// A template's sources, with where each is written.
 pub(super) struct Written {
@@ -73,7 +75,10 @@ impl Loader<'_> {
                 );
             }
         }
-        let shipped = [(QUEUE_TEMPLATE, QUEUE_TITLE, QUEUE_BODY)];
+        let shipped = [
+            (QUEUE_TEMPLATE, QUEUE_TITLE, QUEUE_BODY),
+            (NUDGE_TEMPLATE, NUDGE_TITLE, NUDGE_BODY),
+        ];
         for (name, title, body) in shipped {
             templates
                 .entry(TemplateName::new(name))
