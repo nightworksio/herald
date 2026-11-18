@@ -43,6 +43,7 @@ mod published;
 mod queue;
 mod rate;
 mod render;
+mod report;
 mod retention;
 mod revision;
 mod route;
@@ -127,6 +128,7 @@ pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
     Templates,
 };
+pub use report::{REPORT_PREFIX, ReportSchedule, report_identity, zone};
 pub use retention::Retention;
 pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,

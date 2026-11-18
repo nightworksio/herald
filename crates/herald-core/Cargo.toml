@@ -21,6 +21,10 @@ sha2.workspace = true
 unicode-segmentation.workspace = true
 url.workspace = true
 
+[features]
+default = ["tzdb"]
+tzdb = ["jiff/tzdb-bundle-always"]
+
 [dev-dependencies]
 proptest.workspace = true
 
