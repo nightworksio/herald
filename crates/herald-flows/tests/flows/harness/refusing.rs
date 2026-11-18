@@ -158,6 +158,23 @@ impl herald_ports::Pins for Refusing {
     }
 }
 
+impl herald_ports::Decisions for Refusing {
+    async fn decision(
+        &self,
+        _: &herald_core::Key,
+    ) -> Result<Option<herald_core::Decided>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_decision(&self, _: &herald_core::Decided) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn expire_decisions(&self, _: jiff::Timestamp) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+}
+
 impl herald_ports::Positions for Refusing {
     async fn position(&self, _: &DestinationName) -> Result<Option<String>, StoreError> {
         Err(self.0.clone())

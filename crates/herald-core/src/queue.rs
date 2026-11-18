@@ -9,7 +9,9 @@ use crate::members::Visibility;
 
 mod view;
 
-pub use view::{Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board};
+pub use view::{
+    Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped, rows,
+};
 
 /// Whose turn an open pull request is.
 #[derive(
@@ -222,6 +224,9 @@ pub enum Reason {
     Label(String),
     /// It was listed past the most a view reads in full.
     Unread,
+    /// The task that decided it, where herald's rules told nobody's turn
+    /// (ADR-0057).
+    Decided(String),
     /// Nothing tells.
     Untold,
 }
@@ -244,6 +249,7 @@ impl Reason {
             Self::Forge(status) => format!("forge: {status}"),
             Self::Label(label) => format!("label: {label}"),
             Self::Unread => "unread".to_owned(),
+            Self::Decided(task) => format!("decided: {task}"),
             Self::Untold => "untold".to_owned(),
         }
     }

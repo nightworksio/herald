@@ -171,6 +171,12 @@ pub(crate) fn pin(route: &RouteId) -> String {
     format!("pins/{}.json", segment(route.as_str()))
 }
 
+pub(crate) const DECISIONS: &str = "decisions";
+
+pub(crate) fn decision(key: &herald_core::Key) -> String {
+    format!("{DECISIONS}/{key}.json")
+}
+
 pub(crate) fn position(destination: &DestinationName) -> String {
     format!("positions/{}.json", segment(destination.as_str()))
 }

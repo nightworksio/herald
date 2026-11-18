@@ -66,6 +66,7 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
         [
             "author",
             "bot",
+            "decided",
             "draft",
             "labels",
             "number",

@@ -37,6 +37,12 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// Whether it keeps what models decided, so a view's tasks may ask
+    /// them (ADR-0057).
+    fn keeps_decisions(&self) -> bool {
+        true
+    }
+
     /// Whether it keeps each webhook delivery it admits, so a replay is
     /// refused before it reaches a parser (ADR-0013).
     fn keeps_deliveries(&self) -> bool {

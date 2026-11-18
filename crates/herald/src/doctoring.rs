@@ -223,6 +223,7 @@ pub(crate) async fn here(
         online,
         guarded: egress_guarded(vars.get(EGRESS_GUARDED).map(String::as_str)),
         round_secrets,
+        models: herald_compose::ASKS_MODELS,
     }
 }
 

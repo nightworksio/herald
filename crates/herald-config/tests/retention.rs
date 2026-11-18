@@ -53,6 +53,7 @@ body = "{{ event.body }}"
                 deliveries: days(7),
                 ledger: Some(days(90)),
                 notes: None,
+                decisions: Some(days(30)),
             }
         );
         assert_eq!(config.retention, Retention::default());
@@ -61,7 +62,7 @@ body = "{{ event.body }}"
     #[test]
     fn every_keep_setting_is_read_beside_the_store_s_own_options() {
         let sqlite = config(
-            "kind = \"sqlite\"\npath = \"state.sqlite\"\nkeep_deliveries = \"3d\"\nkeep_ledger = \"forever\"\nkeep_notes = \"2w\"",
+            "kind = \"sqlite\"\npath = \"state.sqlite\"\nkeep_deliveries = \"3d\"\nkeep_ledger = \"forever\"\nkeep_notes = \"2w\"\nkeep_decisions = \"forever\"",
         )
         .unwrap();
         assert_eq!(
@@ -70,6 +71,7 @@ body = "{{ event.body }}"
                 deliveries: days(3),
                 ledger: None,
                 notes: Some(days(14)),
+                decisions: None,
             }
         );
         let Some(options) = sqlite.store.of::<herald_store_sqlite::StoreOptions>() else {

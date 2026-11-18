@@ -662,6 +662,15 @@ queue` prints a view now. [`.docs/queue.md`](.docs/queue.md) covers
 views, reports, boards, rules, what each forge's read costs, and private
 repositories.
 
+A view's `decide` asks a `[tasks.<name>]` question of `[models.<name>]`
+where its rules cannot tell, such as whose turn an untold pull request is
+or how urgent each is: TypeSafe's Jev or any OpenAI-compatible server, a
+local one included. Only a build with the `models` feature asks them, no
+model sees a private repository unless it says `private = true`, and every
+answer is kept with the model that gave it.
+[`.docs/deciders.md`](.docs/deciders.md) covers models, tasks and what a
+model is shown.
+
 ### Every package of a namespace
 
 A registry source gives its registry's namespace key in place of

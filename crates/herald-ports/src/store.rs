@@ -1,3 +1,4 @@
+use herald_core::Decided;
 use std::fmt;
 use std::future::{Future, ready};
 
@@ -142,11 +143,13 @@ pub enum Held {
     Tokens,
     /// What the instance published to its peers.
     Published,
+    /// What models answered the tasks views asked (ADR-0057).
+    Decisions,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -160,6 +163,7 @@ impl Held {
         Self::Pending,
         Self::Tokens,
         Self::Published,
+        Self::Decisions,
     ];
 
     /// The kind as an error names it.
@@ -178,6 +182,7 @@ impl Held {
             Self::Pending => "held events",
             Self::Tokens => "minted tokens",
             Self::Published => "published key sets, feeds, and peers' key sets and audits",
+            Self::Decisions => "decisions",
         }
     }
 
@@ -366,6 +371,29 @@ pub trait Positions: Sync {
         &self,
         destination: &DestinationName,
         position: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
+
+/// What models answered the tasks views asked, one record per task,
+/// subject and input, reused while the input stands and forgotten by
+/// housekeeping (ADR-0057).
+pub trait Decisions: Sync {
+    /// The decision keyed `key`, where one is kept.
+    fn decision(
+        &self,
+        key: &Key,
+    ) -> impl Future<Output = Result<Option<Decided>, StoreError>> + Send;
+
+    /// Keeps `decided` under its key, in place of any kept there.
+    fn put_decision(
+        &self,
+        decided: &Decided,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Forgets every decision made before `before`.
+    fn expire_decisions(
+        &self,
+        before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
@@ -732,6 +760,26 @@ impl Pins for Unkept {
     }
 }
 
+impl Decisions for Unkept {
+    fn decision(
+        &self,
+        _: &Key,
+    ) -> impl Future<Output = Result<Option<Decided>, StoreError>> + Send {
+        ready(Err(Held::Decisions.unsupported()))
+    }
+
+    fn put_decision(&self, _: &Decided) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Decisions.unsupported()))
+    }
+
+    fn expire_decisions(
+        &self,
+        _: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Decisions.unsupported()))
+    }
+}
+
 impl Positions for Unkept {
     fn position(
         &self,
@@ -921,6 +969,8 @@ pub trait Store: Sync {
     type Tokens: Tokens;
     /// What the instance published to its peers.
     type Published: Published;
+    /// What models answered the tasks views asked.
+    type Decisions: Decisions;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -948,6 +998,8 @@ pub trait Store: Sync {
     fn tokens(&self) -> Option<&Self::Tokens>;
     /// What the instance published to its peers, where it keeps that.
     fn published(&self) -> Option<&Self::Published>;
+    /// What models answered the tasks views asked, where it keeps that.
+    fn decisions(&self) -> Option<&Self::Decisions>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is

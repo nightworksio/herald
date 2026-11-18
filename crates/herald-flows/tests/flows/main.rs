@@ -18,6 +18,8 @@ mod at_once;
 #[cfg(test)]
 mod boards;
 #[cfg(test)]
+mod deciding;
+#[cfg(test)]
 mod doctor;
 #[cfg(test)]
 mod doctoring;

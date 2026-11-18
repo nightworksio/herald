@@ -1,7 +1,9 @@
+use herald_core::{Answer, Decided};
 use herald_core::{
     Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, Proof, RouteId,
     Schedule, Shown, Signal, SourceName, State, Step, Subscription, Tombstone, Validators,
 };
+use herald_ports::Decisions;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -73,6 +75,9 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     }
     if let Some(kept) = store.positions() {
         positions(kept).await?;
+    }
+    if let Some(kept) = store.decisions() {
+        decisions(kept).await?;
     }
     if let Some(kept) = store.waiting() {
         let mut checks = Checks::default();
@@ -625,6 +630,50 @@ async fn positions<S: Positions>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.position(&matrix).await?.as_deref() == Some("s2"),
         "a session's position was not the one written last",
+    );
+    checks.done()
+}
+
+/// A decision of `task` made at `at`, its answer `choice`.
+fn decision(task: &str, choice: &str, at: jiff::Timestamp) -> Decided {
+    Decided {
+        key: Key::decided(task, "github.com/o/r/pull/1", "{}"),
+        task: task.to_owned(),
+        subject: "github.com/o/r/pull/1".to_owned(),
+        answer: Answer {
+            model: "jev-1.14.0".to_owned(),
+            choice: Some(choice.to_owned()),
+            probabilities: std::collections::BTreeMap::from([(choice.to_owned(), 0.5)]),
+        },
+        at,
+    }
+}
+
+async fn decisions<S: Decisions>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let later = NOON + jiff::SignedDuration::from_hours(1);
+    let first = decision("urgency", "high", NOON);
+    checks.ensure(
+        store.decision(&first.key).await?.is_none(),
+        "a new store holds a decision",
+    );
+    store.put_decision(&first).await?;
+    let again = decision("urgency", "low", NOON);
+    store.put_decision(&again).await?;
+    let other = decision("whose", "draft", later);
+    store.put_decision(&other).await?;
+    checks.ensure(
+        store.decision(&first.key).await?.as_ref() == Some(&again),
+        "a decision was not the one written last under its key",
+    );
+    store.expire_decisions(later).await?;
+    checks.ensure(
+        store.decision(&first.key).await?.is_none(),
+        "a decision made before the expiry was kept",
+    );
+    checks.ensure(
+        store.decision(&other.key).await?.as_ref() == Some(&other),
+        "a decision made at the expiry was forgotten",
     );
     checks.done()
 }

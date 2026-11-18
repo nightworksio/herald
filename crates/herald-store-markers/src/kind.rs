@@ -40,6 +40,10 @@ impl StoreConfig for MarkersOptions {
         true
     }
 
+    fn keeps_decisions(&self) -> bool {
+        false
+    }
+
     fn keeps_tokens(&self) -> bool {
         false
     }

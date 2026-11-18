@@ -321,6 +321,14 @@ struct FileSchema {
         reason = "only the schema's derive reads the map, and its kinds' schemas take the value's place"
     )]
     boards: BTreeMap<String, BoardSchema>,
+    /// The models tasks ask, by name: each a decision model or a server
+    /// speaking OpenAI's chat completions.
+    #[serde(default)]
+    models: BTreeMap<String, crate::models::ModelFile>,
+    /// The closed-set questions views ask of models where their rules
+    /// cannot tell, by name.
+    #[serde(default)]
+    tasks: BTreeMap<String, crate::models::TaskFile>,
     /// How often a driver that keeps its own schedule polls and keeps house.
     schedule: Option<ScheduleFile>,
     /// How `herald server` listens, and what it takes on at once.

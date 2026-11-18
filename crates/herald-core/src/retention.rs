@@ -13,6 +13,9 @@ pub struct Retention {
     /// How long a Note is kept after it was published; for ever where
     /// `None`.
     pub notes: Option<SignedDuration>,
+    /// How long what a model answered a task is kept after it answered;
+    /// for ever where `None` (ADR-0057).
+    pub decisions: Option<SignedDuration>,
 }
 
 impl Retention {
@@ -20,6 +23,8 @@ impl Retention {
     pub const DELIVERIES: SignedDuration = SignedDuration::from_hours(7 * 24);
     /// How long a ledger entry is kept by default: 90 days.
     pub const LEDGER: SignedDuration = SignedDuration::from_hours(90 * 24);
+    /// How long a decision is kept by default: 30 days.
+    pub const DECISIONS: SignedDuration = SignedDuration::from_hours(30 * 24);
     /// The shortest a delivery's id may be kept: longer than any sender
     /// herald admits from goes on retrying one. Mastodon's sixteen retries
     /// span about two days.
@@ -32,6 +37,7 @@ impl Default for Retention {
             deliveries: Self::DELIVERIES,
             ledger: Some(Self::LEDGER),
             notes: None,
+            decisions: Some(Self::DECISIONS),
         }
     }
 }
@@ -47,12 +53,14 @@ mod tests {
         assert_eq!(Retention::DELIVERIES.as_secs(), 7 * DAY);
         assert_eq!(Retention::LEDGER.as_secs(), 90 * DAY);
         assert_eq!(Retention::LONGEST_RETRY.as_secs(), 3 * DAY);
+        assert_eq!(Retention::DECISIONS.as_secs(), 30 * DAY);
         assert_eq!(
             Retention::default(),
             Retention {
                 deliveries: Retention::DELIVERIES,
                 ledger: Some(Retention::LEDGER),
                 notes: None,
+                decisions: Some(Retention::DECISIONS),
             }
         );
     }

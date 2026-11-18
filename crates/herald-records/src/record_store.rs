@@ -1,5 +1,7 @@
 //! herald's `Store` kept in any backend, one record per path.
 
+use herald_core::Decided;
+use herald_ports::Decisions;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -435,6 +437,29 @@ impl<R: RecordBackend> Pins for RecordStore<R> {
     }
 }
 
+impl<R: RecordBackend> Decisions for RecordStore<R> {
+    async fn decision(&self, key: &Key) -> Result<Option<Decided>, StoreError> {
+        Ok(self
+            .record::<Decided>(&paths::decision(key))
+            .await?
+            .map(|record| record.value))
+    }
+
+    async fn put_decision(&self, decided: &Decided) -> Result<(), StoreError> {
+        self.kept(&paths::decision(&decided.key), decided).await
+    }
+
+    async fn expire_decisions(&self, before: Timestamp) -> Result<(), StoreError> {
+        for path in self.records.list(paths::DECISIONS).await? {
+            let decided = self.listed::<Decided>(&path).await?;
+            if decided.is_some_and(|decided| decided.value.at < before) {
+                self.removed(&path).await?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<R: RecordBackend> Positions for RecordStore<R> {
     async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
         Ok(self
@@ -759,6 +784,7 @@ impl<R: RecordBackend> Keeper for RecordStore<R> {
             | Held::Schedules
             | Held::Deliveries
             | Held::Positions
+            | Held::Decisions
             | Held::Pending
             | Held::Tokens
             | Held::Published => true,

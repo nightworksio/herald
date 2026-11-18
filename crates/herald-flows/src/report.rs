@@ -6,12 +6,14 @@ use std::collections::BTreeMap;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Board, Cursor, Identity, Pull, RouteId, Showing, SourceName, Visibility, board, report_event,
+    Board, Cursor, Identity, Pull, RouteId, Row, Showing, SourceName, Visibility, grouped,
+    report_event,
 };
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
 use jiff::Timestamp;
 
 use crate::announce::{Outcome, Ports, Stop, Within, announce_within};
+use crate::deciding::decided_rows;
 use crate::poll::{Fresh, Remembered, Sweep, Swept, halted, remembered, stored};
 use crate::prepare::Connected;
 
@@ -87,7 +89,7 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     let flow = (config, connected, ports);
     crate::poll::minting(flow, |_| true).await;
     let pulls = read_pulls(flow, view).await?;
-    Ok(board(&view.view, &pulls, ports.clock.now()))
+    Ok(grouped(&view.view, decided_rows(flow, view, &pulls).await))
 }
 
 /// What one announcement of a report shows: the pull requests, who may see
@@ -95,7 +97,7 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
 /// one living post of it.
 struct Part<'a> {
     view: &'a ViewConfig,
-    pulls: &'a [Pull],
+    rows: &'a [Row],
     visibility: Visibility,
     routes: &'a [RouteId],
     living: bool,
@@ -109,7 +111,7 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     part: Part<'_>,
     run: &str,
 ) -> Result<Fresh, Stop> {
-    let shown = board(&part.view.view, part.pulls, ports.clock.now());
+    let shown = grouped(&part.view.view, part.rows.to_vec());
     let event = report_event((name, &report.view), &shown, start, part.living)
         .map_err(|problem| Stop::Source(problem.to_string()))?
         .seen_as(part.visibility);
@@ -203,10 +205,10 @@ fn living<H>(connected: &Connected<H>) -> Vec<RouteId> {
 /// parted into the routes that keep a living post and those that do not.
 fn audiences(
     (config, name): (&Config, &str),
-    pulls: &[Pull],
+    rows: &[Row],
     (strictest, private): (Visibility, Option<Vec<RouteId>>),
     living: &[RouteId],
-) -> Vec<(Vec<Pull>, Visibility, Vec<RouteId>, bool)> {
+) -> Vec<(Vec<Row>, Visibility, Vec<RouteId>, bool)> {
     let every: Vec<RouteId> = config
         .routes
         .iter()
@@ -221,16 +223,16 @@ fn audiences(
         .map(|route| route.route.id.clone())
         .collect();
     let shown = match private {
-        None => vec![(pulls.to_vec(), strictest, every)],
+        None => vec![(rows.to_vec(), strictest, every)],
         Some(private) => {
             let public: Vec<RouteId> = every
                 .iter()
                 .filter(|id| !private.contains(id))
                 .cloned()
                 .collect();
-            let open: Vec<Pull> = pulls
+            let open: Vec<Row> = rows
                 .iter()
-                .filter(|pull| pull.visibility == Visibility::Public)
+                .filter(|row| row.pull.visibility == Visibility::Public)
                 .cloned()
                 .collect();
             let open = (!open.is_empty()).then_some((open, Visibility::Public, public));
@@ -238,19 +240,19 @@ fn audiences(
                 .into_iter()
                 .filter(|id| every.contains(id))
                 .collect();
-            std::iter::once((pulls.to_vec(), strictest, private))
+            std::iter::once((rows.to_vec(), strictest, private))
                 .chain(open)
                 .collect()
         }
     };
     shown
         .into_iter()
-        .flat_map(|(pulls, visibility, routes)| {
+        .flat_map(|(rows, visibility, routes)| {
             let (lives, posts): (Vec<RouteId>, Vec<RouteId>) =
                 routes.into_iter().partition(|id| living.contains(id));
             [
-                (pulls.clone(), visibility, lives, true),
-                (pulls, visibility, posts, false),
+                (rows.clone(), visibility, lives, true),
+                (rows, visibility, posts, false),
             ]
         })
         .filter(|(_, _, routes, _)| !routes.is_empty())
@@ -285,16 +287,17 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
         .max()
         .unwrap_or(Visibility::Public);
     let private = crate::poll::bounded(config, strictest);
+    let decided = decided_rows(flow, view, &pulls).await;
     let mut announced = Vec::new();
     for (shown, visibility, routes, living) in audiences(
         (config, name),
-        &pulls,
+        &decided,
         (strictest, private),
         &living(connected),
     ) {
         let part = Part {
             view,
-            pulls: &shown,
+            rows: &shown,
             visibility,
             routes: &routes,
             living,

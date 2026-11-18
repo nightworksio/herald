@@ -253,6 +253,7 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-kinds",
+ "herald-models",
  "herald-peers",
  "herald-ports",
  "herald-store-git-branch",
@@ -359,6 +360,7 @@ dependencies = [
  "herald-dest-slack",
  "herald-keys",
  "herald-kinds",
+ "herald-models",
  "herald-peers",
  "herald-ports",
  "herald-sources-app",
@@ -379,6 +381,7 @@ dependencies = [
  "herald-dest-matrix",
  "herald-dest-slack",
  "herald-kinds",
+ "herald-models",
  "herald-peers",
  "herald-ports",
  "herald-records",
@@ -409,6 +412,16 @@ dependencies = [
  "herald-core",
  "herald-ports",
  "jiff",
+]
+
+[[package]]
+name = "herald-models"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

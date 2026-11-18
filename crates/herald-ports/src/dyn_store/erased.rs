@@ -1,5 +1,7 @@
 //! Each port of a store, reached through [`DynStore`].
 
+use crate::Decisions;
+use herald_core::Decided;
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
     RouteId, Schedule, SourceName, State, Subscription,
@@ -133,6 +135,20 @@ impl Pins for Erased<'_, dyn DynStore + '_> {
 
     async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         self.0.forget_pinned_boxed(route, post).await
+    }
+}
+
+impl Decisions for Erased<'_, dyn DynStore + '_> {
+    async fn decision(&self, key: &Key) -> Result<Option<Decided>, StoreError> {
+        self.0.decision_boxed(key).await
+    }
+
+    async fn put_decision(&self, decided: &Decided) -> Result<(), StoreError> {
+        self.0.put_decision_boxed(decided).await
+    }
+
+    async fn expire_decisions(&self, before: Timestamp) -> Result<(), StoreError> {
+        self.0.expire_decisions_boxed(before).await
     }
 }
 

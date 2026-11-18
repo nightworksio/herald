@@ -441,6 +441,7 @@ fn a_row_waits_on_its_author_its_reviewers_or_nobody_by_its_state() {
             reason: Reason::Untold,
             waited: SignedDuration::ZERO,
             stale: false,
+            decided: BTreeMap::new(),
         };
         assert_eq!(row.waiting_on(), logins, "{state:?}");
     }
@@ -453,6 +454,7 @@ fn a_row_waits_on_its_author_its_reviewers_or_nobody_by_its_state() {
         reason: Reason::Untold,
         waited: SignedDuration::ZERO,
         stale: false,
+        decided: BTreeMap::new(),
     };
     assert_eq!(authorless.waiting_on(), Vec::<&str>::new());
 }

@@ -108,4 +108,7 @@ pub struct Here {
     pub guarded: bool,
     /// The round secrets set here.
     pub round_secrets: BTreeSet<String>,
+    /// Whether this build asks models, as its `models` feature says
+    /// (ADR-0057).
+    pub models: bool,
 }

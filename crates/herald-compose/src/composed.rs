@@ -15,6 +15,7 @@ use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
 use herald_records::{Memory, MemoryKeyring, RecordStore};
 use jiff::{SignedDuration, Timestamp};
 
+use crate::ASKS_MODELS;
 use crate::answer::{Answer, Left};
 use crate::capped::Capped;
 use crate::counted::Counted;
@@ -130,7 +131,8 @@ where
         }
         let prepared = prepare(&config, host.secrets(), host.signer(), uses)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| error.to_string())?
+            .asking(ASKS_MODELS);
         let records = match keeping {
             Keeping::Stored(hosting) => {
                 let opener = Opener::new(Arc::clone(&host), outbound.clone(), Arc::clone(&made));

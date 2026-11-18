@@ -43,8 +43,8 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
-            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-peers" | "herald-records"
-            | "herald-wire" => Some(Self::Kits),
+            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-models" | "herald-peers"
+            | "herald-records" | "herald-wire" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),
@@ -145,6 +145,7 @@ mod tests {
             ("herald-fastly", Layer::Drivers),
             ("herald-wasi", Layer::Drivers),
             ("herald-wire", Layer::Kits),
+            ("herald-models", Layer::Kits),
             ("herald-sources-forge", Layer::Sources),
             ("herald-dest-discord", Layer::Destinations),
             ("herald-store-sqlite", Layer::Stores),

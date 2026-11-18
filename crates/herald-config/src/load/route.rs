@@ -23,6 +23,21 @@ pub(super) struct Others<'a> {
     pub(super) reports: &'a BTreeMap<String, Report>,
     pub(super) rules: &'a BTreeMap<String, Rule>,
 }
+
+impl<'a> Others<'a> {
+    /// The apps, reports and rules a route may name.
+    pub(super) const fn of(
+        apps: &'a BTreeMap<String, Named>,
+        reports: &'a BTreeMap<String, Report>,
+        rules: &'a BTreeMap<String, Rule>,
+    ) -> Self {
+        Self {
+            apps,
+            reports,
+            rules,
+        }
+    }
+}
 use super::templates::Written;
 use super::{Loader, Value, list};
 use herald_kinds::{Destination, Placed, Placing, Source};

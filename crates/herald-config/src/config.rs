@@ -44,6 +44,11 @@ pub struct Config {
     pub reports: BTreeMap<String, crate::Report>,
     /// The rules routes name among their sources, by name (ADR-0056).
     pub rules: BTreeMap<String, crate::Rule>,
+    /// The models tasks ask, by name (ADR-0057).
+    pub models: BTreeMap<String, crate::ModelConfig>,
+    /// The closed-set questions views ask where their rules cannot tell,
+    /// by name (ADR-0057).
+    pub tasks: BTreeMap<String, crate::Task>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
     /// How a run holds and keeps an announcement.
@@ -152,7 +157,13 @@ impl Config {
             key.into_iter().chain(webhook)
         });
         let instance = self.federation.keys.iter().filter(|_| uses == Uses::Serves);
+        let models = self
+            .models
+            .values()
+            .filter(|_| uses >= Uses::Polls)
+            .filter_map(|model| model.key.as_ref());
         destinations
+            .chain(models)
             .chain(sources)
             .chain(apps)
             .chain(instance)

@@ -144,6 +144,20 @@ impl Pins for Refusing {
     }
 }
 
+impl crate::Decisions for Refusing {
+    async fn decision(&self, _: &Key) -> Result<Option<herald_core::Decided>, StoreError> {
+        Err(refused("decision"))
+    }
+
+    async fn put_decision(&self, _: &herald_core::Decided) -> Result<(), StoreError> {
+        Err(refused("put_decision"))
+    }
+
+    async fn expire_decisions(&self, _: Timestamp) -> Result<(), StoreError> {
+        Err(refused("expire_decisions"))
+    }
+}
+
 impl Positions for Refusing {
     async fn position(&self, _: &DestinationName) -> Result<Option<String>, StoreError> {
         Err(refused("position"))
@@ -362,7 +376,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 13]
+            [holding; 14]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);

@@ -9,7 +9,7 @@ use std::ops::Range;
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
     Bots, BumpPattern, Deciding, Glob, GroupBy, MOST_NUDGES, MOST_STAGES, ReportSchedule, Rules,
-    SourceName, Stages, View, zone,
+    Slot, SourceName, Stages, View, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -18,6 +18,7 @@ use toml::Spanned;
 
 use super::boards::Boarded;
 use super::{Loader, Value, list};
+use crate::models::Task;
 use crate::views::{
     BUILT_IN_VIEW, BotsFile, DecidingFile, DecidingName, GroupByFile, RULE_KEYS, Report,
     ReportFile, Rule, RuleFile, RulesFile, ViewConfig, ViewFile,
@@ -137,12 +138,52 @@ impl Loader<'_> {
         read
     }
 
+    /// The task of `tasks` deciding each slot `decide` names, at `path`,
+    /// where it offers options the slot may settle on.
+    fn deciding(
+        &mut self,
+        decide: BTreeMap<Slot, Spanned<String>>,
+        path: &str,
+        tasks: &BTreeMap<String, Task>,
+    ) -> BTreeMap<Slot, String> {
+        let mut deciding = BTreeMap::new();
+        for (slot, task) in decide {
+            let key = format!("{path}.decide.{}", slot.name());
+            match tasks.get(task.get_ref()) {
+                None => {
+                    let names: Vec<&str> = tasks.keys().map(String::as_str).collect();
+                    self.error(
+                        &task.span(),
+                        &key,
+                        format!(
+                            "no task is named \"{}\"; the tasks are {}",
+                            task.get_ref(),
+                            list(&names)
+                        ),
+                    );
+                }
+                Some(asked) if !slot.takes(&asked.options) => self.error(
+                    &task.span(),
+                    &key,
+                    format!(
+                        "the task \"{}\" decides whose turn it is, so each of its options is a state but unknown, such as waiting-on-review",
+                        task.get_ref()
+                    ),
+                ),
+                Some(_) => {
+                    deciding.insert(slot, task.into_inner());
+                }
+            }
+        }
+        deciding
+    }
+
     /// The view `file` writes at `path`, its table at `span`.
     fn view(
         &mut self,
         file: ViewFile,
         (path, span): (&str, &Range<usize>),
-        sources: &BTreeMap<SourceName, Source>,
+        (sources, tasks): (&BTreeMap<SourceName, Source>, &BTreeMap<String, Task>),
     ) -> ViewConfig {
         let shipped = View::default();
         let mut bumps = Vec::new();
@@ -174,6 +215,7 @@ impl Loader<'_> {
         let shipped = Most::default();
         ViewConfig {
             view,
+            decide: self.deciding(file.decide, path, tasks),
             sources: self.view_sources(file.sources, path, sources),
             most: Most {
                 open: file
@@ -191,6 +233,7 @@ impl Loader<'_> {
         &mut self,
         value: Option<Value<'_>>,
         sources: &BTreeMap<SourceName, Source>,
+        tasks: &BTreeMap<String, Task>,
     ) -> BTreeMap<String, ViewConfig> {
         let mut views = BTreeMap::from([(
             BUILT_IN_VIEW.to_owned(),
@@ -198,13 +241,14 @@ impl Loader<'_> {
                 view: View::default(),
                 sources: queued(sources),
                 most: Most::default(),
+                decide: BTreeMap::new(),
             },
         )]);
         for (name, value) in self.named(value, "views") {
             let path = format!("views.{name}");
             let span = value.span();
             if let Some(file) = self.typed::<ViewFile>(value, &path) {
-                let view = self.view(file, (&path, &span), sources);
+                let view = self.view(file, (&path, &span), (sources, tasks));
                 views.insert(name, view);
             }
         }

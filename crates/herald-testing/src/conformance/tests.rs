@@ -61,6 +61,10 @@ enum Fault {
     KeepsTheFirstPin,
     SharesPins,
     KeepsTheFirstPosition,
+    HoldsAnUnwrittenDecision,
+    KeepsTheFirstDecision,
+    ExpiresNoDecision,
+    ExpiresEveryDecision,
     SharesPositions,
     HoldsAnUnwrittenDelivery,
     KeepsTheFirstDeliveryState,
@@ -366,6 +370,47 @@ impl Pins for Faulty {
 
     async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         forgets::pinned(self, route, post).await
+    }
+}
+
+impl herald_ports::Decisions for Faulty {
+    async fn decision(&self, key: &Key) -> Result<Option<herald_core::Decided>, StoreError> {
+        self.refuses()?;
+        let kept = self.inner.decision(key).await?;
+        if self.fault == Fault::HoldsAnUnwrittenDecision {
+            return Ok(kept.or_else(|| {
+                Some(herald_core::Decided {
+                    key: *key,
+                    task: "held".to_owned(),
+                    subject: "held".to_owned(),
+                    answer: herald_core::Answer {
+                        model: "m".to_owned(),
+                        choice: None,
+                        probabilities: std::collections::BTreeMap::new(),
+                    },
+                    at: NOON,
+                })
+            }));
+        }
+        Ok(kept)
+    }
+
+    async fn put_decision(&self, decided: &herald_core::Decided) -> Result<(), StoreError> {
+        self.refuses()?;
+        let kept = self.inner.decision(&decided.key).await?;
+        if self.fault == Fault::KeepsTheFirstDecision && kept.is_some() {
+            return Ok(());
+        }
+        self.inner.put_decision(decided).await
+    }
+
+    async fn expire_decisions(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::ExpiresNoDecision => Ok(()),
+            Fault::ExpiresEveryDecision => self.inner.expire_decisions(jiff::Timestamp::MAX).await,
+            _ => self.inner.expire_decisions(before).await,
+        }
     }
 }
 
@@ -788,6 +833,28 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
         (
             Fault::ForgetsEveryAnnouncement,
             "forgetting one announcement's deliveries forgot another's",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_breaks_its_promises_on_decisions_is_refused() {
+    refused(&[
+        (
+            Fault::HoldsAnUnwrittenDecision,
+            "a new store holds a decision",
+        ),
+        (
+            Fault::KeepsTheFirstDecision,
+            "a decision was not the one written last under its key",
+        ),
+        (
+            Fault::ExpiresNoDecision,
+            "a decision made before the expiry was kept",
+        ),
+        (
+            Fault::ExpiresEveryDecision,
+            "a decision made at the expiry was forgotten",
         ),
     ]);
 }

@@ -13,6 +13,7 @@ mod bump;
 mod chunk;
 mod credentials;
 mod cursor;
+mod decide;
 mod declined;
 pub mod der;
 mod duration;
@@ -76,6 +77,9 @@ pub use bump::{Bump, BumpPattern, Bumper, NotABumpPattern, bumped, read_bump};
 pub use chunk::{Room, chunk, size};
 pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, Proof, Tombstone, Unheld, fresh};
+pub use decide::{
+    Answer, Decided, LONGEST_OPTION, MOST_OPTIONS, Options, Question, Slot, decided, state,
+};
 pub use declined::Declined;
 pub use duration::Duration;
 pub use escaping::{Escaping, safe_url, unreserved};
@@ -131,7 +135,7 @@ pub use profile::{
 pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
 pub use queue::{
     Batch, Board, Bots, Checks, Deciding, GroupBy, Grouped, Mergeable, Pull, Reason, Review, Row,
-    Rules, Showing, Turn, View, board,
+    Rules, Showing, Turn, View, board, grouped, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{

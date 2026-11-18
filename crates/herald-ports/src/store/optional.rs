@@ -2,6 +2,8 @@
 //! records where the store keeps the kind, and [`Unkept`]'s refusal where it
 //! does not.
 
+use crate::Decisions;
+use herald_core::Decided;
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
     Schedule, SourceName, State, Subscription,
@@ -164,6 +166,29 @@ impl<T: Subscriptions> Subscriptions for Option<&T> {
         match self {
             Some(kept) => kept.unsubscribe(subscription).await,
             None => Unkept.unsubscribe(subscription).await,
+        }
+    }
+}
+
+impl<T: Decisions> Decisions for Option<&T> {
+    async fn decision(&self, key: &Key) -> Result<Option<Decided>, StoreError> {
+        match self {
+            Some(kept) => kept.decision(key).await,
+            None => Unkept.decision(key).await,
+        }
+    }
+
+    async fn put_decision(&self, decided: &Decided) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.put_decision(decided).await,
+            None => Unkept.put_decision(decided).await,
+        }
+    }
+
+    async fn expire_decisions(&self, before: Timestamp) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.expire_decisions(before).await,
+            None => Unkept.expire_decisions(before).await,
         }
     }
 }
