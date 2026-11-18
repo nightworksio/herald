@@ -3,6 +3,8 @@ use herald_ports::Request;
 use herald_wire::SourceError;
 use jiff::Timestamp;
 use serde::Deserialize;
+
+use crate::github::Label;
 use serde_json::json;
 
 use super::{FAILED, Named, PAGE, Page};
@@ -71,11 +73,6 @@ struct Author {
     #[serde(rename = "__typename")]
     kind: String,
     login: String,
-}
-
-#[derive(Deserialize)]
-struct Label {
-    name: String,
 }
 
 #[derive(Deserialize)]
@@ -207,7 +204,7 @@ impl Node {
         let bot = self
             .author
             .as_ref()
-            .is_some_and(|author| author.kind == "Bot" || author.login.ends_with("[bot]"));
+            .is_some_and(|author| crate::github::bot(Some(&author.kind), &author.login));
         let forge = if self.is_in_merge_queue {
             Some((Turn::Queued, "IN_MERGE_QUEUE".to_owned()))
         } else {

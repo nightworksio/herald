@@ -4,6 +4,8 @@ use herald_core::{Checks, Review};
 use herald_wire::SourceError;
 use serde::Deserialize;
 
+use crate::github::Account;
+
 use super::{FAILED, PAGE};
 use crate::Forge;
 
@@ -35,13 +37,8 @@ pub(super) fn checks_path(forge: Forge, sha: &str) -> String {
 }
 
 #[derive(Deserialize)]
-struct User {
-    login: String,
-}
-
-#[derive(Deserialize)]
 struct Given {
-    user: Option<User>,
+    user: Option<Account>,
     state: String,
     #[serde(default)]
     dismissed: bool,

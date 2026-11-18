@@ -88,12 +88,8 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
 ) -> Result<Fresh, Stop> {
     let shown = board(&part.view.view, part.pulls, ports.clock.now());
     let event = report_event(name, &report.view, &shown, start)
-        .map_err(|problem| Stop::Source(problem.to_string()))?;
-    let seen = event
-        .visibility()
-        .unwrap_or(Visibility::Private)
-        .max(part.visibility);
-    let event = event.seen_as(seen);
+        .map_err(|problem| Stop::Source(problem.to_string()))?
+        .seen_as(part.visibility);
     let within = Within {
         routes: part.routes,
         view: Some(Showing {

@@ -3,6 +3,8 @@ use herald_wire::SourceError;
 use jiff::Timestamp;
 use serde::Deserialize;
 
+use crate::github::{Account, Label};
+
 use super::{Named, PAGE, Page};
 use crate::Forge;
 
@@ -11,12 +13,6 @@ pub(super) const GITHUB: &str = "GitHub's listed open pull requests";
 
 /// What Forgejo's open pull requests are read as.
 pub(super) const FORGEJO: &str = "Forgejo's open pull requests";
-
-/// What a bot's login ends with, where the forge names no account kind.
-const BOT_SUFFIX: &str = "[bot]";
-
-/// The account kind GitHub names a bot by.
-const BOT_KIND: &str = "Bot";
 
 /// The path, under a repository on `forge`, of the `number`th page of its
 /// open pull requests, the most recently updated first.
@@ -29,25 +25,6 @@ pub(super) fn path(forge: Forge, number: usize) -> String {
             format!("/pulls?state=open&sort=updated&direction=desc&per_page={PAGE}&page={number}")
         }
     }
-}
-
-#[derive(Deserialize)]
-struct User {
-    login: String,
-    #[serde(rename = "type")]
-    kind: Option<String>,
-}
-
-impl User {
-    /// Whether it is a bot or an app.
-    fn bot(&self) -> bool {
-        self.kind.as_deref() == Some(BOT_KIND) || self.login.ends_with(BOT_SUFFIX)
-    }
-}
-
-#[derive(Deserialize)]
-struct Label {
-    name: String,
 }
 
 #[derive(Deserialize)]
@@ -64,11 +41,11 @@ struct Listed {
     draft: bool,
     created_at: Timestamp,
     updated_at: Timestamp,
-    user: Option<User>,
+    user: Option<Account>,
     #[serde(default)]
     labels: Vec<Label>,
     #[serde(default)]
-    requested_reviewers: Vec<User>,
+    requested_reviewers: Vec<Account>,
     mergeable: Option<bool>,
     head: Option<Head>,
 }
@@ -93,7 +70,7 @@ impl Listed {
             number: self.number,
             title: self.title,
             url: self.html_url,
-            bot: self.user.as_ref().is_some_and(User::bot),
+            bot: self.user.as_ref().is_some_and(Account::bot),
             author: self.user.map(|user| user.login),
             draft: self.draft,
             labels: self.labels.into_iter().map(|label| label.name).collect(),

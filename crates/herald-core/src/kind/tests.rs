@@ -446,7 +446,10 @@ fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
     let report = &shipped[8];
     assert_eq!(report.kind, Kind::REPORT);
     let own: Vec<bool> = shipped.iter().map(|spec| spec.kind.own()).collect();
-    assert_eq!(own, [false, false, false, false, false, false, false, false, true]);
+    assert_eq!(
+        own,
+        [false, false, false, false, false, false, false, false, true]
+    );
     assert_eq!(report.links, []);
     let attributes: Vec<(&str, AttributeType, bool)> = report
         .attributes
