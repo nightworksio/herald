@@ -39,6 +39,7 @@ mod pattern;
 mod pending;
 mod profile;
 mod published;
+mod queue;
 mod rate;
 mod render;
 mod retention;
@@ -115,6 +116,10 @@ pub use profile::{
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
 pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
+pub use queue::{
+    Batch, Board, Bots, Bump, BumpPattern, Checks, Deciding, GroupBy, Grouped, Mergeable,
+    NotABumpPattern, Pull, Reason, Review, Row, Rules, SHIPPED_BUMPS, Turn, View, board, bumped,
+};
 pub use rate::{Per, Rate};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
