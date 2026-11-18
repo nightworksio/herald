@@ -400,9 +400,10 @@ impl Loader<'_> {
         for (name, value) in self.named(value, "rules") {
             let path = format!("rules.{name}");
             let span = value.span();
-            let Some((own, watch)) = self.parted(value, &path, &RULE_KEYS) else {
+            let Some((own, at, watch)) = self.parted(value, &path, &RULE_KEYS) else {
                 continue;
             };
+            let watch = Spanned::new(at, toml::de::DeValue::Table(watch));
             let file = self.typed::<RuleFile>(own, &path);
             let watch = self.typed::<ReportFile>(watch, &path);
             let taken: Vec<&str> = named.iter().map(String::as_str).collect();

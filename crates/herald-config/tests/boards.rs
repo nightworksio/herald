@@ -151,6 +151,9 @@ unknown = true
 
 [rules.bare]
 most = 3
+
+[boards]
+flat = 3
 "#,
         ));
         for wanted in [
@@ -163,9 +166,19 @@ most = 3
             "rules.lost.every: a report's window lasts from \"1m\" to \"1d\"",
             "rules.odd",
             "rules.bare",
+            "boards.flat: boards.flat is a table; write [boards.flat]",
         ] {
             assert!(error.contains(wanted), "{wanted}\n{error}");
         }
+    }
+
+    #[test]
+    fn a_rule_written_as_no_table_is_named() {
+        let error = errors(&with("[rules]\nflat = 3\n"));
+        assert!(
+            error.contains("rules.flat: rules.flat is a table; write [rules.flat]"),
+            "{error}"
+        );
     }
 
     #[test]

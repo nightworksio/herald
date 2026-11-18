@@ -95,26 +95,25 @@ impl JsonSchema for BoardSchema {
 /// The schema of a board to the destination whose route schema is
 /// `route`: its report's keys, and its route's but those it gives itself.
 fn boarded(route: &serde_json::Value, report: &serde_json::Value) -> serde_json::Value {
-    let mut board = route.clone();
-    if let Some(properties) = board
-        .get_mut("properties")
-        .and_then(serde_json::Value::as_object_mut)
-    {
-        properties.retain(|key, _| !BOARD_KEYS.contains(&key.as_str()));
-        if let Some(own) = report
-            .get("properties")
-            .and_then(serde_json::Value::as_object)
-        {
-            properties.extend(own.clone());
-        }
-    }
-    if let Some(required) = board
-        .get_mut("required")
-        .and_then(serde_json::Value::as_array_mut)
-    {
-        required.retain(|key| !BOARD_KEYS.contains(&key.as_str().unwrap_or_default()));
-    }
-    board
+    let properties: serde_json::Map<String, serde_json::Value> = route["properties"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| !BOARD_KEYS.contains(&key.as_str()))
+        .chain(report["properties"].as_object().into_iter().flatten())
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    let required: Vec<serde_json::Value> = route["required"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|key| !BOARD_KEYS.contains(&key.as_str().unwrap_or_default()))
+        .cloned()
+        .collect();
+    let mut board = route.as_object().cloned().unwrap_or_default();
+    board.insert("properties".to_owned(), properties.into());
+    board.insert("required".to_owned(), required.into());
+    board.into()
 }
 
 /// A destination's table, tagged by its kind.

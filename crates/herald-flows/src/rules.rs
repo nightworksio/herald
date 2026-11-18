@@ -21,7 +21,8 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
     reads: &mut Reads,
 ) -> Option<Sweep> {
     let (config, connected, ports) = flow;
-    let (_, identity, record) = match due(ports, name, &rule.watch.schedule).await {
+    let start = rule.watch.schedule.window(ports.clock.now())?;
+    let (identity, record) = match due(ports, name, start).await {
         Ok(due) => due?,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };

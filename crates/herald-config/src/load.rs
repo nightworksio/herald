@@ -152,20 +152,21 @@ impl Loader<'_> {
     }
 
     /// The table `value` at `path`, parted into the keys `keys` names and
-    /// the rest, each with where the table is written.
+    /// the rest, with where the table is written.
     fn parted<'i>(
         &mut self,
         value: Value<'i>,
         path: &str,
         keys: &[&str],
-    ) -> Option<(Value<'i>, Value<'i>)> {
+    ) -> Option<(Value<'i>, Range<usize>, DeTable<'i>)> {
         let (span, table) = self.table(value, path)?;
         let (named, rest): (DeTable<'i>, DeTable<'i>) = table
             .into_iter()
             .partition(|(key, _)| keys.contains(&key.get_ref().as_ref()));
         Some((
             Spanned::new(span.clone(), DeValue::Table(named)),
-            Spanned::new(span, DeValue::Table(rest)),
+            span,
+            rest,
         ))
     }
 

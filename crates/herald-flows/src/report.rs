@@ -130,17 +130,14 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     })
 }
 
-/// The window of `schedule` that began by now, where the cursor of the
-/// report or rule `name` has not yet remembered it: its start, its
-/// identity, and the cursor as the store keeps it.
+/// The window that began at `start`, where the cursor of the report or
+/// rule `name` has not yet remembered it: its identity, and the cursor as
+/// the store keeps it.
 pub(crate) async fn due<S: Store, C: Clock, G: Signer>(
     ports: &Ports<'_, S, C, G>,
     name: &str,
-    schedule: &herald_core::ReportSchedule,
-) -> Result<Option<(Timestamp, Identity, Option<Versioned<Cursor>>)>, Stop> {
-    let Some(start) = schedule.window(ports.clock.now()) else {
-        return Ok(None);
-    };
+    start: Timestamp,
+) -> Result<Option<(Identity, Option<Versioned<Cursor>>)>, Stop> {
     let record = ports
         .store
         .cursors()
@@ -151,7 +148,7 @@ pub(crate) async fn due<S: Store, C: Clock, G: Signer>(
     let seen = record
         .as_ref()
         .is_some_and(|record| record.value.seen.first() == Some(&identity));
-    Ok((!seen).then_some((start, identity, record)))
+    Ok((!seen).then_some((identity, record)))
 }
 
 /// What became of the cursor of the report or rule `name` once `announced`
@@ -272,7 +269,8 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
     reads: &mut Reads,
 ) -> Option<Sweep> {
     let (config, connected, _) = flow;
-    let (start, identity, record) = match due(flow.2, name, &report.schedule).await {
+    let start = report.schedule.window(flow.2.clock.now())?;
+    let (identity, record) = match due(flow.2, name, start).await {
         Ok(due) => due?,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };

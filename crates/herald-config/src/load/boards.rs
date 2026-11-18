@@ -28,10 +28,7 @@ impl Loader<'_> {
         for (name, value) in self.named(value, "boards") {
             let path = format!("boards.{name}");
             let span = value.span();
-            let Some((report, route)) = self.parted(value, &path, &REPORT_KEYS) else {
-                continue;
-            };
-            let DeValue::Table(mut route) = route.into_inner() else {
+            let Some((report, _, mut route)) = self.parted(value, &path, &REPORT_KEYS) else {
                 continue;
             };
             let named: Vec<String> = BOARD_KEYS

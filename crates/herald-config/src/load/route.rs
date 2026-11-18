@@ -558,7 +558,8 @@ impl Loader<'_> {
         others: Others<'_>,
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Option<Read> {
-        let (common, rest) = self.parted(value, &path, &ROUTE_KEYS)?;
+        let (common, span, rest) = self.parted(value, &path, &ROUTE_KEYS)?;
+        let rest = Spanned::new(span, DeValue::Table(rest));
         let route = self.typed::<RouteFile>(common, &path)?;
         let mut sound = self.sources_named(&route, &path, sources, others);
         let destination = DestinationName::new(route.destination.get_ref());
