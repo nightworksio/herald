@@ -281,3 +281,35 @@ fn a_report_that_makes_no_event_stops_and_one_with_no_view_read_is_refused() {
         ))
     );
 }
+
+#[test]
+fn a_route_that_stops_leaves_the_window_to_be_reported_again() {
+    let config = config("");
+    let store = healthy();
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/closed", "PUBLIC")),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC")),
+        (
+            "/channels/1566200000000000100/messages",
+            403,
+            r#"{"code":50013,"message":"Missing Permissions"}"#,
+        ),
+        TEAM,
+    ]);
+    let swept = reported(&config, &store, &script);
+    assert!(
+        matches!(
+            &swept[0].outcome,
+            Sweep::Reported {
+                cursor: Remembered::Kept,
+                ..
+            }
+        ),
+        "{swept:?}"
+    );
+    let again = reported(&config, &store, &Script::default());
+    assert!(
+        matches!(&again[0].outcome, Sweep::Stopped(Stop::Unreachable(_))),
+        "{again:?}"
+    );
+}
