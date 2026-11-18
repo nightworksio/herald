@@ -562,6 +562,21 @@ fn announced(at: Timestamp) -> Latest {
     }
 }
 
+/// A decision keyed `key`, made at `at`.
+fn decided(key: Key, at: Timestamp) -> herald_core::Decided {
+    herald_core::Decided {
+        key,
+        task: "t".to_owned(),
+        subject: "s".to_owned(),
+        answer: herald_core::Answer {
+            model: "m".to_owned(),
+            choice: None,
+            probabilities: std::collections::BTreeMap::new(),
+        },
+        at,
+    }
+}
+
 #[test]
 fn every_answer_of_an_erased_store_is_the_store_s_own() {
     let store = Refusing { holding: true };
@@ -601,6 +616,9 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.forget_pinned(&route, "post")),
         answered(erased.position(&subscription.destination)),
         answered(erased.put_position(&subscription.destination, "s1")),
+        answered(erased.decision(&key)),
+        answered(erased.put_decision(&decided(key, at))),
+        answered(erased.expire_decisions(at)),
         answered(erased.admit(NAMESPACE, "1", at)),
         answered(erased.seen(NAMESPACE, "1")),
         answered(erased.release(NAMESPACE, "1")),
@@ -637,6 +655,9 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "forget_pinned",
         "position",
         "put_position",
+        "decision",
+        "put_decision",
+        "expire_decisions",
         "admit",
         "seen",
         "release",

@@ -9,6 +9,7 @@ use super::*;
 use crate::FakeStore;
 
 mod cursors;
+mod decisions;
 mod forgets;
 mod latest;
 mod pending;
@@ -370,47 +371,6 @@ impl Pins for Faulty {
 
     async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         forgets::pinned(self, route, post).await
-    }
-}
-
-impl herald_ports::Decisions for Faulty {
-    async fn decision(&self, key: &Key) -> Result<Option<herald_core::Decided>, StoreError> {
-        self.refuses()?;
-        let kept = self.inner.decision(key).await?;
-        if self.fault == Fault::HoldsAnUnwrittenDecision {
-            return Ok(kept.or_else(|| {
-                Some(herald_core::Decided {
-                    key: *key,
-                    task: "held".to_owned(),
-                    subject: "held".to_owned(),
-                    answer: herald_core::Answer {
-                        model: "m".to_owned(),
-                        choice: None,
-                        probabilities: std::collections::BTreeMap::new(),
-                    },
-                    at: NOON,
-                })
-            }));
-        }
-        Ok(kept)
-    }
-
-    async fn put_decision(&self, decided: &herald_core::Decided) -> Result<(), StoreError> {
-        self.refuses()?;
-        let kept = self.inner.decision(&decided.key).await?;
-        if self.fault == Fault::KeepsTheFirstDecision && kept.is_some() {
-            return Ok(());
-        }
-        self.inner.put_decision(decided).await
-    }
-
-    async fn expire_decisions(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
-        self.refuses()?;
-        match self.fault {
-            Fault::ExpiresNoDecision => Ok(()),
-            Fault::ExpiresEveryDecision => self.inner.expire_decisions(jiff::Timestamp::MAX).await,
-            _ => self.inner.expire_decisions(before).await,
-        }
     }
 }
 
@@ -838,28 +798,6 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
 }
 
 #[test]
-fn a_store_that_breaks_its_promises_on_decisions_is_refused() {
-    refused(&[
-        (
-            Fault::HoldsAnUnwrittenDecision,
-            "a new store holds a decision",
-        ),
-        (
-            Fault::KeepsTheFirstDecision,
-            "a decision was not the one written last under its key",
-        ),
-        (
-            Fault::ExpiresNoDecision,
-            "a decision made before the expiry was kept",
-        ),
-        (
-            Fault::ExpiresEveryDecision,
-            "a decision made at the expiry was forgotten",
-        ),
-    ]);
-}
-
-#[test]
 fn a_store_that_breaks_its_promises_on_an_owner_source_s_members_is_refused() {
     refused(&[
         (
@@ -1001,49 +939,6 @@ fn a_store_whose_check_and_write_are_apart_is_refused() {
             "of runs admitting one delivery at once, other than one admitted it fresh",
         ),
     ]);
-}
-
-#[test]
-fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
-    let store = FakeStore::default();
-    let probed = |checks: Checks, method: &str| {
-        assert_eq!(
-            checks.done(),
-            Err(Failure(format!(
-                "{method} was not refused as unsupported by a store keeping none of its kind"
-            )))
-        );
-    };
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::ledger(&store, &mut checks));
-    probed(checks, "entry");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::cursors(&store, &mut checks));
-    probed(checks, "cursor");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::schedules(&store, &mut checks));
-    probed(checks, "every_schedule");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::subscriptions(&store, &mut checks));
-    probed(checks, "subscribers");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::pins(&store, &mut checks));
-    probed(checks, "pinned");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::positions(&store, &mut checks));
-    probed(checks, "position");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::deliveries(&store, &mut checks));
-    probed(checks, "admit");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::notes(&store, &mut checks));
-    probed(checks, "note");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::announcements(&store, &mut checks));
-    probed(checks, "latest");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::inboxes(&store, &mut checks));
-    probed(checks, "delivery");
 }
 
 #[test]

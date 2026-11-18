@@ -6,7 +6,7 @@ mod common;
 
 #[cfg(test)]
 mod models {
-    use herald_config::{Config, MOST_ASKED, load};
+    use herald_config::{Config, MOST_ASKED, Uses, load};
     use herald_core::{SecretRef, Slot};
     use herald_models::{MOST_ANSWER, Speaks};
 
@@ -177,6 +177,32 @@ decide = { priority = "urgency", turn = "whose" }
             .collect();
         assert_eq!(decide, [(Slot::Turn, "whose"), (Slot::Priority, "urgency")]);
         assert!(config.views["queue"].decide.is_empty());
+    }
+
+    #[test]
+    fn a_model_s_key_is_read_by_a_run_that_polls_or_serves() {
+        let config = loaded(&with(MODELS));
+        let polled = config.secrets_used(Uses::Polls);
+        assert!(polled.contains("HERALD_TYPESAFE_KEY") && polled.contains("HERALD_AZURE_KEY"));
+        assert!(
+            config
+                .secrets_used(Uses::Serves)
+                .contains("HERALD_TYPESAFE_KEY")
+        );
+        assert!(
+            !config
+                .secrets_used(Uses::Announces)
+                .contains("HERALD_TYPESAFE_KEY")
+        );
+    }
+
+    #[test]
+    fn a_model_or_task_of_the_wrong_shape_is_named() {
+        let error = errors(&with(
+            "[models.odd]\nkind = 3\nmodel = \"m\"\n\n[tasks.odd]\nmodels = \"jev\"\ninstructions = \"?\"\noptions = { a = \"x\", b = \"y\" }\n",
+        ));
+        assert!(error.contains("models.odd.kind"), "{error}");
+        assert!(error.contains("tasks.odd.models"), "{error}");
     }
 
     #[test]

@@ -66,17 +66,18 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
         return Some(kept.answer);
     }
     let public = row.pull.visibility == Visibility::Public;
-    let models = task.models.iter().filter_map(|named| {
-        connected
-            .models
-            .iter()
-            .find(|(model, _)| model.name == *named)
-            .filter(|(model, _)| public || model.private)
-    });
+    let models = task
+        .models
+        .iter()
+        .filter_map(|named| {
+            connected
+                .models
+                .iter()
+                .find(|(model, _)| model.name == *named)
+                .filter(|(model, _)| public || model.private)
+        })
+        .take_while(|_| ports.budget.allows(ports.clock.now(), 1).is_ok());
     for (model, http) in models {
-        if ports.budget.allows(ports.clock.now(), 1).is_err() {
-            return None;
-        }
         let questions = [*question];
         let Ok(response) = http.send(model.model.request(&input, &questions)).await else {
             continue;

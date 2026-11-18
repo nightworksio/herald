@@ -1,4 +1,3 @@
-use herald_core::Decided;
 use std::fmt;
 use std::future::{Future, ready};
 
@@ -374,29 +373,6 @@ pub trait Positions: Sync {
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
-/// What models answered the tasks views asked, one record per task,
-/// subject and input, reused while the input stands and forgotten by
-/// housekeeping (ADR-0057).
-pub trait Decisions: Sync {
-    /// The decision keyed `key`, where one is kept.
-    fn decision(
-        &self,
-        key: &Key,
-    ) -> impl Future<Output = Result<Option<Decided>, StoreError>> + Send;
-
-    /// Keeps `decided` under its key, in place of any kept there.
-    fn put_decision(
-        &self,
-        decided: &Decided,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send;
-
-    /// Forgets every decision made before `before`.
-    fn expire_decisions(
-        &self,
-        before: Timestamp,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send;
-}
-
 /// Events held back until they are due (ADR-0032), each record written
 /// with compare-and-set.
 pub trait Waiting: Sync {
@@ -760,26 +736,6 @@ impl Pins for Unkept {
     }
 }
 
-impl Decisions for Unkept {
-    fn decision(
-        &self,
-        _: &Key,
-    ) -> impl Future<Output = Result<Option<Decided>, StoreError>> + Send {
-        ready(Err(Held::Decisions.unsupported()))
-    }
-
-    fn put_decision(&self, _: &Decided) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(Err(Held::Decisions.unsupported()))
-    }
-
-    fn expire_decisions(
-        &self,
-        _: Timestamp,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(Err(Held::Decisions.unsupported()))
-    }
-}
-
 impl Positions for Unkept {
     fn position(
         &self,
@@ -1012,11 +968,13 @@ pub trait Store: Sync {
     fn writes_one_at_a_time(&self) -> bool;
 }
 
+mod decisions;
 mod keeper;
 mod optional;
 mod published;
 mod tokens;
 
+pub use decisions::Decisions;
 pub use keeper::Keeper;
 pub use published::Published;
 pub use tokens::Tokens;

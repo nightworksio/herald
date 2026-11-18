@@ -184,7 +184,16 @@ fn typesafe_s_answers_are_read_with_their_model_and_probabilities() {
         jev.answers(&answered(200, &json!({ "answers": {} })), &questions),
         Err(Unanswered::Unreadable(_))
     ));
-    let large = json!({ "model": "m", "pad": "x".repeat(1_000) });
+    let filled = |length: usize| {
+        let bare = json!({ "model": "m", "answers": {}, "pad": "" }).to_string();
+        json!({ "model": "m", "answers": {}, "pad": "x".repeat(length - bare.len()) })
+    };
+    assert_eq!(filled(1_000).to_string().len(), 1_000);
+    assert_eq!(
+        jev.answers(&answered(200, &filled(1_000)), &questions),
+        Ok(BTreeMap::new())
+    );
+    let large = filled(1_001);
     assert!(matches!(
         jev.answers(&answered(200, &large), &questions),
         Err(Unanswered::TooLarge(1_000))

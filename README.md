@@ -658,18 +658,9 @@ shipped `herald:queue` template renders it. A `[boards.<name>]` table, or
 a route with `living = true`, keeps one pinned post of a report, edited
 each window. A `[rules.<name>]` table nudges each pull request that waited
 past one of its `stages`, once a stage and spell of waiting. `herald
-queue` prints a view now. [`.docs/queue.md`](.docs/queue.md) covers
-views, reports, boards, rules, what each forge's read costs, and private
-repositories.
-
-A view's `decide` asks a `[tasks.<name>]` question of `[models.<name>]`
-where its rules cannot tell, such as whose turn an untold pull request is
-or how urgent each is: TypeSafe's Jev or any OpenAI-compatible server, a
-local one included. Only a build with the `models` feature asks them, no
-model sees a private repository unless it says `private = true`, and every
-answer is kept with the model that gave it.
-[`.docs/deciders.md`](.docs/deciders.md) covers models, tasks and what a
-model is shown.
+queue` prints a view now; [`.docs/queue.md`](.docs/queue.md) covers the
+rest. A view's `decide` asks models only what its rules cannot tell
+([`.docs/deciders.md`](.docs/deciders.md)).
 
 ### Every package of a namespace
 

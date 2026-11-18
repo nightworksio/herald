@@ -144,41 +144,105 @@ pub struct Preset {
 /// Every preset herald knows, the servers that run on a machine of the
 /// operator's own first.
 pub const PRESETS: [Preset; 19] = [
-    preset("ollama", "http://127.0.0.1:11434/v1"),
-    preset("llama-cpp", "http://127.0.0.1:9931/v1"),
-    preset("lm-studio", "http://localhost:1234/v1"),
-    preset("vllm", "http://localhost:8000/v1"),
-    preset("localai", "http://localhost:8080/v1"),
-    preset("jan", "http://127.0.0.1:1337/v1"),
-    preset("koboldcpp", "http://localhost:5001/v1"),
-    preset("gpt4all", "http://localhost:4891/v1"),
-    preset("openai", "https://api.openai.com/v1"),
-    preset("mistral", "https://api.mistral.ai/v1"),
-    preset("openrouter", "https://openrouter.ai/api/v1"),
-    preset("groq", "https://api.groq.com/openai/v1"),
-    preset("together", "https://api.together.ai/v1"),
-    preset("deepseek", "https://api.deepseek.com"),
-    preset("cohere", "https://api.cohere.ai/compatibility/v1"),
+    Preset {
+        name: "ollama",
+        base: "http://127.0.0.1:11434/v1",
+        header: None,
+    },
+    Preset {
+        name: "llama-cpp",
+        base: "http://127.0.0.1:9931/v1",
+        header: None,
+    },
+    Preset {
+        name: "lm-studio",
+        base: "http://localhost:1234/v1",
+        header: None,
+    },
+    Preset {
+        name: "vllm",
+        base: "http://localhost:8000/v1",
+        header: None,
+    },
+    Preset {
+        name: "localai",
+        base: "http://localhost:8080/v1",
+        header: None,
+    },
+    Preset {
+        name: "jan",
+        base: "http://127.0.0.1:1337/v1",
+        header: None,
+    },
+    Preset {
+        name: "koboldcpp",
+        base: "http://localhost:5001/v1",
+        header: None,
+    },
+    Preset {
+        name: "gpt4all",
+        base: "http://localhost:4891/v1",
+        header: None,
+    },
+    Preset {
+        name: "openai",
+        base: "https://api.openai.com/v1",
+        header: None,
+    },
+    Preset {
+        name: "mistral",
+        base: "https://api.mistral.ai/v1",
+        header: None,
+    },
+    Preset {
+        name: "openrouter",
+        base: "https://openrouter.ai/api/v1",
+        header: None,
+    },
+    Preset {
+        name: "groq",
+        base: "https://api.groq.com/openai/v1",
+        header: None,
+    },
+    Preset {
+        name: "together",
+        base: "https://api.together.ai/v1",
+        header: None,
+    },
+    Preset {
+        name: "deepseek",
+        base: "https://api.deepseek.com",
+        header: None,
+    },
+    Preset {
+        name: "cohere",
+        base: "https://api.cohere.ai/compatibility/v1",
+        header: None,
+    },
     Preset {
         name: "azure",
         base: "",
         header: Some("api-key"),
     },
-    preset("scaleway", "https://api.scaleway.ai/v1"),
-    preset("huggingface", "https://router.huggingface.co/v1"),
-    preset("workers-ai", ""),
+    Preset {
+        name: "scaleway",
+        base: "https://api.scaleway.ai/v1",
+        header: None,
+    },
+    Preset {
+        name: "huggingface",
+        base: "https://router.huggingface.co/v1",
+        header: None,
+    },
+    Preset {
+        name: "workers-ai",
+        base: "",
+        header: None,
+    },
 ];
 
 /// The base TypeSafe's API is reached at where a config names none.
 pub const TYPESAFE_BASE: &str = "https://api.typesafe.ai/v1";
-
-const fn preset(name: &'static str, base: &'static str) -> Preset {
-    Preset {
-        name,
-        base,
-        header: None,
-    }
-}
 
 /// The preset named `name`.
 #[must_use]

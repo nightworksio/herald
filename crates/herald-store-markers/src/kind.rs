@@ -78,5 +78,6 @@ mod tests {
         assert!(options.reads_posts());
         assert!(!options.keeps_deliveries());
         assert!(!options.keeps_tokens());
+        assert!(!options.keeps_decisions());
     }
 }

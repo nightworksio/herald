@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use herald_config::Config;
 use herald_core::{DestinationName, Retention, Schedule, Sent, due};
 use herald_ports::{
-    Clock, Decisions, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Schedules, Signer,
-    Store,
+    Clock, Decisions, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Schedules,
+    Signer, Store,
 };
 use jiff::{SignedDuration, Timestamp};
 

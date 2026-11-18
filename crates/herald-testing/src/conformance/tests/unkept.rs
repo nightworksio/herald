@@ -11,6 +11,7 @@ fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
         crate::conformance::unkept::subscriptions(&unkept, &mut checks).await;
         crate::conformance::unkept::pins(&unkept, &mut checks).await;
         crate::conformance::unkept::positions(&unkept, &mut checks).await;
+        crate::conformance::unkept::decisions(&unkept, &mut checks).await;
         crate::conformance::unkept::deliveries(&unkept, &mut checks).await;
         crate::conformance::unkept::notes(&unkept, &mut checks).await;
         crate::conformance::unkept::announcements(&unkept, &mut checks).await;
@@ -30,4 +31,56 @@ fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
             "forget_note was not refused as unsupported by a store keeping none of its kind",
         ]
     );
+}
+
+#[test]
+fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
+    let store = FakeStore::default();
+    let probed = |checks: Checks, method: &str| {
+        assert_eq!(
+            checks.done(),
+            Err(Failure(format!(
+                "{method} was not refused as unsupported by a store keeping none of its kind"
+            )))
+        );
+    };
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::ledger(&store, &mut checks));
+    probed(checks, "entry");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::cursors(&store, &mut checks));
+    probed(checks, "cursor");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::schedules(&store, &mut checks));
+    probed(checks, "every_schedule");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::subscriptions(
+        &store,
+        &mut checks,
+    ));
+    probed(checks, "subscribers");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::pins(&store, &mut checks));
+    probed(checks, "pinned");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::positions(&store, &mut checks));
+    probed(checks, "position");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::decisions(&store, &mut checks));
+    probed(checks, "decision");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::deliveries(&store, &mut checks));
+    probed(checks, "admit");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::notes(&store, &mut checks));
+    probed(checks, "note");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::announcements(
+        &store,
+        &mut checks,
+    ));
+    probed(checks, "latest");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::inboxes(&store, &mut checks));
+    probed(checks, "delivery");
 }

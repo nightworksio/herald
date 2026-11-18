@@ -166,6 +166,23 @@ fn a_sure_answer_among_the_options_moves_the_row_and_an_unsure_or_unknown_one_do
 }
 
 #[test]
+fn a_model_that_cannot_be_reached_passes_the_question_to_the_next() {
+    let config = config(false, "");
+    let script = Script::answering(&[(GRAPHQL, 200, &page("PUBLIC"))]);
+    let board = read(&config, &healthy(), &script, true).unwrap();
+    assert_eq!(decided(&board).2, Vec::new());
+    let asked: Vec<String> = script.seen().into_iter().skip(1).collect();
+    assert_eq!(
+        asked,
+        [
+            format!("POST {JEV}"),
+            format!("POST {LOCAL}"),
+            format!("POST {LOCAL}")
+        ]
+    );
+}
+
+#[test]
 fn a_private_repository_is_shown_only_to_a_model_that_says_it_may_see_one() {
     let closed = Script::answering(&[(GRAPHQL, 200, &page("PRIVATE"))]);
     let board = read(&config(false, ""), &healthy(), &closed, true).unwrap();
@@ -191,6 +208,11 @@ fn nothing_is_asked_without_the_models_feature_a_store_keeping_decisions_or_a_re
     let unasked = Script::answering(&[(GRAPHQL, 200, &page("PUBLIC"))]);
     let board = read(&config, &healthy(), &unasked, false).unwrap();
     assert_eq!(decided(&board).2, Vec::new());
+    assert_eq!(
+        unasked.seen().len(),
+        1,
+        "a build without the feature asks no model"
+    );
     for fault in [Fault::KeepsNoDecisions, Fault::ReadsDecisions] {
         let script = Script::answering(&[(GRAPHQL, 200, &page("PUBLIC"))]);
         let store = Failing { fault, ..healthy() };

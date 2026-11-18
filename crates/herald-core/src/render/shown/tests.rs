@@ -121,3 +121,30 @@ fn a_view_as_json_holds_the_keys_a_template_reads() {
     );
     assert_eq!(json["groups"][0]["rows"][0]["number"], 7);
 }
+
+#[test]
+fn a_row_shows_what_was_decided_of_it_by_slot() {
+    let mut board = shown();
+    crate::decide::decided(
+        &mut board.groups[0].rows[0],
+        crate::decide::Slot::Priority,
+        ("urgency", "high"),
+    );
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let decided = value
+        .get_attr("groups")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap()
+        .get_attr("rows")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap()
+        .get_attr("decided")
+        .unwrap();
+    assert_eq!(decided.get_attr("priority").unwrap().to_string(), "high");
+    assert_eq!(keys(&decided), ["priority"]);
+}
