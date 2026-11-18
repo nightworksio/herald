@@ -18,13 +18,12 @@ use crate::pulls::tombstones::tombstone;
 
 const TAG: &str = "\"1.0.20\"";
 
-/// `minutes` after noon.
+/// `minutes` after an hour before noon, the round's time.
 fn at(minutes: i64) -> Timestamp {
-    NOON + SignedDuration::from_mins(minutes)
+    NOON - SignedDuration::from_hours(1) + SignedDuration::from_mins(minutes)
 }
 
-/// The peer's release `identity`, its notes `body`, proved `minutes` after
-/// noon.
+/// The peer's release `identity`, its notes `body`, proved at `minutes`.
 fn noted(identity: &str, body: &str, minutes: i64) -> Value {
     let mut released = envelope(identity, &[DISCOVERY]);
     released["attributes"]["signal"] = json!("release");
@@ -33,7 +32,7 @@ fn noted(identity: &str, body: &str, minutes: i64) -> Value {
 }
 
 /// The origin's release `identity`, its notes `body`, relayed by the
-/// peer, proved `minutes` after noon.
+/// peer, proved at `minutes`.
 fn relayed(identity: &str, body: &str, minutes: i64) -> Value {
     let origin = "https://origin.example/.well-known/herald";
     let mut released = envelope(identity, &[origin, DISCOVERY]);
@@ -122,7 +121,13 @@ fn an_older_or_equally_old_envelope_of_a_release_is_no_edit() {
         Vec::<String>::new()
     );
     let identity = Identity::new("herald/upstream/a/1");
-    assert_eq!(cursor(&store).unwrap().proved[&identity], at(5));
+    assert_eq!(
+        cursor(&store)
+            .unwrap()
+            .proof(&identity)
+            .map(|proof| proof.created),
+        Some(at(5))
+    );
     assert_eq!(
         pulling(&store, &[(5, noted("a/1", "the gate, again", 6))]),
         ["herald/upstream/a/1 edited"]
@@ -165,7 +170,7 @@ fn a_release_a_tombstone_withdrew_enters_again_only_with_a_newer_proof() {
         Vec::<String>::new()
     );
     assert_eq!(
-        pulling(&store, &[(4, noted("a/1", "the gate, again", 61))]),
+        pulling(&store, &[(4, noted("a/1", "the gate, again", 62))]),
         ["herald/upstream/a/1"]
     );
 }
@@ -185,7 +190,41 @@ fn a_feed_listing_one_identity_twice_is_taken_once_by_its_newest_place() {
         ["herald/upstream/a/1"]
     );
     assert_eq!(
-        cursor(&store).unwrap().proved[&Identity::new("herald/upstream/a/1")],
-        at(1)
+        cursor(&store)
+            .unwrap()
+            .proof(&Identity::new("herald/upstream/a/1"))
+            .map(|proof| proof.created),
+        Some(at(1))
+    );
+}
+
+#[test]
+fn a_peer_proving_its_own_envelopes_far_ahead_evicts_no_proof_a_replay_meets() {
+    let store = healthy();
+    assert_eq!(
+        pulling(&store, &[(1, relayed("o/1", "the origin", 5))]),
+        Vec::<String>::new()
+    );
+    let ahead = Peer::answering(vec![page(&[(2, noted("a/1", "the flood", 66))], &OLD)]);
+    let config = config("", FROM_PEER);
+    let sweeps = swept(&config, &store, &ahead);
+    assert_eq!(sweeps[1], Sweep::Ahead("upstream".to_owned()));
+    let kept = cursor(&store).unwrap();
+    assert_eq!(kept.sequence, Some(2));
+    assert_eq!(kept.proof(&Identity::new("herald/upstream/a/1")), None);
+    assert_eq!(kept.ahead, ["upstream"]);
+    assert_eq!(
+        pollster::block_on(herald_flows::shared(&config, &store)).notes,
+        [
+            "sources.up: its last pull passed over an envelope of upstream whose proof was made too far ahead of now."
+        ]
+    );
+    assert_eq!(
+        pulling(&store, &[(2, relayed("o/1", "the origin, old", 1))]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        pulling(&store, &[(3, relayed("o/1", "the origin, fixed", 9))]),
+        ["herald/origin/o/1 edited"]
     );
 }

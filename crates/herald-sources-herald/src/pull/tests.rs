@@ -514,7 +514,13 @@ fn an_envelope_is_taken_only_once_its_proof_holds_for_the_instance_that_made_it(
     assert_eq!(unknown.sequence, Some(9));
     assert!(unknown.relisted);
     let took = Cursor {
-        seen: vec![Identity::new("herald/upstream/a/1")],
+        proved: vec![herald_core::Proof {
+            identity: Identity::new("herald/upstream/a/1"),
+            created: jiff::Timestamp::UNIX_EPOCH,
+            maker: "upstream".to_owned(),
+            tombstone: None,
+            passed: false,
+        }],
         ..Cursor::default()
     };
     let withdrawn = pulled(

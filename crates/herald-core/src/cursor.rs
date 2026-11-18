@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -43,14 +43,58 @@ pub struct Cursor {
     /// leaves older ones it finds unannounced (ADR-0042).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub newest: Option<Timestamp>,
+    /// Each instance whose envelope the last pull passed over, as its proof
+    /// was made further ahead of the round than any may be (ADR-0049).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ahead: Vec<String>,
     /// The newest sequence of another herald's feed it has read
     /// (ADR-0049).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence: Option<u64>,
     /// When the proof of the newest envelope it took of each identity from
-    /// another herald's feed was made (ADR-0049).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub proved: BTreeMap<Identity, Timestamp>,
+    /// another herald's feed was made, the latest taken first (ADR-0049).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proved: Vec<Proof>,
+}
+
+/// When the proof of the newest envelope a source took of one identity from
+/// another herald's feed was made (ADR-0049).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Proof {
+    /// The identity.
+    pub identity: Identity,
+    /// When the proof was made.
+    pub created: Timestamp,
+    /// The instance that made it.
+    #[serde(default)]
+    pub maker: String,
+    /// What the envelope withdrew, where it was a tombstone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tombstone: Option<Tombstone>,
+    /// Whether the source passed the envelope's event over.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub passed: bool,
+}
+
+/// What a tombstone a source took withdrew (ADR-0049).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Tombstone {
+    /// An identity the source took, whose proof it never forgets.
+    Held,
+    /// An identity the source never took, whose proof later tombstones push
+    /// out.
+    Unheld,
+}
+
+/// How many tombstones of identities its source never took a cursor
+/// keeps: in all, and of any one instance (ADR-0049).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Unheld {
+    /// The most in all.
+    pub most: usize,
+    /// The most of one instance.
+    pub each: usize,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
@@ -92,12 +136,41 @@ pub struct Polled {
     /// first, which are no longer seen.
     pub withdrawn: Vec<Identity>,
     /// When the proof of each envelope it took from another herald's feed
-    /// was made, by identity.
-    pub proved: BTreeMap<Identity, Timestamp>,
+    /// was made, the latest taken first, once each.
+    pub proved: Vec<Proof>,
+    /// How many tombstones of identities its source never took the cursor
+    /// keeps after it.
+    pub unheld: Unheld,
+    /// How many proofs of envelopes that are no tombstones the cursor keeps
+    /// of each instance after it, where it keeps them by instance; else
+    /// `remembered` of all.
+    pub each: Option<usize>,
+    /// Each instance it took no more new identities of, as it holds as
+    /// many of its identities as one instance may have it hold.
+    pub refused: Vec<String>,
+    /// Each instance it passed an envelope of over, as its proof was made
+    /// further ahead of the round than any may be.
+    pub ahead: Vec<String>,
     /// Whether its source lists only what changed since the cursor, an
     /// edited event entering again at the top, so the digests watched
     /// before stay beside its own for every identity still seen.
     pub relisted: bool,
+}
+
+impl Polled {
+    /// The identities it took an envelope of.
+    fn taken(&self) -> BTreeSet<&Identity> {
+        self.proved.iter().map(|proof| &proof.identity).collect()
+    }
+}
+
+impl Proof {
+    /// Whether it is the proof of a tombstone of an identity its source
+    /// took.
+    #[must_use]
+    pub fn held(&self) -> bool {
+        self.tombstone == Some(Tombstone::Held)
+    }
 }
 
 impl Cursor {
@@ -157,37 +230,104 @@ impl Cursor {
             listings: polled.listings.clone(),
             newest: polled.newest.or(self.newest),
             sequence: polled.sequence.or(self.sequence),
+            ahead: polled.ahead.clone(),
             proved: self.proofs(polled, remembered),
         }
     }
 
     /// When the proof of the newest envelope of each identity it took was
-    /// made, `polled`'s over its own, for the `remembered` newest proofs
-    /// only.
-    fn proofs(&self, polled: &Polled, remembered: usize) -> BTreeMap<Identity, Timestamp> {
-        let mut proved = self.proved.clone();
-        for (identity, created) in &polled.proved {
-            let kept = proved.entry(identity.clone()).or_insert(*created);
-            *kept = (*kept).max(*created);
-        }
-        let mut newest: Vec<(Identity, Timestamp)> = proved.into_iter().collect();
-        newest.sort_by(|(_, one), (_, other)| other.cmp(one));
-        newest.truncate(remembered);
-        newest.into_iter().collect()
+    /// made, `polled`'s taken after its own: every tombstone of an identity
+    /// it took; the tombstones of others taken latest, as many as
+    /// `polled.unheld` keeps; and of the rest those taken latest, as many
+    /// of each instance as `polled.each` keeps, else `remembered` of all.
+    fn proofs(&self, polled: &Polled, remembered: usize) -> Vec<Proof> {
+        let kept: BTreeMap<&Identity, &Proof> = self
+            .proved
+            .iter()
+            .map(|proof| (&proof.identity, proof))
+            .collect();
+        let taken = polled.taken();
+        let mut proved: Vec<Proof> = polled
+            .proved
+            .iter()
+            .map(|proof| match kept.get(&proof.identity) {
+                Some(kept) if proof.created < kept.created => (*kept).clone(),
+                _ => proof.clone(),
+            })
+            .collect();
+        proved.extend(
+            self.proved
+                .iter()
+                .filter(|proof| !taken.contains(&proof.identity))
+                .cloned(),
+        );
+        let mut live: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut unheld = 0_usize;
+        let mut each: BTreeMap<&str, usize> = BTreeMap::new();
+        let keeps: Vec<bool> = proved
+            .iter()
+            .map(|proof| match &proof.tombstone {
+                Some(Tombstone::Held) => true,
+                Some(Tombstone::Unheld) => {
+                    let made = each.entry(&proof.maker).or_default();
+                    let keep = unheld < polled.unheld.most && *made < polled.unheld.each;
+                    if keep {
+                        unheld += 1;
+                        *made += 1;
+                    }
+                    keep
+                }
+                None => {
+                    let maker = polled.each.map_or("", |_| proof.maker.as_str());
+                    let made = live.entry(maker).or_default();
+                    *made += 1;
+                    *made <= polled.each.unwrap_or(remembered)
+                }
+            })
+            .collect();
+        proved
+            .into_iter()
+            .zip(keeps)
+            .filter_map(|(proof, keep)| keep.then_some(proof))
+            .collect()
     }
 
-    /// Whether it took `identity`: it sees it, or keeps when the proof of
-    /// an envelope of it was made.
+    /// How many tombstones of identities it took it keeps of each
+    /// instance.
+    #[must_use]
+    pub fn held(&self) -> BTreeMap<&str, usize> {
+        let mut held: BTreeMap<&str, usize> = BTreeMap::new();
+        for proof in self.proved.iter().filter(|proof| proof.held()) {
+            *held.entry(proof.maker.as_str()).or_default() += 1;
+        }
+        held
+    }
+
+    /// The proof of the newest envelope of `identity` it took.
+    #[must_use]
+    pub fn proof(&self, identity: &Identity) -> Option<&Proof> {
+        self.proved.iter().find(|proof| proof.identity == *identity)
+    }
+
+    /// Whether it took an event of `identity`: it keeps the proof of an
+    /// envelope of it whose event it did not pass over, or of a tombstone
+    /// withdrawing such an event.
     #[must_use]
     pub fn took(&self, identity: &Identity) -> bool {
-        self.seen.contains(identity) || self.proved.contains_key(identity)
+        self.proof(identity)
+            .is_some_and(|proof| match proof.tombstone {
+                Some(Tombstone::Held) => true,
+                Some(Tombstone::Unheld) => false,
+                None => !proof.passed,
+            })
     }
 
     /// Whether an envelope of `identity` whose proof was made at `created`
     /// is newer than the newest it took of it.
     #[must_use]
     pub fn newer(&self, identity: &Identity, created: Timestamp) -> bool {
-        self.proved.get(identity).is_none_or(|kept| created > *kept)
+        self.proof(identity)
+            .is_none_or(|kept| created > kept.created)
     }
 
     /// The digests of the newest Releases `polled` found, as many as it
@@ -285,405 +425,4 @@ pub fn fresh(cursor: Option<&Cursor>, found: Vec<Event>, backfill: usize) -> Vec
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::event::Draft;
-    use crate::event::tests::draft;
-
-    fn event(identity: &str) -> Event {
-        Event::normalise(Draft {
-            identity: identity.to_owned(),
-            ..draft()
-        })
-        .unwrap()
-    }
-
-    fn identities(events: &[Event]) -> Vec<&str> {
-        events
-            .iter()
-            .map(|event| event.identity().as_str())
-            .collect()
-    }
-
-    #[test]
-    fn a_new_source_announces_only_its_backfill() {
-        let found = vec![event("c"), event("b"), event("a")];
-        assert_eq!(
-            identities(&fresh(None, found.clone(), 0)),
-            Vec::<&str>::new()
-        );
-        assert_eq!(identities(&fresh(None, found, 2)), ["c", "b"]);
-    }
-
-    #[test]
-    fn an_advanced_cursor_takes_the_newest_mark_its_poll_gives_and_else_keeps_its_own() {
-        let then = Timestamp::constant(1_700_000_000, 0);
-        let later = Timestamp::constant(1_800_000_000, 0);
-        let cursor = Cursor {
-            newest: Some(then),
-            ..Cursor::default()
-        };
-        let marked = Polled {
-            newest: Some(later),
-            ..Polled::default()
-        };
-        assert_eq!(cursor.advanced(&marked, 500).newest, Some(later));
-        assert_eq!(cursor.advanced(&Polled::default(), 500).newest, Some(then));
-        assert_eq!(
-            Cursor::default().advanced(&Polled::default(), 500).newest,
-            None
-        );
-        let written = serde_json::to_string(&Cursor::default()).unwrap();
-        assert!(!written.contains("newest"), "{written}");
-        let read: Cursor = serde_json::from_str(&serde_json::to_string(&cursor).unwrap()).unwrap();
-        assert_eq!(read.newest, Some(then));
-    }
-
-    #[test]
-    fn an_advanced_cursor_takes_the_sequence_its_pull_read_and_else_keeps_its_own() {
-        let cursor = Cursor {
-            sequence: Some(4),
-            ..Cursor::default()
-        };
-        let read = Polled {
-            sequence: Some(9),
-            ..Polled::default()
-        };
-        assert_eq!(cursor.advanced(&read, 500).sequence, Some(9));
-        assert_eq!(cursor.advanced(&Polled::default(), 500).sequence, Some(4));
-        let written = serde_json::to_string(&Cursor::default()).unwrap();
-        assert!(!written.contains("sequence"), "{written}");
-        let back: Cursor = serde_json::from_str(&serde_json::to_string(&cursor).unwrap()).unwrap();
-        assert_eq!(back.sequence, Some(4));
-    }
-
-    #[test]
-    fn a_known_source_announces_what_its_cursor_has_not_seen() {
-        let cursor = Cursor {
-            seen: vec![Identity::new("b"), Identity::new("a")],
-            ..Cursor::default()
-        };
-        let found = vec![event("c"), event("b"), event("a")];
-        assert_eq!(identities(&fresh(Some(&cursor), found, 0)), ["c"]);
-    }
-
-    #[test]
-    fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators() {
-        let tags = Validators {
-            etag: Some("tags".to_owned()),
-            last_modified: None,
-        };
-        let cursor = Cursor {
-            seen: vec![Identity::new("b"), Identity::new("a")],
-            etag: Some("old".to_owned()),
-            signals: BTreeMap::from([(Signal::Release, Validators::default())]),
-            ..Cursor::default()
-        };
-        let advanced = cursor.advanced(
-            &Polled {
-                events: vec![event("c"), event("b")],
-                etag: Some("new".to_owned()),
-                last_modified: Some("then".to_owned()),
-                signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
-                passed: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
-                watched: 0,
-                packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
-                unread: vec![Identity::new("u"), Identity::new("c")],
-                listings: BTreeMap::from([("status".to_owned(), tags.clone())]),
-                newest: None,
-                sequence: None,
-                withdrawn: Vec::new(),
-                proved: BTreeMap::new(),
-                relisted: false,
-            },
-            500,
-        );
-        assert_eq!(
-            advanced,
-            Cursor {
-                seen: vec![
-                    Identity::new("c"),
-                    Identity::new("b"),
-                    Identity::new("p"),
-                    Identity::new("a"),
-                    Identity::new("u")
-                ],
-                etag: Some("new".to_owned()),
-                last_modified: Some("then".to_owned()),
-                project: Some(event("c").project().to_owned()),
-                signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
-                notes: BTreeMap::new(),
-                tagged: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
-                packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
-                listings: BTreeMap::from([("status".to_owned(), tags.clone())]),
-                newest: None,
-                sequence: None,
-                proved: BTreeMap::new(),
-            }
-        );
-        assert_eq!(advanced.validators(Signal::Tag), Some(&tags));
-        assert_eq!(advanced.validators(Signal::Release), None);
-        let quiet = Cursor {
-            project: Some("kept".to_owned()),
-            ..Cursor::default()
-        }
-        .advanced(&Polled::default(), 500);
-        assert_eq!(quiet.project.as_deref(), Some("kept"));
-    }
-
-    #[test]
-    fn a_withdrawn_identity_is_unseen_and_the_newest_proofs_are_kept() {
-        let at = |second: i64| Timestamp::from_second(second).unwrap();
-        let cursor = Cursor {
-            seen: vec![Identity::new("b"), Identity::new("a")],
-            proved: BTreeMap::from([
-                (Identity::new("a"), at(10)),
-                (Identity::new("b"), at(30)),
-                (Identity::new("old"), at(5)),
-            ]),
-            ..Cursor::default()
-        };
-        let polled = Polled {
-            events: vec![event("c")],
-            withdrawn: vec![Identity::new("a")],
-            proved: BTreeMap::from([
-                (Identity::new("a"), at(40)),
-                (Identity::new("b"), at(20)),
-                (Identity::new("c"), at(50)),
-            ]),
-            ..Polled::default()
-        };
-        let advanced = cursor.advanced(&polled, 3);
-        assert_eq!(advanced.seen, [Identity::new("c"), Identity::new("b")]);
-        assert_eq!(
-            advanced.proved,
-            BTreeMap::from([
-                (Identity::new("a"), at(40)),
-                (Identity::new("b"), at(30)),
-                (Identity::new("c"), at(50)),
-            ])
-        );
-        assert!(advanced.newer(&Identity::new("a"), at(41)));
-        assert!(!advanced.newer(&Identity::new("a"), at(40)));
-        assert!(!advanced.newer(&Identity::new("a"), at(39)));
-        assert!(advanced.newer(&Identity::new("old"), at(1)));
-        assert!(advanced.took(&Identity::new("a")));
-        assert!(advanced.took(&Identity::new("c")));
-        assert!(!advanced.took(&Identity::new("old")));
-        let seen_only = Cursor {
-            seen: vec![Identity::new("s")],
-            ..Cursor::default()
-        };
-        assert!(seen_only.took(&Identity::new("s")));
-    }
-
-    #[test]
-    fn a_relisting_source_keeps_the_digests_it_watched_for_what_it_still_sees() {
-        let watching = Cursor {
-            seen: vec![Identity::new("a")],
-            ..Cursor::default()
-        }
-        .advanced(
-            &Polled {
-                events: vec![signalled("a", Signal::Release)],
-                watched: 1,
-                relisted: true,
-                ..Polled::default()
-            },
-            2,
-        );
-        let relisted = |events: Vec<Event>, withdrawn: Vec<Identity>| {
-            watching.advanced(
-                &Polled {
-                    watched: events.len(),
-                    events,
-                    withdrawn,
-                    relisted: true,
-                    ..Polled::default()
-                },
-                2,
-            )
-        };
-        let both = relisted(vec![signalled("b", Signal::Release)], Vec::new());
-        assert_eq!(
-            both.notes.keys().collect::<Vec<_>>(),
-            [&Identity::new("a"), &Identity::new("b")]
-        );
-        let quiet = relisted(Vec::new(), Vec::new());
-        assert_eq!(quiet.notes, watching.notes);
-        let gone = relisted(Vec::new(), vec![Identity::new("a")]);
-        assert!(gone.notes.is_empty());
-        let unrelisted = watching.advanced(
-            &Polled {
-                events: vec![signalled("b", Signal::Release)],
-                watched: 1,
-                ..Polled::default()
-            },
-            2,
-        );
-        assert_eq!(
-            unrelisted.notes.keys().collect::<Vec<_>>(),
-            [&Identity::new("b")]
-        );
-    }
-
-    fn signalled(identity: &str, signal: Signal) -> Event {
-        let mut attributes = crate::versioned("v1", false);
-        attributes.insert(
-            crate::SIGNAL.to_owned(),
-            crate::Attribute::Text(signal.name().to_owned()),
-        );
-        Event::normalise(Draft {
-            identity: identity.to_owned(),
-            attributes,
-            ..draft()
-        })
-        .unwrap()
-    }
-
-    #[test]
-    fn a_release_of_a_version_seen_only_as_a_tag_is_unseen_until_it_is_seen() {
-        let polled = |events: Vec<Event>| Polled {
-            events,
-            ..Polled::default()
-        };
-        let tagged = Cursor::default().advanced(
-            &polled(vec![
-                signalled("v2", Signal::Tag),
-                signalled("v1", Signal::Release),
-            ]),
-            500,
-        );
-        assert_eq!(tagged.tagged, [Identity::new("v2")]);
-        let release = signalled("v2", Signal::Release);
-        assert!(tagged.unseen(&release));
-        assert!(!tagged.unseen(&signalled("v2", Signal::Tag)));
-        assert!(!tagged.unseen(&signalled("v1", Signal::Release)));
-        assert!(tagged.unseen(&signalled("v3", Signal::Tag)));
-        assert_eq!(
-            identities(&fresh(
-                Some(&tagged),
-                vec![release.clone(), signalled("v1", Signal::Release)],
-                0
-            )),
-            ["v2"]
-        );
-        let released = tagged.advanced(&polled(vec![release.clone()]), 500);
-        assert_eq!(released.tagged, Vec::<Identity>::new());
-        assert!(!released.unseen(&release));
-        let quiet = tagged.advanced(&polled(Vec::new()), 500);
-        assert_eq!(quiet.tagged, [Identity::new("v2")]);
-        let forgotten = tagged.advanced(&polled(vec![signalled("v9", Signal::Release)]), 1);
-        assert_eq!(forgotten.tagged, Vec::<Identity>::new());
-        let twice = Cursor::default().advanced(
-            &Polled {
-                events: vec![signalled("v4", Signal::Tag)],
-                passed: vec![Identity::new("v4")],
-                ..Polled::default()
-            },
-            500,
-        );
-        assert_eq!(twice.tagged, [Identity::new("v4")]);
-    }
-
-    #[test]
-    fn a_cursor_remembers_a_bounded_number_of_identities() {
-        let found: Vec<Event> = (0..30).map(|index| event(&index.to_string())).collect();
-        let advanced = Cursor::default().advanced(
-            &Polled {
-                events: found,
-                ..Polled::default()
-            },
-            20,
-        );
-        assert_eq!(advanced.seen.len(), 20);
-        assert_eq!(advanced.seen.first().map(Identity::as_str), Some("0"));
-        assert_eq!(advanced.seen.last().map(Identity::as_str), Some("19"));
-    }
-
-    #[test]
-    fn a_cursor_round_trips_through_json() {
-        let cursor = Cursor {
-            seen: vec![Identity::new("a")],
-            etag: Some("e".to_owned()),
-            ..Cursor::default()
-        };
-        let json = serde_json::to_string(&cursor).unwrap();
-        assert_eq!(
-            json,
-            r#"{"seen":["a"],"etag":"e","last_modified":null,"project":null}"#
-        );
-        assert_eq!(serde_json::from_str::<Cursor>(&json).unwrap(), cursor);
-        let tagged = Cursor {
-            signals: BTreeMap::from([(
-                Signal::Tag,
-                Validators {
-                    etag: Some("t".to_owned()),
-                    last_modified: None,
-                },
-            )]),
-            ..cursor
-        };
-        let json = serde_json::to_string(&tagged).unwrap();
-        assert!(
-            json.ends_with(r#""signals":{"tag":{"etag":"t","last_modified":null}}}"#),
-            "{json}"
-        );
-        assert_eq!(serde_json::from_str::<Cursor>(&json).unwrap(), tagged);
-    }
-
-    /// The Release `identity`, its notes `body`.
-    fn released(identity: &str, body: &str) -> Event {
-        let mut attributes = crate::versioned("v1", false);
-        attributes.insert(
-            crate::SIGNAL.to_owned(),
-            crate::Attribute::Text(Signal::Release.name().to_owned()),
-        );
-        Event::normalise(Draft {
-            identity: identity.to_owned(),
-            attributes,
-            body: body.to_owned(),
-            ..draft()
-        })
-        .unwrap()
-    }
-
-    #[test]
-    fn a_release_watched_whose_notes_change_is_fresh_again_marked_as_an_edit() {
-        let first = Polled {
-            events: vec![released("a", "notes"), released("b", "notes"), event("c")],
-            watched: 1,
-            ..Polled::default()
-        };
-        let cursor = Cursor::default().advanced(&first, 500);
-        assert_eq!(
-            cursor
-                .notes
-                .keys()
-                .map(Identity::as_str)
-                .collect::<Vec<_>>(),
-            ["a"]
-        );
-        let edited = released("a", "fixed notes");
-        assert!(cursor.edited(&edited));
-        assert!(!cursor.edited(&released("a", "notes")));
-        assert!(!cursor.edited(&released("b", "fixed notes")));
-        let found = fresh(
-            Some(&cursor),
-            vec![edited.clone(), released("b", "fixed notes"), event("d")],
-            0,
-        );
-        assert_eq!(identities(&found), ["a", "d"]);
-        assert!(found[0].edited() && !found[1].edited());
-        let kept = cursor.advanced(&Polled::default(), 500);
-        assert_eq!(kept.notes, cursor.notes);
-        let unwatched = cursor.advanced(
-            &Polled {
-                events: vec![edited],
-                ..Polled::default()
-            },
-            500,
-        );
-        assert!(unwatched.notes.is_empty());
-    }
-}
+mod tests;

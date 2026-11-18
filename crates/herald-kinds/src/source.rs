@@ -162,6 +162,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// How many identities any one instance may have its cursor hold,
+    /// where it takes another herald's envelopes (ADR-0049).
+    fn share(&self) -> Option<usize> {
+        None
+    }
+
     /// How much its cursor holds where it remembers every identity it
     /// lists rather than the newest few (ADR-0042).
     fn remembers(&self) -> Option<Remembers> {

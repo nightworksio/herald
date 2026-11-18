@@ -1176,6 +1176,9 @@ Another herald's feed, each answer and envelope checked against the keys trusted
 | `sources.<name>.namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/', such as "github.com/123456"; every other is taken as herald/<peer>/<identity>. None where absent. |
 | `sources.<name>.pages` | integer | How many pages one pull reads at most: 5 where absent, and at most 20. |
 | `sources.<name>.peer` | string | The peer of `[peers]` whose feed it pulls, through the keys pinned for it; with `feed`, in place of `url`. |
+| `sources.<name>.peer_share` | integer | How many tombstones of identities it took, which it never forgets, it keeps of any one instance before it takes no new identity of it: 1000 where absent, and at most 4000. A pull reads such an envelope again later; a tombstone of an identity it took is always taken. |
+| `sources.<name>.peer_tombstones` | integer | How many tombstones of identities it never took it keeps of any one instance: 250 where absent, or `tombstones` where that is fewer, and at most `tombstones`. |
+| `sources.<name>.tombstones` | integer | How many tombstones of identities it never took it keeps the proof of in all, so no older envelope of them is taken again, apart from those of identities it took, which it never forgets: 1000 where absent, and at most 4000. It forgets those taken first. |
 | `sources.<name>.url` | string | The full URL of a feed of an instance that is no peer, whose keys `keys` pins; in place of `peer` and `feed`. |
 | `sources.<name>.verify` | [Verify](#verify) | Which envelopes it takes: "origin" (where absent), those the peer proved itself, or "hop", also those it passes on from another peer. |
 

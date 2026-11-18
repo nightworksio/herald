@@ -46,7 +46,7 @@ pub use budget::{Budget, Requests};
 pub use command_answers::{Answer, completed, deferral, interact, replied};
 pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
-    egress_guarded, handed_over, kept_tokens, keys, online, secrets, unserved,
+    egress_guarded, handed_over, kept_tokens, keys, online, secrets, shared, unserved,
 };
 pub use follows::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;

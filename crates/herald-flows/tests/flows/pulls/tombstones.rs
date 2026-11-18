@@ -3,7 +3,7 @@
 //! route's `withdraw` says.
 
 use herald_config::Uses;
-use herald_core::{DestinationName, Identity, RouteId, SourceName, Step, Withdraw};
+use herald_core::{DestinationName, Identity, RouteId, SourceName, Step, Tombstone, Withdraw};
 use herald_flows::{Announced, Outcome, Ports, Remembered, Stop, Sweep, announce, prepare};
 use herald_peers::keys::method;
 use herald_ports::Published as _;
@@ -19,7 +19,7 @@ use crate::harness::{Failing, Fault, NOON, Script, event, healthy, outcome};
 use crate::withdraw::{KEPT, UNANNOUNCED};
 
 /// The peer's tombstone withdrawing its release `identity`, proved by
-/// `key` an hour after its release was.
+/// `key` a minute after its release was.
 pub(crate) fn tombstone(identity: &str, key: &[u8; 32]) -> Value {
     proved_at(
         &json!({
@@ -29,7 +29,7 @@ pub(crate) fn tombstone(identity: &str, key: &[u8; 32]) -> Value {
             "path": [DISCOVERY],
         }),
         (DOMAIN, key),
-        NOON + SignedDuration::from_hours(1),
+        NOON + SignedDuration::from_mins(1),
     )
 }
 
@@ -116,7 +116,111 @@ fn a_proved_tombstone_withdraws_the_post_the_route_announced_of_it() {
     let kept = cursor(&store).unwrap();
     assert_eq!(kept.sequence, Some(3));
     assert!(!kept.seen.contains(identity));
-    assert!(kept.proved.contains_key(identity));
+    assert!(
+        kept.proof(identity)
+            .is_some_and(|proof| proof.tombstone == Some(Tombstone::Held))
+    );
+}
+
+#[test]
+fn an_instance_at_its_share_is_refused_by_name_while_its_tombstones_still_withdraw() {
+    let config = deleting(config("", &format!("{FROM_PEER}\npeer_share = 1")));
+    let store = announcing(&config);
+    let first = Peer::answering(vec![page(&[(3, tombstone("a/2", &OLD))], &OLD)]);
+    let sweeps = swept(&config, &store, &first);
+    let (_, identity, outcome) = withdrawn(&sweeps);
+    assert_eq!(identity.as_str(), "herald/upstream/a/2");
+    assert_eq!(
+        *outcome,
+        Outcome::Sent {
+            steps: vec![Step::Delete(0)]
+        }
+    );
+    let page_of = Peer::answering(vec![page(
+        &[
+            (5, release("a/3", &OLD)),
+            (4, tombstone("a/1", &OLD)),
+            (3, tombstone("a/2", &OLD)),
+        ],
+        &OLD,
+    )]);
+    let sweeps = swept(&config, &store, &page_of);
+    let [
+        Sweep::Polled {
+            cursor: remembered, ..
+        },
+        Sweep::Withdrawn { identity, .. },
+        Sweep::Refused(maker),
+    ] = sweeps.as_slice()
+    else {
+        panic!("{sweeps:?}");
+    };
+    assert_eq!(*remembered, Remembered::Advanced);
+    assert_eq!(identity.as_str(), "herald/upstream/a/1");
+    assert_eq!(maker, "upstream");
+    let kept = cursor(&store).unwrap();
+    assert_eq!(kept.sequence, Some(4));
+    assert_eq!(kept.held().get("upstream"), Some(&2));
+    let shared = |config: &herald_config::Config, store: &Failing| {
+        pollster::block_on(herald_flows::shared(config, store))
+    };
+    assert_eq!(
+        shared(&config, &store).notes,
+        [
+            "sources.up: it keeps 2 tombstones of releases upstream withdrew, all peer_share lets it, so a pull takes no new release of it; raise peer_share to take them."
+        ]
+    );
+    let roomy = deleting(crate::pulls::config("", FROM_PEER));
+    assert_eq!(shared(&roomy, &store).notes, Vec::<String>::new());
+    assert_eq!(shared(&roomy, &healthy()).notes, Vec::<String>::new());
+    let mut unread = store;
+    unread.fault = Fault::Cursors;
+    assert_eq!(shared(&roomy, &unread).gaps.len(), 1);
+}
+
+#[test]
+fn tombstones_of_identities_the_source_never_took_never_stop_its_pulls() {
+    let config = deleting(config(
+        "",
+        &format!("{FROM_PEER}\ntombstones = 3\npeer_tombstones = 2"),
+    ));
+    let store = announcing(&config);
+    let flood: Vec<(u64, Value)> = (3..9)
+        .rev()
+        .map(|sequence| (sequence, tombstone(&format!("x/{sequence}"), &OLD)))
+        .collect();
+    let sweeps = swept(&config, &store, &Peer::answering(vec![page(&flood, &OLD)]));
+    assert_eq!(
+        sweeps,
+        [Sweep::Polled {
+            first: false,
+            found: 0,
+            announced: Vec::new(),
+            cursor: Remembered::Advanced,
+        }]
+    );
+    let kept = cursor(&store).unwrap();
+    assert_eq!(kept.sequence, Some(8));
+    let unheld: Vec<&str> = kept
+        .proved
+        .iter()
+        .filter(|proof| proof.tombstone.is_some())
+        .map(|proof| proof.identity.as_str())
+        .collect();
+    assert_eq!(unheld, ["herald/upstream/x/8", "herald/upstream/x/7"]);
+    let later = Peer::answering(vec![page(
+        &[(9, tombstone("a/2", &OLD)), (8, tombstone("x/8", &OLD))],
+        &OLD,
+    )]);
+    let sweeps = swept(&config, &store, &later);
+    let (_, identity, outcome) = withdrawn(&sweeps);
+    assert_eq!(identity.as_str(), "herald/upstream/a/2");
+    assert_eq!(
+        *outcome,
+        Outcome::Sent {
+            steps: vec![Step::Delete(0)]
+        }
+    );
 }
 
 #[test]

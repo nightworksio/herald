@@ -73,6 +73,10 @@ impl SourceConfig for HeraldOptions {
             .then(|| Source::new(self.served_at(url)))
     }
 
+    fn share(&self) -> Option<usize> {
+        Some(self.peer_share)
+    }
+
     fn poller(&self, _: Option<Credential>, _: bool) -> Polling {
         Polling::Pull(Arc::new(Pulled::new(self)))
     }

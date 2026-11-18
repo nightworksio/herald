@@ -265,7 +265,8 @@ static JOINED: Cursor = Cursor {
     listings: std::collections::BTreeMap::new(),
     newest: None,
     sequence: None,
-    proved: std::collections::BTreeMap::new(),
+    ahead: Vec::new(),
+    proved: Vec::new(),
 };
 
 /// The members `chunk` polled together through `http`, as one request
