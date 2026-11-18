@@ -2,12 +2,20 @@ use serde_json::{Value, json};
 
 use super::*;
 
+fn on(forge: Forge, body: &Value, requested: bool) -> Review {
+    reviews(forge, body.to_string().as_bytes(), 1 << 20, requested).unwrap()
+}
+
 fn review(body: &Value, requested: bool) -> Review {
-    reviews(body.to_string().as_bytes(), 1 << 20, requested).unwrap()
+    on(Forge::GitHub, body, requested)
 }
 
 fn given(login: &str, state: &str) -> Value {
-    json!({ "user": { "login": login }, "state": state })
+    json!({ "user": { "login": login }, "state": state, "author_association": "MEMBER" })
+}
+
+fn by(association: &str, state: &str) -> Value {
+    json!({ "user": { "login": "eve" }, "state": state, "author_association": association })
 }
 
 #[test]
@@ -55,7 +63,8 @@ fn a_dismissed_review_or_one_by_nobody_says_nothing() {
         Review::Requested
     );
     assert_eq!(
-        review(
+        on(
+            Forge::Forgejo,
             &json!([ { "user": { "login": "ann" }, "state": "APPROVED", "dismissed": true } ]),
             false
         ),
@@ -65,6 +74,52 @@ fn a_dismissed_review_or_one_by_nobody_says_nothing() {
         review(&json!([ { "user": null, "state": "APPROVED" } ]), false),
         Review::Unasked
     );
+}
+
+#[test]
+fn only_a_trusted_reviewer_s_verdict_decides_on_github() {
+    for association in ["OWNER", "MEMBER", "COLLABORATOR"] {
+        assert_eq!(
+            review(&json!([by(association, "APPROVED")]), false),
+            Review::Approved
+        );
+    }
+    for association in ["CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "NONE"] {
+        assert_eq!(
+            review(&json!([by(association, "APPROVED")]), true),
+            Review::Requested
+        );
+        assert_eq!(
+            review(&json!([by(association, "CHANGES_REQUESTED")]), false),
+            Review::Unasked
+        );
+    }
+    assert_eq!(
+        review(
+            &json!([given("ann", "APPROVED"), by("NONE", "CHANGES_REQUESTED")]),
+            false
+        ),
+        Review::Approved
+    );
+}
+
+#[test]
+fn only_an_official_review_decides_on_forgejo() {
+    let official = |official: bool| json!([ { "user": { "login": "ann" }, "state": "APPROVED", "official": official } ]);
+    assert_eq!(on(Forge::Forgejo, &official(true), false), Review::Approved);
+    assert_eq!(on(Forge::Forgejo, &official(false), false), Review::Unasked);
+}
+
+#[test]
+fn a_verdict_whose_reviewer_s_standing_is_unread_leaves_the_review_unknown() {
+    let bare = json!([ { "user": { "login": "ann" }, "state": "APPROVED" } ]);
+    assert_eq!(review(&bare, false), Review::Unknown);
+    assert_eq!(on(Forge::Forgejo, &bare, false), Review::Unknown);
+    let comment = json!([ { "user": { "login": "ann" }, "state": "COMMENTED" } ]);
+    assert_eq!(review(&comment, true), Review::Requested);
+    let dismissed =
+        json!([given("ann", "APPROVED"), { "user": { "login": "ann" }, "state": "DISMISSED" }]);
+    assert_eq!(review(&dismissed, false), Review::Unasked);
 }
 
 fn github(runs: &Value) -> Checks {
@@ -149,7 +204,7 @@ fn each_detail_is_asked_by_its_path_and_reads_within_its_size() {
         "/commits/abc/status?limit=100"
     );
     assert!(matches!(
-        reviews(b"[]", 1, false),
+        reviews(Forge::GitHub, b"[]", 1, false),
         Err(SourceError::TooLarge {
             what: REVIEWS,
             limit: 1

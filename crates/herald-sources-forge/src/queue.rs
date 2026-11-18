@@ -180,7 +180,8 @@ impl Opened<'_> {
             .get(&detail::reviews_path(forge, pull.number), self.token);
         let body = self.asked(http, asked, detail::REVIEWS).await?;
         let requested = pull.review == herald_core::Review::Requested;
-        pull.review = detail::reviews(&body, parse, requested).map_err(Unpolled::unreadable)?;
+        pull.review =
+            detail::reviews(forge, &body, parse, requested).map_err(Unpolled::unreadable)?;
         if let Some(sha) = pull.head.as_deref() {
             let asked = self
                 .origin

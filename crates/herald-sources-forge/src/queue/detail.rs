@@ -45,7 +45,13 @@ struct Given {
     state: String,
     #[serde(default)]
     dismissed: bool,
+    author_association: Option<String>,
+    official: Option<bool>,
 }
+
+/// The associations GitHub names a reviewer by whose review decides, as
+/// its review decision counts them.
+const TRUSTED: [&str; 3] = ["OWNER", "MEMBER", "COLLABORATOR"];
 
 /// What one review leaves its reviewer's verdict as.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,17 +74,43 @@ impl Given {
             _ => None,
         }
     }
+
+    /// Whether its reviewer's review decides on `forge`: on GitHub one
+    /// whose association is trusted, on Forgejo an official one; `None`
+    /// where the forge does not say.
+    fn decides(&self, forge: Forge) -> Option<bool> {
+        match forge {
+            Forge::Forgejo => self.official,
+            Forge::GitHub | Forge::GitLab => self
+                .author_association
+                .as_deref()
+                .map(|association| TRUSTED.contains(&association)),
+        }
+    }
 }
 
-/// What the reviews `body` holds say, oldest first, each reviewer's last
-/// verdict standing, parsing no more than `parse` bytes; `requested` where
-/// a review is asked for and none was given.
-pub(super) fn reviews(body: &[u8], parse: usize, requested: bool) -> Result<Review, SourceError> {
+/// What the reviews `body` holds on `forge` say, oldest first, each
+/// deciding reviewer's last verdict standing, parsing no more than `parse`
+/// bytes; `requested` where a review is asked for and none was given. A
+/// verdict whose reviewer the forge does not say decides leaves it unknown.
+pub(super) fn reviews(
+    forge: Forge,
+    body: &[u8],
+    parse: usize,
+    requested: bool,
+) -> Result<Review, SourceError> {
     let given: Vec<Given> = herald_wire::read(REVIEWS, parse, body)?;
     let mut standing: BTreeMap<String, Verdict> = BTreeMap::new();
     for review in given {
-        if let (Some(user), Some(verdict)) = (&review.user, review.verdict()) {
-            standing.insert(user.login.clone(), verdict);
+        let (Some(user), Some(verdict)) = (&review.user, review.verdict()) else {
+            continue;
+        };
+        match (verdict, review.decides(forge)) {
+            (Verdict::Dismissed, _) | (_, Some(true)) => {
+                standing.insert(user.login.clone(), verdict);
+            }
+            (_, Some(false)) => {}
+            (_, None) => return Ok(Review::Unknown),
         }
     }
     let said = |wanted| standing.values().any(|verdict| *verdict == wanted);

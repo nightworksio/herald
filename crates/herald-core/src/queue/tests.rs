@@ -119,6 +119,26 @@ fn one_listed_past_the_most_read_in_full_is_unknown_unless_a_draft() {
 }
 
 #[test]
+fn a_review_herald_cannot_tell_decides_leaves_the_turn_unknown() {
+    let unknown = Pull {
+        review: Review::Unknown,
+        ..pull()
+    };
+    assert_eq!(
+        unknown.waiting(&Rules::default()),
+        (Turn::Unknown, Reason::ReviewUnknown)
+    );
+    let rules = Rules {
+        approval: false,
+        ..Rules::default()
+    };
+    assert_eq!(
+        unknown.waiting(&rules),
+        (Turn::WaitingOnMerge, Reason::Ready)
+    );
+}
+
+#[test]
 fn running_checks_wait_on_the_checks_until_that_rule_is_off() {
     let running = Pull {
         checks: Checks::Pending,
@@ -293,6 +313,7 @@ fn every_reason_is_written_as_a_row_names_it() {
         Reason::ChecksPending,
         Reason::ReviewRequested,
         Reason::Unapproved,
+        Reason::ReviewUnknown,
         Reason::Ready,
         Reason::Forge("blocked".to_owned()),
         Reason::Label("needs-work".to_owned()),
@@ -313,6 +334,7 @@ fn every_reason_is_written_as_a_row_names_it() {
             "checks-pending",
             "review-requested",
             "unapproved",
+            "review-unknown",
             "ready",
             "forge: blocked",
             "label: needs-work",

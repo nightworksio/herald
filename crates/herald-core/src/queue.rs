@@ -79,6 +79,8 @@ pub enum Review {
     Approved,
     /// A change was asked for.
     ChangesRequested,
+    /// A verdict was given by a reviewer the forge does not say decides.
+    Unknown,
 }
 
 /// What a pull request's head commit's checks say.
@@ -207,6 +209,8 @@ pub enum Reason {
     ReviewRequested,
     /// Nobody approved it yet.
     Unapproved,
+    /// A verdict was given that herald cannot tell decides.
+    ReviewUnknown,
     /// It is approved, green and mergeable.
     Ready,
     /// The forge's own status, as the forge names it.
@@ -232,6 +236,7 @@ impl Reason {
             Self::ChecksPending => "checks-pending".to_owned(),
             Self::ReviewRequested => "review-requested".to_owned(),
             Self::Unapproved => "unapproved".to_owned(),
+            Self::ReviewUnknown => "review-unknown".to_owned(),
             Self::Ready => "ready".to_owned(),
             Self::Forge(status) => format!("forge: {status}"),
             Self::Label(label) => format!("label: {label}"),
@@ -266,6 +271,9 @@ impl Pull {
         }
         if rules.pending && self.checks == Checks::Pending {
             return (Turn::WaitingOnChecks, Reason::ChecksPending);
+        }
+        if rules.approval && self.review == Review::Unknown {
+            return (Turn::Unknown, Reason::ReviewUnknown);
         }
         if rules.approval && self.review != Review::Approved {
             let reason = if self.review == Review::Requested {

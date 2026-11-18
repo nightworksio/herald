@@ -197,7 +197,7 @@ fn github_without_a_token_lists_by_rest_and_reads_each_in_full_up_to_its_most() 
             answer(200, &headed(1..3)),
             answer(
                 200,
-                &json!([ { "user": { "login": "bob" }, "state": "APPROVED" } ]),
+                &json!([ { "user": { "login": "bob" }, "state": "APPROVED", "author_association": "MEMBER" } ]),
             ),
             answer(
                 200,
