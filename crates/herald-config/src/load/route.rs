@@ -5,28 +5,30 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Glob, Kind, Match, Mentions, Pattern, Profile, RoleId,
-    Route, RouteId, SourceName, TemplateName, Thread,
+    Delivery, DestinationName, Filter, Glob, Kind, Match, Mentions, Pattern, Pinning, Pins,
+    Profile, RoleId, Route, RouteId, SourceName, TemplateName, Thread,
 };
 use toml::Spanned;
-use toml::de::{DeTable, DeValue};
+use toml::de::DeValue;
 
 use super::apps::Named;
-use crate::views::Report;
+use super::boards::BoardRoute;
+use crate::views::{Report, Rule};
 
 /// What a route may name among its sources beside `[sources]`: the apps,
-/// and the reports.
+/// the reports and the rules.
 #[derive(Clone, Copy)]
 pub(super) struct Others<'a> {
     pub(super) apps: &'a BTreeMap<String, Named>,
     pub(super) reports: &'a BTreeMap<String, Report>,
+    pub(super) rules: &'a BTreeMap<String, Rule>,
 }
 use super::templates::Written;
 use super::{Loader, Value, list};
 use herald_kinds::{Destination, Placed, Placing, Source};
 
 use crate::config::RouteConfig;
-use crate::file::{MatchFile, ROUTE_KEYS, RouteFile, ThreadFile};
+use crate::file::{MatchFile, PinFile, ROUTE_KEYS, RouteFile, ThreadFile};
 use crate::kinds::At;
 
 /// A route as its keys say, before its templates are compiled.
@@ -217,6 +219,8 @@ impl Loader<'_> {
                 let named = sources.get(&SourceName::new(name));
                 let posted: Vec<Kind> = if others.reports.contains_key(name) {
                     vec![Kind::REPORT]
+                } else if others.rules.contains_key(name) {
+                    vec![Kind::NUDGE]
                 } else if others.apps.contains_key(name)
                     || named.is_some_and(|source| source.any_kind())
                 {
@@ -285,17 +289,6 @@ impl Loader<'_> {
         Some(kinds)
     }
 
-    fn split<'i>(&mut self, value: Value<'i>, path: &str) -> Option<(Value<'i>, Value<'i>)> {
-        let (span, table) = self.table(value, path)?;
-        let (common, rest): (DeTable<'i>, DeTable<'i>) = table
-            .into_iter()
-            .partition(|(key, _)| ROUTE_KEYS.contains(&key.get_ref().as_ref()));
-        Some((
-            Spanned::new(span.clone(), DeValue::Table(common)),
-            Spanned::new(span, DeValue::Table(rest)),
-        ))
-    }
-
     fn sources_named(
         &mut self,
         route: &RouteFile,
@@ -309,28 +302,58 @@ impl Loader<'_> {
             if !sources.contains_key(&SourceName::new(name))
                 && !others.apps.contains_key(name)
                 && !others.reports.contains_key(name)
+                && !others.rules.contains_key(name)
             {
                 let mut names: Vec<&str> = sources
                     .keys()
                     .map(SourceName::as_str)
                     .chain(others.apps.keys().map(String::as_str))
                     .chain(others.reports.keys().map(String::as_str))
+                    .chain(others.rules.keys().map(String::as_str))
                     .collect();
                 names.sort_unstable();
                 let hint = if names.is_empty() {
-                    format!("name it under [sources.{name}], [apps.{name}] or [reports.{name}]")
+                    format!(
+                        "name it under [sources.{name}], [apps.{name}], [reports.{name}] or [rules.{name}]"
+                    )
                 } else {
-                    format!("the sources, apps and reports are {}", list(&names))
+                    format!("the sources, apps, reports and rules are {}", list(&names))
                 };
                 self.error(
                     &source.span(),
                     &format!("{path}.sources"),
-                    format!("no source, app or report is named \"{name}\"; {hint}"),
+                    format!("no source, app, report or rule is named \"{name}\"; {hint}"),
                 );
                 sound = false;
             }
         }
         sound
+    }
+
+    /// Whether `route` names only reports among its sources where it is
+    /// living.
+    fn lives(&mut self, route: &RouteFile, path: &str, others: Others<'_>) -> bool {
+        if !route.living {
+            return true;
+        }
+        let unreported: Vec<&str> = route
+            .sources
+            .iter()
+            .map(|source| source.get_ref().as_str())
+            .filter(|name| !others.reports.contains_key(*name))
+            .collect();
+        if unreported.is_empty() {
+            return true;
+        }
+        self.error(
+            &route.id.span(),
+            &format!("{path}.living"),
+            format!(
+                "a living route keeps one post of each report it takes, so it names only reports among its sources; {} is not one",
+                list(&unreported)
+            ),
+        );
+        false
     }
 
     fn placed(
@@ -376,14 +399,20 @@ impl Loader<'_> {
         value: Option<Value<'_>>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         sources: &BTreeMap<SourceName, Source>,
-        (apps, reports): (&BTreeMap<String, Named>, &BTreeMap<String, Report>),
+        (others, boards): (Others<'_>, Vec<BoardRoute<'_>>),
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Vec<Read> {
-        let others = Others { apps, reports };
         let mut routes = Vec::new();
         let mut ids: BTreeSet<RouteId> = BTreeSet::new();
-        for (index, value) in self.routes(value).into_iter().enumerate() {
-            let Some(read) = self.route(index, value, destinations, sources, others, templates)
+        let written: Vec<BoardRoute<'_>> = self
+            .routes(value)
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| (format!("routes[{index}]"), value))
+            .chain(boards)
+            .collect();
+        for (path, value) in written {
+            let Some(read) = self.route(path, value, destinations, sources, others, templates)
             else {
                 continue;
             };
@@ -522,15 +551,14 @@ impl Loader<'_> {
 
     fn route(
         &mut self,
-        index: usize,
+        path: String,
         value: Value<'_>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         sources: &BTreeMap<SourceName, Source>,
         others: Others<'_>,
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Option<Read> {
-        let path = format!("routes[{index}]");
-        let (common, rest) = self.split(value, &path)?;
+        let (common, rest) = self.parted(value, &path, &ROUTE_KEYS)?;
         let route = self.typed::<RouteFile>(common, &path)?;
         let mut sound = self.sources_named(&route, &path, sources, others);
         let destination = DestinationName::new(route.destination.get_ref());
@@ -547,11 +575,12 @@ impl Loader<'_> {
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let (private, stated) = (route.private.unwrap_or_default(), route.private.is_some());
+        sound &= self.lives(&route, &path, others);
         let (group, group_key) = self.grouping(route.group, (&path, &options, feeds)).unzip();
         let delivery = Delivery {
             crosspost: route.crosspost,
             thread: route.thread.map(opened),
-            pin: route.pin,
+            pin: pinned(route.pin, route.living, profile.features.pins),
             mentions: Mentions {
                 roles: mentioned(route.mentions.roles, options.opt_in_role()),
                 subscribers: route.mentions.subscribers,
@@ -560,6 +589,7 @@ impl Loader<'_> {
             edits: route.edits,
             withdraw: route.withdraw,
             group,
+            living: route.living,
         };
         let reach = Reach {
             name,
@@ -627,6 +657,15 @@ impl Loader<'_> {
             path,
         })
     }
+}
+
+/// How a route pins as `pin` says, a living one where it says nothing
+/// pinning by its marker where its destination pins as `pins` says.
+fn pinned(pin: Option<PinFile>, living: bool, pins: Pins) -> Option<Pinning> {
+    pin.map_or_else(
+        || (living && pins != Pins::None).then(Pinning::default),
+        PinFile::pinning,
+    )
 }
 
 /// The thread `thread` asks a route to open.

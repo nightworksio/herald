@@ -539,6 +539,7 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
         let revising = entry.map(|entry| {
             let revised = match subject.group {
                 Some(_) => regrouped(entry, revision, edits),
+                None if delivery.living => regrouped(entry, revision, edits),
                 None => revise(entry, revision, delivery, edits),
             };
             (entry, revised)

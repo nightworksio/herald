@@ -151,6 +151,24 @@ impl Loader<'_> {
         None
     }
 
+    /// The table `value` at `path`, parted into the keys `keys` names and
+    /// the rest, each with where the table is written.
+    fn parted<'i>(
+        &mut self,
+        value: Value<'i>,
+        path: &str,
+        keys: &[&str],
+    ) -> Option<(Value<'i>, Value<'i>)> {
+        let (span, table) = self.table(value, path)?;
+        let (named, rest): (DeTable<'i>, DeTable<'i>) = table
+            .into_iter()
+            .partition(|(key, _)| keys.contains(&key.get_ref().as_ref()));
+        Some((
+            Spanned::new(span.clone(), DeValue::Table(named)),
+            Spanned::new(span, DeValue::Table(rest)),
+        ))
+    }
+
     fn kinded<'i>(
         &mut self,
         value: Value<'i>,
@@ -267,19 +285,24 @@ pub fn load(
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
     let views = loader.views(sections.views, &sources);
-    let reports = loader.reports(
-        sections.reports,
-        &views,
-        &sources,
-        &listed.keys().map(String::as_str).collect(),
-    );
+    let (boarded, boards) = loader.boards(sections.boards);
+    let named = listed.keys().map(String::as_str).collect();
+    let reports = loader.reports(sections.reports, boarded, &views, (&sources, &named));
+    let rules = loader.rules(sections.rules, &views, (&sources, &named), &reports);
     let github_apps = loader.github_apps(sections.github_apps, store.as_ref());
     loader.installed((&sources, &source_spans), &github_apps);
     let routes = loader.every_route(
         sections.routes,
         &destinations,
         &sources,
-        (&listed, &reports),
+        (
+            route::Others {
+                apps: &listed,
+                reports: &reports,
+                rules: &rules,
+            },
+            boards,
+        ),
         &templates,
     );
     loader.followed(store.as_ref(), &destinations, &routes);
@@ -319,6 +342,7 @@ pub fn load(
         github_apps,
         views,
         reports,
+        rules,
         schedule,
         server,
         federation,
@@ -333,6 +357,7 @@ pub fn load(
 }
 
 mod apps;
+mod boards;
 mod declared;
 mod destinations;
 mod federation;

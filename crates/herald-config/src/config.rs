@@ -39,8 +39,11 @@ pub struct Config {
     /// The views of open pull requests, by name, the built-in `queue` among
     /// them (ADR-0055).
     pub views: BTreeMap<String, crate::ViewConfig>,
-    /// The reports routes name among their sources, by name (ADR-0055).
+    /// The reports routes name among their sources, by name, each board's
+    /// among them (ADR-0055, ADR-0056).
     pub reports: BTreeMap<String, crate::Report>,
+    /// The rules routes name among their sources, by name (ADR-0056).
+    pub rules: BTreeMap<String, crate::Rule>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
     /// How a run holds and keeps an announcement.

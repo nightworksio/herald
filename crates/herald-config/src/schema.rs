@@ -11,6 +11,7 @@ use crate::file::{
     MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile,
     TemplateFile,
 };
+use crate::views::BOARD_KEYS;
 
 /// `version`: the one version of the config this herald reads.
 struct VersionSchema;
@@ -77,6 +78,45 @@ impl JsonSchema for RouteSchema {
     }
 }
 
+/// A board: its schema is a report's and a route's to its kind, but for
+/// the keys a board gives itself.
+struct BoardSchema;
+
+impl JsonSchema for BoardSchema {
+    fn schema_name() -> Cow<'static, str> {
+        BOARD.into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        Schema::default()
+    }
+}
+
+/// The schema of a board to the destination whose route schema is
+/// `route`: its report's keys, and its route's but those it gives itself.
+fn boarded(route: &serde_json::Value, report: &serde_json::Value) -> serde_json::Value {
+    let mut board = route.clone();
+    if let Some(properties) = board
+        .get_mut("properties")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        properties.retain(|key, _| !BOARD_KEYS.contains(&key.as_str()));
+        if let Some(own) = report
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+        {
+            properties.extend(own.clone());
+        }
+    }
+    if let Some(required) = board
+        .get_mut("required")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        required.retain(|key| !BOARD_KEYS.contains(&key.as_str().unwrap_or_default()));
+    }
+    board
+}
+
 /// A destination's table, tagged by its kind.
 #[derive(JsonSchema)]
 #[serde(tag = "kind")]
@@ -116,6 +156,10 @@ const STORE: &str = "Store";
 const DESTINATION: &str = "Destination";
 /// The schema's name for a route.
 const ROUTE: &str = "Route";
+/// The schema's name for a board.
+const BOARD: &str = "Board";
+/// The schema's name for a report.
+const REPORT: &str = "Report";
 
 /// `schema` with null taken out of every type it allows, as TOML has no
 /// null: a key left out is how a config gives none.
@@ -265,6 +309,19 @@ struct FileSchema {
     /// The reports routes name among their sources, by name.
     #[serde(default)]
     reports: BTreeMap<String, crate::views::ReportFile>,
+    /// The rules routes name among their sources, by name: each a view
+    /// watched once a window, nudging each pull request that waited past a
+    /// stage.
+    #[serde(default)]
+    rules: BTreeMap<String, crate::views::RuleSchema>,
+    /// The living boards, by name: each a report and a route that keeps
+    /// one post of it, edited each window and pinned.
+    #[serde(default)]
+    #[expect(
+        clippy::zero_sized_map_values,
+        reason = "only the schema's derive reads the map, and its kinds' schemas take the value's place"
+    )]
+    boards: BTreeMap<String, BoardSchema>,
     /// How often a driver that keeps its own schedule polls and keeps house.
     schedule: Option<ScheduleFile>,
     /// How `herald server` listens, and what it takes on at once.
@@ -331,6 +388,20 @@ pub fn schema(kinds: &Kinds) -> String {
         serde_json::json!({
             "description": "A route: what it takes, where it announces, and its destination's own\noptions, as its destination's kind defines them.",
             "anyOf": routes,
+        }),
+    );
+    let report = definitions.get(REPORT).cloned().unwrap_or_default();
+    let boards: Vec<serde_json::Value> = routes
+        .iter()
+        .filter_map(|route| route.get("$ref")?.as_str()?.strip_prefix("#/$defs/"))
+        .filter_map(|name| definitions.get(name))
+        .map(|route| boarded(route, &report))
+        .collect();
+    definitions.insert(
+        BOARD.to_owned(),
+        serde_json::json!({
+            "description": "A board: a report's keys, and a living route's to its destination but its id, sources and living, which the board gives itself.",
+            "anyOf": boards,
         }),
     );
     root.insert(

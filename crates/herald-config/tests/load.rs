@@ -145,7 +145,7 @@ body = "{{ event.body }}"
             .replace("template = \"package-release\"", "template = \"other\"");
         assert_eq!(
             errors(&text),
-            "herald.toml:18:12 routes[0].sources: no source, app or report is named \"herald\"; the sources, apps and reports are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"herald:queue\", \"package-release\""
+            "herald.toml:18:12 routes[0].sources: no source, app, report or rule is named \"herald\"; the sources, apps, reports and rules are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"herald:nudge\", \"herald:queue\", \"package-release\""
         );
     }
 
@@ -167,7 +167,7 @@ body = "{{ event.body }}"
             errors(text),
             [
                 "herald.toml:1:11 version: this herald reads version 1 of the config; write version = 1",
-                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"github_apps\", \"views\", \"reports\", \"schedule\", \"server\", \"federation\", \"peers\", \"http\", \"render\", \"announce\", \"run\", \"doctor\"",
+                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"github_apps\", \"views\", \"reports\", \"rules\", \"boards\", \"schedule\", \"server\", \"federation\", \"peers\", \"http\", \"render\", \"announce\", \"run\", \"doctor\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"deno-kv\", \"fastly-kv\", \"dynamodb\", \"git-branch\", \"markers\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
                 "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"ghcr\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"oci\", \"feed\", \"herald\"",
@@ -682,7 +682,7 @@ body = "{{ event.body }}"
         let unknown =
             errors(&EXAMPLE.replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]"));
         assert!(
-            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", \"alert\", \"pull-request\", \"issue\", \"report\", or declare it under [kinds.tweet]"),
+            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", \"alert\", \"pull-request\", \"issue\", \"report\", \"nudge\", or declare it under [kinds.tweet]"),
             "{unknown}"
         );
         assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");

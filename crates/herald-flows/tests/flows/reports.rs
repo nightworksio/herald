@@ -239,17 +239,24 @@ fn a_source_that_cannot_be_read_stops_the_report_until_the_next_round() {
 
 #[test]
 fn a_report_that_makes_no_event_stops_and_one_with_no_view_read_is_refused() {
-    let config = config("[reports.\"\"]");
+    let config = config(
+        "[reports.\"\"]\n[[routes]]\nid = \"nameless\"\nsources = [\"\"]\ndestination = \"discord\"\nchannel = \"1566200000000000100\"\ntemplate = \"t\"\nprivate = true",
+    );
     let script = Script::answering(&[
         (GRAPHQL, 200, &page("o/closed", "PUBLIC")),
         (GRAPHQL, 200, &page("o/open", "PUBLIC")),
-        (GRAPHQL, 502, ""),
+        POSTED,
+        TEAM,
     ]);
     let swept = reported(&config, &healthy(), &script);
     assert_eq!(swept[0].source, SourceName::new(""));
     assert!(
         matches!(&swept[0].outcome, Sweep::Stopped(Stop::Source(_))),
         "{swept:?}"
+    );
+    assert!(
+        matches!(&swept[1].outcome, Sweep::Reported { pulls: 2, .. }),
+        "the view read once a round: {swept:?}"
     );
     let unread = herald_flows::queue;
     let secrets = FakeSecrets::default()
@@ -379,5 +386,32 @@ fn a_report_whose_window_cannot_be_read_back_stops_and_one_whose_window_cannot_b
             }
         ),
         "{swept:?}"
+    );
+}
+
+#[test]
+fn a_private_living_route_of_another_report_is_shown_nothing_of_this_one() {
+    let config = config(
+        "[boards.other]\ndestination = \"discord\"\nchannel = \"1566200000000000200\"\nprivate = true\npin = false",
+    );
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/closed", "PRIVATE")),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC")),
+        TEAM,
+        POSTED,
+        TEAM,
+    ]);
+    let swept = reported(&config, &healthy(), &script);
+    assert_eq!(
+        routes_of(&swept[0].outcome),
+        [
+            vec![("team".to_owned(), true)],
+            vec![("public".to_owned(), true)]
+        ]
+    );
+    assert_eq!(swept[1].source, SourceName::new("other"));
+    assert_eq!(
+        routes_of(&swept[1].outcome),
+        [vec![("other".to_owned(), true)]]
     );
 }

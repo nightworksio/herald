@@ -73,13 +73,15 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
             "project",
             "reason",
             "repository",
+            "reviewers",
             "stale",
             "state",
             "title",
             "updated",
             "url",
             "waited",
-            "waited_seconds"
+            "waited_seconds",
+            "waiting_on"
         ]
     );
     let batch = value

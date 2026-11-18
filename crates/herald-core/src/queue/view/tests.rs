@@ -418,3 +418,41 @@ fn a_view_s_rules_tell_whose_turn_by_herald_s_own() {
     };
     assert_eq!(names(&board_of(&unrequired, &pulls)), ["waiting-on-merge"]);
 }
+
+#[test]
+fn a_row_waits_on_its_author_its_reviewers_or_nobody_by_its_state() {
+    let asked = Pull {
+        reviewers: vec!["ana".to_owned()],
+        ..pull()
+    };
+    let cases = [
+        (Turn::Draft, vec!["wessel"]),
+        (Turn::WaitingOnAuthor, vec!["wessel"]),
+        (Turn::WaitingOnReview, vec!["ana"]),
+        (Turn::WaitingOnMerge, Vec::new()),
+        (Turn::WaitingOnChecks, Vec::new()),
+        (Turn::Queued, Vec::new()),
+        (Turn::Unknown, Vec::new()),
+    ];
+    for (state, logins) in cases {
+        let row = Row {
+            pull: asked.clone(),
+            state,
+            reason: Reason::Untold,
+            waited: SignedDuration::ZERO,
+            stale: false,
+        };
+        assert_eq!(row.waiting_on(), logins, "{state:?}");
+    }
+    let authorless = Row {
+        pull: Pull {
+            author: None,
+            ..asked
+        },
+        state: Turn::WaitingOnAuthor,
+        reason: Reason::Untold,
+        waited: SignedDuration::ZERO,
+        stale: false,
+    };
+    assert_eq!(authorless.waiting_on(), Vec::<&str>::new());
+}

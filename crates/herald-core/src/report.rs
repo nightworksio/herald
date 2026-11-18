@@ -110,16 +110,17 @@ pub fn zone(name: &str) -> Result<TimeZone, jiff::Error> {
 /// The event announcing report `name`'s window that began at `start`,
 /// showing `board` of the view `view`, its project the report's name: private
 /// where any row it shows is not public, as a repository whose visibility
-/// is unknown is not.
+/// is unknown is not. A living report's identity names no window, so each
+/// window edits its one post (ADR-0056).
 ///
 /// # Errors
 ///
 /// Where `name` is empty.
 pub fn report_event(
-    name: &str,
-    view: &str,
+    (name, view): (&str, &str),
     board: &Board,
     start: Timestamp,
+    living: bool,
 ) -> Result<Event, Problem> {
     let private = board
         .groups
@@ -129,7 +130,11 @@ pub fn report_event(
         .any(|row| row.pull.visibility != Visibility::Public);
     let count = |count: usize| Attribute::Number(u64::try_from(count).unwrap_or(u64::MAX).into());
     let event = Event::normalise(Draft {
-        identity: report_identity(name, start),
+        identity: if living {
+            living_identity(name)
+        } else {
+            report_identity(name, start)
+        },
         kind: Kind::REPORT,
         project: name.to_owned(),
         title: name.to_owned(),
@@ -147,6 +152,13 @@ pub fn report_event(
     } else {
         Visibility::Public
     }))
+}
+
+/// The identity of living report `name`'s one post, which every window
+/// edits (ADR-0056).
+#[must_use]
+pub fn living_identity(name: &str) -> String {
+    format!("{REPORT_PREFIX}/{name}")
 }
 
 /// The identity of report `name`'s window that began at `start`, which

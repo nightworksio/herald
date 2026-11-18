@@ -30,6 +30,8 @@ fn row_value(row: &Row) -> Value {
         bot => pull.bot,
         draft => pull.draft,
         labels => pull.labels.clone(),
+        reviewers => pull.reviewers.clone(),
+        waiting_on => row.waiting_on().into_iter().map(str::to_owned).collect::<Vec<_>>(),
         opened => pull.opened.to_string(),
         updated => pull.updated.to_string(),
         state => row.state.name(),

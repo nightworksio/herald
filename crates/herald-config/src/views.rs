@@ -3,7 +3,7 @@
 
 use std::num::NonZeroUsize;
 
-use herald_core::{Duration, ReportSchedule, SourceName, Turn, View};
+use herald_core::{Duration, ReportSchedule, SourceName, Stages, Turn, View};
 use herald_kinds::Most;
 use jiff::civil::Weekday;
 use schemars::JsonSchema;
@@ -25,6 +25,17 @@ pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pul
 /// each batch of bumps.
 pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.{% endif %}";
 
+/// The template herald ships for a nudge, which a route names as
+/// `template = "herald:nudge"` and `[templates."herald:nudge"]` replaces.
+pub const NUDGE_TEMPLATE: &str = "herald:nudge";
+
+/// The title of [`NUDGE_TEMPLATE`].
+pub(crate) const NUDGE_TITLE: &str = "{{ event.attributes.repository }}#{{ event.attributes.number }} has waited {{ event.attributes.waited }}";
+
+/// The body of [`NUDGE_TEMPLATE`]: whose turn it is, why, and the logins
+/// it waits on, which it names without mentioning.
+pub(crate) const NUDGE_BODY: &str = "{{ event.title }}: {{ event.attributes.turn }} ({{ event.attributes.reason }}){% if event.attributes.waiting_on %}, waiting on {{ event.attributes.waiting_on }}{% endif %}.";
+
 /// A view: the open pull requests it shows of the sources it reads, and
 /// how many it reads of each.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +55,18 @@ pub struct Report {
     pub view: String,
     /// When each of its windows begins.
     pub schedule: ReportSchedule,
+}
+
+/// A rule: the view it watches, when it looks, and how long a pull
+/// request waits before each nudge (ADR-0056).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rule {
+    /// The view it watches, and when its windows begin.
+    pub watch: Report,
+    /// How long a pull request waits before each nudge.
+    pub stages: Stages,
+    /// The most pull requests it nudges a window.
+    pub most: usize,
 }
 
 /// What a view does with a bot's pull requests.
@@ -263,4 +286,43 @@ impl ReportFile {
     pub(crate) const AT: &str = "09:00";
     /// The zone the schema and the loader's errors show as an example.
     pub(crate) const ZONE: &str = "Europe/Amsterdam";
+}
+
+/// The keys of `[reports.<name>]`, which a board and a rule write too.
+pub(crate) const REPORT_KEYS: [&str; 5] = ["view", "every", "at", "days", "zone"];
+
+/// The keys of a route a board gives itself, and so names none of.
+pub(crate) const BOARD_KEYS: [&str; 3] = ["id", "sources", "living"];
+
+/// The keys of `[rules.<name>]` beside a report's.
+pub(crate) const RULE_KEYS: [&str; 2] = ["stages", "most"];
+
+/// What `[rules.<name>]` writes beside the view it watches and when it
+/// looks, which it writes as a report does.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "RuleStages")]
+pub(crate) struct RuleFile {
+    /// How long an open pull request waits, since anyone last acted on
+    /// it, before each nudge, such as `["2d", "7d"]`: each fires once a
+    /// spell of waiting.
+    #[schemars(with = "Vec<Duration>", length(min = 1, max = herald_core::MOST_STAGES))]
+    pub(crate) stages: Spanned<Vec<Duration>>,
+    /// The most pull requests it nudges a window, the longest waiting
+    /// first: 20 where absent; the rest wait for the next window.
+    pub(crate) most: Option<std::num::NonZeroUsize>,
+}
+
+/// `[rules.<name>]`: a view watched once a window, and a nudge for each
+/// pull request that waited past a stage, through the routes naming the
+/// rule among their sources.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[schemars(rename = "Rule")]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+pub(crate) struct RuleSchema {
+    #[serde(flatten)]
+    watch: ReportFile,
+    #[serde(flatten)]
+    stages: RuleFile,
 }

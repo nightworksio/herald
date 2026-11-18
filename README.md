@@ -651,9 +651,13 @@ whose turn each is: on review, on its author, on checks or ready to merge,
 with bots' bumps gathered into batches across repositories. A
 `[reports.<name>]` table announces a view once a window, at a wall-clock
 time in its own time zone, through the routes naming the report, and the
-shipped `herald:queue` template renders it. `herald queue` prints a view
-now. [`.docs/queue.md`](.docs/queue.md) covers views, reports, what each
-forge's read costs, and private repositories.
+shipped `herald:queue` template renders it. A `[boards.<name>]` table, or
+a route with `living = true`, keeps one pinned post of a report, edited
+each window. A `[rules.<name>]` table nudges each pull request that waited
+past one of its `stages`, once a stage and spell of waiting. `herald
+queue` prints a view now. [`.docs/queue.md`](.docs/queue.md) covers
+views, reports, boards, rules, what each forge's read costs, and private
+repositories.
 
 ### Every package of a namespace
 

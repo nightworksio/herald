@@ -139,6 +139,9 @@ pub struct Pull {
     pub updated: Timestamp,
     /// What its reviews say.
     pub review: Review,
+    /// Who was asked to review it: each reviewer's login, or a team's
+    /// `org/team`, as the forge lists them.
+    pub reviewers: Vec<String>,
     /// What its head's checks say.
     pub checks: Checks,
     /// Whether it merges cleanly.

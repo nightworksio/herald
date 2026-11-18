@@ -1,8 +1,9 @@
-# The queue: views and reports
+# The queue: views, reports, boards and rules
 
 A view names which open pull requests herald shows, and whose turn each
 is. A report announces a view once a window through the routes naming it,
-and `herald queue` prints one now. Each reads a source naming one
+a board keeps one post of it current, a rule nudges each pull request
+that waited too long, and `herald queue` prints one now. Each reads a source naming one
 repository on GitHub, GitLab or Forgejo, live, as the report or command
 runs.
 
@@ -101,7 +102,8 @@ the most requests it takes a round.
 | `zone` | the IANA time zone `at` and `days` are read in | `"UTC"` |
 
 A window begins at `at`, then each `every` after it until the day ends. A
-report's name is a source a route names: no source or app may share it.
+report's name is a source a route names: no source, app, other report or
+rule may share it.
 Each poll announces every report whose window began, after its sources;
 `POST /herald/round/report` announces the reports alone, for a host that
 times them apart. A report of a window is announced once: its identity is
@@ -121,6 +123,74 @@ where the view read none. With `"warn"` every route is shown every row
 and doctor names each route that is not private; with `"allow"` it says
 nothing.
 
+## Boards
+
+A route with `living = true` keeps one post of each report it takes: the
+first window posts it, and each window after edits it where it renders
+otherwise (ADR-0056). Its identity is `report/<name>`, with no window. A
+living route pins its post where it says nothing of `pin` and its
+destination pins; `pin = false` leaves it unpinned. A living route names
+only reports among its sources. Where its destination cannot edit a post,
+as a Slack incoming webhook cannot, each window is posted anew and doctor
+says so.
+
+A `[boards.<name>]` table is a report and a living route to it at once:
+it takes a report's keys and a route's but `id`, `sources` and `living`,
+which it gives itself. Its route's id and its report's name are the
+board's name, and it renders `herald:queue` where it names no template.
+
+```toml
+[boards.queue]
+view = "review"
+every = "1h"
+destination = "discord"
+channel = "1566200000000000100"
+private = true
+```
+
+## Rules
+
+A `[rules.<name>]` table watches a view once a window, as a report does,
+and nudges each open pull request that waited past one of its `stages`:
+
+| Key | What it sets | Where absent |
+|-----|--------------|--------------|
+| `stages` | how long a pull request waits before each nudge, 1 to 16 lengths such as `["2d", "7d"]` | required |
+| `most` | the most pull requests it nudges a window, the longest waiting first; the rest wait for the next window | `20` |
+| `view`, `every`, `at`, `days`, `zone` | as a report's | as a report's |
+
+A pull request's spell of waiting begins when anyone last acted on it, as
+the forge's last update says, the clock `stale` reads. Each stage fires
+once a spell, at the longest stage the pull request reached: its identity
+is `rule/<name>/<host>/<repository>/pull/<number>/<spell start>/<stage>`.
+A push, a review or a comment begins a new spell.
+
+The `nudge` event carries `rule`, `stage`, `turn`, `reason`, `waited`,
+`spell`, `repository`, `number`, `bot`, and `author` and `waiting_on`
+where the forge names them, and links the pull request as `pull`. It
+names the logins whose turn it is, its author's or each reviewer's asked,
+without mentioning anyone. A nudge of a private or internal repository
+reaches only private routes while `[doctor] private_to_public` refuses.
+herald ships `herald:nudge`; a `[templates."herald:nudge"]` table replaces
+it.
+
+```toml
+[rules.waiting]
+view = "review"
+stages = ["2d", "7d"]
+every = "1h"
+
+[[routes]]
+id = "nudges"
+sources = ["waiting"]
+destination = "discord"
+channel = "1566200000000000200"
+template = "herald:nudge"
+private = true
+```
+
+Reports and rules watching one view read it once a round.
+
 ## Templates
 
 A route's template reads the board as `view`:
@@ -131,7 +201,7 @@ A route's template reads the board as `view`:
 | `view.counts` | each state with its `count`, as `{ state, count }` |
 | `view.groups` | each group's `name` and `rows` |
 | `view.batches` | each batch's `package`, `to`, `green`, `failing` and `rows` |
-| a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale` |
+| a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `reviewers` (each asked, or a team's `org/team`), `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale`, `waiting_on` (the logins whose turn it is) |
 
 herald ships `herald:queue`; a `[templates."herald:queue"]` table replaces
 it.

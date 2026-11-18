@@ -1,21 +1,26 @@
-//! `[views.*]` and `[reports.*]` (ADR-0055): views read before the reports
-//! naming them, reports before the routes naming them among their sources.
+//! `[views.*]`, `[reports.*]` (ADR-0055) and `[rules.*]` (ADR-0056): views
+//! read before the reports and rules naming them, and those before the
+//! routes naming them among their sources.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
-    Bots, BumpPattern, Deciding, Glob, GroupBy, ReportSchedule, Rules, SourceName, View, zone,
+    Bots, BumpPattern, Deciding, Glob, GroupBy, MOST_NUDGES, MOST_STAGES, ReportSchedule, Rules,
+    SourceName, Stages, View, zone,
 };
 use herald_kinds::{Most, Source};
+use jiff::SignedDuration;
 use jiff::civil::Time;
 use toml::Spanned;
 
+use super::boards::Boarded;
 use super::{Loader, Value, list};
 use crate::views::{
-    BUILT_IN_VIEW, BotsFile, DecidingFile, DecidingName, GroupByFile, Report, ReportFile,
-    RulesFile, ViewConfig, ViewFile,
+    BUILT_IN_VIEW, BotsFile, DecidingFile, DecidingName, GroupByFile, RULE_KEYS, Report,
+    ReportFile, Rule, RuleFile, RulesFile, ViewConfig, ViewFile,
 };
 
 /// The names of `sources` that list their repository's open pull requests.
@@ -273,54 +278,153 @@ impl Loader<'_> {
         })
     }
 
-    /// Each report of `[reports]`, showing one of `views`, its name one no
-    /// source of `sources` and no app of `apps` has.
+    /// Whether `name`, written at `span` of `path`, is no source's of
+    /// `sources`, no app's of `apps` and none of `taken`'s, as a route
+    /// names sources, apps, reports and rules alike.
+    fn unshared(
+        &mut self,
+        (name, path, span): (&str, &str, &Range<usize>),
+        sources: &BTreeMap<SourceName, Source>,
+        apps: &BTreeSet<&str>,
+        taken: &[&str],
+    ) -> bool {
+        let shared = sources.contains_key(&SourceName::new(name))
+            || apps.contains(name)
+            || taken.contains(&name);
+        if shared {
+            self.error(
+                span,
+                path,
+                format!(
+                    "a source, app, report or rule is named \"{name}\" too; a route names each alike, so give each its own name"
+                ),
+            );
+        }
+        !shared
+    }
+
+    /// The report `file` writes at `path`, showing one of `views`, where
+    /// it is sound.
+    fn report(
+        &mut self,
+        file: &ReportFile,
+        path: &str,
+        views: &BTreeMap<String, ViewConfig>,
+    ) -> Option<Report> {
+        let view = file
+            .view
+            .as_ref()
+            .map_or_else(|| BUILT_IN_VIEW.to_owned(), |view| view.get_ref().clone());
+        let mut sound = true;
+        if let (Some(named), false) = (&file.view, views.contains_key(&view)) {
+            let names: Vec<&str> = views.keys().map(String::as_str).collect();
+            self.error(
+                &named.span(),
+                &format!("{path}.view"),
+                format!(
+                    "no view is named \"{view}\"; the views are {}",
+                    list(&names)
+                ),
+            );
+            sound = false;
+        }
+        let schedule = self.report_schedule(file, path);
+        let (true, Some(schedule)) = (sound, schedule) else {
+            return None;
+        };
+        Some(Report { view, schedule })
+    }
+
+    /// Each report of `[reports]`, and of each board of `boarded`, showing
+    /// one of `views`, its name one no source of `sources`, no app of
+    /// `apps` and no other report has.
     pub(super) fn reports(
         &mut self,
         value: Option<Value<'_>>,
+        boarded: Vec<Boarded<'_>>,
         views: &BTreeMap<String, ViewConfig>,
-        sources: &BTreeMap<SourceName, Source>,
-        apps: &BTreeSet<&str>,
+        (sources, apps): (&BTreeMap<SourceName, Source>, &BTreeSet<&str>),
     ) -> BTreeMap<String, Report> {
+        let written: Vec<Boarded<'_>> = self
+            .named(value, "reports")
+            .into_iter()
+            .map(|(name, value)| (format!("reports.{name}"), name, value))
+            .chain(boarded)
+            .collect();
         let mut reports = BTreeMap::new();
-        for (name, value) in self.named(value, "reports") {
-            let path = format!("reports.{name}");
+        let mut named: Vec<String> = Vec::new();
+        for (path, name, value) in written {
             let span = value.span();
             let Some(file) = self.typed::<ReportFile>(value, &path) else {
                 continue;
             };
-            let mut sound = true;
-            if sources.contains_key(&SourceName::new(&name)) || apps.contains(name.as_str()) {
-                self.error(
-                    &span,
-                    &path,
-                    format!(
-                        "a source or app is named \"{name}\" too; a route names sources, apps and reports alike, so give each its own name"
-                    ),
-                );
-                sound = false;
-            }
-            let view = file
-                .view
-                .as_ref()
-                .map_or_else(|| BUILT_IN_VIEW.to_owned(), |view| view.get_ref().clone());
-            if let (Some(named), false) = (&file.view, views.contains_key(&view)) {
-                let names: Vec<&str> = views.keys().map(String::as_str).collect();
-                self.error(
-                    &named.span(),
-                    &format!("{path}.view"),
-                    format!(
-                        "no view is named \"{view}\"; the views are {}",
-                        list(&names)
-                    ),
-                );
-                sound = false;
-            }
-            let schedule = self.report_schedule(&file, &path);
-            if let (true, Some(schedule)) = (sound, schedule) {
-                reports.insert(name, Report { view, schedule });
+            let taken: Vec<&str> = named.iter().map(String::as_str).collect();
+            let unshared = self.unshared((&name, &path, &span), sources, apps, &taken);
+            named.push(name.clone());
+            if let (true, Some(report)) = (unshared, self.report(&file, &path, views)) {
+                reports.insert(name, report);
             }
         }
         reports
+    }
+
+    /// The stages `file` writes at `path`, where they are sound.
+    fn stages(&mut self, file: &RuleFile, path: &str) -> Option<Stages> {
+        let written: Vec<SignedDuration> =
+            file.stages.get_ref().iter().map(|stage| stage.0).collect();
+        let stages = Stages::new(written);
+        if stages.is_none() {
+            self.error(
+                &file.stages.span(),
+                &format!("{path}.stages"),
+                format!(
+                    "a rule names from 1 to {MOST_STAGES} stages, each a whole second or longer and none twice, such as stages = [\"2d\", \"7d\"]"
+                ),
+            );
+        }
+        stages
+    }
+
+    /// Each rule of `[rules]`, watching one of `views`, its name one no
+    /// source of `sources`, no app of `apps`, no report of `reports` and no
+    /// other rule has.
+    pub(super) fn rules(
+        &mut self,
+        value: Option<Value<'_>>,
+        views: &BTreeMap<String, ViewConfig>,
+        (sources, apps): (&BTreeMap<SourceName, Source>, &BTreeSet<&str>),
+        reports: &BTreeMap<String, Report>,
+    ) -> BTreeMap<String, Rule> {
+        let mut rules = BTreeMap::new();
+        let mut named: Vec<String> = reports.keys().cloned().collect();
+        for (name, value) in self.named(value, "rules") {
+            let path = format!("rules.{name}");
+            let span = value.span();
+            let Some((own, watch)) = self.parted(value, &path, &RULE_KEYS) else {
+                continue;
+            };
+            let file = self.typed::<RuleFile>(own, &path);
+            let watch = self.typed::<ReportFile>(watch, &path);
+            let taken: Vec<&str> = named.iter().map(String::as_str).collect();
+            let unshared = self.unshared((&name, &path, &span), sources, apps, &taken);
+            named.push(name.clone());
+            let (Some(file), Some(watch)) = (file, watch) else {
+                continue;
+            };
+            let stages = self.stages(&file, &path);
+            let watch = self.report(&watch, &path, views);
+            if let (true, Some(stages), Some(watch)) = (unshared, stages, watch) {
+                let most = file.most.map_or(MOST_NUDGES, NonZeroUsize::get);
+                rules.insert(
+                    name,
+                    Rule {
+                        watch,
+                        stages,
+                        most,
+                    },
+                );
+            }
+        }
+        rules
     }
 }

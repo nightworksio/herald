@@ -15,6 +15,7 @@ pub(crate) fn pull() -> Pull {
         opened: Timestamp::from_second(1_000).unwrap(),
         updated: Timestamp::from_second(2_000).unwrap(),
         review: Review::Approved,
+        reviewers: Vec::new(),
         checks: Checks::Passed,
         mergeable: Mergeable::Clean,
         queued: false,

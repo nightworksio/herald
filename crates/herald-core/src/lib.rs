@@ -35,6 +35,7 @@ mod markup;
 mod matching;
 pub mod media;
 mod members;
+mod nudge;
 mod origin;
 mod pattern;
 mod pending;
@@ -100,6 +101,7 @@ pub use kind::{
     PACKAGE_TYPE, PATH, PRERELEASE, PULL_LINK, PULLS, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK,
     SEVERITY, STALE, STATE_REASON, TOOL, TRIGGER, VERSION, VIEW, WORKFLOW, readable, versioned,
 };
+pub use kind::{REASON, REPOSITORY, SPELL, STAGE, TURN, WAITED, WAITING_ON};
 pub use latest::{Latest, Shown};
 pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
@@ -110,6 +112,10 @@ pub use matching::Match;
 pub use members::{
     Delivered, EventsRead, KEEP_MEMBERS, Listed, Listing, MOST_LISTED, MOST_MEMBERS,
     MOST_MEMBERS_ALLOWED, Membership, Owner, Selection, Visibility,
+};
+pub use nudge::{
+    MOST_NUDGES, MOST_STAGES, NUDGE_PREFIX, Nudge, Stages, nudge_event, nudge_identity, nudges,
+    pull_identity, stage_name,
 };
 pub use origin::{Origin, kind_name};
 pub use pattern::Pattern;
@@ -128,7 +134,9 @@ pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
     Templates, view_json, waited,
 };
-pub use report::{REPORT_PREFIX, ReportSchedule, report_event, report_identity, zone};
+pub use report::{
+    REPORT_PREFIX, ReportSchedule, living_identity, report_event, report_identity, zone,
+};
 pub use retention::Retention;
 pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,

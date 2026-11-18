@@ -278,8 +278,15 @@ pub(crate) struct RouteFile {
     /// The thread to open for each announcement.
     pub(crate) thread: Option<ThreadFile>,
     /// Whether to pin each announcement in place of the route's earlier pin,
-    /// and how the earlier pin is found.
-    pub(crate) pin: Option<Pinning>,
+    /// and how the earlier pin is found: `true` finds it by its marker, as
+    /// "markers" does, and `false` pins nothing. A living route pins its
+    /// post where absent and the destination pins.
+    pub(crate) pin: Option<PinFile>,
+    /// Whether it keeps one post of each report it takes, edited each
+    /// window where the destination edits and posted anew each window
+    /// where it cannot; it names only reports among its sources.
+    #[serde(default)]
+    pub(crate) living: bool,
     /// Who it mentions.
     #[serde(default)]
     pub(crate) mentions: MentionsFile,
@@ -394,8 +401,30 @@ impl RouteFile {
     const DESTINATION: &str = "discord";
 }
 
+/// Whether a route pins, and how it finds its earlier pin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+#[serde(rename = "Pin")]
+pub(crate) enum PinFile {
+    /// `true` pins, finding the earlier pin by its marker; `false` pins
+    /// nothing.
+    Flag(bool),
+    /// Pins, finding the earlier pin as this says.
+    By(Pinning),
+}
+
+impl PinFile {
+    /// How the route pins, where it does.
+    pub(crate) fn pinning(self) -> Option<Pinning> {
+        match self {
+            Self::Flag(pins) => pins.then(Pinning::default),
+            Self::By(pinning) => Some(pinning),
+        }
+    }
+}
+
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 17] = [
+pub(crate) const ROUTE_KEYS: [&str; 18] = [
     "id",
     "sources",
     "kinds",
@@ -413,6 +442,7 @@ pub(crate) const ROUTE_KEYS: [&str; 17] = [
     "withdraw",
     "match",
     "group",
+    "living",
 ];
 
 /// A template: its title, and its body inline or in a file beside the config.

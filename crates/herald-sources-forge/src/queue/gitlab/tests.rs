@@ -84,6 +84,11 @@ fn authors_labels_drafts_and_bots_are_read() {
 
 #[test]
 fn the_detailed_merge_status_tells_reviews_checks_and_mergeability() {
+    assert_eq!(status("not_approved", true).reviewers, ["ann"]);
+    assert_eq!(
+        status("not_approved", false).reviewers,
+        Vec::<String>::new()
+    );
     let mergeable = status("mergeable", false);
     assert_eq!(
         (mergeable.review, mergeable.checks, mergeable.mergeable),

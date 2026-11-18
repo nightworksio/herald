@@ -105,6 +105,11 @@ impl Request {
             opened: self.created_at,
             updated: self.updated_at,
             review,
+            reviewers: self
+                .reviewers
+                .into_iter()
+                .map(|reviewer| reviewer.username)
+                .collect(),
             checks,
             mergeable,
             queued: false,

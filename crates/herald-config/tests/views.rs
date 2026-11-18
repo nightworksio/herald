@@ -250,7 +250,7 @@ days = "mon"
             "reports.daily.every: a report's window lasts from \"1m\" to \"1d\"",
             "reports.daily.at: a report begins at a wall-clock time written \"HH:MM\", such as at = \"09:00\"",
             "reports.daily.zone: there is no time zone \"Mars/Olympus\"; name one as the IANA database does, such as zone = \"Europe/Amsterdam\", or \"UTC\"",
-            "reports.gate: a source or app is named \"gate\" too; a route names sources, apps and reports alike, so give each its own name",
+            "reports.gate: a source, app, report or rule is named \"gate\" too; a route names each alike, so give each its own name",
             "reports.gate.at: a report begins at a wall-clock time written",
             "reports.short.every: a report's window lasts from \"1m\" to \"1d\"",
             "reports.typed.days:",
