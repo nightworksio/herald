@@ -16,4 +16,5 @@ pub mod message;
 pub mod multibase;
 pub mod proof;
 pub mod reading;
+pub mod request;
 pub mod structured;

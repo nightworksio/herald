@@ -532,13 +532,18 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.followers` | table | How many may follow each actor, for an ActivityPub destination that names no `followers`. |
 | `federation.followers.most` | integer | The most followers one actor keeps; no limit where unset. |
 | `federation.followers.per_domain` | integer | The most followers one actor keeps from any one server; no limit where unset. |
+| `federation.grants_ending` | [Duration](#duration) | How soon before a grant ends doctor names it: "7d" where absent, at most "90d" (ADR-0054). |
+| `federation.keep_audit` | [Duration](#duration) | How long what each peer asked is kept, by UTC day: "90d" where absent, at most "365d" (ADR-0054). |
 | `federation.keys[].secret` | string | The secret's name. |
 | `federation.lists[].file` | string | The file, as a path beside `herald.toml`. |
 | `federation.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
 | `federation.mode` | [Mode](#mode) | Whom herald's actors federate with, for an ActivityPub destination that names no `mode`: `open` or `allowlist`. |
 | `federation.refresh` | [Duration](#duration) | How long a peer may keep the instance's key set before it reads it again; "1d" where absent, at most "7d". |
+| `federation.refused_nonces` | integer | How many requests of one peer refused past its rate have their nonces kept, counted afresh every 20 minutes, the longest a request lives, so none is taken later: 2400 where absent, its rate's default over that time, at most 9600. Past it the peer is held, and nothing of it is taken until every request it made unkept has expired (ADR-0054). |
+| `federation.replay_rate` | [Rate](#rate) | How many requests replaying a nonce one peer already used are kept in its audit, counted apart from its own rate so a replay spends none of it: "120/m" where absent, at most "480/m"; past it herald answers 429 (ADR-0054). |
 | `federation.revoked` | array of string | Peer keys that are never trusted again, each a Multikey such as `z6Mk…`, as `herald peer revoke` adds them: a peer pinning one does not load, and a new key set naming one is refused. |
 | `federation.signed_for` | [Duration](#duration) | How long each response of herald's API stays signed, from when it is made: "5m" where absent, at most "20m". |
+| `federation.stranger_rate` | [Rate](#rate) | How many requests to a source's inbox that no peer's key signs are kept in the audit: "120/m" where absent, at most "480/m"; the rest are only logged (ADR-0054). |
 
 ## `github_apps`
 
@@ -611,6 +616,10 @@ The other heralds this one trusts, by name.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `peers.<name>.grants[].actions` | array of [Action](#action) | What the peer may do with it, such as `["push"]`. |
+| `peers.<name>.grants[].namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/'. None where absent. |
+| `peers.<name>.grants[].resource` | string | The resource, such as "sources.upstream", a `herald` source. |
+| `peers.<name>.grants[].until` | string | When the grant ends, in RFC 3339 such as "2027-01-01T00:00:00Z" or as a TOML datetime with its offset; never where absent. |
 | `peers.<name>.hops` | integer | The most instances an object from the peer may have passed through: 2 where absent, at most 8. |
 | `peers.<name>.keys` | array of string | The peer's Ed25519 keys, each a Multikey as its discovery document lists it, such as `z6Mk…`, pinned by `herald peer add` once the operator confirms them. A key is never taken from the network unless a pinned key signed it. |
 | `peers.<name>.most` | [Size](#size) | The most bytes of a body the peer sends that are read: "2MiB" where absent, at most "8MiB". A longer one is refused before it is parsed. |
@@ -1524,6 +1533,9 @@ Another herald's feed, each answer and envelope checked against the keys trusted
 | `sources.<name>.peer` | string | The peer of `[peers]` whose feed it pulls, through the keys pinned for it; with `feed`, in place of `url`. |
 | `sources.<name>.peer_share` | integer | How many tombstones of identities it took, which it never forgets, it keeps of any one instance before it takes no new identity of it: 1000 where absent, and at most 4000. A pull reads such an envelope again later; a tombstone of an identity it took is always taken. |
 | `sources.<name>.peer_tombstones` | integer | How many tombstones of identities it never took it keeps of any one instance: 250 where absent, or `tombstones` where that is fewer, and at most `tombstones`. |
+| `sources.<name>.peers.<name>.actions` | array of [Action](#action) | What the peer may do, such as `["push"]`. |
+| `sources.<name>.peers.<name>.namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/', such as "github.com/123456"; every other is taken as herald/<peer>/<identity>. None where absent. |
+| `sources.<name>.peers.<name>.until` | string | When the grant ends, in RFC 3339 such as "2027-01-01T00:00:00Z" or as a TOML datetime with its offset; never where absent. |
 | `sources.<name>.tombstones` | integer | How many tombstones of identities it never took it keeps the proof of in all, so no older envelope of them is taken again, apart from those of identities it took, which it never forgets: 1000 where absent, and at most 4000. It forgets those taken first. |
 | `sources.<name>.url` | string | The full URL of a feed of an instance that is no peer, whose keys `keys` pins; in place of `peer` and `feed`. |
 | `sources.<name>.verify` | [Verify](#verify) | Which envelopes it takes: "origin" (where absent), those the peer proved itself, or "hop", also those it passes on from another peer. |
@@ -1779,6 +1791,10 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.states` | array of [Turn](#turn) | The states it shows, every one where empty. |
 
 ## Types
+
+### Action
+
+What a peer may be granted to do with a resource of this herald.
 
 ### AlertAction
 

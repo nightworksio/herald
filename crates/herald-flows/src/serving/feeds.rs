@@ -10,9 +10,10 @@ use herald_peers::digest::{CONTENT_DIGEST, content_digest};
 use herald_peers::feed::{BEFORE, FEEDS, Listed, Page, tag};
 use herald_peers::keys::method;
 use herald_peers::message::{Component, Covered, Message};
-use herald_ports::{Algorithm, Clock, Published, Signer, Store};
+use herald_ports::{Algorithm, Clock, Http, Published, Signer, Store, Verifier};
 
 use super::discovery::{instance, public_keys};
+use super::inbox::{INBOX, pushed};
 use super::replies::{Answered, missing, refusal, replied, unmethodical};
 use super::{Inbound, Serving};
 
@@ -22,11 +23,21 @@ const IF_NONE_MATCH: &str = "if-none-match";
 const NO_FEED: &str = "herald feed on this host";
 
 /// The answer to `method` on `rest`, the path under herald's API, signed.
-pub(super) async fn api<S: Store, C: Clock, G: Signer, V, H, P, K>(
+pub(super) async fn api<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
     rest: &str,
 ) -> Answered {
+    if let Some(name) = rest.strip_prefix(INBOX) {
+        let Some(name) = Escaping::UNRESERVED.unescape(name) else {
+            return missing("such path");
+        };
+        return if inbound.method == "POST" {
+            pushed(serving, inbound, &name).await
+        } else {
+            unmethodical()
+        };
+    }
     let named = rest
         .strip_prefix(FEEDS)
         .map(|name| Escaping::UNRESERVED.unescape(name));

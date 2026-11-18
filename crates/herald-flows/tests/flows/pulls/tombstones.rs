@@ -6,7 +6,7 @@ use herald_config::Uses;
 use herald_core::{DestinationName, Identity, RouteId, SourceName, Step, Tombstone, Withdraw};
 use herald_flows::{Announced, Outcome, Ports, Remembered, Stop, Sweep, announce, prepare};
 use herald_peers::keys::method;
-use herald_ports::Published as _;
+use herald_ports::{Cursors as _, Published as _};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
 use serde_json::{Value, json};
@@ -59,6 +59,19 @@ fn announcing(config: &herald_config::Config) -> Failing {
         ["herald/upstream/a/2"]
     );
     store
+}
+
+/// Forgets the projects the source's cursor in `store` keeps.
+fn forget_projects(store: &Failing) {
+    let up = SourceName::new("up");
+    let kept = pollster::block_on(store.inner.cursor(&up))
+        .unwrap()
+        .unwrap();
+    let forgot = herald_core::Cursor {
+        projects: std::collections::BTreeMap::new(),
+        ..kept.value
+    };
+    pollster::block_on(store.inner.put_cursor(&up, &forgot, Some(kept.version))).unwrap();
 }
 
 /// What the route did with the identity a pull's tombstone withdrew, with
@@ -442,7 +455,117 @@ fn a_withdrawal_that_stops_keeps_the_cursor_and_the_next_round_finishes_it() {
 }
 
 #[test]
-fn a_route_announcing_each_project_as_its_own_actor_keeps_what_a_tombstone_withdraws() {
+fn a_withdrawal_as_a_project_s_actor_is_skipped_where_the_project_names_no_actor() {
+    let acting = format!(
+        r#"{FROM_PEER}
+[destinations.fedi]
+kind = "activitypub"
+domain = "herald.self"
+key = {{ secret = "HERALD_KEY" }}
+[[routes]]
+id = "actors"
+sources = ["up"]
+destination = "fedi"
+template = "t"
+actor = "{{{{ event.project }}}}"
+withdraw = "delete"
+private = false
+[templates.t]
+title = "{{{{ event.title }}}}"
+body = "{{{{ event.body }}}}"
+"#
+    );
+    let config = config("", &acting);
+    let store = healthy();
+    let quiet = Peer::answering(vec![page(&[(1, release("a/1", &OLD))], &OLD)]);
+    pulled(&config, &store, &quiet);
+    let later = Peer::answering(vec![page(
+        &[(2, release("a/2", &OLD)), (1, release("a/1", &OLD))],
+        &OLD,
+    )]);
+    assert_eq!(
+        announced(&pulled(&config, &store, &later)),
+        ["herald/upstream/a/2"]
+    );
+    let identity = Identity::new("herald/upstream/a/2");
+    assert_eq!(cursor(&store).unwrap().project_of(&identity), Some("gate"));
+    let tombstoned = Peer::answering(vec![page(&[(3, tombstone("a/2", &OLD))], &OLD)]);
+    let mut kept = cursor(&store).unwrap();
+    kept.projects
+        .insert(identity.clone(), "No Actor!".to_owned());
+    let version = pollster::block_on(store.inner.cursor(&herald_core::SourceName::new("up")))
+        .unwrap()
+        .map(|record| record.version);
+    pollster::block_on(
+        store
+            .inner
+            .put_cursor(&herald_core::SourceName::new("up"), &kept, version),
+    )
+    .unwrap();
+    let sweeps = swept(&config, &store, &tombstoned);
+    let [_, Sweep::Withdrawn { announced, .. }] = sweeps.as_slice() else {
+        panic!("{sweeps:?}");
+    };
+    assert!(
+        matches!(&announced[0].outcome, Outcome::Skipped(why) if why.contains("names no actor")),
+        "{announced:?}"
+    );
+}
+
+#[test]
+fn a_route_announcing_each_project_as_its_own_actor_withdraws_as_the_project_s_actor() {
+    let acting = format!(
+        r#"{FROM_PEER}
+[destinations.fedi]
+kind = "activitypub"
+domain = "herald.self"
+key = {{ secret = "HERALD_KEY" }}
+[[routes]]
+id = "actors"
+sources = ["up"]
+destination = "fedi"
+template = "t"
+actor = "{{{{ event.project }}}}"
+withdraw = "delete"
+private = false
+[templates.t]
+title = "{{{{ event.title }}}}"
+body = "{{{{ event.body }}}}"
+"#
+    );
+    let config = config("", &acting);
+    let store = healthy();
+    let quiet = Peer::answering(vec![page(&[(1, release("a/1", &OLD))], &OLD)]);
+    pulled(&config, &store, &quiet);
+    let later = Peer::answering(vec![page(
+        &[(2, release("a/2", &OLD)), (1, release("a/1", &OLD))],
+        &OLD,
+    )]);
+    assert_eq!(
+        announced(&pulled(&config, &store, &later)),
+        ["herald/upstream/a/2"]
+    );
+    let identity = Identity::new("herald/upstream/a/2");
+    assert_eq!(cursor(&store).unwrap().project_of(&identity), Some("gate"));
+    let tombstoned = Peer::answering(vec![page(&[(3, tombstone("a/2", &OLD))], &OLD)]);
+    let sweeps = swept(&config, &store, &tombstoned);
+    let [_, Sweep::Withdrawn { announced, .. }] = sweeps.as_slice() else {
+        panic!("{sweeps:?}");
+    };
+    assert_eq!(
+        announced[0],
+        Announced {
+            route: RouteId::new("actors"),
+            outcome: Outcome::Sent {
+                steps: vec![Step::Delete(0)]
+            },
+        }
+    );
+    assert_eq!(cursor(&store).unwrap().project_of(&identity), None);
+}
+
+#[test]
+fn a_route_announcing_each_project_as_its_own_actor_keeps_a_post_whose_project_is_forgotten() {
     let acting = format!(
         r#"{FROM_PEER}
 [destinations.fedi]
@@ -466,6 +589,7 @@ body = "{{{{ event.body }}}}"
     let store = healthy();
     let quiet = Peer::answering(vec![page(&[(1, release("a/2", &OLD))], &OLD)]);
     pulled(&config, &store, &quiet);
+    forget_projects(&store);
     let tombstoned = Peer::answering(vec![page(&[(2, tombstone("a/2", &OLD))], &OLD)]);
     let sweeps = swept(&config, &store, &tombstoned);
     let [_, Sweep::Withdrawn { announced, .. }] = sweeps.as_slice() else {
@@ -476,7 +600,7 @@ body = "{{{{ event.body }}}}"
         Announced {
             route: RouteId::new("actors"),
             outcome: Outcome::Skipped(
-                "the route announces each project as an actor of its own, and a tombstone names no project, so its post stays".to_owned()
+                "the route announces each project as an actor of its own, and the source no longer knows the project the tombstone's release was of, so its post stays".to_owned()
             ),
         }
     );

@@ -88,6 +88,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "serde",
             "serde_json",
             "sha2",
+            "toml_datetime",
             "unicode-segmentation",
             "url",
         ],

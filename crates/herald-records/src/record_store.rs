@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Attempts, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
-    Membership, PeerKeys, Pending, PublishedKeys, RecordKind, RouteId, Schedule, SourceName, State,
-    Subscription,
+    Attempts, AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest,
+    Listing, Membership, PeerKeys, Pending, PublishedKeys, RecordKind, RouteId, Schedule,
+    SourceName, State, Subscription, Window,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
@@ -497,6 +497,13 @@ impl<R: RecordBackend> Deliveries for RecordStore<R> {
         )
     }
 
+    async fn seen(&self, namespace: &'static str, id: &str) -> Result<bool, StoreError> {
+        Ok(self
+            .record::<Timestamp>(&paths::delivery(namespace, id))
+            .await?
+            .is_some())
+    }
+
     async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         self.removed(&paths::delivery(namespace, id)).await
     }
@@ -685,6 +692,61 @@ impl<R: RecordBackend> herald_ports::Published for RecordStore<R> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::peer_keys(peer), keys, expected)
+            .await
+    }
+
+    async fn audit(
+        &self,
+        peer: &str,
+        day: &str,
+    ) -> Result<Option<Versioned<AuditDay>>, StoreError> {
+        self.listed(&paths::audit(peer, day)).await
+    }
+
+    async fn put_audit(
+        &self,
+        audit: &AuditDay,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::audit(&audit.peer, &audit.day), audit, expected)
+            .await
+    }
+
+    async fn audits(&self, peer: &str) -> Result<Vec<AuditDay>, StoreError> {
+        let mut days = Vec::new();
+        for path in self.records.list(paths::AUDITS).await? {
+            let Some(day) = paths::audit_day(&path) else {
+                continue;
+            };
+            if path == paths::audit(peer, day)
+                && let Some(kept) = self.listed::<AuditDay>(&path).await?
+            {
+                days.push(kept.value);
+            }
+        }
+        Ok(days)
+    }
+
+    async fn expire_audits(&self, day: &str) -> Result<(), StoreError> {
+        for path in self.records.list(paths::AUDITS).await? {
+            if paths::audit_day(&path).is_some_and(|kept| kept < day) {
+                self.removed(&path).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn window(&self, peer: &str) -> Result<Option<Versioned<Window>>, StoreError> {
+        self.listed(&paths::window(peer)).await
+    }
+
+    async fn put_window(
+        &self,
+        peer: &str,
+        window: &Window,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::window(peer), window, expected)
             .await
     }
 }

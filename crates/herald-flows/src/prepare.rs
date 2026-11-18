@@ -226,7 +226,7 @@ pub(crate) fn expanded<'a, H>(
         .find(|(prepared, _)| prepared.name == *name)
         .and_then(|(prepared, _)| match &prepared.poll {
             Polling::Many(expand) => Some(expand),
-            Polling::One(_) | Polling::Pull(_) => None,
+            Polling::One(_) | Polling::Pull(_) | Polling::Unpolled => None,
         })
 }
 

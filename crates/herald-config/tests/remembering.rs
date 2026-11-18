@@ -192,4 +192,50 @@ body = "{{ event.body }}"
             .is_ok()
         );
     }
+
+    fn pulling(store: &str, source: &str) -> Result<(), String> {
+        let text = format!(
+            "version = 1\n[store]\n{store}\n[sources.up]\nkind = \"herald\"\nurl = \"https://herald.example/herald/v1/feeds/releases\"\nkeys = [\"{}\"]\n{source}\n",
+            herald_peers::multibase::ed25519_public(&[1; 32])
+        );
+        load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &crate::common::kinds(),
+        )
+        .map(|_| ())
+        .map_err(|errors| errors.to_string())
+    }
+
+    #[test]
+    fn a_herald_source_s_cursor_counts_its_pages_and_tombstones_against_the_store() {
+        let identity = "herald/".len() + 253 + 1 + 1024;
+        let (each, tombstone) = (4 * identity + 1024 + 640, identity + 512);
+        assert_eq!(pulling("kind = \"sqlite\"", ""), Ok(()));
+        let branch = "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }";
+        assert_eq!(pulling(branch, ""), Ok(()));
+        let refused = pulling("kind = \"deno-kv\"", "").unwrap_err();
+        assert!(
+            refused.contains(&format!(
+                "sources.up.pages: the deno-kv store keeps at most 65536 bytes in a record, and this source's cursor may take {} remembering 400 identities; lower tombstones or peer_share, or give a store that keeps more",
+                400 * each + 2000 * tombstone + 4096
+            )),
+            "{refused}"
+        );
+        let named = pulling(branch, "peer_share = 1000").unwrap_err();
+        assert!(
+            named.contains("sources.up.pages: the git-branch store keeps at most 1000000 bytes"),
+            "{named}"
+        );
+        let paged = pulling(branch, "tombstones = 50\npeer_share = 50").unwrap_err();
+        assert!(
+            paged.contains("; make pages at most 1, or lower tombstones or peer_share, or give"),
+            "{paged}"
+        );
+        assert_eq!(
+            pulling(branch, "pages = 1\ntombstones = 100\npeer_share = 100"),
+            Ok(())
+        );
+    }
 }

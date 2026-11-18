@@ -260,6 +260,7 @@ async fn findings(
     let mut findings = doctor(config, &asked.layer.0.layer(), &Hosting::layers(), &here);
     findings.extend(herald_flows::secrets(config, &secrets, &here).await);
     findings.extend(keys(config, &secrets, &RingSigner::default()).await);
+    findings.extend(herald_flows::granted(config, SystemClock.now()));
     if asked.online {
         let native = Native::new(vars, connect);
         match Composed::dry(native, config.clone(), Uses::Announces, place(vars)).await {

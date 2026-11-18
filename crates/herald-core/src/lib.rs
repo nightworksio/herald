@@ -7,6 +7,7 @@
 mod activity;
 mod address;
 mod announce;
+mod audit;
 mod bounds;
 mod bump;
 mod chunk;
@@ -19,6 +20,7 @@ mod escaping;
 mod event;
 pub mod follows;
 mod glob;
+mod grant;
 mod group;
 mod housekeep;
 mod inbound;
@@ -65,6 +67,7 @@ pub use announce::{
     Announcement, Button, Title, announce, body_template, group_template, thread_template,
     title_template,
 };
+pub use audit::{AuditDay, Audited, Refusals, Refusing, Window, utc_day};
 pub use bounds::{
     Attempts, Count, Counted, Inbound, LookedUpPins, PinLookups, ReadBack, ReadBackPages, Sandbox,
     WriteAttempts,
@@ -78,6 +81,7 @@ pub use duration::Duration;
 pub use escaping::{Escaping, safe_url, unreserved};
 pub use event::{Draft, Event, Problem};
 pub use glob::{Glob, NotAGlob};
+pub use grant::{Action, Grant, until};
 pub use group::{
     Change, GROUP_KEY_MOST, GROUP_MOST, GROUP_MOST_ALLOWED, GROUP_WINDOW, Group, GroupLate,
     GroupMode, GroupUntil, Grouping, Subject, group_identity, shown,

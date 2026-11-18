@@ -136,6 +136,7 @@ fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators()
             sequence: None,
             ahead: Vec::new(),
             proved: Vec::new(),
+            projects: BTreeMap::new(),
         }
     );
     assert_eq!(advanced.validators(Signal::Tag), Some(&tags));
@@ -651,4 +652,85 @@ fn an_instance_forgets_only_its_own_proofs_however_many_it_has_taken() {
         cursor.advanced(&Polled::default(), 1).proved,
         [of("b", "b1", 10)]
     );
+}
+
+#[test]
+fn a_cursor_keeps_the_project_of_each_event_a_feed_proved_while_it_sees_it() {
+    let cursor = Cursor {
+        seen: vec![Identity::new("old"), Identity::new("gone")],
+        projects: BTreeMap::from([
+            (Identity::new("old"), "kept".to_owned()),
+            (Identity::new("gone"), "left".to_owned()),
+        ]),
+        ..Cursor::default()
+    };
+    let polled = Polled {
+        events: vec![event("fed"), event("forge")],
+        withdrawn: vec![Identity::new("gone")],
+        proved: vec![proof("fed", 1, false), proof("gone", 2, true)],
+        ..Polled::default()
+    };
+    let advanced = cursor.advanced(&polled, 10);
+    assert_eq!(
+        advanced.projects,
+        BTreeMap::from([
+            (Identity::new("fed"), event("fed").project().to_owned()),
+            (Identity::new("old"), "kept".to_owned()),
+        ])
+    );
+    assert_eq!(advanced.project_of(&Identity::new("old")), Some("kept"));
+    assert_eq!(advanced.project_of(&Identity::new("forge")), None);
+    assert_eq!(
+        cursor.advanced(&Polled::default(), 0).projects,
+        BTreeMap::new()
+    );
+}
+
+#[test]
+fn what_a_peer_pushed_leaves_the_place_a_poll_keeps_as_it_was() {
+    let validators = Validators {
+        etag: Some("e".to_owned()),
+        last_modified: Some("m".to_owned()),
+    };
+    let polled = Cursor {
+        seen: vec![Identity::new("a")],
+        etag: Some("tag".to_owned()),
+        last_modified: Some("then".to_owned()),
+        project: Some("gate".to_owned()),
+        signals: BTreeMap::from([(Signal::Tag, validators.clone())]),
+        packages: BTreeMap::from([("p".to_owned(), validators.clone())]),
+        listings: BTreeMap::from([("l".to_owned(), validators)]),
+        newest: Some(Timestamp::UNIX_EPOCH),
+        sequence: Some(7),
+        ahead: vec!["far".to_owned()],
+        ..Cursor::default()
+    };
+    let pushed = Polled {
+        events: vec![event("b")],
+        proved: vec![Proof {
+            identity: Identity::new("b"),
+            created: Timestamp::UNIX_EPOCH,
+            maker: "upstream".to_owned(),
+            tombstone: None,
+            passed: false,
+        }],
+        relisted: true,
+        sequence: Some(9),
+        newest: Some(Timestamp::MAX),
+        ..Polled::default()
+    };
+    let received = polled.received(&pushed, 10);
+    assert_eq!(
+        received,
+        Cursor {
+            seen: vec![Identity::new("b"), Identity::new("a")],
+            proved: pushed.proved.clone(),
+            projects: BTreeMap::from([(Identity::new("b"), event("b").project().to_owned())]),
+            notes: received.notes.clone(),
+            tagged: received.tagged.clone(),
+            ..polled.clone()
+        }
+    );
+    let unprojected = Cursor::default().received(&pushed, 10);
+    assert_eq!(unprojected.project.as_deref(), Some(event("b").project()));
 }

@@ -193,7 +193,7 @@ fn keys_that_cannot_be_forgotten_stop_housekeeping() {
                 forget: Err(broken()),
                 ..keepless()
             }),
-            &Retention::default(),
+            (&Retention::default(), herald_config::Federation::KEEP_AUDIT),
         )),
         Err(Stop::Store(broken().to_string()))
     );
@@ -454,6 +454,7 @@ fn what_cannot_be_expired_stops_housekeeping() {
         Fault::ExpiresEntries,
         Fault::ForgetsDeliveries,
         Fault::ExpiresNotes,
+        Fault::ExpiresAudits,
     ] {
         let store = Failing { fault, ..healthy() };
         pollster::block_on(store.put_entry(&claimed("old", 91), None)).unwrap();
@@ -487,7 +488,7 @@ fn housekeeping_forgets_the_keys_read_longer_ago_than_their_refresh() {
         &healthy(),
         &FakeClock::at(NOON),
         &keys_in(&keyring),
-        &Retention::default(),
+        (&Retention::default(), herald_config::Federation::KEEP_AUDIT),
     ))
     .unwrap();
     assert_eq!(pollster::block_on(keyring.known("stale")).unwrap(), None);
@@ -495,4 +496,36 @@ fn housekeeping_forgets_the_keys_read_longer_ago_than_their_refresh() {
         pollster::block_on(keyring.known("fresh")).unwrap(),
         Some(read(59))
     );
+}
+
+#[test]
+fn housekeeping_forgets_each_peer_s_audit_of_a_day_longer_ago_than_keep_audit() {
+    use herald_ports::Published as _;
+    let store = healthy();
+    let day = |days_ago: i64| {
+        herald_core::AuditDay::of(
+            "upstream",
+            NOON.checked_sub(SignedDuration::from_hours(24 * days_ago))
+                .unwrap(),
+        )
+    };
+    for days_ago in [91, 90, 1] {
+        pollster::block_on(store.put_audit(&day(days_ago), None)).unwrap();
+    }
+    kept_for(&store, &Script::default(), &Retention::default()).unwrap();
+    let kept: Vec<String> = pollster::block_on(store.audits("upstream"))
+        .unwrap()
+        .into_iter()
+        .map(|audit| audit.day)
+        .collect();
+    assert_eq!(kept, [day(90).day, day(1).day]);
+}
+
+#[test]
+fn a_store_keeping_no_audit_is_housekept_all_the_same() {
+    let store = Failing {
+        fault: Fault::KeepsNoPublished,
+        ..healthy()
+    };
+    assert!(kept_for(&store, &Script::default(), &Retention::default()).is_ok());
 }

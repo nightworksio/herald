@@ -177,7 +177,7 @@ impl Held {
             Self::Positions => "session positions",
             Self::Pending => "held events",
             Self::Tokens => "minted tokens",
-            Self::Published => "published key sets, feeds and peers' key sets",
+            Self::Published => "published key sets, feeds, and peers' key sets and audits",
         }
     }
 
@@ -407,6 +407,15 @@ pub trait Deliveries: Sync {
         id: &str,
         at: Timestamp,
     ) -> impl Future<Output = Result<Admitted, StoreError>> + Send;
+
+    /// Whether the delivery `id` is among those kept under `namespace`:
+    /// admitted, and neither released nor expired since. Only reads, so
+    /// it admits nothing.
+    fn seen(
+        &self,
+        namespace: &'static str,
+        id: &str,
+    ) -> impl Future<Output = Result<bool, StoreError>> + Send;
 
     /// Forgets the delivery `id` among those kept under `namespace`, so it
     /// is admitted again.
@@ -774,6 +783,14 @@ impl Deliveries for Unkept {
         _: &str,
         _: Timestamp,
     ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
+        ready(Err(Held::Deliveries.unsupported()))
+    }
+
+    fn seen(
+        &self,
+        _: &'static str,
+        _: &str,
+    ) -> impl Future<Output = Result<bool, StoreError>> + Send {
         ready(Err(Held::Deliveries.unsupported()))
     }
 

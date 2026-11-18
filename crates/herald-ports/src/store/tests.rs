@@ -225,6 +225,7 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
             unsupported(unkept.admit(GITHUB, "1", at)),
             naming("deliveries")
         );
+        assert_eq!(unsupported(unkept.seen(GITHUB, "1")), naming("deliveries"));
         assert_eq!(
             unsupported(unkept.release(GITHUB, "1")),
             naming("deliveries")

@@ -9,7 +9,7 @@ use herald_core::Visibility;
 use jiff::Timestamp;
 use serde_json::{Map, Value};
 
-use crate::feed::{ENVELOPE_MOST, EVENT, PAGE_MOST, TOMBSTONE};
+use crate::feed::{ENVELOPE_MOST, EVENT, IDENTITY_MOST, Long, PAGE_MOST, PROJECT_MOST, TOMBSTONE};
 use crate::jcs::{Uncanonical, canonical};
 
 /// One page of a peer's feed, read back.
@@ -40,6 +40,8 @@ pub enum Unread {
     Uncanonical(Uncanonical),
     /// An envelope's event is not public.
     Unpublic,
+    /// An envelope's identity or project takes more bytes than any may.
+    Long(Long),
 }
 
 impl fmt::Display for Unread {
@@ -64,6 +66,10 @@ impl fmt::Display for Unread {
             ),
             Self::Uncanonical(why) => why.fmt(f),
             Self::Unpublic => write!(f, "an envelope carries an event that is not public"),
+            Self::Long(Long { what, bytes, most }) => write!(
+                f,
+                "an envelope's {what} takes {bytes} bytes, more than the {most} any may"
+            ),
         }
     }
 }
@@ -174,6 +180,9 @@ pub fn carried(envelope: &Value) -> Result<Carried, Unread> {
     let identity = text("identity")
         .ok_or(Unread::Shape("it names no identity"))?
         .to_owned();
+    if let Some(long) = Long::of("identity", &identity, IDENTITY_MOST) {
+        return Err(Unread::Long(long));
+    }
     match text("type") {
         Some(TOMBSTONE) => return Ok(Carried::Withdrawn { identity, path }),
         Some(EVENT) => {}
@@ -197,10 +206,14 @@ pub fn carried(envelope: &Value) -> Result<Carried, Unread> {
         .and_then(|occurred| occurred.parse().ok())
         .ok_or(Unread::Shape("it names no time it happened"))?;
     let origin = envelope.get("origin").map(origin_of).transpose()?;
+    let project = field("project", "it names no project")?;
+    if let Some(long) = Long::of("project", &project, PROJECT_MOST) {
+        return Err(Unread::Long(long));
+    }
     Ok(Carried::Event(Box::new(Enveloped {
         identity,
         kind: field("kind", "it names no kind")?,
-        project: field("project", "it names no project")?,
+        project,
         title: field("title", "it has no title")?,
         body: field("body", "it has no body")?,
         links,

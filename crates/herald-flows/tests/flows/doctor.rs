@@ -652,6 +652,7 @@ fn the_markers_store_names_each_peer_whose_rotation_is_signed() {
         most: herald_config::Peer::MOST,
         hops: herald_config::Peer::HOPS,
         private: false,
+        grants: std::collections::BTreeMap::new(),
     };
     peered.peers.insert("org".to_owned(), peer.clone());
     assert_eq!(handing(&peered), (Vec::new(), false));
@@ -660,5 +661,28 @@ fn the_markers_store_names_each_peer_whose_rotation_is_signed() {
     assert_eq!(
         handing(&peered),
         (vec!["peers.org.rotation".to_owned()], true)
+    );
+}
+
+#[test]
+fn a_herald_source_fitted_to_the_store_names_what_was_lowered_with_its_pages() {
+    let text = format!(
+        "version = 1\n[store]\nkind = \"git-branch\"\nkey = {{ secret = \"HERALD_STORE_KEY\" }}\n[sources.up]\nkind = \"herald\"\nurl = \"https://herald.example/herald/v1/feeds/releases\"\nkeys = [\"{}\"]\n",
+        herald_peers::multibase::ed25519_public(&[1; 32])
+    );
+    let config = load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
+    let findings = doctored(&config, &layer(&["git-branch"]));
+    assert!(
+        findings.notes.iter().any(|note| note.starts_with(
+            "The source up's pages is 1, with tombstones and peer_share lowered to fit, the most the git-branch store keeps in a record"
+        )),
+        "{:?}",
+        findings.notes
     );
 }

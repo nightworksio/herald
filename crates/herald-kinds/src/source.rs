@@ -1,12 +1,12 @@
 use std::any::Any;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{
-    Cursor, Event, EventsRead, Kind, Listed, Listing, Origin, Owner, Polled, Reach, RouteId,
+    Cursor, Event, EventsRead, Grant, Kind, Listed, Listing, Origin, Owner, Polled, Reach, RouteId,
     Scheme, SecretRef, Visibility,
 };
 use herald_ports::{Base, Boxed, DynHttp};
@@ -14,7 +14,7 @@ use jiff::{SignedDuration, Timestamp};
 
 pub use herald_core::Installation;
 
-use crate::{Credential, Fault, Itself, Most, Peering, Pull, Queue, QueueCost};
+use crate::{Credential, Fault, Itself, Most, Peering, Pull, Queue, QueueCost, Receive};
 
 /// A GitHub App a source reads as: the App's name, the REST API the source
 /// reads, and the installation its tokens are minted for.
@@ -125,6 +125,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// What each peer may do with it, by the peer's name, where it takes
+    /// grants at all.
+    fn grants(&self) -> Option<&BTreeMap<String, Grant>> {
+        None
+    }
+
     /// The source pulling from its peer, served at `url`, where it pulls
     /// from a peer of `[peers]`.
     fn joined(&self, _url: &str) -> Option<Source> {
@@ -169,14 +175,22 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     }
 
     /// How much its cursor holds where it remembers every identity it
-    /// lists rather than the newest few (ADR-0042).
-    fn remembers(&self) -> Option<Remembers> {
+    /// lists rather than the newest few, where `[peers]` names `peers`
+    /// instances (ADR-0042).
+    fn remembers(&self, _peers: usize) -> Option<Remembers> {
         None
     }
 
-    /// It, remembering at most `identities` as its store's records hold
-    /// where its options name no bound; nothing where it cannot (ADR-0042).
-    fn fitted(&self, _identities: usize) -> Option<Source> {
+    /// What takes the envelopes its peers push to it, where any may
+    /// (ADR-0054).
+    fn receiver(&self) -> Option<Arc<dyn Receive>> {
+        None
+    }
+
+    /// It, its cursor fitted to records of at most `most` bytes where
+    /// `[peers]` names `peers` instances, where its options name no bound;
+    /// nothing where it cannot (ADR-0042).
+    fn fitted(&self, _most: usize, _peers: usize) -> Option<Source> {
         None
     }
 
@@ -240,6 +254,12 @@ pub struct Remembers {
     pub key: &'static str,
     /// What chose `identities`.
     pub bound: Bound,
+    /// How many identities each one `key` names stands for.
+    pub per: usize,
+    /// The most bytes it holds beside its identities whatever `key` names.
+    pub beside: usize,
+    /// The other keys of the source's table that bound `beside`.
+    pub besides: &'static [&'static str],
 }
 
 /// What chose how many identities a cursor remembering every one holds.
@@ -255,11 +275,12 @@ pub enum Bound {
 
 impl Remembers {
     /// The most bytes a cursor remembering `identities` takes in a record,
-    /// what else it holds counted as [`Remembers::REST`].
+    /// what else it holds counted as [`Remembers::REST`] and `beside`.
     #[must_use]
     pub const fn bytes(&self) -> usize {
         self.identities
             .saturating_mul(self.each)
+            .saturating_add(self.beside)
             .saturating_add(Self::REST)
     }
 
@@ -272,8 +293,21 @@ impl Remembers {
     /// The most identities whose cursor fits in `most` bytes.
     #[must_use]
     pub const fn fitting(&self, most: usize) -> usize {
-        match most.saturating_sub(Self::REST).checked_div(self.each) {
+        match most
+            .saturating_sub(Self::REST)
+            .saturating_sub(self.beside)
+            .checked_div(self.each)
+        {
             Some(fitting) => fitting,
+            None => usize::MAX,
+        }
+    }
+
+    /// The most `key` may name for a cursor to fit in `most` bytes.
+    #[must_use]
+    pub const fn named(&self, most: usize) -> usize {
+        match self.fitting(most).checked_div(self.per) {
+            Some(named) => named,
             None => usize::MAX,
         }
     }
@@ -303,6 +337,8 @@ pub enum Polling {
     Many(Arc<dyn Expand>),
     /// Another herald's feed, pulled through the keys trusted for it.
     Pull(Arc<dyn Pull>),
+    /// Nothing: the source takes only what its peers push to it.
+    Unpolled,
 }
 
 impl Polling {
@@ -314,6 +350,7 @@ impl Polling {
             Self::One(poll) => poll.api(),
             Self::Many(expand) => expand.api(),
             Self::Pull(pull) => pull.api(),
+            Self::Unpolled => "",
         }
     }
 
@@ -325,6 +362,7 @@ impl Polling {
             Self::One(poll) => poll.bases(),
             Self::Many(expand) => expand.bases(),
             Self::Pull(_) => &[],
+            Self::Unpolled => return Base::Among(&[]),
         };
         if bases.is_empty() {
             Base::At(self.api())
@@ -339,7 +377,7 @@ impl Polling {
         match self {
             Self::One(poll) => poll.probed(http),
             Self::Many(expand) => expand.probed(http),
-            Self::Pull(_) => Box::pin(std::future::ready(Vec::new())),
+            Self::Pull(_) | Self::Unpolled => Box::pin(std::future::ready(Vec::new())),
         }
     }
 }

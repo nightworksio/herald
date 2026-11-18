@@ -1,9 +1,10 @@
 //! `[peers.*]`: the other heralds this one trusts, each by the keys it pins,
 //! how it reaches them and what bounds what they send.
 
+use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use herald_core::{Per, Rate, Size};
+use herald_core::{Grant, Per, Rate, Size, SourceName};
 use herald_peers::keys::{Key, WELL_KNOWN};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -56,6 +57,9 @@ pub struct Peer {
     pub hops: u8,
     /// Whether private events may go to it.
     pub private: bool,
+    /// What it may do with each resource that grants it anything, by the
+    /// source it names.
+    pub grants: BTreeMap<SourceName, Grant>,
 }
 
 impl Peer {
@@ -77,6 +81,9 @@ impl Peer {
     pub const HOPS: u8 = 2;
     /// The most hops a config may allow: four times the default.
     pub const HOPS_ALLOWED: u8 = Self::HOPS * 4;
+
+    /// The prefix of a resource a grant names that is a source.
+    pub const SOURCES: &str = "sources.";
 
     /// The URL of its discovery document.
     #[must_use]

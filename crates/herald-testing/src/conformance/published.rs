@@ -1,4 +1,5 @@
-use herald_core::{DestinationName, Feed, PeerKeys, PublishedKeys};
+use herald_core::Action;
+use herald_core::{AuditDay, Audited, DestinationName, Feed, PeerKeys, PublishedKeys, Window};
 use herald_ports::{Published, StoreError, Version, Written};
 use jiff::Timestamp;
 use serde_json::json;
@@ -122,6 +123,110 @@ pub(super) async fn peers<S: Published>(store: &S, checks: &mut Checks) -> Resul
             .await?
             .is_some_and(|kept| kept.value.keys.len() == 2),
         "a peer's key set read back did not list the keys written last",
+    );
+    Ok(())
+}
+
+fn day_of(peer: &str, day: &str, reason: &str) -> AuditDay {
+    AuditDay {
+        peer: peer.to_owned(),
+        day: day.to_owned(),
+        entries: vec![Audited {
+            at: Timestamp::UNIX_EPOCH,
+            peer: Some(peer.to_owned()),
+            keyid: None,
+            action: Action::Push,
+            resource: "sources.releases".to_owned(),
+            outcome: 202,
+            reason: reason.to_owned(),
+        }],
+        more: 0,
+    }
+}
+
+/// Whether each peer's days are kept apart from every other peer's and
+/// day's, written with compare-and-set, listed, and forgotten
+/// once before the day expired; and each peer's window apart.
+pub(super) async fn audits<S: Published>(store: &S, checks: &mut Checks) -> Result<(), StoreError> {
+    let (upstream, other) = ("upstream", "other");
+    checks.ensure(
+        store.audit(upstream, "2027-01-02").await?.is_none(),
+        "a new store keeps a peer's audit",
+    );
+    checks.ensure(
+        store.audits(upstream).await?.is_empty(),
+        "a new store lists a peer's audits",
+    );
+    let first = day_of(upstream, "2027-01-02", "taken");
+    let at = checks.written(store.put_audit(&first, None).await?);
+    checks.ensure(
+        store.put_audit(&first, None).await? == Written::Conflict
+            && store.put_audit(&first, Some(Version(0))).await? == Written::Conflict,
+        "a peer's audit was written over a version it did not expect",
+    );
+    let next = day_of(upstream, "2027-01-02", "taken again");
+    checks.written(store.put_audit(&next, Some(at)).await?);
+    let earlier = day_of(upstream, "2027-01-01", "taken first");
+    checks.written(store.put_audit(&earlier, None).await?);
+    checks.written(
+        store
+            .put_audit(&day_of(other, "2027-01-02", "other"), None)
+            .await?,
+    );
+    checks.ensure(
+        store
+            .audit(upstream, "2027-01-02")
+            .await?
+            .is_some_and(|kept| kept.value == next)
+            && store.audit(other, "2027-01-01").await?.is_none(),
+        "a peer's audit read back was not the one written last for its day",
+    );
+    let mut listed = store.audits(upstream).await?;
+    listed.sort_by(|one, other| one.day.cmp(&other.day));
+    checks.ensure(
+        listed == vec![earlier, next.clone()],
+        "a peer's audits were not listed apart from other peers'",
+    );
+    store.expire_audits("2027-01-02").await?;
+    checks.ensure(
+        store.audits(upstream).await? == vec![next] && store.audits(other).await?.len() == 1,
+        "an audit before the day expired was kept, or one from it forgotten",
+    );
+    checks.ensure(
+        store.window(upstream).await?.is_none(),
+        "a new store keeps a peer's window",
+    );
+    let window = Window {
+        start: super::NOON,
+        count: 1,
+        refused: None,
+        held: None,
+    };
+    let at = checks.written(store.put_window(upstream, &window, None).await?);
+    checks.ensure(
+        store
+            .put_window(upstream, &window, Some(Version(0)))
+            .await?
+            == Written::Conflict,
+        "a peer's window was written over a version it did not expect",
+    );
+    let counted = Window {
+        start: super::NOON,
+        count: 2,
+        refused: Some(herald_core::Refusals {
+            start: super::NOON,
+            count: 3,
+        }),
+        held: Some(super::NOON),
+    };
+    checks.written(store.put_window(upstream, &counted, Some(at)).await?);
+    checks.ensure(
+        store
+            .window(upstream)
+            .await?
+            .is_some_and(|kept| kept.value == counted)
+            && store.window(other).await?.is_none(),
+        "a peer's window read back was not its own written last",
     );
     Ok(())
 }

@@ -1,6 +1,7 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
-    PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
+    Membership, PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State,
+    Subscription, Window,
 };
 use jiff::Timestamp;
 
@@ -237,6 +238,40 @@ pub trait DynStore: Sync {
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 
+    /// [`Published::audit`].
+    fn audit_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+        day: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<AuditDay>>, StoreError>>;
+
+    /// [`Published::put_audit`].
+    fn put_audit_boxed<'a>(
+        &'a self,
+        audit: &'a AuditDay,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Published::audits`].
+    fn audits_boxed<'a>(&'a self, peer: &'a str) -> Boxed<'a, Result<Vec<AuditDay>, StoreError>>;
+
+    /// [`Published::expire_audits`].
+    fn expire_audits_boxed<'a>(&'a self, day: &'a str) -> Boxed<'a, Result<(), StoreError>>;
+
+    /// [`Published::window`].
+    fn window_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<Window>>, StoreError>>;
+
+    /// [`Published::put_window`].
+    fn put_window_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+        window: &'a Window,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
     /// [`Deliveries::admit`].
     fn admit_boxed<'a>(
         &'a self,
@@ -244,6 +279,13 @@ pub trait DynStore: Sync {
         id: &'a str,
         at: Timestamp,
     ) -> Boxed<'a, Result<Admitted, StoreError>>;
+
+    /// [`Deliveries::seen`].
+    fn seen_boxed<'a>(
+        &'a self,
+        namespace: &'static str,
+        id: &'a str,
+    ) -> Boxed<'a, Result<bool, StoreError>>;
 
     /// [`Deliveries::release`].
     fn release_boxed<'a>(
@@ -610,6 +652,46 @@ impl<S: Store + Keyring> DynStore for S {
         Box::pin(async move { self.published().put_peer_keys(peer, keys, expected).await })
     }
 
+    fn audit_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+        day: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<AuditDay>>, StoreError>> {
+        Box::pin(async move { self.published().audit(peer, day).await })
+    }
+
+    fn put_audit_boxed<'a>(
+        &'a self,
+        audit: &'a AuditDay,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.published().put_audit(audit, expected).await })
+    }
+
+    fn audits_boxed<'a>(&'a self, peer: &'a str) -> Boxed<'a, Result<Vec<AuditDay>, StoreError>> {
+        Box::pin(async move { self.published().audits(peer).await })
+    }
+
+    fn expire_audits_boxed<'a>(&'a self, day: &'a str) -> Boxed<'a, Result<(), StoreError>> {
+        Box::pin(async move { self.published().expire_audits(day).await })
+    }
+
+    fn window_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<Window>>, StoreError>> {
+        Box::pin(async move { self.published().window(peer).await })
+    }
+
+    fn put_window_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+        window: &'a Window,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.published().put_window(peer, window, expected).await })
+    }
+
     fn admit_boxed<'a>(
         &'a self,
         namespace: &'static str,
@@ -617,6 +699,14 @@ impl<S: Store + Keyring> DynStore for S {
         at: Timestamp,
     ) -> Boxed<'a, Result<Admitted, StoreError>> {
         Box::pin(async move { self.deliveries().admit(namespace, id, at).await })
+    }
+
+    fn seen_boxed<'a>(
+        &'a self,
+        namespace: &'static str,
+        id: &'a str,
+    ) -> Boxed<'a, Result<bool, StoreError>> {
+        Box::pin(async move { self.deliveries().seen(namespace, id).await })
     }
 
     fn release_boxed<'a>(

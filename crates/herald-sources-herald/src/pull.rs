@@ -7,7 +7,7 @@ use herald_core::{
 };
 use herald_kinds::{Peering, PublicKey, Pull, Pulling, Trust, Unpulled};
 use herald_peers::answer::{Answer, Bounds, Unanswered, checked, entity_tag, unchanged};
-use herald_peers::feed::{BEFORE, PAGE_MOST};
+use herald_peers::feed::BEFORE;
 use herald_peers::keys::{WELL_KNOWN, method};
 use herald_peers::proof;
 use herald_peers::reading::{self, Carried, Enveloped};
@@ -47,7 +47,7 @@ impl Pull for Pulled {
     }
 
     fn remembered(&self) -> usize {
-        self.0.pages.saturating_mul(PAGE_MOST)
+        self.0.remembered()
     }
 
     fn pulled<'a>(
@@ -112,6 +112,20 @@ impl Pulled {
                 break;
             }
         }
+        self.budgeted(&mut polled, trust);
+        if let Some(capped) = shares.capped {
+            polled.sequence = polled.sequence.map(|sequence| sequence.min(capped));
+            polled.etag = None;
+        }
+        polled.refused = shares.refused;
+        polled.watched = polled.events.len();
+        Ok(Some(polled))
+    }
+
+    /// `polled` with the proofs its cursor keeps bounded: live ones shared
+    /// by every instance it takes envelopes of through `trust`, and the
+    /// tombstones of identities it never took.
+    pub(crate) fn budgeted(&self, polled: &mut Polled, trust: &Trust) {
         let makers = match self.0.verify {
             Verify::Hop => trust.origins.len().saturating_add(1),
             Verify::Origin => 1,
@@ -121,13 +135,6 @@ impl Pulled {
             most: self.0.tombstones,
             each: self.0.peer_tombstones,
         };
-        if let Some(capped) = shares.capped {
-            polled.sequence = polled.sequence.map(|sequence| sequence.min(capped));
-            polled.etag = None;
-        }
-        polled.refused = shares.refused;
-        polled.watched = polled.events.len();
-        Ok(Some(polled))
     }
 
     /// `envelope` taken into `polled`, once its proof holds for the
@@ -141,7 +148,7 @@ impl Pulled {
     /// made it named in `polled.ahead`, or where it would take a new
     /// identity of an instance `shares` holds as many of as it may, read
     /// again from its place in the feed, `sequence`.
-    async fn taken(
+    pub(crate) async fn taken(
         &self,
         (pulling, trust, cursor): (Pulling<'_>, &Trust, Option<&Cursor>),
         (sequence, envelope): (u64, &Value),
@@ -166,7 +173,13 @@ impl Pulled {
             return Ok(());
         };
         let newer = !polled.proved.iter().any(|proof| proof.identity == identity)
-            && cursor.is_none_or(|cursor| cursor.newer(&identity, created));
+            && cursor.is_none_or(|cursor| {
+                cursor.newer(&identity, created)
+                    || (shares.retaken
+                        && cursor
+                            .proof(&identity)
+                            .is_some_and(|kept| kept.created == created))
+            });
         if !newer {
             return Ok(());
         }
@@ -357,17 +370,20 @@ impl Pulled {
 /// new identities of, and the place in the feed just before the first
 /// envelope it took no more of.
 #[derive(Debug)]
-struct Shares {
+pub(crate) struct Shares {
     held: BTreeMap<String, usize>,
     share: usize,
     refused: Vec<String>,
     capped: Option<u64>,
+    /// Whether an envelope whose very proof the cursor holds is taken
+    /// again, as a push worked once more after it was answered is.
+    pub(crate) retaken: bool,
 }
 
 impl Shares {
     /// The shares of a pull after `cursor`, which takes no new identity of
     /// an instance whose tombstones it holds `share` of.
-    fn of(cursor: Option<&Cursor>, share: usize) -> Self {
+    pub(crate) fn of(cursor: Option<&Cursor>, share: usize) -> Self {
         Self {
             held: cursor
                 .map(|cursor| {
@@ -381,6 +397,7 @@ impl Shares {
             share,
             refused: Vec::new(),
             capped: None,
+            retaken: false,
         }
     }
 
@@ -391,6 +408,11 @@ impl Shares {
     fn admits(&self, maker: &str, kept: Option<&Proof>) -> bool {
         kept.is_some_and(|kept| kept.tombstone != Some(Tombstone::Unheld))
             || self.held.get(maker).copied().unwrap_or_default() < self.share
+    }
+
+    /// Whether it took no more of some instance's new identities.
+    pub(crate) fn spent(&self) -> bool {
+        !self.refused.is_empty()
     }
 
     /// `maker` holds one more tombstone of an identity its source took.

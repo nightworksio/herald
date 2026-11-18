@@ -34,6 +34,10 @@ pub const PAGE_MOST: usize = 4 * PAGE;
 pub const ENVELOPE: usize = 16 * Size::KIB;
 /// The most bytes an envelope takes, its proof counted.
 pub const ENVELOPE_MOST: usize = 4 * ENVELOPE;
+/// The most bytes the identity an envelope carries takes.
+pub const IDENTITY_MOST: usize = Size::KIB;
+/// The most bytes the project an envelope carries takes.
+pub const PROJECT_MOST: usize = Size::KIB;
 
 /// Why an event has no envelope.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +52,35 @@ pub enum Unenveloped {
         /// The most it may take.
         most: usize,
     },
+    /// The event's identity or project takes more bytes than any
+    /// envelope's may.
+    Long(Long),
+}
+
+/// A field an envelope carries that takes more bytes than any envelope's
+/// may: which, how many it takes, and how many it may.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Long {
+    /// The field, such as "identity".
+    pub what: &'static str,
+    /// The bytes it takes.
+    pub bytes: usize,
+    /// The most it may take.
+    pub most: usize,
+}
+
+impl Long {
+    /// `text`, the envelope's field `what`, where it takes more than `most`
+    /// bytes.
+    #[must_use]
+    pub const fn of(what: &'static str, text: &str, most: usize) -> Option<Self> {
+        let bytes = text.len();
+        if bytes > most {
+            Some(Self { what, bytes, most })
+        } else {
+            None
+        }
+    }
 }
 
 impl fmt::Display for Unenveloped {
@@ -57,6 +90,10 @@ impl fmt::Display for Unenveloped {
             Self::Oversized { bytes, most } => write!(
                 f,
                 "the event's envelope takes {bytes} bytes with its body cut, more than the {most} it may"
+            ),
+            Self::Long(Long { what, bytes, most }) => write!(
+                f,
+                "the event's {what} takes {bytes} bytes, more than the {most} an envelope's may"
             ),
         }
     }
@@ -78,14 +115,20 @@ impl Instance<'_> {
     ///
     /// # Errors
     ///
-    /// The event has no canonical form, or takes more than `most` bytes
-    /// with no body.
+    /// The event's identity takes more than [`IDENTITY_MOST`] bytes or its
+    /// project more than [`PROJECT_MOST`], or the event has no canonical
+    /// form, or takes more than `most` bytes with no body.
     pub fn envelope(
         &self,
         event: &Event,
         spec: Option<&KindSpec>,
         most: usize,
     ) -> Result<Value, Unenveloped> {
+        if let Some(long) = Long::of("identity", event.identity().as_str(), IDENTITY_MOST)
+            .or_else(|| Long::of("project", event.project(), PROJECT_MOST))
+        {
+            return Err(Unenveloped::Long(long));
+        }
         let mut envelope = public(event, spec);
         envelope.insert(TYPE.to_owned(), Value::String(EVENT.to_owned()));
         envelope.insert("path".to_owned(), json!([self.discovery()]));

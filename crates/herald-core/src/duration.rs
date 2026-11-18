@@ -34,7 +34,9 @@ impl Duration {
     /// and its unit.
     pub(crate) const PATTERN: &str = "^0*[1-9][0-9]*(ms|[smhdw])$";
 
-    fn parse(text: &str) -> Option<Self> {
+    /// The length of time `text` writes, such as "7d", where it is one.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
         if let Some(number) = text.strip_suffix("ms") {
             return digits(number)
                 .filter(|millis| *millis > 0)

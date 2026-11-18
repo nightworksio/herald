@@ -63,7 +63,11 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
             config,
             connected,
             ports,
-            (source, identity),
+            (
+                source,
+                identity,
+                cursor.and_then(|cursor| cursor.project_of(identity)),
+            ),
             holder,
         ))
         .await;
@@ -94,6 +98,64 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
         found.withdrawn = withdrawn;
         found
     }))
+}
+
+/// The peer of `[peers]` holding the key whose id is `keyid`, its table and the key,
+/// each peer's keys those that stand for it as kept, never read again
+/// (ADR-0054).
+///
+/// # Errors
+///
+/// A peer's kept key set cannot be read.
+pub(crate) async fn signer<'c, S: Store, H: Http>(
+    (config, store, http): (&'c Config, &S, &H),
+    (verifier, now): (&dyn DynVerifier, Timestamp),
+    keyid: &str,
+) -> Result<Option<(&'c str, &'c Peer, PublicKey)>, Stop> {
+    let reach = Reach {
+        config,
+        store,
+        http,
+        verifier,
+        now,
+    };
+    for (name, peer) in config
+        .peers
+        .iter()
+        .filter(|(_, peer)| keyid.contains(&peer.domain))
+    {
+        let keys = reach.standing(name, peer, Renew::Never).await?;
+        if let Some(key) = keys
+            .into_iter()
+            .find(|key| herald_peers::keys::method(&peer.domain, key) == keyid)
+        {
+            return Ok(Some((name.as_str(), peer, key)));
+        }
+    }
+    Ok(None)
+}
+
+/// What an envelope the peer `pusher` pushed is held to: the keys that
+/// stand for it and for every other peer as kept, never read again
+/// (ADR-0054).
+///
+/// # Errors
+///
+/// The pusher is no peer, or a peer's kept key set cannot be read.
+pub(crate) async fn pushing<S: Store, H: Http>(
+    (config, store, http): (&Config, &S, &H),
+    (verifier, now): (&dyn DynVerifier, Timestamp),
+    pusher: &str,
+) -> Result<Trust, Stop> {
+    Reach {
+        config,
+        store,
+        http,
+        verifier,
+        now,
+    }
+    .trusted(Peering::Peer(pusher), Renew::Never)
+    .await
 }
 
 /// Whether `peering` names a peer whose rotation is signed.

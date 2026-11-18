@@ -15,6 +15,7 @@ use super::*;
 use crate::HeraldKind;
 
 mod proofs;
+mod pushes;
 use crate::options::HeraldFile;
 use herald_kinds::SourceKind as _;
 

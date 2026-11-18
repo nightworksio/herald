@@ -463,7 +463,7 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
             .filter(|(source, _)| minted(source))
             .filter_map(|(source, http)| match &source.poll {
                 Polling::Many(expand) => Some((source, expand, http)),
-                Polling::One(_) | Polling::Pull(_) => None,
+                Polling::One(_) | Polling::Pull(_) | Polling::Unpolled => None,
             })
             .map(|(source, expand, http)| async move {
                 (
@@ -497,6 +497,7 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
                 )
                 .await
             }
+            Polling::Unpolled => continue,
             Polling::Many(expand) => {
                 let owning = owners.remove(&source.name).unwrap_or(Err(Vec::new()));
                 match &owning {
@@ -536,7 +537,7 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
 mod claims;
 mod held;
 mod members;
-mod pulled;
+pub(crate) mod pulled;
 
 use claims::Claims;
 use held::{Holding, held};

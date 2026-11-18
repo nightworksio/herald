@@ -317,6 +317,7 @@ pub fn unworked(job: &Job, released: &Result<(), String>) -> String {
             format!("the commands given on {}", destination.as_str())
         }
         Job::Fanned { jobs, .. } => format!("a GitHub App's delivery to {} sources", jobs.len()),
+        Job::Pushed { source, .. } => format!("what a peer pushed into {}", source.as_str()),
     };
     match released {
         Ok(()) => format!("herald stopped before it worked {what}"),

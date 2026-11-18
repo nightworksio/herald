@@ -1,7 +1,7 @@
 //! What the instance published, and what its peers handed over to, read
 //! through an erased store.
 
-use herald_core::{DestinationName, Feed, PeerKeys, PublishedKeys};
+use herald_core::{AuditDay, DestinationName, Feed, PeerKeys, PublishedKeys, Window};
 
 use super::DynStore;
 use crate::erased::Erased;
@@ -47,5 +47,42 @@ impl Published for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_peer_keys_boxed(peer, keys, expected).await
+    }
+
+    async fn audit(
+        &self,
+        peer: &str,
+        day: &str,
+    ) -> Result<Option<Versioned<AuditDay>>, StoreError> {
+        self.0.audit_boxed(peer, day).await
+    }
+
+    async fn put_audit(
+        &self,
+        audit: &AuditDay,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_audit_boxed(audit, expected).await
+    }
+
+    async fn audits(&self, peer: &str) -> Result<Vec<AuditDay>, StoreError> {
+        self.0.audits_boxed(peer).await
+    }
+
+    async fn expire_audits(&self, day: &str) -> Result<(), StoreError> {
+        self.0.expire_audits_boxed(day).await
+    }
+
+    async fn window(&self, peer: &str) -> Result<Option<Versioned<Window>>, StoreError> {
+        self.0.window_boxed(peer).await
+    }
+
+    async fn put_window(
+        &self,
+        peer: &str,
+        window: &Window,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_window_boxed(peer, window, expected).await
     }
 }

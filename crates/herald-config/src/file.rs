@@ -520,6 +520,28 @@ pub(crate) struct FederationFile {
     /// `Content-Digest`, may hold and still be read: "8KiB" where absent,
     /// at most "32KiB". A longer one is refused before it is parsed.
     pub(crate) fields: Option<Size>,
+    /// How long what each peer asked is kept, by UTC day: "90d" where
+    /// absent, at most "365d" (ADR-0054).
+    pub(crate) keep_audit: Option<Duration>,
+    /// How soon before a grant ends doctor names it: "7d" where absent, at
+    /// most "90d" (ADR-0054).
+    pub(crate) grants_ending: Option<Duration>,
+    /// How many requests to a source's inbox that no peer's key signs are
+    /// kept in the audit: "120/m" where absent, at most "480/m"; the rest
+    /// are only logged (ADR-0054).
+    pub(crate) stranger_rate: Option<Rate>,
+    /// How many requests replaying a nonce one peer already used are kept
+    /// in its audit, counted apart from its own rate so a replay spends
+    /// none of it: "120/m" where absent, at most "480/m"; past it herald
+    /// answers 429 (ADR-0054).
+    pub(crate) replay_rate: Option<Rate>,
+    /// How many requests of one peer refused past its rate have their
+    /// nonces kept, counted afresh every 20 minutes, the longest a request
+    /// lives, so none is taken later: 2400 where absent, its rate's default
+    /// over that time, at most 9600. Past it the peer is held, and nothing
+    /// of it is taken until every request it made unkept has expired
+    /// (ADR-0054).
+    pub(crate) refused_nonces: Option<u32>,
     /// Peer keys that are never trusted again, each a Multikey such as
     /// `z6Mk…`, as `herald peer revoke` adds them: a peer pinning one does
     /// not load, and a new key set naming one is refused.
@@ -599,6 +621,32 @@ pub(crate) struct PeerFile {
     pub(crate) hops: Option<u8>,
     /// Whether private events may go to the peer; false where absent.
     pub(crate) private: Option<bool>,
+    /// What the peer may do with this herald's resources, each also granted
+    /// on the resource itself, such as `[{ resource = "sources.upstream",
+    /// actions = ["push"] }]`. None where absent.
+    #[serde(default)]
+    pub(crate) grants: Vec<GrantFile>,
+}
+
+/// What a peer may do with one resource of this herald.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "PeerGrant")]
+pub(crate) struct GrantFile {
+    /// The resource, such as "sources.upstream", a `herald` source.
+    #[schemars(example = &"sources.upstream")]
+    pub(crate) resource: String,
+    /// What the peer may do with it, such as `["push"]`.
+    pub(crate) actions: std::collections::BTreeSet<herald_core::Action>,
+    /// When the grant ends, in RFC 3339 such as "2027-01-01T00:00:00Z" or
+    /// as a TOML datetime with its offset; never where absent.
+    #[serde(default, deserialize_with = "herald_core::until")]
+    #[schemars(with = "Option<String>")]
+    pub(crate) until: Option<jiff::Timestamp>,
+    /// The identities the peer may give as they are, each the start of
+    /// identities up to a '/'. None where absent.
+    #[serde(default)]
+    pub(crate) namespaces: std::collections::BTreeSet<String>,
 }
 
 /// An app of the HTTP API (ADR-0007).

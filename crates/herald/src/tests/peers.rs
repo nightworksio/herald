@@ -562,3 +562,4 @@ fn revoke_refuses_a_key_the_peer_does_not_pin() {
 }
 
 pub(super) mod handed;
+mod log;

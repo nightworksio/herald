@@ -12,6 +12,7 @@ mod actors;
 mod apps;
 mod discovery;
 mod feeds;
+mod inbox;
 mod jobs;
 mod replies;
 mod router;

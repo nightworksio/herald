@@ -89,6 +89,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         published::published(kept, &mut checks).await?;
         published::feeds(kept, &mut checks).await?;
         published::peers(kept, &mut checks).await?;
+        published::audits(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.deliveries() {
@@ -221,6 +222,10 @@ fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
         newest: Some(NOON),
         sequence: Some(7),
         ahead: vec!["conformance".to_owned()],
+        projects: identities
+            .iter()
+            .map(|identity| (identity.clone(), "conformance".to_owned()))
+            .collect(),
         proved: identities
             .into_iter()
             .zip(
@@ -628,8 +633,20 @@ async fn deliveries<S: Deliveries>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let later = NOON + jiff::SignedDuration::from_hours(1);
     checks.ensure(
+        !store.seen(GITHUB, "one").await?,
+        "a delivery never admitted was seen",
+    );
+    checks.ensure(
         store.admit(GITHUB, "one", NOON).await? == Admitted::Fresh,
         "a delivery arriving the first time was not fresh",
+    );
+    checks.ensure(
+        store.seen(GITHUB, "one").await?,
+        "an admitted delivery was not seen",
+    );
+    checks.ensure(
+        !store.seen(GITLAB, "one").await?,
+        "a delivery was seen under another scheme",
     );
     checks.ensure(
         store.admit(GITHUB, "one", later).await? == Admitted::Seen,
@@ -640,6 +657,10 @@ async fn deliveries<S: Deliveries>(store: &S) -> Result<(), Failure> {
         "another scheme's delivery of the same id was seen",
     );
     store.release(GITHUB, "one").await?;
+    checks.ensure(
+        !store.seen(GITHUB, "one").await?,
+        "a released delivery was still seen",
+    );
     checks.ensure(
         store.admit(GITHUB, "one", later).await? == Admitted::Fresh,
         "a released delivery was not admitted again",

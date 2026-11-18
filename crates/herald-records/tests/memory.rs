@@ -92,6 +92,22 @@ mod memory {
     }
 
     #[test]
+    fn a_record_among_the_audits_that_names_no_day_is_passed_over() {
+        use herald_ports::Published as _;
+        let store = RecordStore::new(Memory::default());
+        pollster::block_on(store.records().write("audits/stray", b"{}", None)).unwrap();
+        assert_eq!(pollster::block_on(store.audits("upstream")), Ok(Vec::new()));
+        assert_eq!(
+            pollster::block_on(store.expire_audits("2027-01-01")),
+            Ok(())
+        );
+        assert_eq!(
+            pollster::block_on(store.records().list("audits")),
+            Ok(vec!["audits/stray".to_owned()])
+        );
+    }
+
+    #[test]
     fn a_write_or_removal_naming_a_record_since_replaced_changes_nothing() {
         let memory = Memory::default();
         assert_eq!(

@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use herald_config::{Config, RouteConfig};
-use herald_core::{DestinationName, Event, Listed, Match, RouteId, SourceName, Visibility};
+use herald_core::{DestinationName, Listed, Match, RouteId, SourceName, Visibility};
 use herald_kinds::{Expand, Federates, Polling};
 use herald_ports::{Cursors, Store, StoreError, Subscriptions};
 use jiff::Timestamp;
@@ -102,7 +102,7 @@ impl Projects {
             }
             match source.poller(None, false) {
                 Polling::Many(expand) => owners.push((name.clone(), expand, sourced)),
-                Polling::One(_) | Polling::Pull(_) => named.extend(
+                Polling::One(_) | Polling::Pull(_) | Polling::Unpolled => named.extend(
                     source
                         .projects()
                         .into_iter()
@@ -465,8 +465,9 @@ pub(crate) async fn found<'a, S: Store, H>(
         .map_or(Found::Missing, Found::Acting))
 }
 
-/// `route` as it announces `event`, from `source`: as the actor `event`'s
-/// project names, where the route announces as each project's own, so long
+/// `route` as it announces an event of `project`, from `source`: as the
+/// actor `project` names, where the route announces as each project's own,
+/// so long
 /// as no route's own actor, and no other source, member or app, holds that
 /// name among `connected`'s routes, as `store` keeps members at `now`.
 ///
@@ -478,16 +479,15 @@ pub(crate) async fn found<'a, S: Store, H>(
 pub(crate) async fn acting<'a, S: Store, H>(
     (connected, store, now): (&Connected<H>, &S, Timestamp),
     route: &'a PreparedRoute,
-    (source, event): (&SourceName, &Event),
+    (source, project): (&SourceName, &str),
 ) -> Result<Cow<'a, PreparedRoute>, Outcome> {
     let Some((actor, named)) = route
         .reached
         .federates()
-        .and_then(|actor| Some((actor, actor.names(event.project())?)))
+        .and_then(|actor| Some((actor, actor.names(project)?)))
     else {
         return Ok(Cow::Borrowed(route));
     };
-    let project = event.project();
     let name = named
         .map_err(|why| Outcome::Skipped(format!("the project {project} names no actor: {why}")))?;
     let wanted = Wanted::Named {

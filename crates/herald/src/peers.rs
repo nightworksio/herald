@@ -22,6 +22,7 @@ use super::output::say;
 use super::stores::composed;
 use super::{Connect, DONE, STOPPED, place, rewrite, text};
 
+mod log;
 mod written;
 
 /// What an operator answers to pin the keys shown.
@@ -72,6 +73,20 @@ pub(crate) async fn peering(
         Peering::List => Ok(list(config, out)),
         Peering::Test { name } => test(config, name.as_deref(), connect, out).await,
         Peering::Revoke { name, key } => revoke(config, path, name, key.as_deref(), out),
+        Peering::Log {
+            name,
+            since,
+            limit,
+            format,
+        } => {
+            let asked = log::Logging {
+                name: name.as_deref(),
+                since: since.as_deref(),
+                limit: *limit,
+                format: *format,
+            };
+            log::log(config, (vars, connect), &asked, out).await
+        }
     }
 }
 

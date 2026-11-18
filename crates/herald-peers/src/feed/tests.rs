@@ -189,6 +189,33 @@ fn an_envelope_too_long_without_its_body_is_refused() {
 }
 
 #[test]
+fn an_event_whose_identity_or_project_is_too_long_has_no_envelope() {
+    let at = |field: &str, bytes: usize| {
+        let mut long = serde_json::to_value(event("gate v1", "body", true)).unwrap();
+        long[field] = json!("i".repeat(bytes));
+        let long: Event = serde_json::from_value(long).unwrap();
+        INSTANCE.envelope(&long, Some(&release()), ENVELOPE_MOST)
+    };
+    for (field, most) in [("identity", IDENTITY_MOST), ("project", PROJECT_MOST)] {
+        assert!(at(field, most).is_ok(), "{field}");
+        assert_eq!(
+            at(field, most + 1),
+            Err(Unenveloped::Long(Long {
+                what: field,
+                bytes: most + 1,
+                most
+            }))
+        );
+    }
+    assert_eq!(
+        Unenveloped::Long(Long::of("identity", &"i".repeat(1025), IDENTITY_MOST).unwrap())
+            .to_string(),
+        "the event's identity takes 1025 bytes, more than the 1024 an envelope's may"
+    );
+    assert_eq!(Long::of("project", "p", 1), None);
+}
+
+#[test]
 fn a_feed_lives_under_the_api() {
     let based = Instance {
         base: "/b",

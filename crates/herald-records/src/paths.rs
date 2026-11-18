@@ -72,6 +72,29 @@ pub(crate) fn peer_keys(peer: &str) -> String {
     format!("peers/{}.json", segment(peer))
 }
 
+/// The directory of what every peer asked, by day.
+pub(crate) const AUDITS: &str = "audits";
+
+/// Where what `peer` asked on `day` is kept: in one directory with every
+/// other peer's days, which a peer's name, holding no `.`, keeps apart.
+pub(crate) fn audit(peer: &str, day: &str) -> String {
+    format!("{AUDITS}/{}.{day}.json", segment(peer))
+}
+
+/// The day the audit kept at `path` is of, where it is one.
+pub(crate) fn audit_day(path: &str) -> Option<&str> {
+    path.strip_prefix(AUDITS)?
+        .strip_prefix('/')?
+        .strip_suffix(".json")?
+        .rsplit_once('.')
+        .map(|(_, day)| day)
+}
+
+/// Where the window of `peer`'s rate is kept.
+pub(crate) fn window(peer: &str) -> String {
+    format!("windows/{}.json", segment(peer))
+}
+
 pub(crate) fn listing(source: &SourceName) -> String {
     format!("listings/{}.json", segment(source.as_str()))
 }

@@ -1,8 +1,11 @@
-//! What doctor names of the peers a config trusts (ADR-0047, ADR-0049).
+//! What doctor names of the peers a config trusts (ADR-0047, ADR-0049),
+//! and what each may do with each resource that grants it anything
+//! (ADR-0054).
 
 use herald_config::{Config, Rotation};
 use herald_peers::multibase::ed25519_public;
 use herald_ports::{Cursors, Published};
+use jiff::Timestamp;
 
 use super::{Findings, Gap, gap};
 
@@ -102,6 +105,52 @@ pub async fn shared<C: Cursors>(config: &Config, cursors: &C) -> Findings {
                 name.as_str()
             ));
         }
+    }
+    findings
+}
+
+/// What each peer may do with each resource that grants it anything, until
+/// when, at `now`: a note for each grant, one for each with no end, and
+/// one for each that has ended or ends within `[federation]
+/// grants_ending`.
+#[must_use]
+pub fn granted(config: &Config, now: Timestamp) -> Findings {
+    let mut findings = Findings::default();
+    let ending = now
+        .checked_add(config.federation.grants_ending)
+        .unwrap_or(Timestamp::MAX);
+    for (name, peer) in &config.peers {
+        for (source, grant) in &peer.grants {
+            let actions: Vec<&str> = grant.actions.iter().map(|action| action.name()).collect();
+            let resource = format!("sources.{}", source.as_str());
+            let until = grant.until.map_or_else(
+                || "with no end".to_owned(),
+                |until| format!("until {until}"),
+            );
+            findings.notes.push(format!(
+                "peers.{name} may {} {resource} {until}.",
+                actions.join(" and ")
+            ));
+            match grant.until {
+                None => findings.notes.push(format!(
+                    "peers.{name}: its grant on {resource} never ends; give it an until, so a key stolen from the peer pushes only for so long."
+                )),
+                Some(until) if until <= now => findings.notes.push(format!(
+                    "peers.{name}: its grant on {resource} ended at {until}, so herald refuses what it pushes; give it a later until, or remove it."
+                )),
+                Some(until) if until <= ending => findings.notes.push(format!(
+                    "peers.{name}: its grant on {resource} ends at {until}; give it a later until to keep taking what it pushes."
+                )),
+                _ => {}
+            }
+        }
+    }
+    if config.peers.values().any(|peer| !peer.grants.is_empty()) {
+        findings.notes.push(format!(
+            "A peer pushing past its rate has the nonces of at most {} refused requests kept in {} minutes ([federation] refused_nonces); past them herald holds it, taking nothing of it until every request it made has expired.",
+            config.federation.refused_nonces,
+            herald_config::Federation::SIGNED_FOR_ALLOWED.as_mins()
+        ));
     }
     findings
 }

@@ -19,7 +19,7 @@ mod views;
 
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
 pub use online::{kept_tokens, keys, online, secrets};
-pub use peers::{handed_over, shared};
+pub use peers::{granted, handed_over, shared};
 
 /// A feature the config asks for that this herald cannot serve (ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -725,14 +725,21 @@ fn unstated(config: &Config, notes: &mut Vec<String>) {
 fn fitted(config: &Config, notes: &mut Vec<String>) {
     for (name, source) in &config.sources {
         if let Some(remembers) = source
-            .remembers()
+            .remembers(config.peers.len())
             .filter(|remembers| remembers.bound == Bound::Fitted)
         {
+            let lowered = Some(remembers.besides.join(" and "))
+                .filter(|besides| !besides.is_empty())
+                .map(|besides| format!(", with {besides} lowered to fit"))
+                .unwrap_or_default();
             notes.push(format!(
-                "The source {}'s {} is {}, the most the {} store keeps in a record, as its options set none; set it to choose, or give a store that keeps more.",
+                "The source {}'s {} is {}{lowered}, the most the {} store keeps in a record, as its options set none; set it to choose, or give a store that keeps more.",
                 name.as_str(),
                 remembers.key,
-                remembers.identities,
+                remembers
+                    .identities
+                    .checked_div(remembers.per)
+                    .unwrap_or(remembers.identities),
                 config.store.kind()
             ));
         }
