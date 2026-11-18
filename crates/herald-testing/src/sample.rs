@@ -101,6 +101,22 @@ mod tests {
         assert_eq!(announcement().occurred.to_string(), "2026-10-31T12:00:00Z");
         assert_eq!(announcement().marks.announcement, marker());
         assert_eq!(announcement().marks.route, route_marker());
-        assert_eq!(delivery("1").mentions.roles, [RoleId::new("1")]);
+    }
+
+    #[test]
+    fn the_sample_delivery_crossposts_threads_pins_in_place_and_pings_its_role() {
+        let delivery = delivery("1");
+        assert!(delivery.crosspost);
+        assert_eq!(
+            delivery.thread,
+            Some(Thread {
+                name: String::new(),
+                archive_after: None,
+                lock_after: None,
+            })
+        );
+        assert_eq!(delivery.pin, Some(Pinning::Markers));
+        assert_eq!(delivery.mentions.roles, [RoleId::new("1")]);
+        assert!(!delivery.mentions.subscribers);
     }
 }

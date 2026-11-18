@@ -1,7 +1,8 @@
 use herald_core::{
     Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, RouteId, Schedule,
-    Shown, SourceName, State, Step, Subscription,
+    Shown, Signal, SourceName, State, Step, Subscription, Validators,
 };
+use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_ports::{
@@ -196,6 +197,36 @@ fn key(identity: &str) -> Key {
 
 const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
 
+const LAST_MODIFIED: &str = "Sat, 31 Oct 2026 12:00:00 GMT";
+
+fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
+    let identities: Vec<Identity> = seen.iter().copied().map(Identity::new).collect();
+    let validators = Validators {
+        etag: Some(format!("{etag}-listed")),
+        last_modified: Some(LAST_MODIFIED.to_owned()),
+    };
+    Cursor {
+        seen: identities.clone(),
+        etag: Some(etag.to_owned()),
+        last_modified: Some(LAST_MODIFIED.to_owned()),
+        project: Some("conformance".to_owned()),
+        signals: BTreeMap::from([(Signal::Tag, validators.clone())]),
+        tagged: identities.clone(),
+        notes: identities
+            .iter()
+            .map(|identity| (identity.clone(), format!("{etag}-notes")))
+            .collect(),
+        packages: BTreeMap::from([("herald".to_owned(), validators.clone())]),
+        listings: BTreeMap::from([("check-suite".to_owned(), validators)]),
+        newest: Some(NOON),
+        sequence: Some(7),
+        proved: identities
+            .into_iter()
+            .map(|identity| (identity, NOON))
+            .collect(),
+    }
+}
+
 fn subscription(destination: &str, project: &str, subscriber: &str) -> Subscription {
     Subscription {
         destination: DestinationName::new(destination),
@@ -333,13 +364,7 @@ async fn derived_schedules<S: Schedules>(store: &S) -> Result<(), Failure> {
 async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let source = SourceName::new("feed");
-    let cursor = Cursor {
-        seen: vec![Identity::new("a")],
-        etag: Some("e1".to_owned()),
-        last_modified: None,
-        project: None,
-        ..Cursor::default()
-    };
+    let cursor = cursor_at(&["a"], "e1");
     checks.ensure(
         store.cursor(&source).await?.is_none(),
         "a cursor never written was found",
@@ -354,13 +379,7 @@ async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
         read.map(|record| record.version) == Some(v1),
         "a cursor was read back at another version than it was written at",
     );
-    let advanced = Cursor {
-        seen: vec![Identity::new("b"), Identity::new("a")],
-        etag: Some("e2".to_owned()),
-        last_modified: None,
-        project: None,
-        ..Cursor::default()
-    };
+    let advanced = cursor_at(&["b", "a"], "e2");
     let v2 = checks.written(store.put_cursor(&source, &advanced, Some(v1)).await?);
     checks.ensure(v2 != v1, "a cursor rewritten kept its version");
     let lost = store.put_cursor(&source, &cursor, Some(v1)).await?;
