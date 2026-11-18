@@ -133,6 +133,29 @@ pub struct Announcement {
 }
 
 impl Announcement {
+    /// The announcement `key` of `route`, carrying `marks`, as a withdrawal
+    /// of it sends it: nothing rendered, for each of its steps deletes what
+    /// the ledger recorded (ADR-0048).
+    #[must_use]
+    pub fn withdrawing(key: Key, marks: Marks, route: RouteId, occurred: Timestamp) -> Self {
+        Self {
+            key,
+            marks,
+            route,
+            project: String::new(),
+            title: Title::new(String::new()),
+            parts: Vec::new(),
+            thread: None,
+            link: None,
+            buttons: Vec::new(),
+            prerelease: false,
+            occurred,
+            replaces: None,
+            mentioned: Vec::new(),
+            mentioned_after: Vec::new(),
+        }
+    }
+
     /// Its part `index`, where it has one.
     #[must_use]
     pub fn part(&self, index: u32) -> Option<&Text> {

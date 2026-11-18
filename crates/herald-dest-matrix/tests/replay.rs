@@ -6,6 +6,10 @@
 mod revise;
 
 #[cfg(test)]
+#[path = "replay/withdraw.rs"]
+mod withdraw;
+
+#[cfg(test)]
 mod replay {
     use herald_core::{
         Announcement, Entry, Facts, MentionRoom, MentionStyle, Pins, ReadBack, Sent, Step, Text,

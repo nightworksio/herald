@@ -2,7 +2,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use crate::forge::{Api, Repository};
-use crate::wire::{ForgeRelease, read};
+use crate::wire::{ForgeRelease, Released, read};
 use herald_wire::SourceError;
 
 pub(crate) const API: Api = Api {
@@ -28,6 +28,8 @@ const PUBLISHED: &str = "published";
 const EDITED: &str = "edited";
 /// The action of Forgejo's release event of a release updated.
 const UPDATED: &str = "updated";
+/// The action of a release event of a release deleted.
+const DELETED: &str = "deleted";
 
 /// A release event, as GitHub and Forgejo send it.
 #[derive(Deserialize)]
@@ -59,26 +61,27 @@ impl From<Release> for ForgeRelease {
             draft: release.draft,
             prerelease: Some(release.prerelease),
             published: release.published_at,
-            edited: false,
+            released: Released::Published,
         }
     }
 }
 
-/// The repository and release a `published` release event names, or one
-/// GitHub's `edited` or Forgejo's `updated` names edited, or nothing for
-/// any other action.
+/// The repository and release a `published` release event names, one
+/// GitHub's `edited` or Forgejo's `updated` names edited, or a `deleted`
+/// one names withdrawn, or nothing for any other action.
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
 ) -> Result<Option<(Repository, ForgeRelease)>, SourceError> {
     let payload: Payload = read(what, payload)?;
-    let edited = match payload.action.as_str() {
-        PUBLISHED => false,
-        EDITED | UPDATED => true,
+    let released = match payload.action.as_str() {
+        PUBLISHED => Released::Published,
+        EDITED | UPDATED => Released::Edited,
+        DELETED => Released::Withdrawn,
         _ => return Ok(None),
     };
     let release = ForgeRelease {
-        edited,
+        released,
         ..payload.release.into()
     };
     Ok(Some((payload.repository, release)))

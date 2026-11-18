@@ -398,6 +398,7 @@ fn a_group_whose_record_or_ledger_cannot_be_read_or_written_stops_its_route() {
         Fault::WritesPending,
         Fault::Reads,
         Fault::ReadsOnce,
+        Fault::ReadsTwice,
     ] {
         let Outcome::Stopped { reason, .. } = sent(&config, (&store(fault), NOON), &script, &event)
         else {

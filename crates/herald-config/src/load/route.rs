@@ -438,6 +438,7 @@ impl Loader<'_> {
             },
             late_release: route.late_release,
             edits: route.edits,
+            withdraw: route.withdraw,
             group,
         };
         let reach = Reach {

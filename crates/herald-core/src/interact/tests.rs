@@ -14,6 +14,7 @@ fn latest(project: &str, routes: &[&str]) -> Latest {
         body: String::new(),
         links: BTreeMap::new(),
         occurred: Timestamp::UNIX_EPOCH,
+        identity: None,
     };
     Latest {
         project: project.to_owned(),

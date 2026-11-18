@@ -10,6 +10,10 @@ pub const SIGNAL: &str = "signal";
 /// before (ADR-0034).
 pub const EDITED: &str = "edited";
 
+/// The attribute marking an event as the forge's deletion of one it
+/// published before, which a route withdraws (ADR-0048).
+pub const WITHDRAWN: &str = "withdrawn";
+
 /// What a source announces of a repository.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,

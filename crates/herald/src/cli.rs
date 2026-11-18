@@ -284,6 +284,22 @@ pub(crate) enum Running {
     /// reject a follow that waits.
     #[command(subcommand)]
     Followers(Following),
+    /// Withdraw a release's posts from a route, or from every route,
+    /// whatever its `withdraw` says: each message deleted, its place in a
+    /// group taken out, its feed entry replaced by a tombstone.
+    Withdraw {
+        /// The route and the release's identity, or the identity alone with
+        /// --every-route.
+        #[arg(num_args = 1..=2, value_names = ["ROUTE", "IDENTITY"], required = true)]
+        names: Vec<String>,
+        /// Every route, in place of one named.
+        #[arg(long)]
+        every_route: bool,
+        /// Print what each route would withdraw, and send nothing and keep
+        /// no record.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// The commands on an ActivityPub actor's followers.

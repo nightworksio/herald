@@ -5,6 +5,7 @@ use herald_core::follows::{Approve, FollowerCaps, Mode, SharedList};
 use herald_core::{
     Attempts, AttributeSpec, Duration, Edits, GroupLate, GroupMode, GroupUntil, Inbound, Kind,
     LateRelease, LinkSpec, Pinning, Prereleases, Rate, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
+    Withdraw,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
@@ -293,6 +294,11 @@ pub(crate) struct RouteFile {
     /// whose name or notes the forge says were edited (`release`).
     #[serde(default)]
     pub(crate) edits: Edits,
+    /// What it does with an announcement whose Release the forge deletes:
+    /// keeps its post (`keep`), or deletes every message herald recorded of
+    /// it where the destination can (`delete`).
+    #[serde(default)]
+    pub(crate) withdraw: Withdraw,
     /// What of an event it narrows its sources' events by, an event taken
     /// only where every key holds; every event its other keys take where
     /// absent.
@@ -353,7 +359,7 @@ impl RouteFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 16] = [
+pub(crate) const ROUTE_KEYS: [&str; 17] = [
     "id",
     "sources",
     "kinds",
@@ -368,6 +374,7 @@ pub(crate) const ROUTE_KEYS: [&str; 16] = [
     "private",
     "late_release",
     "edits",
+    "withdraw",
     "match",
     "group",
 ];

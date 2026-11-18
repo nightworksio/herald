@@ -9,6 +9,7 @@ use super::*;
 use crate::FakeStore;
 
 mod cursors;
+mod forgets;
 mod latest;
 mod pending;
 mod published;
@@ -91,6 +92,13 @@ enum Fault {
     HoldsAnUnwrittenPending,
     IgnoresAStalePendingVersion,
     DropsEveryPending,
+    KeepsForgottenPins,
+    ForgetsAnyPin,
+    KeepsForgottenNotes,
+    KeepsForgottenLatest,
+    ForgetsOtherPins,
+    HidesForgottenNotes,
+    ForgetsEveryLatest,
 }
 
 struct Faulty {
@@ -342,6 +350,10 @@ impl Pins for Faulty {
         }
         self.inner.put_pinned(&route, post).await
     }
+
+    async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        forgets::pinned(self, route, post).await
+    }
 }
 
 impl Positions for Faulty {
@@ -413,6 +425,9 @@ impl Deliveries for Faulty {
 impl Notes for Faulty {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
         self.refuses()?;
+        if crate::lock(&self.hidden).contains(key) {
+            return Ok(None);
+        }
         let key = match self.fault {
             Fault::SharesNotes => super::key("shared"),
             _ => *key,
@@ -486,6 +501,10 @@ impl Notes for Faulty {
             Fault::ExpiresEveryNote => self.inner.expire_notes(Timestamp::MAX).await,
             _ => self.inner.expire_notes(before).await,
         }
+    }
+
+    async fn forget_note(&self, key: &Key) -> Result<(), StoreError> {
+        forgets::note(self, key).await
     }
 }
 
@@ -954,6 +973,7 @@ fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
             "put_note was not refused as unsupported by a store keeping none of its kind",
             "outbox was not refused as unsupported by a store keeping none of its kind",
             "expire_notes was not refused as unsupported by a store keeping none of its kind",
+            "forget_note was not refused as unsupported by a store keeping none of its kind",
         ]
     );
 }

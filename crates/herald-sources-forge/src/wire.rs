@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use herald_core::{
     Address, Attribute, Draft, EDITED, Event, Identity, Kind, PrereleaseRule, RELEASE_LINK, SIGNAL,
-    Signal, versioned,
+    Signal, WITHDRAWN, versioned,
 };
 use jiff::Timestamp;
 
@@ -23,7 +23,30 @@ pub(crate) struct ForgeRelease {
     pub(crate) draft: bool,
     pub(crate) prerelease: Option<bool>,
     pub(crate) published: Option<Timestamp>,
-    pub(crate) edited: bool,
+    pub(crate) released: Released,
+}
+
+/// What the forge did to a release a webhook names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Released {
+    /// Published it.
+    Published,
+    /// Edited it.
+    Edited,
+    /// Deleted it (ADR-0048).
+    Withdrawn,
+}
+
+impl Released {
+    /// The attribute an event of a release it did to is marked with, where
+    /// it is marked.
+    const fn marked(self) -> Option<&'static str> {
+        match self {
+            Self::Published => None,
+            Self::Edited => Some(EDITED),
+            Self::Withdrawn => Some(WITHDRAWN),
+        }
+    }
 }
 
 /// A tag, read in full: its name, its message where it is annotated, and
@@ -58,7 +81,7 @@ struct Signalled {
     url: String,
     flag: Option<bool>,
     occurred: Timestamp,
-    edited: bool,
+    released: Released,
 }
 
 /// The event `signalled` of `repository` makes, its pre-release told by
@@ -85,8 +108,8 @@ fn drafted(
         SIGNAL.to_owned(),
         Attribute::Text(signalled.signal.name().to_owned()),
     );
-    if signalled.edited {
-        attributes.insert(EDITED.to_owned(), Attribute::Flag(true));
+    if let Some(marked) = signalled.released.marked() {
+        attributes.insert(marked.to_owned(), Attribute::Flag(true));
     }
     let draft = Draft {
         identity: identity(forge.host(), repository.id, &signalled.tag)
@@ -126,7 +149,7 @@ pub(crate) fn event(
         url: found.url,
         flag: found.prerelease,
         occurred,
-        edited: found.edited,
+        released: found.released,
     };
     drafted(what, repository, signalled, rule).map(Some)
 }
@@ -151,7 +174,7 @@ pub(crate) fn tag_event(
         url,
         flag: None,
         occurred,
-        edited: false,
+        released: Released::Published,
     };
     drafted(what, repository, signalled, rule)
 }

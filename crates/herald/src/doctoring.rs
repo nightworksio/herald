@@ -213,7 +213,7 @@ pub(crate) fn warning(run: &Running, vars: &BTreeMap<String, String>) -> Option<
     match run {
         Running::Server { .. } => Some(hosting(vars)),
         Running::Lambda => Some(Hosting::Lambda),
-        Running::Followers(_) => None,
+        Running::Followers(_) | Running::Withdraw { .. } => None,
         Running::Announce { .. } | Running::Poll | Running::Housekeep => Some(Hosting::Actions),
     }
 }

@@ -327,6 +327,28 @@ impl Event {
         self.attributes.get(crate::EDITED) == Some(&Attribute::Flag(true))
     }
 
+    /// Whether it is the forge's deletion of an event it published before.
+    #[must_use]
+    pub fn withdrawn(&self) -> bool {
+        self.attributes.get(crate::WITHDRAWN) == Some(&Attribute::Flag(true))
+    }
+
+    /// It, announced under `identity` in place of its own, as a release
+    /// re-created after its withdrawal is (ADR-0048).
+    #[must_use]
+    pub fn reissued(mut self, identity: Identity) -> Self {
+        self.identity = identity;
+        self
+    }
+
+    /// It, marked as the forge's deletion of an event it published before.
+    #[must_use]
+    pub fn marked_withdrawn(mut self) -> Self {
+        self.attributes
+            .insert(crate::WITHDRAWN.to_owned(), Attribute::Flag(true));
+        self
+    }
+
     /// It, marked as an edit of an event the forge published before.
     #[must_use]
     pub fn marked_edited(mut self) -> Self {

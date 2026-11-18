@@ -281,6 +281,7 @@ impl World {
             body: "Notes".to_owned(),
             links: BTreeMap::new(),
             occurred: "2027-01-15T08:00:00Z".parse().unwrap(),
+            identity: None,
         };
         let latest = Latest {
             project: "gate".to_owned(),

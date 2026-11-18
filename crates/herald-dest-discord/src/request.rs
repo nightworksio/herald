@@ -284,7 +284,7 @@ fn webhook(
         }
         Step::Delete(part) => revise::webhook_delete(url, *part, entry),
         Step::Rename(_) => Err(webhook_cannot("rename a thread")),
-        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => Err(NO_INBOX),
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) | Step::Deletes => Err(NO_INBOX),
     }
 }
 
@@ -335,7 +335,7 @@ fn bot(
         }
         Step::Delete(part) => revise::bot_delete(discord, channel, *part, entry),
         Step::Rename(_) => revise::bot_rename(discord, announcement, entry),
-        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => Err(NO_INBOX),
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) | Step::Deletes => Err(NO_INBOX),
     }
 }
 

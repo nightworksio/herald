@@ -104,6 +104,38 @@ fn a_follower_takes_the_create_until_the_deliveries_landed_and_then_each_revisio
 }
 
 #[test]
+fn a_follower_the_note_reached_takes_its_delete_with_a_tombstone_once_it_is_withdrawn() {
+    let revision = Revision::of(Some(Signal::Release), ["notes"]);
+    let withdrawing = Entry::new(announcement().key)
+        .revising(revision)
+        .landed(Step::Deliveries, Facts::default())
+        .wanting(&[Step::Delete(0), Step::Deletes]);
+    let deleted = delivered(&withdrawing);
+    let note = format!(
+        "https://herald.example/users/php-mutation-gate/notes/{}",
+        announcement().key
+    );
+    assert_eq!(deleted["type"], json!("Delete"));
+    assert_eq!(deleted["id"], json!(format!("{note}/activity/deleted")));
+    assert_eq!(
+        deleted["actor"],
+        json!("https://herald.example/users/php-mutation-gate")
+    );
+    assert_eq!(deleted["object"]["id"], json!(note));
+    assert_eq!(deleted["object"]["type"], json!("Tombstone"));
+    assert_eq!(deleted["object"]["deleted"], json!("2026-11-03T08:00:00Z"));
+    assert_eq!(deleted["published"], json!("2026-11-03T08:00:00Z"));
+    assert_eq!(
+        deleted["to"],
+        json!(["https://www.w3.org/ns/activitystreams#Public"])
+    );
+    let unrevised = Entry::new(announcement().key).wanting(&[Step::Delete(0), Step::Deletes]);
+    assert_eq!(delivered(&unrevised)["type"], json!("Delete"));
+    let editing = Entry::new(announcement().key).wanting(&[Step::Post, Step::Deliveries]);
+    assert_eq!(delivered(&editing)["type"], json!("Create"));
+}
+
+#[test]
 fn a_note_carries_every_part_so_its_edits_and_deletions_ask_nothing() {
     let http = Accepting::default();
     let now: Timestamp = "2026-11-03T08:00:00Z".parse().unwrap();
@@ -125,6 +157,7 @@ fn a_note_carries_every_part_so_its_edits_and_deletions_ask_nothing() {
     for step in [
         Step::Rename("r2".to_owned()),
         Step::Updates("r2".to_owned()),
+        Step::Deletes,
     ] {
         assert!(matches!(
             pollster::block_on(actor().send(

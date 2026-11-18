@@ -556,6 +556,20 @@ async fn pins<S: Pins>(store: &S) -> Result<(), Failure> {
         store.pinned(&releases).await?.as_deref() == Some("2"),
         "a route's pin was not the one written last",
     );
+    store.forget_pinned(&releases, "1").await?;
+    checks.ensure(
+        store.pinned(&releases).await?.as_deref() == Some("2"),
+        "a route's pin was forgotten as another post",
+    );
+    store.forget_pinned(&releases, "2").await?;
+    checks.ensure(
+        store.pinned(&releases).await?.is_none(),
+        "a route's pin was not forgotten as its post",
+    );
+    checks.ensure(
+        store.pinned(&RouteId::new("other")).await?.as_deref() == Some("3"),
+        "another route's pin was forgotten with it",
+    );
     checks.done()
 }
 
@@ -698,6 +712,17 @@ async fn outboxes<S: Notes>(store: &S) -> Result<(), Failure> {
         store.outbox("announcer", None, 3).await?.notes == [written("first"), written("third")],
         "an expired note stayed in its actor's outbox",
     );
+    store.forget_note(&key("third")).await?;
+    store.forget_note(&key("never")).await?;
+    checks.ensure(
+        store.note(&key("third")).await?.is_none(),
+        "a forgotten note was still served",
+    );
+    let left = store.outbox("announcer", None, 3).await?;
+    checks.ensure(
+        (left.total, left.notes) == (1, vec![written("first")]),
+        "a forgotten note stayed in its actor's outbox",
+    );
     checks.done()
 }
 
@@ -713,6 +738,7 @@ fn announced(project: &str, version: &str) -> Latest {
         .collect(),
         attributes: herald_core::versioned(version, false),
         occurred: NOON,
+        identity: None,
     };
     Latest {
         project: project.to_owned(),
@@ -755,9 +781,19 @@ async fn latest<S: Announcements>(store: &S) -> Result<(), Failure> {
     let mut every = store.every_latest().await?;
     every.sort_by(|a, b| a.project.cmp(&b.project));
     checks.ensure(
-        every == [second, other],
+        every == [second, other.clone()],
         "every project's latest was not listed as written last",
     );
+    store.forget_latest(project).await?;
+    checks.ensure(
+        store.latest(project).await?.is_none(),
+        "a project whose latest was forgotten was still kept",
+    );
+    checks.ensure(
+        store.every_latest().await? == [other.clone()],
+        "another project's latest was forgotten with it",
+    );
+    checks.written(store.put_latest(&first, None).await?);
     raced::latest(store, &mut checks).await?;
     checks.done()
 }

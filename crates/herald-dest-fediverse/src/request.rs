@@ -123,7 +123,7 @@ pub(crate) fn step(
         Step::Crosspost => Err(cannot("crosspost")),
         Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
         Step::Pin | Step::Unpin => Err(cannot("pin a route's announcement")),
-        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => {
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) | Step::Deletes => {
             Err(cannot("deliver to an inbox"))
         }
         Step::Edit { part, .. } => {

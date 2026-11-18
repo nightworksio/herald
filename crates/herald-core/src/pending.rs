@@ -21,6 +21,14 @@ pub enum Hold {
         /// The identity the tag and its Release share.
         identity: Identity,
     },
+    /// A route's announcement of a release the forge deleted, its post
+    /// being withdrawn (ADR-0048).
+    Withdraw {
+        /// The route.
+        route: RouteId,
+        /// The identity it was announced under.
+        identity: Identity,
+    },
     /// A route's events that share a key, gathered into one announcement.
     Group {
         /// The route.
@@ -38,6 +46,11 @@ impl Hold {
             Self::Tag { source, identity } => {
                 digest(&format!("tag\n{}\n{}", source.as_str(), identity.as_str()))
             }
+            Self::Withdraw { route, identity } => digest(&format!(
+                "withdraw\n{}\n{}",
+                route.as_str(),
+                identity.as_str()
+            )),
             Self::Group { route, key } => digest(&format!("group\n{}\n{key}", route.as_str())),
         }
     }
@@ -138,6 +151,14 @@ mod tests {
         assert_ne!(one.digest(), group("train", "v2").digest());
         assert_ne!(one.digest(), group("other", "v1").digest());
         assert_ne!(one.digest(), tag("train", "v1").digest());
+        let withdrawn = |route: &str| Hold::Withdraw {
+            route: RouteId::new(route),
+            identity: Identity::new("v1"),
+        };
+        assert_eq!(withdrawn("train").digest(), withdrawn("train").digest());
+        assert_ne!(withdrawn("train").digest(), withdrawn("other").digest());
+        assert_ne!(withdrawn("train").digest(), one.digest());
+        assert_ne!(withdrawn("train").digest(), tag("train", "v1").digest());
         assert_eq!(
             serde_json::to_value(&one).unwrap(),
             serde_json::json!({"hold": "group", "route": "train", "key": "v1"})

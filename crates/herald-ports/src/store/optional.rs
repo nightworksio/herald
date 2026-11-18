@@ -236,6 +236,13 @@ impl<T: Pins> Pins for Option<&T> {
             None => Unkept.put_pinned(route, post).await,
         }
     }
+
+    async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.forget_pinned(route, post).await,
+            None => Unkept.forget_pinned(route, post).await,
+        }
+    }
 }
 
 impl<T: Deliveries> Deliveries for Option<&T> {
@@ -305,6 +312,13 @@ impl<T: Notes> Notes for Option<&T> {
             None => Unkept.expire_notes(before).await,
         }
     }
+
+    async fn forget_note(&self, key: &Key) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.forget_note(key).await,
+            None => Unkept.forget_note(key).await,
+        }
+    }
 }
 
 impl<T: Announcements> Announcements for Option<&T> {
@@ -330,6 +344,13 @@ impl<T: Announcements> Announcements for Option<&T> {
         match self {
             Some(kept) => kept.put_latest(latest, expected).await,
             None => Unkept.put_latest(latest, expected).await,
+        }
+    }
+
+    async fn forget_latest(&self, project: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.forget_latest(project).await,
+            None => Unkept.forget_latest(project).await,
         }
     }
 }

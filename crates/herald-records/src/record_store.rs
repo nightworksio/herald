@@ -426,6 +426,13 @@ impl<R: RecordBackend> Pins for RecordStore<R> {
     async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         self.kept(&paths::pin(route), &post).await
     }
+
+    async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        if self.pinned(route).await?.as_deref() == Some(post) {
+            self.removed(&paths::pin(route)).await?;
+        }
+        Ok(())
+    }
 }
 
 impl<R: RecordBackend> Positions for RecordStore<R> {
@@ -570,16 +577,31 @@ impl<R: RecordBackend> Notes for RecordStore<R> {
         for path in self.records.list(paths::NOTES).await? {
             let published = self.listed::<Published>(&path).await?;
             if let Some(published) = published.filter(|published| published.value.at < before) {
-                self.removed(&paths::outboxed(
-                    &published.value.actor,
-                    published.value.at,
-                    &published.value.key,
-                ))
-                .await?;
-                self.removed(&path).await?;
+                self.unpublished(&published.value).await?;
             }
         }
         Ok(())
+    }
+
+    async fn forget_note(&self, key: &Key) -> Result<(), StoreError> {
+        match self.listed::<Published>(&paths::note(key)).await? {
+            Some(published) => self.unpublished(&published.value).await,
+            None => Ok(()),
+        }
+    }
+}
+
+impl<R: RecordBackend> RecordStore<R> {
+    /// Forgets the Note `published` was kept as, and its place in its
+    /// actor's outbox.
+    async fn unpublished(&self, published: &Published) -> Result<(), StoreError> {
+        self.removed(&paths::outboxed(
+            &published.actor,
+            published.at,
+            &published.key,
+        ))
+        .await?;
+        self.removed(&paths::note(&published.key)).await
     }
 }
 
@@ -599,6 +621,10 @@ impl<R: RecordBackend> Announcements for RecordStore<R> {
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::latest(&latest.project), latest, expected)
             .await
+    }
+
+    async fn forget_latest(&self, project: &str) -> Result<(), StoreError> {
+        self.removed(&paths::latest(project)).await
     }
 }
 

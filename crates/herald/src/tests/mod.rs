@@ -19,4 +19,5 @@ mod secrets;
 mod server;
 mod setup;
 mod stores;
+mod withdraw;
 mod world;

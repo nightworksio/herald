@@ -805,6 +805,26 @@ no groups, and a route to a herald feed, which publishes each event as
 an envelope of its own, takes no `group`. `herald preview --group v1.2.0` renders a route's group of
 the sample releases.
 
+### A deleted release
+
+`withdraw = "delete"` on a route withdraws a Release's posts once the
+forge deletes the Release (GitHub's and Forgejo's `deleted`, GitLab's
+`delete`); `"keep"`, the default, leaves them. Each message herald posted
+is deleted, the route's pin is let go, a thread opened from the post is
+archived where the route archives threads, ActivityPub sends each follower
+the Note reached its `Delete`, and a herald feed lists a tombstone. A
+grouped member leaves the group's post, which is deleted once it shows
+none. What the project last announced falls back to its stable release. A
+Release published again later is announced anew. A destination that edits
+nothing, such as a Slack incoming webhook, deletes nothing, and the
+markers store cannot record a withdrawal. A withdrawal a run could not
+finish is finished by the next round.
+
+`herald withdraw releases github.com/212613049/v2.103.3` withdraws a
+release from one route whatever its `withdraw` says, `--every-route` from
+every route, and `--dry-run` prints what each would remove. The identity
+is the forge's host, the repository's id and the tag.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service

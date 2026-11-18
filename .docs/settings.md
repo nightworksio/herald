@@ -376,6 +376,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route to a Mastodon destination
 
@@ -422,6 +423,7 @@ Which events go where, rendered how.
 | `routes[].title` | integer | The longest title, a status's first line, in characters; 100 where unset. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].visibility` | [Visibility](#visibility) | Who sees each status. |
+| `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route to a Matrix destination
 
@@ -463,6 +465,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route to a Slack destination
 
@@ -506,6 +509,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route announcing as one of herald's own ActivityPub actors
 
@@ -550,6 +554,7 @@ Which events go where, rendered how.
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].visibility` | [Audience](#audience) | Who sees each Note on the timelines. |
+| `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route publishing its events to a feed of herald's own
 
@@ -590,6 +595,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ## `run`
 
@@ -1499,3 +1505,7 @@ How a Packagist vendor's packages are listed.
 ### Visibility
 
 Who sees a status.
+
+### Withdraw
+
+What a route does with an announcement whose release the forge deleted (ADR-0048).

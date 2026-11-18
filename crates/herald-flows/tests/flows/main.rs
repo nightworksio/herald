@@ -59,3 +59,5 @@ mod serving;
 mod sessions;
 #[cfg(test)]
 mod slack;
+#[cfg(test)]
+mod withdraw;

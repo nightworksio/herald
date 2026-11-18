@@ -5,7 +5,7 @@ use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use std::collections::BTreeMap;
 
-use herald_core::{Cursor, Event, Polled, SourceName, fresh};
+use herald_core::{Cursor, Event, Identity, Polled, SourceName, fresh};
 use herald_kinds::{Expand, Poll, Polling, Unpolled};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Versioned, Written};
 use jiff::Timestamp;
@@ -61,6 +61,14 @@ pub enum Sweep {
         announced: Vec<Fresh>,
         /// Why it was let go unannounced, where it was.
         withheld: Option<String>,
+    },
+    /// A release the forge deleted, whose withdrawal a run stopped
+    /// part-way, was withdrawn by a round, or stopped again (ADR-0048).
+    Withdrawn {
+        /// The release.
+        identity: Identity,
+        /// What its route did.
+        announced: Vec<Announced>,
     },
     /// The installation token the source reads with was minted for the
     /// round but not kept in the store, for this reason; the next run

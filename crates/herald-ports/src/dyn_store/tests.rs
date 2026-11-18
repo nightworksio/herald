@@ -11,6 +11,8 @@ use herald_core::{
 };
 
 use super::*;
+use crate::erased::Erased;
+use crate::store::Keeper;
 
 const NAMESPACE: &str = "namespace";
 
@@ -135,6 +137,10 @@ impl Pins for Refusing {
     async fn put_pinned(&self, _: &RouteId, _: &str) -> Result<(), StoreError> {
         Err(refused("put_pinned"))
     }
+
+    async fn forget_pinned(&self, _: &RouteId, _: &str) -> Result<(), StoreError> {
+        Err(refused("forget_pinned"))
+    }
 }
 
 impl Positions for Refusing {
@@ -232,6 +238,10 @@ impl Notes for Refusing {
     async fn expire_notes(&self, _: Timestamp) -> Result<(), StoreError> {
         Err(refused("expire_notes"))
     }
+
+    async fn forget_note(&self, _: &Key) -> Result<(), StoreError> {
+        Err(refused("forget_note"))
+    }
 }
 
 impl Announcements for Refusing {
@@ -245,6 +255,10 @@ impl Announcements for Refusing {
 
     async fn put_latest(&self, _: &Latest, _: Option<Version>) -> Result<Written, StoreError> {
         Err(refused("put_latest"))
+    }
+
+    async fn forget_latest(&self, _: &str) -> Result<(), StoreError> {
+        Err(refused("forget_latest"))
     }
 }
 
@@ -426,6 +440,24 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
     (listing, membership)
 }
 
+/// What a project last announced, as the erased store is asked to keep.
+fn announced(at: Timestamp) -> Latest {
+    Latest {
+        project: "p".to_owned(),
+        newest: Shown {
+            kind: Kind::RELEASE,
+            attributes: BTreeMap::default(),
+            title: "t".to_owned(),
+            body: String::new(),
+            links: BTreeMap::new(),
+            occurred: at,
+            identity: None,
+        },
+        stable: None,
+        routes: BTreeSet::new(),
+    }
+}
+
 #[test]
 fn every_answer_of_an_erased_store_is_the_store_s_own() {
     let store = Refusing { holding: true };
@@ -446,19 +478,7 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         pem: "k".to_owned(),
         fetched: at,
     };
-    let latest = Latest {
-        project: "p".to_owned(),
-        newest: Shown {
-            kind: Kind::RELEASE,
-            attributes: BTreeMap::default(),
-            title: "t".to_owned(),
-            body: String::new(),
-            links: BTreeMap::new(),
-            occurred: at,
-        },
-        stable: None,
-        routes: BTreeSet::new(),
-    };
+    let latest = announced(at);
     assert_eq!(Ledger::keeping(&erased), Keeping::Derived);
     assert_eq!(Schedules::keeping(&erased), Keeping::Kept);
     let refusals = [
@@ -474,6 +494,7 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.unsubscribe(&subscription)),
         answered(erased.pinned(&route)),
         answered(erased.put_pinned(&route, "post")),
+        answered(erased.forget_pinned(&route, "post")),
         answered(erased.position(&subscription.destination)),
         answered(erased.put_position(&subscription.destination, "s1")),
         answered(erased.admit(NAMESPACE, "1", at)),
@@ -483,9 +504,11 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.put_note("a", &key, "n", at)),
         answered(erased.outbox("a", None, 1)),
         answered(erased.expire_notes(at)),
+        answered(erased.forget_note(&key)),
         answered(erased.latest("p")),
         answered(erased.every_latest()),
         answered(erased.put_latest(&latest, None)),
+        answered(erased.forget_latest("p")),
         answered(erased.delivery(&key, "i")),
         answered(erased.put_delivery(&key, "i", &State::Attempted { at })),
         answered(erased.forget_deliveries(&key)),
@@ -506,6 +529,7 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "unsubscribe",
         "pinned",
         "put_pinned",
+        "forget_pinned",
         "position",
         "put_position",
         "admit",
@@ -515,9 +539,11 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "put_note",
         "outbox",
         "expire_notes",
+        "forget_note",
         "latest",
         "every_latest",
         "put_latest",
+        "forget_latest",
         "delivery",
         "put_delivery",
         "forget_deliveries",

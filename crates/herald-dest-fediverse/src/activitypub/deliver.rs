@@ -11,8 +11,8 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use super::documents::{
-    accept, actor_document, actor_id, create, follow, followers_collection, key_id, note, note_id,
-    outbox, outbox_page, reject, update, webfinger,
+    accept, actor_document, actor_id, create, deletion, follow, followers_collection, key_id, note,
+    note_id, outbox, outbox_page, reject, update, webfinger,
 };
 use super::options::{ActorOptions, ActorRouteOptions, actor_name, named_actor};
 use super::policy::Policy;
@@ -197,14 +197,15 @@ impl ActivityPub {
             Step::Crosspost => Ok(cannot("crosspost")),
             Step::OpenThread => Ok(cannot("open a thread")),
             Step::Pin | Step::Unpin => Ok(cannot("pin")),
-            Step::Deliveries | Step::Updates(_) => {
+            Step::Deliveries | Step::Updates(_) | Step::Deletes => {
                 Ok(cannot("deliver to every inbox in one request"))
             }
         }
     }
 
-    /// Delivers to `inbox` the Note's `Create`, or its `Update` to the
-    /// revision `entry` brings it to once the deliveries landed.
+    /// Delivers to `inbox` the Note's `Create`, its `Update` to the
+    /// revision `entry` brings it to once the deliveries landed, or its
+    /// `Delete` where `entry` withdraws it.
     async fn deliver<H: Http, G: Signer>(
         &self,
         http: &H,
@@ -213,7 +214,12 @@ impl ActivityPub {
         announcement: &Announcement,
         entry: &Entry,
     ) -> Result<Sent, HttpError> {
+        let withdrawing = entry
+            .wanted
+            .as_ref()
+            .is_some_and(|wanted| wanted.contains(&Step::Deletes));
         let activity = match (&entry.revision, entry.facts(&Step::Deliveries)) {
+            _ if withdrawing => deletion(&self.origin, announcement, &self.route, now),
             (Some(revision), Some(_)) => update(
                 &self.origin,
                 announcement,

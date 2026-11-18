@@ -10,7 +10,7 @@ use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 
 use crate::harness::*;
 
-fn toml_text() -> &'static str {
+pub(crate) fn toml_text() -> &'static str {
     r#"version = 1
 [store]
 kind = "sqlite"

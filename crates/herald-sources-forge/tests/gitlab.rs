@@ -181,8 +181,14 @@ mod gitlab {
     fn a_created_release_announces_an_updated_one_is_an_edit_and_a_tag_says_whether_it_is_a_pre_release()
      {
         let deleted = edited(|payload| payload["action"] = json!("delete"));
+        let withdrawn = Forge::GitLab
+            .event(&deleted, PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
+        assert!(withdrawn.withdrawn() && !withdrawn.edited());
+        let other = edited(|payload| payload["action"] = json!("publish"));
         assert_eq!(
-            Forge::GitLab.event(&deleted, PrereleaseRule::default()),
+            Forge::GitLab.event(&other, PrereleaseRule::default()),
             Ok(None)
         );
         let updated = edited(|payload| payload["action"] = json!("update"));

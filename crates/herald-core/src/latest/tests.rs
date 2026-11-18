@@ -85,3 +85,59 @@ fn a_stable_event_after_only_pre_releases_becomes_stable() {
     assert_eq!(latest.newest.version(), Some("1.0.0-rc.1"));
     assert_eq!(latest.shown(false).version(), Some("0.9.0"));
 }
+
+fn kept(events: &[Event]) -> Latest {
+    let mut latest = None;
+    for event in events {
+        latest = Some(Latest::after(latest, event, &route("deploys")));
+    }
+    latest.unwrap()
+}
+
+#[test]
+fn a_withdrawn_newest_release_falls_back_to_the_stable_one_or_leaves_nothing() {
+    let (stable, candidate) = (event("1.0.0", false, 10), event("2.0.0-rc.1", true, 20));
+    let fallen = kept(&[stable.clone(), candidate.clone()])
+        .without(candidate.identity())
+        .unwrap();
+    assert_eq!(fallen.newest.version(), Some("1.0.0"));
+    assert_eq!(
+        fallen.stable.as_ref().and_then(Shown::version),
+        Some("1.0.0")
+    );
+    assert_eq!(
+        kept(std::slice::from_ref(&stable)).without(stable.identity()),
+        None
+    );
+    let without_stable = kept(&[stable.clone(), candidate.clone()])
+        .without(stable.identity())
+        .unwrap();
+    assert_eq!(without_stable.newest.version(), Some("2.0.0-rc.1"));
+    assert_eq!(without_stable.stable, None);
+    let untouched = kept(std::slice::from_ref(&stable));
+    assert_eq!(
+        untouched
+            .clone()
+            .without(event("0.9.0", false, 5).identity()),
+        Some(untouched)
+    );
+}
+
+#[test]
+fn a_shown_event_is_told_by_the_identity_kept_with_it() {
+    let (stable, candidate) = (event("1.0.0", false, 10), event("2.0.0-rc.1", true, 20));
+    let latest = kept(&[stable.clone(), candidate.clone()]);
+    assert!(latest.newest.is(candidate.identity()));
+    assert!(!latest.newest.is(stable.identity()));
+    assert!(latest.shows(stable.identity()));
+    assert!(latest.shows(candidate.identity()));
+    assert!(!latest.shows(event("3.0.0", false, 30).identity()));
+    let unkept = Shown {
+        identity: None,
+        ..latest.newest.clone()
+    };
+    assert!(!unkept.is(candidate.identity()));
+    let json = serde_json::to_value(&unkept).unwrap();
+    assert!(json.get("identity").is_none());
+    assert_eq!(serde_json::from_value::<Shown>(json).unwrap(), unkept);
+}

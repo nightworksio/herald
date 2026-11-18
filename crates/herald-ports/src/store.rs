@@ -342,6 +342,13 @@ pub trait Pins: Sync {
         route: &RouteId,
         post: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Forgets the post `route` last pinned, where it is `post`.
+    fn forget_pinned(
+        &self,
+        route: &RouteId,
+        post: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
 /// Where each session a destination holds stands, one value per
@@ -511,6 +518,10 @@ pub trait Notes: Sync {
         &self,
         before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Forgets the Note the announcement `key` was published as, and takes
+    /// it from its actor's outbox.
+    fn forget_note(&self, key: &Key) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
 /// What each project last announced, for commands to answer with.
@@ -531,6 +542,9 @@ pub trait Announcements: Sync {
         latest: &Latest,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// Forgets what `project` last announced.
+    fn forget_latest(&self, project: &str) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
 /// Where each delivery of an announcement to a follower's inbox stands
@@ -699,6 +713,14 @@ impl Pins for Unkept {
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Pins.unsupported()))
     }
+
+    fn forget_pinned(
+        &self,
+        _: &RouteId,
+        _: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Pins.unsupported()))
+    }
 }
 
 impl Positions for Unkept {
@@ -798,6 +820,10 @@ impl Notes for Unkept {
     fn expire_notes(&self, _: Timestamp) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Notes.unsupported()))
     }
+
+    fn forget_note(&self, _: &Key) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Notes.unsupported()))
+    }
 }
 
 impl Announcements for Unkept {
@@ -817,6 +843,10 @@ impl Announcements for Unkept {
         _: &Latest,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Latest.unsupported()))
+    }
+
+    fn forget_latest(&self, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Latest.unsupported()))
     }
 }

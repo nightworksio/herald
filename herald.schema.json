@@ -222,6 +222,11 @@
         "visibility": {
           "description": "Who sees each Note on the timelines.",
           "$ref": "#/$defs/Audience"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
         }
       },
       "additionalProperties": false,
@@ -978,6 +983,11 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
         }
       },
       "additionalProperties": false,
@@ -1433,6 +1443,11 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
         }
       },
       "additionalProperties": false,
@@ -1740,6 +1755,11 @@
         "visibility": {
           "description": "Who sees each status.",
           "$ref": "#/$defs/Visibility"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
         }
       },
       "additionalProperties": false,
@@ -1991,6 +2011,11 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
         }
       },
       "additionalProperties": false,
@@ -2810,6 +2835,11 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
         }
       },
       "additionalProperties": false,
@@ -5266,6 +5296,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "Withdraw": {
+      "description": "What a route does with an announcement whose release the forge deleted\n(ADR-0048).",
+      "oneOf": [
+        {
+          "description": "Keep its post.",
+          "type": "string",
+          "const": "keep"
+        },
+        {
+          "description": "Delete every message herald recorded of it, where the destination\ncan.",
+          "type": "string",
+          "const": "delete"
+        }
+      ]
     },
     "Work": {
       "description": "`[server.work]`: how the work a request leaves keeps within its host's\nlimits. herald starts no send that could pass them, and the next run\nsends what is left.",

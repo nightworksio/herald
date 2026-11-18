@@ -44,6 +44,9 @@ pub enum Step {
     /// Deliver the revision whose digest it holds to every follower's inbox
     /// the deliveries reached. Each delivery is kept as its own record.
     Updates(String),
+    /// Deliver the Note's deletion to every follower's inbox the deliveries
+    /// reached (ADR-0048). Each delivery is kept as its own record.
+    Deletes,
 }
 
 impl Step {
@@ -57,11 +60,13 @@ impl Step {
 
     /// Whether this step, once landed, leaves `earlier` nothing to stand
     /// for: an edit of a part supersedes an earlier revision's edit of it,
-    /// and a chunk's deletion its post and every edit of it.
+    /// and a part's deletion its post and every edit of it.
     fn supersedes(&self, earlier: &Self) -> bool {
         match (self, earlier) {
             (Self::Edit { part, .. }, Self::Edit { part: other, .. }) => part == other,
-            (Self::Rename(_), Self::Rename(_)) | (Self::Updates(_), Self::Updates(_)) => true,
+            (Self::Rename(_), Self::Rename(_))
+            | (Self::Updates(_), Self::Updates(_))
+            | (Self::Delete(0), Self::Post) => true,
             (Self::Delete(part), Self::Chunk(other) | Self::Edit { part: other, .. }) => {
                 part == other
             }
@@ -156,6 +161,11 @@ pub struct Entry {
     /// it was one's member; it is then never announced alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// When its post was withdrawn, where it was (ADR-0048); the entry is
+    /// kept, so what it announced stays on record, and a re-created release
+    /// is announced under an identity of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub withdrawn: Option<Timestamp>,
 }
 
 impl Entry {
@@ -170,6 +180,7 @@ impl Entry {
             claimed: None,
             revision: None,
             group: None,
+            withdrawn: None,
         }
     }
 
@@ -244,13 +255,22 @@ impl Entry {
             .iter()
             .filter_map(move |step| match self.state(step) {
                 Some(State::Landed { .. }) => None,
-                None if matches!(step, Step::Delete(part) if !chunks.contains(part)) => None,
+                None if matches!(step, Step::Delete(part) if !self.holds(*part, &chunks)) => None,
                 state => Some(Planned {
                     step: step.clone(),
                     verify_first: matches!(state, Some(State::Attempted { .. }))
                         && !step.resendable(),
                 }),
             })
+    }
+
+    /// Whether the part `part` of its post landed, of the chunks `chunks`
+    /// that did: the post for part 0, else the chunk.
+    fn holds(&self, part: u32, chunks: &[u32]) -> bool {
+        match part {
+            0 => self.message(&Step::Post).is_some(),
+            chunk => chunks.contains(&chunk),
+        }
     }
 
     /// The entry claimed by `run` at `at`, and held by it until `until`.

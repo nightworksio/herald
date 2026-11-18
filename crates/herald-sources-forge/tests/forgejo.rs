@@ -157,6 +157,13 @@ mod forgejo {
         assert!(edited.edited() && !event.edited());
         assert_eq!(edited.identity(), event.identity());
         updated["action"] = json!("deleted");
+        let deleted = Forge::Forgejo
+            .event(updated.to_string().as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
+        assert!(deleted.withdrawn() && !deleted.edited() && !event.withdrawn());
+        assert_eq!(deleted.identity(), event.identity());
+        updated["action"] = json!("created");
         assert_eq!(
             Forge::Forgejo.event(updated.to_string().as_bytes(), PrereleaseRule::default()),
             Ok(None)

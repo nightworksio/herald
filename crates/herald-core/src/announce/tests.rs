@@ -492,3 +492,17 @@ fn a_group_is_announced_under_its_key_as_its_lead_renders() {
         "route/php-mutation-gate-releases/group"
     );
 }
+
+#[test]
+fn a_withdrawal_carries_its_key_marks_and_route_and_renders_nothing() {
+    let key = Key::derive(&RouteId::new("r"), &crate::Identity::new("i"));
+    let at: Timestamp = "2026-11-17T12:00:00Z".parse().unwrap();
+    let withdrawing = Announcement::withdrawing(key, marks(), RouteId::new("r"), at);
+    assert_eq!(withdrawing.key, key);
+    assert_eq!(withdrawing.marks, marks());
+    assert_eq!(withdrawing.route, RouteId::new("r"));
+    assert_eq!(withdrawing.occurred, at);
+    assert_eq!(withdrawing.title.plain(), "");
+    assert_eq!(withdrawing.messages(), 0);
+    assert_eq!(withdrawing.link, None);
+}

@@ -40,6 +40,7 @@ mod setup;
 mod signals;
 mod sourcing;
 mod stores;
+mod withdrawing;
 
 pub use connect::{Connect, Connection, Connector, NATIVE, native, waiting};
 pub use doctoring::schema as doctor_schema;
@@ -229,6 +230,14 @@ async fn ran(
         Running::Lambda => Box::pin(lambda::lambda(config, vars, connect, out)).await,
         Running::Followers(asked) => {
             followers::following(&config, vars, connect, &asked, out).await
+        }
+        Running::Withdraw {
+            names,
+            every_route,
+            dry_run,
+        } => {
+            let asked = withdrawing::Asked::of(&names, every_route, dry_run)?;
+            withdrawing::withdrawing(&config, vars, connect, asked, out).await
         }
     }
 }
