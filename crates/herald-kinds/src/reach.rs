@@ -11,7 +11,7 @@ use herald_ports::{
 };
 use jiff::Timestamp;
 
-use crate::{Fed, Federates, Itself};
+use crate::{Fed, Federates, Itself, Pushed};
 
 /// What a step is signed with, where its destination signs its requests.
 #[derive(Clone, Copy)]
@@ -82,6 +82,12 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
     /// It as a feed of herald's own, where herald publishes each event to
     /// a feed it serves rather than posting it.
     fn feeds(&self) -> Option<Fed<'_>> {
+        None
+    }
+
+    /// It as a push to a peer's inbox, where herald pushes each event to a
+    /// peer rather than posting it.
+    fn pushes(&self) -> Option<Pushed<'_>> {
         None
     }
 

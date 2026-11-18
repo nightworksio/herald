@@ -31,7 +31,10 @@ pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
     let now = ports.clock.now();
     let mut tried = Vec::new();
     for (route, http) in &connected.routes {
-        if route.reached.follows().is_some() || route.reached.feeds().is_some() {
+        if route.reached.follows().is_some()
+            || route.reached.feeds().is_some()
+            || route.reached.pushes().is_some()
+        {
             continue;
         }
         let id = route.config.route.id.clone();

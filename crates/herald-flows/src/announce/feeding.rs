@@ -10,9 +10,10 @@ use herald_kinds::Fed;
 use herald_peers::discovery::Instance;
 use herald_peers::feed::{Envelope, identity, shows, withdrawn};
 use herald_peers::jcs::canonical;
+use herald_peers::keys::Key as PublicKey;
 use herald_peers::keys::method;
 use herald_peers::proof::unproved;
-use herald_ports::{Algorithm, Ledger, Published, Signer, Store, Versioned, Written};
+use herald_ports::{Algorithm, Ledger, Published, Secret, Signer, Store, Versioned, Written};
 
 use super::{Outcome, Run, Stop, stopped, stored};
 
@@ -36,26 +37,20 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
             return self.withheld(fed, event, entry).await;
         }
         let instance = self.route.instance();
-        let envelope =
-            match instance.envelope(event, self.kinds.get(event.kind()), fed.feeding.envelope) {
-                Ok(envelope) => envelope,
-                Err(why) => return stopped(Stop::Refused(why.to_string())),
-            };
+        let envelope = match instance.envelope(
+            (event, Visibility::Public),
+            self.kinds.get(event.kind()),
+            fed.feeding.envelope,
+        ) {
+            Ok(envelope) => envelope,
+            Err(why) => return stopped(Stop::Refused(why.to_string())),
+        };
         let revision = Revision::of(
             event.signal(),
             [canonical(&envelope).unwrap_or_default().as_str()],
         );
-        let delivery = &self.route.config.route.delivery;
-        let posted = entry
-            .as_ref()
-            .map(|entry| &entry.value)
-            .filter(|entry| entry.message(&Step::Post).is_some());
-        match posted {
-            None if event.edited() => return Outcome::Unedited,
-            Some(shown) if revise(shown, &revision, delivery, true) == Revise::Keep => {
-                return Outcome::AlreadyAnnounced;
-            }
-            _ => {}
+        if let Some(unrevised) = self.unrevised(entry.as_ref(), event, &revision) {
+            return unrevised;
         }
         let shown =
             |item: Option<&FeedItem>| item.is_some_and(|item| shows(&item.envelope, &envelope));
@@ -152,10 +147,33 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
         Ok(true)
     }
 
+    /// What the route did with `event`, whose envelope is `revision`, where
+    /// it carries the event already: nothing where `entry` keeps no post of
+    /// it and it is an edit, or where it carries this revision; none where
+    /// it is to be carried.
+    pub(super) fn unrevised(
+        &self,
+        entry: Option<&Versioned<Entry>>,
+        event: &Event,
+        revision: &Revision,
+    ) -> Option<Outcome> {
+        let delivery = &self.route.config.route.delivery;
+        let posted = entry
+            .map(|entry| &entry.value)
+            .filter(|entry| entry.message(&Step::Post).is_some());
+        match posted {
+            None if event.edited() => Some(Outcome::Unedited),
+            Some(shown) if revise(shown, revision, delivery, true) == Revise::Keep => {
+                Some(Outcome::AlreadyAnnounced)
+            }
+            _ => None,
+        }
+    }
+
     /// The route's entry for `key`, kept where `entry` keeps it, claimed and
     /// released by this run now: a new one with nothing landed where
     /// `entry` is none.
-    fn fed_entry(&self, key: Key, entry: Option<&Versioned<Entry>>) -> Entry {
+    pub(super) fn fed_entry(&self, key: Key, entry: Option<&Versioned<Entry>>) -> Entry {
         let now = self.ports.clock.now();
         entry
             .map_or_else(|| Entry::new(key), |entry| entry.value.clone())
@@ -165,7 +183,7 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
 
     /// `outcome`, once `written` is kept over `entry`; what another run's
     /// write first, or the store, made of it otherwise.
-    async fn recorded(
+    pub(super) async fn recorded(
         &self,
         written: &Entry,
         entry: Option<Versioned<Entry>>,
@@ -192,7 +210,8 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
     ) -> Result<Option<u64>, Stop> {
         let destination = &self.route.config.route.destination;
         let event = identity(envelope);
-        let proved = self.proved(fed, instance, envelope).await?;
+        let public = self.public(fed.key).await?;
+        let proved = self.proved((fed.key, &public), instance, envelope).await?;
         let published = self.ports.store.published();
         for _ in 0..self.route.attempts {
             let held = published.feed(destination).await.map_err(stored)?;
@@ -220,32 +239,40 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
         )))
     }
 
-    /// `envelope` proved by the instance's newest key, `fed.key`, as of now.
-    async fn proved(
+    /// The public half of the instance's newest key, `key`.
+    pub(super) async fn public(&self, key: &Secret) -> Result<PublicKey, Stop> {
+        let spki = self
+            .ports
+            .signer
+            .public(Algorithm::Ed25519, key)
+            .await
+            .map_err(unprovable)?;
+        ed25519_of(&spki).ok_or_else(|| {
+            Stop::Proof(format!(
+                "the federation key {} is not an Ed25519 key",
+                key.name()
+            ))
+        })
+    }
+
+    /// `envelope` proved by the instance's newest key, `key`, whose public
+    /// half is `public`, as of now.
+    pub(super) async fn proved(
         &self,
-        fed: Fed<'_>,
+        (key, public): (&Secret, &PublicKey),
         instance: &Instance<'_>,
         envelope: &Envelope,
     ) -> Result<Envelope, Stop> {
-        let signer = self.ports.signer;
-        let spki = signer
-            .public(Algorithm::Ed25519, fed.key)
-            .await
-            .map_err(unprovable)?;
-        let public = ed25519_of(&spki).ok_or_else(|| {
-            Stop::Proof(format!(
-                "the federation key {} is not an Ed25519 key",
-                fed.key.name()
-            ))
-        })?;
         let ready = unproved(
             envelope,
-            &method(instance.domain, &public),
+            &method(instance.domain, public),
             self.ports.clock.now(),
         )
         .map_err(unprovable)?;
-        let signature = signer
-            .sign(Algorithm::Ed25519, fed.key, ready.message())
+        let signature = self
+            .ports
+            .signer
+            .sign(Algorithm::Ed25519, key, ready.message())
             .await
             .map_err(unprovable)?;
         Ok(ready.proved(&signature))
@@ -253,6 +280,6 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
 }
 
 /// Why an envelope could not be proved: `error`, as it says.
-fn unprovable(error: impl std::fmt::Display) -> Stop {
+pub(super) fn unprovable(error: impl std::fmt::Display) -> Stop {
     Stop::Proof(error.to_string())
 }

@@ -41,7 +41,11 @@ fn event(origin: bool) -> Event {
 
 fn envelope(origin: bool) -> Value {
     INSTANCE
-        .envelope(&event(origin), Some(&KindSpec::shipped().remove(0)), 8192)
+        .envelope(
+            (&event(origin), Visibility::Public),
+            Some(&KindSpec::shipped().remove(0)),
+            8192,
+        )
         .unwrap()
 }
 
@@ -158,7 +162,7 @@ fn an_envelope_takes_at_most_the_bytes_any_envelope_may() {
 
 #[test]
 fn an_envelope_reads_back_as_the_event_it_carries() {
-    let Carried::Event(read) = carried(&envelope(true)).unwrap() else {
+    let Carried::Event(read) = carried(&envelope(true), Visibility::Public).unwrap() else {
         panic!("an event");
     };
     assert_eq!(
@@ -182,12 +186,45 @@ fn an_envelope_reads_back_as_the_event_it_carries() {
                 "acme/gate".to_owned()
             ]),
             path: vec!["https://herald.example/h/.well-known/herald".to_owned()],
+            visibility: Visibility::Public,
         }
     );
-    let Carried::Event(bare) = carried(&envelope(false)).unwrap() else {
+    let Carried::Event(bare) = carried(&envelope(false), Visibility::Public).unwrap() else {
         panic!("an event");
     };
     assert_eq!(bare.origin, None);
+}
+
+#[test]
+fn an_envelope_reads_back_as_seen_by_whom_it_names_where_its_reader_takes_that() {
+    let seen = |visibility: Visibility, strictest: Visibility| {
+        let mut event = envelope(true);
+        event["visibility"] = json!(visibility.name());
+        match carried(&event, strictest) {
+            Ok(Carried::Event(read)) => Ok(read.visibility),
+            Ok(Carried::Withdrawn { .. }) => panic!("an event"),
+            Err(unread) => Err(unread),
+        }
+    };
+    for visibility in [
+        Visibility::Public,
+        Visibility::Internal,
+        Visibility::Private,
+    ] {
+        assert_eq!(seen(visibility, Visibility::Private), Ok(visibility));
+    }
+    assert_eq!(
+        seen(Visibility::Internal, Visibility::Internal),
+        Ok(Visibility::Internal)
+    );
+    assert_eq!(
+        seen(Visibility::Private, Visibility::Internal),
+        Err(Unread::Unpublic)
+    );
+    assert_eq!(
+        seen(Visibility::Internal, Visibility::Public),
+        Err(Unread::Unpublic)
+    );
 }
 
 #[test]
@@ -197,7 +234,7 @@ fn a_tombstone_reads_back_as_the_identity_it_withdraws() {
         "2026-11-17T10:00:00Z".parse().unwrap(),
     );
     assert_eq!(
-        carried(&tombstone),
+        carried(&tombstone, Visibility::Public),
         Ok(Carried::Withdrawn {
             identity: "forge.example/1/v1".to_owned(),
             path: vec!["https://herald.example/h/.well-known/herald".to_owned()],
@@ -219,7 +256,10 @@ fn an_envelope_whose_identity_or_project_is_too_long_is_refused() {
             INSTANCE.tombstone(&"i".repeat(bytes), "2026-11-17T10:00:00Z".parse().unwrap());
         let mut event = envelope(true);
         event["identity"] = json!("i".repeat(bytes));
-        (carried(&tombstone).map(|_| ()), carried(&event).map(|_| ()))
+        (
+            carried(&tombstone, Visibility::Public).map(|_| ()),
+            carried(&event, Visibility::Public).map(|_| ()),
+        )
     };
     assert_eq!(at(IDENTITY_MOST), (Ok(()), Ok(())));
     assert_eq!(
@@ -232,7 +272,7 @@ fn an_envelope_whose_identity_or_project_is_too_long_is_refused() {
     let project = |bytes: usize| {
         let mut event = envelope(true);
         event["project"] = json!("p".repeat(bytes));
-        carried(&event).map(|_| ())
+        carried(&event, Visibility::Public).map(|_| ())
     };
     assert_eq!(project(PROJECT_MOST), Ok(()));
     assert_eq!(project(PROJECT_MOST + 1), long("project", PROJECT_MOST));
@@ -243,12 +283,12 @@ fn an_envelope_out_of_shape_or_not_public_is_refused() {
     let with = |name: &str, value: Value| {
         let mut changed = envelope(true);
         changed[name] = value;
-        carried(&changed)
+        carried(&changed, Visibility::Public)
     };
     let without = |name: &str| {
         let mut changed = envelope(true);
         changed.as_object_mut().unwrap().remove(name);
-        carried(&changed)
+        carried(&changed, Visibility::Public)
     };
     let shape = |what| Err(Unread::Shape(what));
     assert_eq!(without("path"), shape("it names no path of instances"));
@@ -271,6 +311,7 @@ fn an_envelope_out_of_shape_or_not_public_is_refused() {
     );
     assert_eq!(with("visibility", json!("private")), Err(Unread::Unpublic));
     assert_eq!(without("visibility"), Err(Unread::Unpublic));
+    assert_eq!(with("visibility", json!("secret")), Err(Unread::Unpublic));
     assert_eq!(without("kind"), shape("it names no kind"));
     assert_eq!(without("project"), shape("it names no project"));
     assert_eq!(without("title"), shape("it has no title"));
@@ -329,7 +370,7 @@ fn every_refusal_reads_as_a_sentence() {
         ),
         (
             Unread::Unpublic,
-            "an envelope carries an event that is not public".to_owned(),
+            "an envelope carries an event of no visibility its reader takes".to_owned(),
         ),
         (
             Unread::Long(Long {

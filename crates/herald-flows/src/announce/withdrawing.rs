@@ -149,11 +149,12 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
 
     /// `event`, under the identity the route announces it under now, where
     /// its kind may be withdrawn and the store keeps the records a
-    /// withdrawal needs. A herald feed forgets a withdrawn post, so it
+    /// withdrawal needs. A herald feed or push forgets a withdrawn post, so it
     /// announces a re-created release under its own identity.
     pub(crate) async fn reissued(&self, event: &Event) -> Result<Event, Stop> {
         let withdrawable = self.ports.store.waiting().is_some()
             && self.route.reached.feeds().is_none()
+            && self.route.reached.pushes().is_none()
             && self
                 .kinds
                 .get(event.kind())
@@ -215,6 +216,15 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 return Ok(None);
             }
             return match self.unfed(fed, identity, record).await {
+                Outcome::Sent { steps } => Ok(Some(steps)),
+                outcome => Err(outcome),
+            };
+        }
+        if let Some(pushed) = self.route.reached.pushes() {
+            if record.value.message(&Step::Post).is_none() {
+                return Ok(None);
+            }
+            return match self.unpushed(pushed, identity, record).await {
                 Outcome::Sent { steps } => Ok(Some(steps)),
                 outcome => Err(outcome),
             };

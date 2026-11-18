@@ -6,7 +6,7 @@ use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions, Waits};
 use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
 use crate::setup::Setup;
-use crate::{Feeding, Interacted, Itself, Placed, Reached};
+use crate::{Feeding, Interacted, Itself, Peered, Placed, Pushing, Reached};
 
 /// Why a route's posts are not read back, where nothing else says why.
 pub const UNREAD: &str = "a webhook cannot read back its posts";
@@ -90,6 +90,18 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
     /// It, its feed keeping at most `keep` envelopes as its store's records
     /// hold, where it is a feed whose options name no bound.
     fn fitted(&self, _keep: usize) -> Option<Destination> {
+        None
+    }
+
+    /// Where it pushes, where it pushes each event to a peer: its envelopes
+    /// are proved, and its requests signed, by the instance's newest key,
+    /// which stands for its credential.
+    fn pushing(&self) -> Option<Pushing<'_>> {
+        None
+    }
+
+    /// It, pushing to the peer `peered`, where it pushes to a peer.
+    fn peered(&self, _peered: Peered) -> Option<Destination> {
         None
     }
 

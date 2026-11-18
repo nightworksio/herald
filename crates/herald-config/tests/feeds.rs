@@ -110,7 +110,7 @@ destination = "releases"
         )
         .unwrap_err();
         assert!(
-            error.contains("routes[0].template: a herald feed publishes each event as an envelope and renders no template; remove template"),
+            error.contains("routes[0].template: a herald feed or push carries each event as an envelope and renders no template; remove template"),
             "{error}"
         );
     }

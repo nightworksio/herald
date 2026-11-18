@@ -20,6 +20,7 @@ use super::*;
 use crate::pulls::{DISCOVERY, DOMAIN, OLD, envelope, proved};
 
 mod rates;
+mod sent;
 
 const INBOX: &str = "/herald/v1/inbox/inbox";
 const URL: &str = "https://herald.example/herald/v1/inbox/inbox";

@@ -59,7 +59,7 @@ impl HeraldOptions {
         (pusher, grant): (&str, &Grant),
         (envelope, again): (&Value, bool),
     ) -> Result<Polled, Unreceived> {
-        let taking = Pulled::new(&Self {
+        let taking = Pulled::pushed(&Self {
             name: pusher.to_owned(),
             namespaces: grant.namespaces.iter().cloned().collect(),
             ..self.clone()

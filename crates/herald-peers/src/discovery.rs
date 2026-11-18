@@ -10,6 +10,8 @@ use crate::keys::{KeySet, Rotation, Unkeyed, Unrotated, WELL_KNOWN, rotation};
 
 /// Where herald's API lives, under its base.
 pub const API: &str = "/herald/v1";
+/// Where a herald source's inbox lives under the API, before its name.
+pub const INBOX: &str = "/inbox/";
 /// The version of the API the discovery document describes.
 pub const API_VERSION: u32 = 1;
 /// The account WebFinger finds the instance by, before `@<domain>`.

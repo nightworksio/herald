@@ -236,7 +236,7 @@ body = "{{ event.body }}"
         assert!(feeding("").is_ok());
         let error = feeding("group = { key = \"{{ event.project }}\" }\n").unwrap_err();
         assert!(
-            error.contains("routes[0].group: a herald feed publishes each event as an envelope of its own, so it gathers no group"),
+            error.contains("routes[0].group: a herald feed or push carries each event as an envelope of its own, so it gathers no group"),
             "{error}"
         );
     }

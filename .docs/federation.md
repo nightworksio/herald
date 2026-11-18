@@ -134,3 +134,25 @@ peers = { herald-example-net = { actions = ["push"], until = "2027-06-01T00:00:0
 - The answers are fixed: `202` taken (and for an envelope no newer than the proof kept), `401` not signed by a peer's key, its signature not holding, or its nonce seen before, `403` not granted, the grant ended, or the envelope not one the source takes, `413` larger than the peer may send, `429` past the peer's `rate`, `503` the store cannot answer. Why goes to the log and the audit, never into the answer.
 - Each signed request is kept in the audit of its peer's UTC day, or of `-` for one naming a key no peer holds or whose signature does not hold, within `[federation] stranger_rate` (`"120/m"`, at most `"480/m"`; the rest, and one with no readable signature, are only logged), so no one but the peer writes in its name or spends its rate: when, the peer or the key id it named, the action, the resource, the status and why, never its body; at most 1000 a day, the rest counted. `[federation] keep_audit` (`"90d"`, at most `"365d"`) is how long each day is kept. `herald peer log [name] [--since <day, time or 7d>] [--limit 1000] [--format json]` shows them newest first.
 - `herald doctor` names what each peer may do with each resource and until when, each grant that never ends, and each that has ended or ends within `[federation] grants_ending` (`"7d"`, at most `"90d"`).
+- An envelope a peer pushes names who may see its event: `public`, `internal` or `private`. The event is kept seen by no more than it names. A pulled feed's envelopes are public, and one naming any other is refused.
+
+## Pushing to a peer
+
+A route may push each event it takes into a peer's `herald` source, which grants this instance `push`:
+
+```toml
+[destinations.mirror]
+kind = "herald-push"
+peer = "herald-example-net"
+inbox = "upstream"
+
+[[routes]]
+id = "mirror"
+sources = ["releases"]
+destination = "mirror"
+```
+
+- `peer` names a peer of `[peers]`; `inbox` the peer's source, whose inbox is `<url>/herald/v1/inbox/<inbox>`. `envelope` is the most bytes one envelope takes (`"16KiB"`, at most `"64KiB"`), the body cut to fit; `waits` how long it waits where the inbox answers that it is unwell or limited and names no wait.
+- Each event is pushed as an envelope proved by the instance's newest key, in a request that key signs over `@method`, `@target-uri`, `content-type` and `Content-Digest`, with a nonce, lasting `[federation] signed_for`. `[federation]` must name the domain and keys, and the store must keep records: the route's ledger records each push, so an event is pushed once for each revision and an edit again. A wait the inbox asks for is kept, and any other refusal stops the route; either is tried again as any destination's step is.
+- An event the routing sees as other than public is pushed only to a peer with `private = true`, its envelope naming who may see it; to any other peer it is left out, and withdrawn by a pushed tombstone where it was pushed before. A route declared private does not load to a peer taking no private events, unless `[doctor] private_to_public = "warn"`.
+- A release withdrawn (`withdraw = "delete"`) is withdrawn from the peer by a pushed tombstone, and a re-created release pushed again.

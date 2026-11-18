@@ -237,7 +237,8 @@ answers that the actor is gone.
 operators confirm with `herald peer add`; a `herald` source pulls a
 peer's feed through those keys, and takes what the peers it grants
 `push` send to its inbox, each request kept in the peer's audit of the
-day for `herald peer log`. [.docs/federation.md](.docs/federation.md)
+day for `herald peer log`; a `herald-push` destination pushes each event
+to a peer's inbox. [.docs/federation.md](.docs/federation.md)
 covers each.
 
 ### herald server
@@ -839,8 +840,8 @@ as a tag, or an edit of a member's Release, edits the group's post as
 `late_release` and `edits` say. An event whose key renders empty or
 longer than 256 bytes, or one past `most` (25, at most 100) or past what
 the store keeps in a record, is announced alone. The markers store keeps
-no groups, and a route to a herald feed, which publishes each event as
-an envelope of its own, takes no `group`. `herald preview --group v1.2.0` renders a route's group of
+no groups, and a route to a herald feed or push, which carries each
+event as an envelope of its own, takes no `group`. `herald preview --group v1.2.0` renders a route's group of
 the sample releases.
 
 ### A deleted release
@@ -850,7 +851,8 @@ forge deletes the Release (GitHub's and Forgejo's `deleted`, GitLab's
 `delete`); `"keep"`, the default, leaves them. Each message herald posted
 is deleted, the route's pin is let go, a thread opened from the post is
 archived where the route archives threads, ActivityPub sends each follower
-the Note reached its `Delete`, and a herald feed lists a tombstone. A
+the Note reached its `Delete`, a herald feed lists a tombstone, and a
+herald push pushes one to the peer. A
 grouped member leaves the group's post, which is deleted once it shows
 none. What the project last announced falls back to its stable release. A
 Release published again later is announced anew. A destination that edits

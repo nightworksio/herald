@@ -13,6 +13,8 @@ pub(crate) struct Script {
     pub(crate) answers: std::sync::Arc<Mutex<VecDeque<(String, u16, String)>>>,
     seen: std::sync::Arc<Mutex<Vec<String>>>,
     bodies: std::sync::Arc<Mutex<Vec<Vec<u8>>>>,
+    asked: Heads,
+    most: std::sync::Arc<Mutex<Vec<usize>>>,
     headers: Vec<(String, String)>,
     heads: Heads,
 }
@@ -58,6 +60,16 @@ impl Script {
     pub(crate) fn bodies(&self) -> Vec<Vec<u8>> {
         self.bodies.lock().unwrap().clone()
     }
+
+    /// The most bytes of its answer each request reads, in order.
+    pub(crate) fn most(&self) -> Vec<usize> {
+        self.most.lock().unwrap().clone()
+    }
+
+    /// The headers of each request, in order.
+    pub(crate) fn asked(&self) -> Vec<Vec<(String, String)>> {
+        self.asked.lock().unwrap().iter().cloned().collect()
+    }
 }
 
 impl Http for Script {
@@ -65,6 +77,14 @@ impl Http for Script {
         let line = format!("{} {}", request.method.as_str(), request.url.redacted());
         self.seen.lock().unwrap().push(line.clone());
         self.bodies.lock().unwrap().push(request.body.clone());
+        self.most.lock().unwrap().push(request.most);
+        self.asked.lock().unwrap().push_back(
+            request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.clone(), value.expose()))
+                .collect(),
+        );
         let Some((expected, status, body)) = self.answers.lock().unwrap().pop_front() else {
             return Err(HttpError::Unreachable {
                 reason: format!("nothing scripted for {line}"),

@@ -476,7 +476,7 @@ impl Loader<'_> {
             (None, true) => return Ok(None),
             (Some(given), false) => given,
             (Some(given), true) => {
-                self.error(&given.span(), &key, "a herald feed publishes each event as an envelope and renders no template; remove template");
+                self.error(&given.span(), &key, "a herald feed or push carries each event as an envelope and renders no template; remove template");
                 return Err(());
             }
             (None, false) => {
@@ -565,7 +565,7 @@ impl Loader<'_> {
         let destination = DestinationName::new(route.destination.get_ref());
         let reached = self.reached(&destination, &route, &path, destinations)?;
         let span = route.id.span();
-        let feeds = reached.feeding().is_some();
+        let feeds = reached.feeding().is_some() || reached.pushing().is_some();
         let rendered = self.rendered(&route, (&path, &span), feeds, templates);
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;

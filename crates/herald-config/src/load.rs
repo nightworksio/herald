@@ -280,6 +280,7 @@ pub fn load(
     let peers = loader.peers(sections.peers, &federation.revoked);
     let mut destinations = loader.destinations(sections.destinations, &inherited, read);
     loader.feeds(store.as_ref(), &federation, &mut destinations);
+    loader.pushes((store.as_ref(), &federation), &peers, &mut destinations);
     let (mut sources, source_spans) = loader.sources(sections.sources, read);
     loader.joined((&mut sources, &source_spans), &peers, &federation.revoked);
     loader.granted((&sources, &source_spans), &peers);
@@ -323,6 +324,7 @@ pub fn load(
     loader.exposed(&sources, &routes, doctor);
     loader.unstated(&routes, doctor);
     loader.unfed(&destinations, &routes, doctor);
+    loader.unpushed(&destinations, &peers, &routes, doctor);
     loader.routed((&sources, &source_spans), &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
@@ -367,6 +369,7 @@ mod feeds;
 mod github_apps;
 mod group;
 mod peers;
+mod pushes;
 mod route;
 mod secrets;
 mod sections;
