@@ -715,19 +715,30 @@ keys = [{ secret = "HERALD_KEY" }]
                     ),
                 )
                 .await,
+                asked(
+                    address,
+                    &posted(
+                        "/herald/round/report",
+                        &[("Authorization", "Bearer s3cret")],
+                        b"",
+                    ),
+                )
+                .await,
             );
             stop.notify_one();
             answers
         };
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));
-        let ((unheld, wrong, kept), ()) =
+        let ((unheld, wrong, kept, reported), ()) =
             tokio::join!(client, world.serve(listener, held, &hear, stop.notified()));
+        assert!(reported.starts_with("HTTP/1.1 200"), "{reported}");
         assert!(unheld.starts_with("HTTP/1.1 401"), "{unheld}");
         assert!(wrong.starts_with("HTTP/1.1 401"), "{wrong}");
         assert!(kept.starts_with("HTTP/1.1 200"), "{kept}");
         assert!(kept.ends_with("the round ran"), "{kept}");
         let said = said(&heard);
         assert!(said.contains(&"kept".to_owned()), "{said:?}");
+        assert!(said.contains(&"polled".to_owned()), "{said:?}");
         assert_eq!(
             said.iter()
                 .filter(|line| line.strip_prefix("refused: ")

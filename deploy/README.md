@@ -205,9 +205,11 @@ beside `lambda/bootstrap`, and deploy `lambda/template.yaml` with SAM.
 
 ## Asking for a round over HTTP
 
-Every host runs a round when asked over HTTP: `POST /herald/round/poll` or
-`/herald/round/housekeep`, carrying `Authorization: Bearer` and the secret
-`HERALD_ROUND_SECRET`. With that secret unset, no request runs a round. The
+Every host runs a round when asked over HTTP: `POST /herald/round/poll`,
+`/herald/round/report` or `/herald/round/housekeep`, carrying
+`Authorization: Bearer` and the secret `HERALD_ROUND_SECRET`. A poll announces
+every report whose window began after its sources; `/herald/round/report`
+announces the reports alone, for a host that times them apart. With that secret unset, no request runs a round. The
 `wasi:http` component, Spin and Fastly Compute have no timer of their own, so
 call them this way from any scheduler.
 

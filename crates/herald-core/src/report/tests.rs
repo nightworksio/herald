@@ -140,3 +140,38 @@ fn a_bundled_zone_is_found_by_its_iana_name() {
         Some("Europe/Amsterdam")
     );
 }
+
+#[test]
+fn a_report_is_an_event_of_its_window_private_where_a_row_is_not_public() {
+    use crate::queue::tests::pull;
+    use crate::queue::{View, board};
+    let start = Timestamp::from_second(86_400).unwrap();
+    let shown = board(&View::default(), &[pull()], start);
+    let event = report_event("daily", "queue", &shown, start).unwrap();
+    assert_eq!(
+        event.identity().as_str(),
+        "report/daily/1970-01-02T00:00:00Z"
+    );
+    assert_eq!(event.kind(), &Kind::REPORT);
+    assert_eq!(event.project(), "daily");
+    assert_eq!(event.title(), "daily");
+    assert_eq!(event.occurred(), start);
+    assert_eq!(event.visibility(), Some(Visibility::Public));
+    assert_eq!(
+        event.attribute(VIEW),
+        Some(&Attribute::Text("queue".to_owned()))
+    );
+    assert_eq!(event.attribute(PULLS), Some(&Attribute::Number(1.into())));
+    assert_eq!(event.attribute(STALE), Some(&Attribute::Number(0.into())));
+    let hidden = crate::queue::Pull {
+        visibility: Visibility::Internal,
+        ..pull()
+    };
+    let shown = board(&View::default(), &[pull(), hidden], start);
+    let event = report_event("daily", "queue", &shown, start).unwrap();
+    assert_eq!(event.visibility(), Some(Visibility::Private));
+    assert_eq!(
+        report_event(" ", "queue", &shown, start),
+        Err(Problem::NoProject)
+    );
+}

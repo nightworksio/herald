@@ -239,6 +239,7 @@ async fn announced<S: Store, C: Clock, G: Signer, H: Http>(
         Within {
             routes: None,
             reach: reach.as_ref(),
+            view: None,
         },
         &holder,
     )

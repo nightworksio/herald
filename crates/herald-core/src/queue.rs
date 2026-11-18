@@ -9,7 +9,7 @@ use crate::members::Visibility;
 
 mod view;
 
-pub use view::{Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, View, board};
+pub use view::{Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board};
 
 /// Whose turn an open pull request is.
 #[derive(
@@ -327,4 +327,4 @@ impl Pull {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

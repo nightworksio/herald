@@ -28,7 +28,7 @@ use herald_core::DestinationName;
 use herald_core::{media, status};
 use herald_flows::{
     Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
-    answer, housekeep, poll, refusal, round, unplaced, unworked, work,
+    answer, housekeep, poll, refusal, report, round, unplaced, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
@@ -468,6 +468,19 @@ impl<'a> Rounds<'a> {
         .await
     }
 
+    /// Every report due announced, where no poll is running (ADR-0055).
+    async fn reported<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+        &self,
+        serving: &Serving<'_, S, C, G, V, H, P, K>,
+    ) -> Option<Heard> {
+        once(&self.polling, async {
+            Some(Heard::Polled(
+                report(serving.config, serving.connected, serving.ports, &named()).await,
+            ))
+        })
+        .await
+    }
+
     /// Housekeeping, the keys read longest ago forgotten first, where none
     /// is running.
     async fn kept<S: Store, C: Clock, G, V, H: Http, P, K: Keyring>(
@@ -515,6 +528,7 @@ impl<'a> Rounds<'a> {
     ) {
         let done = match round {
             Round::Poll => self.polled(serving).await,
+            Round::Report => self.reported(serving).await,
             Round::Housekeep => self.kept(serving).await,
         };
         if let Some(heard) = done {

@@ -616,6 +616,12 @@ fn an_event_of_no_declared_kind_or_out_of_its_kind_s_shape_is_passed() {
         changed("attributes", json!({ "version": 1 })),
         changed("attributes", json!({ "version": { "major": 1 } })),
         changed("title", json!(" ")),
+        {
+            let mut envelope = bare("a/1");
+            envelope["kind"] = json!("report");
+            envelope["attributes"] = json!({ "view": "queue", "pulls": 0, "stale": 0 });
+            proved(&envelope, DOMAIN, &KEY)
+        },
     ] {
         let read = read(&source, &[(9, envelope.clone())]);
         assert_eq!(passed(&read), ["herald/upstream/a/1"], "{envelope}");

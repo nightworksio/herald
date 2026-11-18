@@ -8,7 +8,7 @@ use herald_core::status;
 use herald_flows::{
     Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Requests, Room,
     Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep_announcing,
-    poll, prepare, refusal, unplaced, work,
+    poll, prepare, refusal, report, unplaced, work,
 };
 use herald_kinds::Opened;
 use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
@@ -248,7 +248,18 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         worked
     }
 
-    /// Every source polled, where no poll is running; none where one is.
+    /// Every report whose window began announced, where no poll is
+    /// running; none where one is (ADR-0055).
+    pub async fn report(&self) -> Vec<Swept> {
+        let Some(_running) = Running::start(&self.polling) else {
+            return Vec::new();
+        };
+        self.through(Admission::Once, self.started(), Reporting)
+            .await
+    }
+
+    /// Every source polled, then every report due announced, where no poll
+    /// is running; none where one is.
     pub async fn poll(&self) -> Vec<Swept> {
         let Some(_running) = Running::start(&self.polling) else {
             return Vec::new();
@@ -470,6 +481,20 @@ impl<H: Host> Through<H> for Polling {
             run,
         )
         .await
+    }
+}
+
+struct Reporting;
+
+impl<H: Host> Through<H> for Reporting {
+    type Done = Vec<Swept>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        run: &str,
+    ) -> Vec<Swept> {
+        report(serving.config, serving.connected, serving.ports, run).await
     }
 }
 

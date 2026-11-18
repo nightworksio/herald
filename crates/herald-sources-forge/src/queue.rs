@@ -17,12 +17,7 @@ mod listing;
 /// The most open pull requests one page lists, on every forge.
 pub const PAGE: usize = 100;
 
-/// The most open pull requests a repository's listing reads by default.
-pub const MOST_OPEN: usize = 500;
-
-/// The most open pull requests of a repository read in full by default,
-/// where each takes requests of its own.
-pub const MOST_PULLS: usize = 100;
+pub use herald_kinds::{MOST_OPEN, MOST_PULLS};
 
 /// The requests each pull request read in full takes: its reviews and its
 /// head's checks.
@@ -238,6 +233,57 @@ impl Opened<'_> {
             Forge::GitLab => gitlab::WHAT,
             Forge::Forgejo => listing::FORGEJO,
         }
+    }
+}
+
+/// A source's one repository, its open pull requests read for a view.
+#[derive(Debug, Clone)]
+pub struct Queued {
+    /// The repository.
+    pub origin: Origin,
+    /// What it reads with.
+    pub token: Option<Token>,
+    /// The project its pull requests are shown as.
+    pub project: String,
+    /// The GraphQL endpoint, on GitHub.
+    pub graphql: String,
+}
+
+impl herald_kinds::Queue for Queued {
+    fn opened<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        most: herald_kinds::Most,
+    ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
+        Box::pin(async move {
+            Opened {
+                origin: &self.origin,
+                token: self.token.as_ref(),
+                project: &self.project,
+                graphql: &self.graphql,
+                visibility: None,
+                most_open: most.open,
+                most_pulls: most.pulls,
+            }
+            .pulls(&Erased(http))
+            .await
+        })
+    }
+}
+
+/// What reading at most `most` open pull requests of a repository on
+/// `forge` costs each round, `tokened` where its source reads with a token.
+#[must_use]
+pub const fn cost(
+    forge: Forge,
+    tokened: bool,
+    most: herald_kinds::Most,
+) -> herald_kinds::QueueCost {
+    let path = ReadPath::of(forge, tokened);
+    herald_kinds::QueueCost {
+        path: path.name(),
+        requests: path.most_requests(most.open, most.pulls),
+        mergeability: !matches!((forge, path), (Forge::GitHub, ReadPath::Detailed)),
     }
 }
 

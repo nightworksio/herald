@@ -83,6 +83,19 @@ pub enum Sweep {
     /// proof was made further ahead of the round than any may be
     /// (ADR-0049).
     Ahead(String),
+    /// A report's window began, and its view was announced (ADR-0055).
+    Reported {
+        /// How many open pull requests its view's sources listed.
+        pulls: usize,
+        /// The report as each route was shown it, and what every route did
+        /// with it: every row to a private route, and where `[doctor]
+        /// private_to_public` refuses, only the public repositories' rows to
+        /// the rest.
+        announced: Vec<Fresh>,
+        /// What became of the report's cursor, which remembers the window
+        /// once every route has it.
+        cursor: Remembered,
+    },
     /// The installation token the source reads with was minted for the
     /// round but not kept in the store, for this reason; the next run
     /// mints it again (ADR-0041).
@@ -358,7 +371,8 @@ enum Round<'a> {
 /// leases under `run` and its own name, so two sources finding one event
 /// never both send it.
 /// A source pulling another herald's feed checks its answers through
-/// `verifier` (ADR-0049).
+/// `verifier` (ADR-0049). Then each report whose window began is announced
+/// once (ADR-0055).
 pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -366,7 +380,9 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     verifier: &dyn DynVerifier,
     run: &str,
 ) -> Vec<Swept> {
-    polled(config, connected, ports, verifier, (run, None)).await
+    let mut swept = polled(config, connected, ports, verifier, (run, None)).await;
+    swept.extend(crate::report::reported((config, connected, ports), run).await);
+    swept
 }
 
 /// What the source `source` did, as `outcome` says.
@@ -382,7 +398,7 @@ fn swept(source: &SourceName, outcome: Sweep) -> Swept {
 /// sources reading one that could not be minted are not polled, and the
 /// sweeps of those `polling` sweeps, with a note for each source whose
 /// token the store did not keep.
-async fn minting<S: Store, C: Clock, G: Signer, H: Http>(
+pub(crate) async fn minting<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     polling: impl Fn(&SourceName) -> bool,
 ) -> (BTreeMap<SourceName, Stop>, Vec<Swept>) {

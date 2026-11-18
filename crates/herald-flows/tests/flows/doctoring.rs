@@ -279,7 +279,7 @@ fn each_layer_says_what_asks_it_for_rounds_and_where_the_schedule_disagrees() {
     assert!(notes(&schedule("poll = \"5m\""), actions()).contains(&workflow));
     assert!(notes(&schedule("housekeep = \"1h\""), actions()).contains(&workflow));
     assert!(!notes(&config(""), actions()).contains(&workflow));
-    let asked = "On the fastly layer, a round runs only when a request holding the round secret asks for it at POST /herald/round/poll or /herald/round/housekeep; have a scheduler send them";
+    let asked = "On the fastly layer, a round runs only when a request holding the round secret asks for it at POST /herald/round/poll, /herald/round/report or /herald/round/housekeep; have a scheduler send them";
     assert!(notes(&config(""), fastly()).contains(&format!("{asked}.")));
     assert!(
         notes(&schedule("poll = \"5m\""), fastly()).contains(&format!(

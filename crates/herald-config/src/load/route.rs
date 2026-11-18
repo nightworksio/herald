@@ -12,6 +12,15 @@ use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
 use super::apps::Named;
+use crate::views::Report;
+
+/// What a route may name among its sources beside `[sources]`: the apps,
+/// and the reports.
+#[derive(Clone, Copy)]
+pub(super) struct Others<'a> {
+    pub(super) apps: &'a BTreeMap<String, Named>,
+    pub(super) reports: &'a BTreeMap<String, Report>,
+}
 use super::templates::Written;
 use super::{Loader, Value, list};
 use herald_kinds::{Destination, Placed, Placing, Source};
@@ -174,7 +183,7 @@ impl Loader<'_> {
         route: Taken<'_>,
         path: &str,
         sources: &BTreeMap<SourceName, Source>,
-        apps: &BTreeMap<String, Named>,
+        others: Others<'_>,
     ) -> Option<BTreeSet<Kind>> {
         let mut sound = true;
         for (index, kind) in route.kinds.iter().enumerate() {
@@ -206,12 +215,19 @@ impl Loader<'_> {
             .flat_map(|source| {
                 let name = source.get_ref();
                 let named = sources.get(&SourceName::new(name));
-                let posted: Vec<Kind> =
-                    if apps.contains_key(name) || named.is_some_and(|source| source.any_kind()) {
-                        self.specs.iter().map(|spec| spec.kind.clone()).collect()
-                    } else {
-                        Vec::new()
-                    };
+                let posted: Vec<Kind> = if others.reports.contains_key(name) {
+                    vec![Kind::REPORT]
+                } else if others.apps.contains_key(name)
+                    || named.is_some_and(|source| source.any_kind())
+                {
+                    self.specs
+                        .iter()
+                        .map(|spec| spec.kind.clone())
+                        .filter(|kind| !kind.own())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 named
                     .map(|source| source.kinds())
                     .unwrap_or_default()
@@ -285,27 +301,31 @@ impl Loader<'_> {
         route: &RouteFile,
         path: &str,
         sources: &BTreeMap<SourceName, Source>,
-        apps: &BTreeMap<String, Named>,
+        others: Others<'_>,
     ) -> bool {
         let mut sound = true;
         for source in &route.sources {
             let name = source.get_ref();
-            if !sources.contains_key(&SourceName::new(name)) && !apps.contains_key(name) {
+            if !sources.contains_key(&SourceName::new(name))
+                && !others.apps.contains_key(name)
+                && !others.reports.contains_key(name)
+            {
                 let mut names: Vec<&str> = sources
                     .keys()
                     .map(SourceName::as_str)
-                    .chain(apps.keys().map(String::as_str))
+                    .chain(others.apps.keys().map(String::as_str))
+                    .chain(others.reports.keys().map(String::as_str))
                     .collect();
                 names.sort_unstable();
                 let hint = if names.is_empty() {
-                    format!("name it under [sources.{name}] or [apps.{name}]")
+                    format!("name it under [sources.{name}], [apps.{name}] or [reports.{name}]")
                 } else {
-                    format!("the sources and apps are {}", list(&names))
+                    format!("the sources, apps and reports are {}", list(&names))
                 };
                 self.error(
                     &source.span(),
                     &format!("{path}.sources"),
-                    format!("no source or app is named \"{name}\"; {hint}"),
+                    format!("no source, app or report is named \"{name}\"; {hint}"),
                 );
                 sound = false;
             }
@@ -356,13 +376,14 @@ impl Loader<'_> {
         value: Option<Value<'_>>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         sources: &BTreeMap<SourceName, Source>,
-        apps: &BTreeMap<String, Named>,
+        (apps, reports): (&BTreeMap<String, Named>, &BTreeMap<String, Report>),
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Vec<Read> {
+        let others = Others { apps, reports };
         let mut routes = Vec::new();
         let mut ids: BTreeSet<RouteId> = BTreeSet::new();
         for (index, value) in self.routes(value).into_iter().enumerate() {
-            let Some(read) = self.route(index, value, destinations, sources, apps, templates)
+            let Some(read) = self.route(index, value, destinations, sources, others, templates)
             else {
                 continue;
             };
@@ -505,13 +526,13 @@ impl Loader<'_> {
         value: Value<'_>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         sources: &BTreeMap<SourceName, Source>,
-        apps: &BTreeMap<String, Named>,
+        others: Others<'_>,
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Option<Read> {
         let path = format!("routes[{index}]");
         let (common, rest) = self.split(value, &path)?;
         let route = self.typed::<RouteFile>(common, &path)?;
-        let mut sound = self.sources_named(&route, &path, sources, apps);
+        let mut sound = self.sources_named(&route, &path, sources, others);
         let destination = DestinationName::new(route.destination.get_ref());
         let reached = self.reached(&destination, &route, &path, destinations)?;
         let span = route.id.span();
@@ -555,7 +576,7 @@ impl Loader<'_> {
             kinds: &route.kinds,
             versions: route.versions.as_ref(),
         };
-        let sample_kinds = self.sample_kinds(taken, &path, sources, apps)?;
+        let sample_kinds = self.sample_kinds(taken, &path, sources, others)?;
         let matching = self.matching(route.matching, &path, &sample_kinds)?;
         let origins = route.sources.iter().all(|name| {
             sources

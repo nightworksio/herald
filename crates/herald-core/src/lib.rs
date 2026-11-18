@@ -43,7 +43,7 @@ mod published;
 mod queue;
 mod rate;
 mod render;
-mod report;
+pub mod report;
 mod retention;
 mod revision;
 mod route;
@@ -97,8 +97,8 @@ pub use kind::{
     ACTION, ACTOR, ALERT_LINK, ATTEMPT, AUTHOR, Attribute, AttributeSpec, AttributeType, BASE, BOT,
     BRANCH, CHANGELOG_LINK, COMMIT, CONCLUSION, DRAFT, ECOSYSTEM, ENTRY_LINK, FROM, HEAD,
     ISSUE_LINK, Kind, KindSpec, KindSpecs, LABELS, LinkSpec, MERGED_BY, NUMBER, PACKAGE,
-    PACKAGE_TYPE, PATH, PRERELEASE, PULL_LINK, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK, SEVERITY,
-    STATE_REASON, TOOL, TRIGGER, VERSION, WORKFLOW, readable, versioned,
+    PACKAGE_TYPE, PATH, PRERELEASE, PULL_LINK, PULLS, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK, SEVERITY,
+    STALE, STATE_REASON, TOOL, TRIGGER, VERSION, VIEW, WORKFLOW, readable, versioned,
 };
 pub use latest::{Latest, Shown};
 pub use ledger::{
@@ -121,14 +121,14 @@ pub use profile::{
 pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
 pub use queue::{
     Batch, Board, Bots, Checks, Deciding, GroupBy, Grouped, Mergeable, Pull, Reason, Review, Row,
-    Rules, Turn, View, board,
+    Rules, Showing, Turn, View, board,
 };
 pub use rate::{Per, Rate};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
     Templates,
 };
-pub use report::{REPORT_PREFIX, ReportSchedule, report_identity, zone};
+pub use report::{REPORT_PREFIX, ReportSchedule, report_event, report_identity, zone};
 pub use retention::Retention;
 pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,

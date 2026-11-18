@@ -28,6 +28,15 @@ impl Kind {
     pub const PULL_REQUEST: Self = Self(Cow::Borrowed("pull-request"));
     /// An issue on a forge.
     pub const ISSUE: Self = Self(Cow::Borrowed("issue"));
+    /// A report of a view's open pull requests, for one window.
+    pub const REPORT: Self = Self(Cow::Borrowed("report"));
+
+    /// Whether only herald itself announces its events, as a report from a
+    /// view: no app and no other herald's feed gives one.
+    #[must_use]
+    pub fn own(&self) -> bool {
+        *self == Self::REPORT
+    }
 
     /// The kind named `name`.
     ///
@@ -213,6 +222,12 @@ pub const RESOLUTION: &str = "resolution";
 pub const PULL_LINK: &str = "pull";
 /// Who opened a pull request or an issue.
 pub const AUTHOR: &str = "author";
+/// The view a report shows.
+pub const VIEW: &str = "view";
+/// How many open pull requests a report shows.
+pub const PULLS: &str = "pulls";
+/// How many of the open pull requests a report shows are stale.
+pub const STALE: &str = "stale";
 /// Whether a pull request's or an issue's author is a bot or an app.
 pub const BOT: &str = "bot";
 /// The branch a pull request merges into.
@@ -370,6 +385,19 @@ fn issued() -> BTreeMap<String, AttributeSpec> {
         attributes.insert(name.to_owned(), AttributeSpec { ty, required });
     }
     attributes
+}
+
+/// The attributes of a report: the view it shows, and how many pull
+/// requests and stale ones it shows.
+fn reported() -> BTreeMap<String, AttributeSpec> {
+    [
+        (VIEW, AttributeType::Text),
+        (PULLS, AttributeType::Number),
+        (STALE, AttributeType::Number),
+    ]
+    .into_iter()
+    .map(|(name, ty)| (name.to_owned(), AttributeSpec { ty, required: true }))
+    .collect()
 }
 
 /// The attributes of an alert: a forge's signals', and what the alert is.
@@ -545,6 +573,13 @@ impl KindSpec {
                 false,
                 buttons(&[ISSUE_LINK]),
                 issued(),
+            ),
+            Self::new(
+                Kind::REPORT,
+                "A report of a view's open pull requests, for one window.",
+                false,
+                Vec::new(),
+                reported(),
             ),
         ]
     }

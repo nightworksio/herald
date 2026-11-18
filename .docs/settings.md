@@ -330,6 +330,18 @@ How far a template may go as it renders.
 | `render.output` | [Size](#size) | The most it may write; "256KiB" where absent, and at most "1MiB". |
 | `render.recursion` | integer | How deep its loops and calls may nest; 16 where absent, and at most 64. |
 
+## `reports`
+
+The reports routes name among their sources, by name.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `reports.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `reports.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `reports.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
+| `reports.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `reports.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
+
 ## `routes`
 
 Which events go where, rendered how.
@@ -1403,6 +1415,50 @@ The version of the config: 1.
 |---------|------|--------------|
 | `version` | [Version](#version) | The version of the config: 1. |
 
+## `views`
+
+The views of open pull requests reports and `herald queue` show, by name; `queue`, over every source, where none replaces it.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.authors` | array of string | The authors it shows, by login, each a glob ignoring case; every one where empty. |
+| `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
+| `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
+
+### `views.<name>.deciding`: herald's own rules, or the forge's own status
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.deciding` | [DecidingName](#decidingname) | herald's own rules, or the forge's own status. |
+
+### `views.<name>.deciding`: The labels maintainers set
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.deciding` | table | The labels maintainers set. |
+| `views.<name>.deciding.labels[].label` | string | The label, as the forge names it, ignoring case. |
+| `views.<name>.deciding.labels[].state` | [Turn](#turn) | The state. |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.group_by` | [GroupBy](#groupby) | What it groups its rows by: "turn" where absent. |
+| `views.<name>.labels` | array of string | The labels, any one of which a pull request it shows carries, each a glob ignoring case; every pull request where empty. |
+| `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
+| `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
+| `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
+| `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
+| `views.<name>.rules.approval` | boolean | One waits on review until it is approved. |
+| `views.<name>.rules.changes` | boolean | One a reviewer asked to change waits on its author. |
+| `views.<name>.rules.conflict` | boolean | One that conflicts waits on its author. |
+| `views.<name>.rules.draft` | boolean | A draft waits on its author's readiness. |
+| `views.<name>.rules.failed` | boolean | One whose check failed waits on its author. |
+| `views.<name>.rules.pending` | boolean | One whose checks are running waits on them. |
+| `views.<name>.rules.queued` | boolean | One in the merge queue waits on the queue. |
+| `views.<name>.sources` | array of string | The sources it reads, each naming one repository on a forge; every such source where absent. |
+| `views.<name>.stale` | [Duration](#duration) | How long one waits with nobody acting before it is stale: "14d" where absent. |
+| `views.<name>.stale_only` | boolean | Whether it shows only the stale. |
+| `views.<name>.states` | array of [Turn](#turn) | The states it shows, every one where empty. |
+
 ## Types
 
 ### AlertAction
@@ -1429,6 +1485,10 @@ What type an attribute holds.
 
 Who sees an actor's Notes on the timelines. Followers see every Note.
 
+### Bots
+
+What a view does with a bot's pull requests.
+
 ### Colour
 
 A colour, written "#rrggbb".
@@ -1440,6 +1500,14 @@ A command a member gives herald.
 ### Conclusion
 
 How a finished run ended, in GitHub's words, which every forge's run is read as.
+
+### Day
+
+A day of the week, by its first three letters.
+
+### DecidingName
+
+What tells a view whose turn a pull request is, by name.
 
 ### Declared
 
@@ -1464,6 +1532,10 @@ A length of time: a number and ms, s, m, h, d or w, as "14d".
 ### Edits
 
 Which announcements a route edits the post of, when the forge changes what it announced.
+
+### GroupBy
+
+What a view groups its rows by.
 
 ### GroupLate
 
@@ -1614,6 +1686,10 @@ What raised an alert, in words every forge's alerts are read as.
 ### Transport
 
 How an owner's members are polled.
+
+### Turn
+
+Whose turn an open pull request is.
 
 ### Values
 

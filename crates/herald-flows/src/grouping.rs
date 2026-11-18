@@ -69,6 +69,7 @@ fn key_of(templates: &Templates, route: &RouteId, event: &Event) -> Result<Optio
                 route,
                 herald: herald_core::itself::VERSION,
                 group: None,
+                view: None,
             },
         )
         .map_err(|error| Stop::Template(error.to_string()))?;
@@ -414,6 +415,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Grouped<'_, '_, S, C, G, H> {
                 key,
                 events: &ordered,
             }),
+            view: None,
         };
         let outcome = run.announce_group(subject, &self.config.templates).await;
         if !matches!(outcome, Outcome::Sent { .. } | Outcome::AlreadyAnnounced) {
@@ -563,6 +565,7 @@ pub(crate) async fn round<S: Store, C: Clock, G: Signer, H: Http>(
         holder: &holder,
         lease: config.announce.lease,
         seen: strictest(&kept.value),
+        view: None,
     };
     let outcome = Grouped {
         run: &running,

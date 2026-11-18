@@ -482,7 +482,7 @@ fn scheduled(config: &Config, layer: &Layer, here: &Here, findings: &mut Finding
             } else {
                 ""
             };
-            findings.notes.push(format!("On the {name} layer, a round runs only when a request holding the round secret asks for it at POST /herald/round/poll or /herald/round/housekeep; have a scheduler send them{often}."));
+            findings.notes.push(format!("On the {name} layer, a round runs only when a request holding the round secret asks for it at POST /herald/round/poll, /herald/round/report or /herald/round/housekeep; have a scheduler send them{often}."));
         }
     }
     let secrets = layer.round_secrets;

@@ -210,6 +210,7 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
                     Within {
                         routes: None,
                         reach: Some(&reach),
+                        view: None,
                     },
                     holding,
                 ),

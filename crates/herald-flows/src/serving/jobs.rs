@@ -465,6 +465,7 @@ async fn membered<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     let within = Within {
         routes: None,
         reach: reach.as_ref(),
+        view: None,
     };
     announced(serving, source, &event, within, run).await
 }

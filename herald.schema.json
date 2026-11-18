@@ -63,6 +63,13 @@
       "description": "How far a template may go as it renders.",
       "$ref": "#/$defs/Render"
     },
+    "reports": {
+      "description": "The reports routes name among their sources, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Report"
+      }
+    },
     "routes": {
       "description": "Which events go where, rendered how.",
       "type": "array",
@@ -103,6 +110,13 @@
     "version": {
       "description": "The version of the config: 1.",
       "$ref": "#/$defs/Version"
+    },
+    "views": {
+      "description": "The views of open pull requests reports and `herald queue` show, by\nname; `queue`, over every source, where none replaces it.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/View"
+      }
     }
   },
   "additionalProperties": false,
@@ -455,6 +469,31 @@
         }
       ]
     },
+    "Bots": {
+      "description": "What a view does with a bot's pull requests.",
+      "oneOf": [
+        {
+          "description": "Lists them with everyone's.",
+          "type": "string",
+          "const": "include"
+        },
+        {
+          "description": "Leaves them out.",
+          "type": "string",
+          "const": "exclude"
+        },
+        {
+          "description": "Lists only them.",
+          "type": "string",
+          "const": "only"
+        },
+        {
+          "description": "Gathers them into batches of the same bump across repositories.",
+          "type": "string",
+          "const": "batch"
+        }
+      ]
+    },
     "Colour": {
       "description": "A colour, written \"#rrggbb\".",
       "type": "string",
@@ -547,6 +586,92 @@
           "description": "GitHub gave up on it.",
           "type": "string",
           "const": "stale"
+        }
+      ]
+    },
+    "Day": {
+      "description": "A day of the week, by its first three letters.",
+      "oneOf": [
+        {
+          "description": "Monday.",
+          "type": "string",
+          "const": "mon"
+        },
+        {
+          "description": "Tuesday.",
+          "type": "string",
+          "const": "tue"
+        },
+        {
+          "description": "Wednesday.",
+          "type": "string",
+          "const": "wed"
+        },
+        {
+          "description": "Thursday.",
+          "type": "string",
+          "const": "thu"
+        },
+        {
+          "description": "Friday.",
+          "type": "string",
+          "const": "fri"
+        },
+        {
+          "description": "Saturday.",
+          "type": "string",
+          "const": "sat"
+        },
+        {
+          "description": "Sunday.",
+          "type": "string",
+          "const": "sun"
+        }
+      ]
+    },
+    "Deciding": {
+      "description": "What tells a view whose turn a pull request is: \"herald\", \"forge\", or\nlabels maintainers set.",
+      "anyOf": [
+        {
+          "description": "herald's own rules, or the forge's own status.",
+          "$ref": "#/$defs/DecidingName"
+        },
+        {
+          "description": "The labels maintainers set.",
+          "$ref": "#/$defs/DecidingLabels"
+        }
+      ]
+    },
+    "DecidingLabels": {
+      "description": "The labels maintainers set, the first a pull request carries telling\nits state.",
+      "type": "object",
+      "properties": {
+        "labels": {
+          "description": "Each label and its state, in the order they are tried.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LabelledState"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "labels"
+      ]
+    },
+    "DecidingName": {
+      "description": "What tells a view whose turn a pull request is, by name.",
+      "oneOf": [
+        {
+          "description": "herald's own rules.",
+          "type": "string",
+          "const": "herald"
+        },
+        {
+          "description": "The forge's own status, mapped as it is.",
+          "type": "string",
+          "const": "forge"
         }
       ]
     },
@@ -1396,6 +1521,31 @@
         "key"
       ]
     },
+    "GroupBy": {
+      "description": "What a view groups its rows by.",
+      "oneOf": [
+        {
+          "description": "Whose turn it is.",
+          "type": "string",
+          "const": "turn"
+        },
+        {
+          "description": "The repository.",
+          "type": "string",
+          "const": "repository"
+        },
+        {
+          "description": "The author.",
+          "type": "string",
+          "const": "author"
+        },
+        {
+          "description": "Nothing: one group.",
+          "type": "string",
+          "const": "nothing"
+        }
+      ]
+    },
     "GroupLate": {
       "description": "What a route does with a member that comes after its group was\nannounced: once a held group closed to be announced, or once an edited\ngroup's window passed.",
       "oneOf": [
@@ -1754,6 +1904,25 @@
       "required": [
         "name",
         "label"
+      ]
+    },
+    "LabelledState": {
+      "description": "A label maintainers set, and the state it puts a pull request in.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "description": "The label, as the forge names it, ignoring case.",
+          "type": "string"
+        },
+        "state": {
+          "description": "The state.",
+          "$ref": "#/$defs/Turn"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "state"
       ]
     },
     "LateRelease": {
@@ -2653,6 +2822,42 @@
         }
       ]
     },
+    "Report": {
+      "description": "`[reports.<name>]`: a view announced once a window, through the routes\nnaming the report among their sources.",
+      "type": "object",
+      "properties": {
+        "at": {
+          "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+          "type": "string",
+          "examples": [
+            "09:00"
+          ]
+        },
+        "days": {
+          "description": "The days windows begin on, every day where empty.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Day"
+          }
+        },
+        "every": {
+          "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+          "$ref": "#/$defs/Duration"
+        },
+        "view": {
+          "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+          "type": "string"
+        },
+        "zone": {
+          "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+          "type": "string",
+          "examples": [
+            "Europe/Amsterdam"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "RepositoryVisibility": {
       "description": "Who may see a repository.",
       "oneOf": [
@@ -2716,6 +2921,41 @@
           "$ref": "#/$defs/HeraldRoute"
         }
       ]
+    },
+    "Rules": {
+      "description": "herald's own rules, each on where absent.",
+      "type": "object",
+      "properties": {
+        "approval": {
+          "description": "One waits on review until it is approved.",
+          "type": "boolean"
+        },
+        "changes": {
+          "description": "One a reviewer asked to change waits on its author.",
+          "type": "boolean"
+        },
+        "conflict": {
+          "description": "One that conflicts waits on its author.",
+          "type": "boolean"
+        },
+        "draft": {
+          "description": "A draft waits on its author's readiness.",
+          "type": "boolean"
+        },
+        "failed": {
+          "description": "One whose check failed waits on its author.",
+          "type": "boolean"
+        },
+        "pending": {
+          "description": "One whose checks are running waits on them.",
+          "type": "boolean"
+        },
+        "queued": {
+          "description": "One in the merge queue waits on the queue.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "Run": {
       "description": "`[run]`: how many routes and sources a run goes through at once.",
@@ -5812,6 +6052,46 @@
         }
       ]
     },
+    "Turn": {
+      "description": "Whose turn an open pull request is.",
+      "oneOf": [
+        {
+          "description": "It is a draft.",
+          "type": "string",
+          "const": "draft"
+        },
+        {
+          "description": "It is in the forge's merge queue or train.",
+          "type": "string",
+          "const": "queued"
+        },
+        {
+          "description": "Its author's: a change was asked for, a check failed, or it\nconflicts.",
+          "type": "string",
+          "const": "waiting-on-author"
+        },
+        {
+          "description": "Its checks', which are still running.",
+          "type": "string",
+          "const": "waiting-on-checks"
+        },
+        {
+          "description": "A reviewer's.",
+          "type": "string",
+          "const": "waiting-on-review"
+        },
+        {
+          "description": "A maintainer's, to merge it: approved, green and mergeable.",
+          "type": "string",
+          "const": "waiting-on-merge"
+        },
+        {
+          "description": "Nobody's that herald can tell.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
     "Values": {
       "description": "A property's values: one, or any of several.",
       "anyOf": [
@@ -5861,6 +6141,97 @@
     "Version": {
       "type": "integer",
       "const": 1
+    },
+    "View": {
+      "description": "`[views.<name>]`: which open pull requests a report, `herald queue` and\nevery other surface shows, and how.",
+      "type": "object",
+      "properties": {
+        "authors": {
+          "description": "The authors it shows, by login, each a glob ignoring case; every one\nwhere empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "bots": {
+          "description": "What it does with a bot's pull requests: \"batch\" where absent.",
+          "$ref": "#/$defs/Bots"
+        },
+        "bumps": {
+          "description": "Its own bump patterns, read before Dependabot's and Renovate's, such\nas \"chore: bump {package} to {to}\".",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "deciding": {
+          "description": "What tells whose turn each is: \"herald\" where absent, \"forge\", or\n`{ labels = [{ label = \"...\", state = \"...\" }] }`.",
+          "$ref": "#/$defs/Deciding"
+        },
+        "group_by": {
+          "description": "What it groups its rows by: \"turn\" where absent.",
+          "$ref": "#/$defs/GroupBy"
+        },
+        "labels": {
+          "description": "The labels, any one of which a pull request it shows carries, each a\nglob ignoring case; every pull request where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "most_open": {
+          "description": "The most open pull requests it lists of each repository: 500 where\nabsent.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "most_pulls": {
+          "description": "The most it reads in full where each takes requests of its own, as\non Forgejo and on GitHub without a token: 100 where absent; those\npast it read as unknown.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "repositories": {
+          "description": "The repositories it shows, by full path, each a glob ignoring case;\nevery one where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": {
+          "description": "herald's own rules, each of which it may switch off.",
+          "$ref": "#/$defs/Rules"
+        },
+        "sources": {
+          "description": "The sources it reads, each naming one repository on a forge; every\nsuch source where absent.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stale": {
+          "description": "How long one waits with nobody acting before it is stale: \"14d\"\nwhere absent.",
+          "$ref": "#/$defs/Duration"
+        },
+        "stale_only": {
+          "description": "Whether it shows only the stale.",
+          "type": "boolean",
+          "default": false
+        },
+        "states": {
+          "description": "The states it shows, every one where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Turn"
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "Visibility": {
       "description": "Who sees a status.",

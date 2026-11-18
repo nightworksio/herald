@@ -190,7 +190,7 @@ body = "{{{{ event.body }}}}"
                 &bot("template = \"missing\""),
                 "channel = \"1566200000000000100\"",
             ),
-            "destinations.discord.interactions.template: no template is named \"missing\"; the templates are \"t\"",
+            "destinations.discord.interactions.template: no template is named \"missing\"; the templates are \"herald:queue\", \"t\"",
         );
         refused(
             &config("markers", &bot(""), "channel = \"1566200000000000100\""),

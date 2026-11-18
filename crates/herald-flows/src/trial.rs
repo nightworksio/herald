@@ -65,6 +65,7 @@ pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
                     holder: run,
                     lease: config.announce.lease,
                     seen: Visibility::Public,
+                    view: None,
                 }
                 .announce(&event, &templates)
                 .await

@@ -152,6 +152,15 @@ impl Board {
     }
 }
 
+/// A view's board as a report shows it: the view's name, and its rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Showing<'a> {
+    /// The view's name.
+    pub view: &'a str,
+    /// Its rows.
+    pub board: &'a Board,
+}
+
 /// Whether `globs` is empty or one of it matches `name`.
 fn named(globs: &[Glob], name: &str) -> bool {
     globs.is_empty() || globs.iter().any(|glob| glob.matches(name))

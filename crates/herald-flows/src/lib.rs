@@ -32,6 +32,7 @@ pub mod peering;
 mod poll;
 mod prepare;
 mod preview;
+mod report;
 mod room;
 pub mod round;
 mod serving;
@@ -55,6 +56,7 @@ pub use installations::AHEAD as MINTED_AHEAD;
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
 pub use prepare::{Connected, PrepareError, Prepared, UnreadSecret, prepare};
 pub use preview::{Previewed, preview, preview_group};
+pub use report::report;
 pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{

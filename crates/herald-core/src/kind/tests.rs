@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_eight_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_nine_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -106,7 +106,8 @@ fn herald_ships_eight_kinds_and_only_releases_and_package_versions_are_versioned
             ("run", false),
             ("alert", false),
             ("pull-request", false),
-            ("issue", false)
+            ("issue", false),
+            ("report", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -132,7 +133,8 @@ fn herald_ships_eight_kinds_and_only_releases_and_package_versions_are_versioned
             Some(&signalled),
             Some(&signalled),
             Some(&signalled),
-            Some(&signalled)
+            Some(&signalled),
+            None
         ]
     );
     for name in [crate::PACKAGE, crate::PACKAGE_TYPE] {
@@ -215,7 +217,7 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     let private: Vec<bool> = shipped.iter().map(|spec| spec.private).collect();
     assert_eq!(
         private,
-        [false, false, false, false, false, true, false, false]
+        [false, false, false, false, false, true, false, false, false]
     );
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
     let required: Vec<&str> = alert
@@ -348,6 +350,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "alert",
             "pull-request",
             "issue",
+            "report",
             "deploy"
         ]
     );
@@ -435,4 +438,27 @@ fn an_issue_names_its_number_what_it_did_and_why_it_closed() {
         missing.remove(required);
         assert!(issue.check(&missing).is_err(), "{required}");
     }
+}
+
+#[test]
+fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
+    let shipped = KindSpec::shipped();
+    let report = &shipped[8];
+    assert_eq!(report.kind, Kind::REPORT);
+    let own: Vec<bool> = shipped.iter().map(|spec| spec.kind.own()).collect();
+    assert_eq!(own, [false, false, false, false, false, false, false, false, true]);
+    assert_eq!(report.links, []);
+    let attributes: Vec<(&str, AttributeType, bool)> = report
+        .attributes
+        .iter()
+        .map(|(name, spec)| (name.as_str(), spec.ty, spec.required))
+        .collect();
+    assert_eq!(
+        attributes,
+        [
+            ("pulls", AttributeType::Number, true),
+            ("stale", AttributeType::Number, true),
+            ("view", AttributeType::Text, true)
+        ]
+    );
 }

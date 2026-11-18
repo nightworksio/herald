@@ -8,7 +8,7 @@ use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{
     Announcement, Entry, Event, Facts, HeldEvent, Identity, Key, KindSpecs, Marker, Marks,
-    MentionStyle, Pinning, Plan, Planned, Profile, Reach, Revise, Revision, RouteId, Sent,
+    MentionStyle, Pinning, Plan, Planned, Profile, Reach, Revise, Revision, RouteId, Sent, Showing,
     SourceName, State, Step, Subject, Templates, Threads, Visibility, plan, regrouped, revise,
     revised, schedules, steps,
 };
@@ -134,6 +134,8 @@ pub(crate) struct Run<'a, S, C, G, H> {
     /// visibility, its origin's, private for an owner's member saying
     /// nothing of it, and public otherwise.
     pub(crate) seen: Visibility,
+    /// The view the event reports, where it is a report.
+    pub(crate) view: Option<Showing<'a>>,
 }
 
 impl<S, C, G, H> Clone for Run<'_, S, C, G, H> {
@@ -146,6 +148,7 @@ impl<S, C, G, H> Clone for Run<'_, S, C, G, H> {
             holder: self.holder,
             lease: self.lease,
             seen: self.seen,
+            view: self.view,
         }
     }
 }
@@ -171,7 +174,7 @@ pub(crate) fn stored(error: impl std::fmt::Display) -> Stop {
     Stop::Store(error.to_string())
 }
 
-impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
+impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
     async fn marks(&self, key: &Key) -> Result<Marks, Stop> {
         let secret = &self.route.marker_key;
         let route = &self.route.config.route.id;
@@ -404,7 +407,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let route = &self.route.config.route.id;
         let key = Key::derive(route, event.identity());
         if let Ok(outcome) = self
-            .announced(key, event.into(), templates, Some(Reposted))
+            .announced(key, self.subject(event), templates, Some(Reposted))
             .await
         {
             return outcome;
@@ -417,9 +420,20 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     pub(crate) async fn announce_anew(&self, event: &Event, templates: &Templates) -> Outcome {
         let key = Key::derive(&self.route.config.route.id, &reposted(event.identity()));
         let Ok(outcome) = self
-            .announced::<Infallible>(key, event.into(), templates, None)
+            .announced::<Infallible>(key, self.subject(event), templates, None)
             .await;
         outcome
+    }
+
+    /// `event` as the route announces it, with the view it reports.
+    fn subject<'e>(&self, event: &'e Event) -> Subject<'e>
+    where
+        'a: 'e,
+    {
+        Subject {
+            view: self.view,
+            ..event.into()
+        }
     }
 
     /// What the route did with `subject`, a group, announced under its key:
@@ -712,6 +726,8 @@ pub struct Within<'a> {
     pub routes: Option<&'a [RouteId]>,
     /// The routes the owner's member it is of names, where it is one's.
     pub reach: Option<&'a Reach>,
+    /// The view it reports, where it is a report (ADR-0055).
+    pub view: Option<Showing<'a>>,
 }
 
 impl<'a> Within<'a> {
@@ -721,6 +737,7 @@ impl<'a> Within<'a> {
         Self {
             routes: Some(routes),
             reach: None,
+            view: None,
         }
     }
 }
@@ -789,6 +806,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             holder: run,
             lease: config.announce.lease,
             seen,
+            view: within.view,
         };
         if event.withdrawn() {
             let released = (event.identity(), Some(event.project()));

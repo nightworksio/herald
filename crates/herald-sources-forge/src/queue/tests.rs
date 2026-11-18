@@ -284,3 +284,48 @@ fn each_forge_and_credential_reads_by_its_path_at_its_cost() {
     assert_eq!(ReadPath::Detailed.most_requests(50, MOST_PULLS), 101);
     assert_eq!(ReadPath::Detailed.most_requests(100, 100), 201);
 }
+
+#[test]
+fn a_cost_names_its_path_requests_and_whether_it_reads_mergeability() {
+    let most = herald_kinds::Most::default();
+    let costs: Vec<(&str, usize, bool)> = [
+        (Forge::GitHub, true),
+        (Forge::GitHub, false),
+        (Forge::GitLab, false),
+        (Forge::Forgejo, true),
+    ]
+    .into_iter()
+    .map(|(forge, tokened)| {
+        let cost = cost(forge, tokened, most);
+        (cost.path, cost.requests, cost.mergeability)
+    })
+    .collect();
+    assert_eq!(
+        costs,
+        [
+            ("graphql", 5, true),
+            ("rest", 205, false),
+            ("listing", 5, true),
+            ("rest", 205, true)
+        ]
+    );
+}
+
+#[test]
+fn a_queued_repository_reads_its_pulls_through_its_own_path_at_its_most() {
+    let queued = Queued {
+        origin: origin(Forge::GitHub),
+        token: Some(Token::Named(Secret::new("TOKEN", "t"))),
+        project: "r".to_owned(),
+        graphql: "https://ghe.example/api/graphql".to_owned(),
+    };
+    let http = ScriptedHttp::new(vec![answer(200, &github_page(1..3, None))]);
+    let pulls = pollster::block_on(herald_kinds::Queue::opened(
+        &queued,
+        &http,
+        herald_kinds::Most { open: 1, pulls: 0 },
+    ));
+    assert_eq!(numbers(pulls), [1]);
+    let asked: Vec<String> = http.asked().into_iter().map(|(url, _)| url).collect();
+    assert_eq!(asked, ["https://ghe.example/api/graphql"]);
+}

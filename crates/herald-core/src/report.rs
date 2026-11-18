@@ -4,7 +4,14 @@
 
 use jiff::civil::{Date, Time, Weekday};
 use jiff::tz::TimeZone;
+use std::collections::BTreeMap;
+
 use jiff::{SignedDuration, Timestamp};
+
+use crate::event::{Draft, Event, Problem};
+use crate::kind::{Attribute, Kind, PULLS, STALE, VIEW};
+use crate::members::Visibility;
+use crate::queue::Board;
 
 /// The longest a report's window is, and its step where absent.
 pub const DAY: SignedDuration = SignedDuration::from_hours(24);
@@ -106,6 +113,48 @@ pub fn zone(name: &str) -> Result<TimeZone, jiff::Error> {
         return Ok(TimeZone::UTC);
     }
     TimeZone::get(name)
+}
+
+/// The event announcing report `name`'s window that began at `start`,
+/// showing `board` of the view `view`, its project the report's name: private
+/// where any row it shows is not public, as a repository whose visibility
+/// is unknown is not.
+///
+/// # Errors
+///
+/// Where `name` is empty.
+pub fn report_event(
+    name: &str,
+    view: &str,
+    board: &Board,
+    start: Timestamp,
+) -> Result<Event, Problem> {
+    let private = board
+        .groups
+        .iter()
+        .flat_map(|group| &group.rows)
+        .chain(board.batches.iter().flat_map(|batch| &batch.rows))
+        .any(|row| row.pull.visibility != Visibility::Public);
+    let count = |count: usize| Attribute::Number(u64::try_from(count).unwrap_or(u64::MAX).into());
+    let event = Event::normalise(Draft {
+        identity: report_identity(name, start),
+        kind: Kind::REPORT,
+        project: name.to_owned(),
+        title: name.to_owned(),
+        body: String::new(),
+        links: BTreeMap::new(),
+        attributes: BTreeMap::from([
+            (VIEW.to_owned(), Attribute::Text(view.to_owned())),
+            (PULLS.to_owned(), count(board.total())),
+            (STALE.to_owned(), count(board.stale)),
+        ]),
+        occurred: start,
+    })?;
+    Ok(event.seen_as(if private {
+        Visibility::Private
+    } else {
+        Visibility::Public
+    }))
 }
 
 /// The identity of report `name`'s window that began at `start`, which
