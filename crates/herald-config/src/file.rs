@@ -312,7 +312,7 @@ pub(crate) struct RouteFile {
 /// What of an event a route narrows its sources' events by. Each list
 /// takes any one of what it holds, and every event where empty; an event
 /// with no origin, such as a feed's, is taken only where the match names
-/// projects alone.
+/// projects and attributes alone; and an event `not` takes is never taken.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "Match")]
@@ -344,9 +344,39 @@ pub(crate) struct MatchFile {
     /// one of the values given for it; any value where none is given.
     #[serde(default)]
     pub(crate) properties: BTreeMap<String, Vec<String>>,
+    /// The attributes of the event's kind, every one of which it carries
+    /// with one of the values given for it, as text and ignoring case, such
+    /// as `conclusion = ["failure", "timed_out"]`; any value where none is
+    /// given.
+    #[serde(default)]
+    #[schemars(with = "Option<BTreeMap<String, Vec<String>>>", example = MatchFile::ATTRIBUTES)]
+    pub(crate) attributes: Option<Spanned<BTreeMap<String, Vec<String>>>>,
+    /// What is never taken, written as a match is, whatever the rest of the
+    /// match takes, such as `not = { attributes = { trigger = ["pull_request"] } }`.
+    #[serde(default)]
+    #[schemars(with = "Option<Box<MatchFile>>")]
+    pub(crate) not: Option<Spanned<Box<MatchFile>>>,
 }
 
 impl MatchFile {
+    /// Whether it narrows by nothing.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.projects.is_empty()
+            && self.repositories.is_empty()
+            && self.owners.is_empty()
+            && self.forges.is_empty()
+            && self.hosts.is_empty()
+            && self.topics.is_empty()
+            && self.properties.is_empty()
+            && self
+                .attributes
+                .as_ref()
+                .is_none_or(|attributes| attributes.get_ref().is_empty())
+    }
+
+    /// The attributes the schema shows as an example.
+    const ATTRIBUTES: [(&str, [&str; 2]); 1] = [("conclusion", ["failure", "timed_out"])];
+
     /// The projects the schema shows as an example.
     const PROJECTS: [&str; 1] = ["plugin-*"];
 }

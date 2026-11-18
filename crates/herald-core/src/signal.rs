@@ -27,13 +27,16 @@ pub enum Signal {
     /// A version of a package the forge's registry holds for the
     /// repository.
     Package,
+    /// A finished CI run: a workflow run, a pipeline, or a check suite or
+    /// commit status where the source reads checks.
+    Run,
 }
 
 impl Signal {
     /// The signals a source announces where `signals` is absent.
     pub const DEFAULT: [Self; 1] = [Self::Release];
     /// Every signal.
-    pub const ALL: [Self; 3] = [Self::Release, Self::Tag, Self::Package];
+    pub const ALL: [Self; 4] = [Self::Release, Self::Tag, Self::Package, Self::Run];
 
     /// Its name, as `signals` writes it and an event's `signal` attribute
     /// holds it.
@@ -43,6 +46,7 @@ impl Signal {
             Self::Release => "release",
             Self::Tag => "tag",
             Self::Package => "package",
+            Self::Run => "run",
         }
     }
 
@@ -112,6 +116,7 @@ mod tests {
             (Signal::Release, "release"),
             (Signal::Tag, "tag"),
             (Signal::Package, "package"),
+            (Signal::Run, "run"),
         ] {
             assert_eq!(signal.name(), name);
             assert_eq!(Signal::named(name), Some(signal));

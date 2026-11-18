@@ -113,6 +113,81 @@ template = "t"
     }
 
     #[test]
+    fn a_match_reads_the_attributes_it_narrows_by_and_what_it_never_takes() {
+        let config = loaded(&route(
+            "tags",
+            "\"org\"",
+            "t",
+            "match = { attributes = { signal = [\"tag\"] }, not = { projects = [\"web*\"], attributes = { prerelease = [\"true\"] } } }",
+        ))
+        .unwrap();
+        let matching = &config.routes[1].route.filter.matching;
+        assert_eq!(matching.attributes["signal"], ["tag"]);
+        let not = matching.not.as_deref().unwrap();
+        assert_eq!(not.projects, [Glob::new("web*").unwrap()]);
+        assert_eq!(not.attributes["prerelease"], ["true"]);
+        assert_eq!(not.not, None);
+    }
+
+    #[test]
+    fn a_not_narrowing_by_any_one_key_is_read() {
+        for key in [
+            "projects = [\"web*\"]",
+            "repositories = [\"lemonfiber/web\"]",
+            "owners = [\"nightworksio\"]",
+            "forges = [\"gitlab\"]",
+            "hosts = [\"ghe.example\"]",
+            "topics = [\"archive\"]",
+            "properties = { tier = [] }",
+            "attributes = { signal = [\"tag\"] }",
+        ] {
+            let extra = format!("match = {{ not = {{ {key} }} }}");
+            let config = loaded(&route("tags", "\"org\"", "t", &extra));
+            assert!(config.is_ok(), "{key}: {config:?}");
+        }
+    }
+
+    #[test]
+    fn an_attribute_no_kind_carries_and_a_not_that_takes_everything_are_named() {
+        for (extra, key, said) in [
+            (
+                "match = { attributes = { conclusion = [\"failure\"] } }",
+                "routes[1].match.attributes.conclusion",
+                "no kind the route takes carries an attribute \"conclusion\"; its kinds carry \"edited\", \"prerelease\", \"signal\", \"version\"",
+            ),
+            (
+                "match = { not = { attributes = { conclusion = [] } } }",
+                "routes[1].match.not.attributes.conclusion",
+                "no kind the route takes carries an attribute \"conclusion\"",
+            ),
+            (
+                "match = { not = {} }",
+                "routes[1].match.not",
+                "not narrows by nothing, so it would take every event; name what is never taken, or remove it",
+            ),
+            (
+                "match = { not = { attributes = {} } }",
+                "routes[1].match.not",
+                "not narrows by nothing",
+            ),
+            (
+                "match = { not = { projects = [\"a\"], not = { projects = [\"b\"] } } }",
+                "routes[1].match.not",
+                "a not holds no not of its own; write what it never takes beside it",
+            ),
+            (
+                "match = { not = { projects = [\"[\"] } }",
+                "routes[1].match.not.projects[0]",
+                "",
+            ),
+        ] {
+            let error = loaded(&route("tags", "\"org\"", "t", extra)).unwrap_err();
+            assert!(error.contains(key), "{key}: {error}");
+            assert!(error.contains(said), "{said}: {error}");
+        }
+    }
+
+    #[test]
     fn a_member_override_reads_the_routes_it_names_and_whether_they_are_its_only_ones() {
         let config = loaded(&format!(
             "{}{}[sources.org.repositories.\"plugin-*\"]\nroutes = [\"plugins\"]\nroutes_only = true\n",

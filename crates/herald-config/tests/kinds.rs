@@ -101,6 +101,7 @@ body = "{{ event.body }}"
                 "package-version",
                 "feed-entry",
                 "message",
+                "run",
                 "build",
                 "deploy"
             ]

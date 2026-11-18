@@ -55,7 +55,7 @@ no separate requirements document, and there are no requirement IDs.
 | [0035](0035-a-source-announces-the-versions-of-its-repositories-packages.md) | A source announces the versions of its repositories' packages | Accepted |
 | [0036](0036-a-route-announces-each-project-as-an-actor-of-its-own.md) | A route announces each project as an actor of its own | Accepted |
 | [0037](0037-gitlab-owners-poll-through-graphql-and-forgejo-owners-follow-their-feed.md) | GitLab owners poll through GraphQL, and Forgejo owners follow their feed | Accepted |
-| [0038](0038-a-route-matches-each-event-by-its-origin.md) | A route matches each event by its origin | Accepted |
+| [0038](0038-a-route-matches-each-event-by-its-origin.md) | A route matches each event by its origin | Accepted; extended by [0050](0050-a-forge-source-announces-its-ci-runs-and-a-route-matches-by-attributes.md) |
 | [0039](0039-a-registry-source-takes-every-package-of-a-namespace.md) | A registry source takes every package of a namespace | Accepted |
 | [0040](0040-a-ghcr-source-announces-an-owner-s-images-as-their-repositories-projects.md) | A ghcr source announces an owner's images as their repositories' projects | Accepted |
 | [0041](0041-an-owner-learns-of-its-repositories-by-push-and-reads-as-a-github-app.md) | An owner learns of its repositories by push, and reads as a GitHub App | Accepted |
@@ -67,3 +67,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0047](0047-a-peer-is-pinned-by-the-keys-its-operator-confirms.md) | A peer is pinned by the keys its operator confirms | Accepted; extended by [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) |
 | [0048](0048-a-release-the-forge-deletes-is-withdrawn-from-each-route-that-asks.md) | A release the forge deletes is withdrawn from each route that asks | Accepted; extended by [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) |
 | [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) | A herald source pulls a peer's feed through the keys that stand for it | Accepted |
+| [0050](0050-a-forge-source-announces-its-ci-runs-and-a-route-matches-by-attributes.md) | A forge source announces its CI runs, and a route matches by attributes | Accepted |

@@ -355,13 +355,19 @@ body = "{{ event.body }}"
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let versions = config.routes[0].route.filter.versions.as_ref().unwrap();
         assert_eq!(versions.as_str(), "v*.*.*");
-        let feeds = text.replace(
-            "kinds = [\"release\"]",
-            "kinds = [\"release\", \"feed-entry\"]",
+        let unannounced = text.replace("kinds = [\"release\"]", "kinds = [\"release\", \"run\"]");
+        let refused = errors(&unannounced);
+        assert!(
+            refused.contains("routes[0].kinds[1]: no source the route names announces a \"run\" event, so the route takes none; have \"php-mutation-gate\" announce it, such as through its signals, or remove it"),
+            "{refused}"
+        );
+        let feeds = unannounced.replace(
+            "repository = \"nightworksio/php-mutation-gate\"\n",
+            "repository = \"nightworksio/php-mutation-gate\"\nsignals = [\"release\", \"run\"]\n",
         );
         let refused = errors(&feeds);
         assert!(
-            refused.starts_with("herald.toml:20:12 routes[0].versions: \"feed-entry\" events carry no version, so a route with versions takes none of them"),
+            refused.starts_with("herald.toml:21:12 routes[0].versions: \"run\" events carry no version, so a route with versions takes none of them"),
             "{refused}"
         );
         let unplaced = errors(&feeds.replace("channel = \"1566184281406177531\"\n", ""));
@@ -676,7 +682,7 @@ body = "{{ event.body }}"
         let unknown =
             errors(&EXAMPLE.replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]"));
         assert!(
-            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", or declare it under [kinds.tweet]"),
+            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", or declare it under [kinds.tweet]"),
             "{unknown}"
         );
         assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");

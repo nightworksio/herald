@@ -693,6 +693,7 @@ fn a_member_s_events_come_from_its_listing_on_the_owner_s_host_and_reach_its_ove
 
 mod members;
 mod packages;
+mod runs;
 
 #[test]
 fn an_owner_s_member_stands_for_its_own_repository() {

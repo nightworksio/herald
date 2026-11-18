@@ -86,7 +86,9 @@ impl From<Release> for ForgeRelease {
 
 /// A time as GitLab writes it in a webhook, `2026-10-28 21:42:40 UTC`, or
 /// as an RFC 3339 timestamp.
-fn when<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>, D::Error> {
+pub(crate) fn when<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Timestamp>, D::Error> {
     let Some(text) = Option::<String>::deserialize(deserializer)? else {
         return Ok(None);
     };

@@ -15,6 +15,7 @@ mod housekeep;
 mod lambda;
 mod peers;
 mod poll;
+mod runs;
 mod secrets;
 mod server;
 mod setup;

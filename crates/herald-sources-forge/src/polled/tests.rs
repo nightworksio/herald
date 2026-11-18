@@ -70,6 +70,7 @@ fn releases(
         packaging: Packaging::of(forge, &options),
         list: crate::packages::PackageList::Own,
         visibility: None,
+        runs: crate::options::RunChoice::default(),
     }
 }
 
@@ -572,4 +573,43 @@ fn one_tag_is_read_in_full_on_each_forge() {
         one_tag(Forge::GitLab, &unanswered),
         Err(Unpolled::Unreachable(_))
     ));
+}
+
+#[test]
+fn a_repository_s_runs_are_polled_with_their_own_validators_and_the_rest_unasked_where_unchanged() {
+    let source = releases(
+        Forge::GitHub,
+        &[Signal::Release, Signal::Run],
+        (PrereleaseRule::Either, 0),
+    );
+    let run = json!({
+        "id": 4, "name": "CI", "run_attempt": 2, "status": "completed", "conclusion": "success",
+        "html_url": "https://forge.example/o/r/actions/runs/4", "updated_at": "2026-11-02T10:00:00Z"
+    });
+    let http = ScriptedHttp::new(vec![
+        unchanged(),
+        answer(200, &json!({"workflow_runs": [run]}), Some("\"runs\"")),
+        repository(Forge::GitHub),
+    ]);
+    let cursor = Cursor {
+        etag: Some("\"releases\"".to_owned()),
+        ..Cursor::default()
+    };
+    let found = polled(&source, &http, Some(&cursor)).unwrap().unwrap();
+    assert_eq!(
+        identities(&found),
+        [("forge.example/7/run/4/2", Some(Signal::Run))]
+    );
+    assert_eq!(found.etag.as_deref(), Some("\"releases\""));
+    assert_eq!(
+        found.signals[&Signal::Run].etag.as_deref(),
+        Some("\"runs\"")
+    );
+    assert_eq!(
+        http.asked()[1].0,
+        "https://forge.example/api/repos/o/r/actions/runs?per_page=30&status=completed"
+    );
+    let quiet = ScriptedHttp::new(vec![unchanged(), unchanged()]);
+    assert_eq!(polled(&source, &quiet, Some(&cursor)).unwrap(), None);
+    assert_eq!(quiet.asked().len(), 2);
 }

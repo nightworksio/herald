@@ -100,7 +100,7 @@ const OWNED_OTHER_EVENT: &str =
     "the delivery is not of a release, a tag, a package or the owner's repositories";
 /// Why a webhook delivery of a repository the owner source does not take
 /// announces nothing.
-const UNSELECTED: &str = "the repository is not one the source takes";
+pub(crate) const UNSELECTED: &str = "the repository is not one the source takes";
 /// Why a webhook delivery of an unpublished release announces nothing.
 const UNPUBLISHED: &str = "the release is not published, or is a draft";
 /// Why a webhook delivery of a release announces nothing where the source
@@ -411,6 +411,14 @@ impl Forge {
             .is_some_and(|(_, value)| *value == release)
     }
 
+    /// Whether the repositories of `owner`, with its subgroups' where
+    /// `subgroups` says so on GitLab, include those `holder` holds.
+    pub(crate) fn holds(self, (owner, subgroups): (&str, bool), holder: &str) -> bool {
+        let (holder, lowered) = (holder.to_ascii_lowercase(), owner.to_ascii_lowercase());
+        holder == lowered
+            || (subgroups && self == Self::GitLab && holder.starts_with(&format!("{lowered}/")))
+    }
+
     /// What a webhook delivery of `owner`'s, `payload` with `headers`, asks
     /// herald to announce: the event of a release published in a
     /// repository `selection` admits by what the payload names, to announce
@@ -431,11 +439,7 @@ impl Forge {
         (owner, subgroups): (&str, bool),
         (selection, signals): (&Selection, &dyn Fn(&str) -> Signals),
     ) -> Result<Hooked, SourceError> {
-        let holds = |holder: &str| {
-            let (holder, lowered) = (holder.to_ascii_lowercase(), owner.to_ascii_lowercase());
-            holder == lowered
-                || (subgroups && self == Self::GitLab && holder.starts_with(&format!("{lowered}/")))
-        };
+        let holds = |holder: &str| self.holds((owner, subgroups), holder);
         let unheld = |what| SourceError::Unreadable {
             what,
             reason: format!("it is not of a repository {owner}, the owner its source names, holds"),

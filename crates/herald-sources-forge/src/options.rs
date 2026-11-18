@@ -18,6 +18,8 @@ pub use packages::PackageVisibility;
 pub(crate) use packages::{
     GITHUB_PACKAGE_TYPES, MOST_PACKAGES, MOST_PACKAGES_ALLOWED, MOVING, registry_host,
 };
+pub(crate) use runs::RunChoice;
+pub use runs::{Conclusion, RUN_ACTIONS, RUN_FROM, RunAction, RunFrom, Runs};
 pub use signals::{EDITS_DEPTH, Signals, TAG_WINDOW};
 pub use transport::{FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, Transport};
 
@@ -259,6 +261,11 @@ pub struct SourceOptions {
     /// reaches only `private` routes under `[doctor] private_to_public =
     /// "refuse"`.
     pub package_visibility: Option<PackageVisibility>,
+    /// Which runs are announced where the signals take "run": what they
+    /// are read from, what they did, how they ended, and their branches,
+    /// triggers and workflows; every finished run of the forge's own CI
+    /// where absent.
+    pub runs: Option<Runs>,
 }
 
 /// Whether an override sets one of its keys.
@@ -350,6 +357,7 @@ impl SourceOptions {
         self.signals_check(forge)?;
         self.prefer_check()?;
         self.packages_check(forge)?;
+        self.runs_check(forge)?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -386,6 +394,7 @@ mod hooks;
 mod overrides;
 mod owner;
 mod packages;
+mod runs;
 mod signals;
 #[cfg(test)]
 mod tests;

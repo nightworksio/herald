@@ -91,3 +91,86 @@ fn forges_hosts_topics_and_properties_narrow_ignoring_case() {
         (properties("media"), false),
     ]);
 }
+
+/// The sample event, carrying `attempt` as a number beside its version and
+/// pre-release flag.
+fn attempted(attempt: u64) -> Event {
+    let mut draft = crate::event::tests::draft();
+    draft
+        .attributes
+        .insert("attempt".to_owned(), Attribute::Number(attempt.into()));
+    Event::normalise(draft).unwrap()
+}
+
+fn values(pairs: &[(&str, &[&str])]) -> BTreeMap<String, Vec<String>> {
+    pairs
+        .iter()
+        .map(|(name, values)| ((*name).to_owned(), names(values)))
+        .collect()
+}
+
+#[test]
+fn attributes_narrow_by_text_number_or_flag_ignoring_case() {
+    let by = |pairs: &[(&str, &[&str])]| Match {
+        attributes: values(pairs),
+        ..Match::default()
+    };
+    let event = attempted(2);
+    for (pairs, takes) in [
+        (&[("version", &["V0.1.0"][..])][..], true),
+        (&[("version", &["v0.2.0", "v0.1.0"][..])][..], true),
+        (&[("version", &["v0.2.0"][..])][..], false),
+        (&[("prerelease", &["false"][..])][..], true),
+        (&[("prerelease", &["true"][..])][..], false),
+        (&[("attempt", &["2"][..])][..], true),
+        (&[("attempt", &["1"][..])][..], false),
+        (&[("conclusion", &["failure"][..])][..], false),
+        (
+            &[("attempt", &["2"][..]), ("version", &["v9"][..])][..],
+            false,
+        ),
+    ] {
+        let matching = by(pairs);
+        assert!(!matching.reads_origin(), "{pairs:?}");
+        assert_eq!(matching.takes(&event), takes, "{pairs:?}");
+        assert!(matching.admits("anything", Some(&origin())), "{pairs:?}");
+    }
+}
+
+#[test]
+fn nothing_not_takes_is_taken() {
+    let excluding = |not: Match| Match {
+        not: Some(Box::new(not)),
+        ..Match::default()
+    };
+    let by_attempt = excluding(Match {
+        attributes: values(&[("attempt", &["2"])]),
+        ..Match::default()
+    });
+    assert!(!by_attempt.takes(&attempted(2)));
+    assert!(by_attempt.takes(&attempted(1)));
+    assert!(by_attempt.admits("php-mutation-gate", None));
+    assert!(by_attempt.admits("php-mutation-gate", Some(&origin())));
+    let by_project = excluding(Match {
+        projects: globs(&["php-*"]),
+        ..Match::default()
+    });
+    assert!(!by_project.takes(&attempted(1)));
+    assert!(by_project.takes(&attempted(1).of_project("herald").unwrap()));
+    assert!(!by_project.admits("php-mutation-gate", None));
+    assert!(by_project.admits("herald", None));
+    let by_owner = excluding(Match {
+        owners: globs(&["nightworksio"]),
+        ..Match::default()
+    });
+    assert!(!by_owner.takes(&attempted(1).from_origin(origin())));
+    assert!(by_owner.takes(&attempted(1)));
+    assert!(!by_owner.admits("php-mutation-gate", Some(&origin())));
+    assert!(by_owner.admits("php-mutation-gate", None));
+    let narrowed = Match {
+        projects: globs(&["herald"]),
+        ..by_attempt
+    };
+    assert!(!narrowed.takes(&attempted(1)));
+    assert!(!narrowed.admits("php-mutation-gate", None));
+}

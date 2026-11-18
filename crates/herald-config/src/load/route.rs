@@ -59,8 +59,40 @@ struct Reach<'r> {
 }
 
 impl Loader<'_> {
-    /// The match `file` writes at `path`, where each of its globs reads.
-    fn matching(&mut self, file: MatchFile, path: &str) -> Option<Match> {
+    /// The match `file` writes at `path`, where each of its globs reads,
+    /// each attribute it names is one of a kind in `kinds`, and its `not`
+    /// narrows by something and holds no `not` of its own.
+    fn matching(
+        &mut self,
+        mut file: MatchFile,
+        path: &str,
+        kinds: &BTreeSet<Kind>,
+    ) -> Option<Match> {
+        let at = format!("{path}.match");
+        let not = file.not.take().map(|not| {
+            let (span, not) = (not.span(), not.into_inner());
+            let refused = if not.not.is_some() {
+                Some("a not holds no not of its own; write what it never takes beside it")
+            } else if not.is_empty() {
+                Some("not narrows by nothing, so it would take every event; name what is never taken, or remove it")
+            } else {
+                None
+            };
+            if let Some(refused) = refused {
+                self.error(&span, &format!("{at}.not"), refused);
+            }
+            self.matched(*not, &format!("{at}.not"), kinds)
+        });
+        let matching = self.matched(file, &at, kinds)?;
+        let not = match not {
+            Some(not) => Some(Box::new(not?)),
+            None => None,
+        };
+        Some(Match { not, ..matching })
+    }
+
+    /// The match `file` writes at `at`, leaving `not` aside.
+    fn matched(&mut self, file: MatchFile, at: &str, kinds: &BTreeSet<Kind>) -> Option<Match> {
         let mut sound = true;
         let mut globs = |written: Vec<Spanned<String>>, key: &str| -> Vec<Glob> {
             written
@@ -71,7 +103,7 @@ impl Loader<'_> {
                     Err(error) => {
                         self.error(
                             &text.span(),
-                            &format!("{path}.match.{key}[{index}]"),
+                            &format!("{at}.{key}[{index}]"),
                             error.to_string(),
                         );
                         sound = false;
@@ -80,16 +112,50 @@ impl Loader<'_> {
                 })
                 .collect()
         };
-        let matching = Match {
-            projects: globs(file.projects, "projects"),
-            repositories: globs(file.repositories, "repositories"),
-            owners: globs(file.owners, "owners"),
+        let projects = globs(file.projects, "projects");
+        let repositories = globs(file.repositories, "repositories");
+        let owners = globs(file.owners, "owners");
+        let attributes = file.attributes.map_or_else(BTreeMap::new, |attributes| {
+            let span = attributes.span();
+            let attributes = attributes.into_inner();
+            if let Some(unknown) = attributes.keys().find(|name| !self.carries(kinds, name)) {
+                let names: BTreeSet<&str> = kinds
+                    .iter()
+                    .filter_map(|kind| self.specs.get(kind))
+                    .flat_map(|spec| spec.attributes.keys().map(String::as_str))
+                    .collect();
+                let names: Vec<&str> = names.into_iter().collect();
+                self.error(
+                    &span,
+                    &format!("{at}.attributes.{unknown}"),
+                    format!(
+                        "no kind the route takes carries an attribute \"{unknown}\"; its kinds carry {}",
+                        list(&names)
+                    ),
+                );
+                sound = false;
+            }
+            attributes
+        });
+        sound.then_some(Match {
+            projects,
+            repositories,
+            owners,
             forges: file.forges,
             hosts: file.hosts,
             topics: file.topics,
             properties: file.properties,
-        };
-        sound.then_some(matching)
+            attributes,
+            not: None,
+        })
+    }
+
+    /// Whether some kind of `kinds` carries the attribute `name`.
+    fn carries(&self, kinds: &BTreeSet<Kind>, name: &str) -> bool {
+        kinds
+            .iter()
+            .filter_map(|kind| self.specs.get(kind))
+            .any(|spec| spec.attributes.contains_key(name))
     }
 
     /// The kinds of event `route` takes, each known, where its versions
@@ -125,28 +191,50 @@ impl Loader<'_> {
         if !sound {
             return None;
         }
-        let kinds: BTreeSet<Kind> = if route.kinds.is_empty() {
-            route
-                .sources
-                .iter()
-                .flat_map(|source| {
-                    let name = source.get_ref();
-                    let named = sources.get(&SourceName::new(name));
-                    let posted: Vec<Kind> = if apps.contains_key(name)
-                        || named.is_some_and(|source| source.any_kind())
-                    {
+        let announced: BTreeSet<Kind> = route
+            .sources
+            .iter()
+            .flat_map(|source| {
+                let name = source.get_ref();
+                let named = sources.get(&SourceName::new(name));
+                let posted: Vec<Kind> =
+                    if apps.contains_key(name) || named.is_some_and(|source| source.any_kind()) {
                         self.specs.iter().map(|spec| spec.kind.clone()).collect()
                     } else {
                         Vec::new()
                     };
-                    named
-                        .map(|source| source.kinds().to_vec())
-                        .unwrap_or_default()
-                        .into_iter()
-                        .chain(posted)
-                })
-                .collect()
+                named
+                    .map(|source| source.kinds().to_vec())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .chain(posted)
+            })
+            .collect();
+        let kinds: BTreeSet<Kind> = if route.kinds.is_empty() {
+            announced
         } else {
+            for (index, kind) in route.kinds.iter().enumerate() {
+                if !announced.contains(kind.get_ref()) {
+                    let names: Vec<&str> = route
+                        .sources
+                        .iter()
+                        .map(|source| source.get_ref().as_str())
+                        .collect();
+                    self.error(
+                        &kind.span(),
+                        &format!("{path}.kinds[{index}]"),
+                        format!(
+                            "no source the route names announces a \"{}\" event, so the route takes none; have {} announce it, such as through its signals, or remove it",
+                            kind.get_ref(),
+                            list(&names)
+                        ),
+                    );
+                    sound = false;
+                }
+            }
+            if !sound {
+                return None;
+            }
             route
                 .kinds
                 .iter()
@@ -459,7 +547,7 @@ impl Loader<'_> {
             versions: route.versions.as_ref(),
         };
         let sample_kinds = self.sample_kinds(taken, &path, sources, apps)?;
-        let matching = self.matching(route.matching, &path)?;
+        let matching = self.matching(route.matching, &path, &sample_kinds)?;
         let origins = route.sources.iter().all(|name| {
             sources
                 .get(&SourceName::new(name.get_ref()))
