@@ -22,6 +22,8 @@ impl Kind {
     pub const MESSAGE: Self = Self(Cow::Borrowed("message"));
     /// A CI run on a forge.
     pub const RUN: Self = Self(Cow::Borrowed("run"));
+    /// A security alert on a forge.
+    pub const ALERT: Self = Self(Cow::Borrowed("alert"));
 
     /// The kind named `name`.
     ///
@@ -80,7 +82,7 @@ impl JsonSchema for Kind {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({
-            "description": "What kind of thing an event announces: release, package-version, feed-entry, message, run, or a kind the config declares.",
+            "description": "What kind of thing an event announces: release, package-version, feed-entry, message, run, alert, or a kind the config declares.",
             "type": "string",
             "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
         })
@@ -163,7 +165,9 @@ pub const CHANGELOG_LINK: &str = "changelog";
 pub const ENTRY_LINK: &str = "entry";
 /// The link to a run's page.
 pub const RUN_LINK: &str = "run";
-/// What a run did: `requested`, `in_progress` or `completed`.
+/// What a run or an alert did: a run's `requested`, `in_progress` or
+/// `completed`, an alert's `created`, `reopened`, `confirmed`, `fixed` or
+/// `dismissed`.
 pub const ACTION: &str = "action";
 /// How a finished run ended, in GitHub's words: `success`, `failure`,
 /// `cancelled`, `timed_out`, `skipped`, `action_required`, `neutral`,
@@ -178,12 +182,29 @@ pub const TRIGGER: &str = "trigger";
 pub const BRANCH: &str = "branch";
 /// The commit a run ran on.
 pub const COMMIT: &str = "commit";
-/// The forge's number of a run within its repository.
+/// The forge's number of a run or an alert within its repository.
 pub const NUMBER: &str = "number";
 /// Which attempt at a run this is, the first being 1.
 pub const ATTEMPT: &str = "attempt";
 /// Who started a run.
 pub const ACTOR: &str = "actor";
+/// The link to an alert's page.
+pub const ALERT_LINK: &str = "alert";
+/// What raised an alert: `code-scanning`, `dependency-scanning`,
+/// `secret-scanning`, `container-scanning`, `dast`, `fuzzing` or `other`.
+pub const TOOL: &str = "tool";
+/// How severe an alert is: `critical`, `high`, `medium`, `low`, `info` or
+/// `unknown`, or a code scanning rule's `error`, `warning` or `note` where
+/// it names no security severity.
+pub const SEVERITY: &str = "severity";
+/// The rule, advisory, secret type or identifier an alert is of.
+pub const RULE: &str = "rule";
+/// The ecosystem of the package a dependency alert is of, such as `npm`.
+pub const ECOSYSTEM: &str = "ecosystem";
+/// What an alert points at: a manifest, a file, or a container image.
+pub const PATH: &str = "path";
+/// Why a secret scanning alert was resolved, such as `revoked`.
+pub const RESOLUTION: &str = "resolution";
 /// What a run is read from: `actions`, the forge's own CI, or `checks`, a
 /// check suite or a commit status.
 pub const FROM: &str = "from";
@@ -289,6 +310,27 @@ fn ran() -> BTreeMap<String, AttributeSpec> {
     attributes
 }
 
+/// The attributes of an alert: a forge's signals', and what the alert is.
+/// None holds what an alert found, such as a secret's value.
+fn alerted() -> BTreeMap<String, AttributeSpec> {
+    let mut attributes = signalled();
+    let typed = [
+        (ACTION, AttributeType::Text, true),
+        (TOOL, AttributeType::Text, true),
+        (SEVERITY, AttributeType::Text, false),
+        (RULE, AttributeType::Text, false),
+        (PACKAGE, AttributeType::Text, false),
+        (ECOSYSTEM, AttributeType::Text, false),
+        (PATH, AttributeType::Text, false),
+        (NUMBER, AttributeType::Number, true),
+        (RESOLUTION, AttributeType::Text, false),
+    ];
+    for (name, ty, required) in typed {
+        attributes.insert(name.to_owned(), AttributeSpec { ty, required });
+    }
+    attributes
+}
+
 /// One link a kind's events carry, which becomes a button where the event
 /// carries it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -328,6 +370,9 @@ pub struct KindSpec {
     pub links: Vec<LinkSpec>,
     /// The attributes its events carry, by name.
     pub attributes: BTreeMap<String, AttributeSpec>,
+    /// Whether its events belong in private places only, so a route taking
+    /// them must say whether its place is private.
+    pub private: bool,
 }
 
 impl KindSpec {
@@ -364,6 +409,16 @@ impl KindSpec {
             versioned,
             links,
             attributes,
+            private: false,
+        }
+    }
+
+    /// The kind, its events belonging in private places only.
+    #[must_use]
+    pub fn private(self) -> Self {
+        Self {
+            private: true,
+            ..self
         }
     }
 
@@ -407,6 +462,14 @@ impl KindSpec {
                 buttons(&[RUN_LINK]),
                 ran(),
             ),
+            Self::new(
+                Kind::ALERT,
+                "A security alert on a forge: code scanning's, Dependabot's or secret scanning's, or a GitLab vulnerability.",
+                false,
+                buttons(&[ALERT_LINK]),
+                alerted(),
+            )
+            .private(),
         ]
     }
 
@@ -421,15 +484,15 @@ impl KindSpec {
             match attributes.get(name) {
                 None if spec.required => {
                     return Err(format!(
-                        "attributes.{name} is missing; a {} event carries it",
+                        "attributes.{name} is missing; {} events carry it",
                         self.kind
                     ));
                 }
                 Some(attribute) if !spec.ty.holds(attribute) => {
                     return Err(format!(
-                        "attributes.{name} is not {}; a {} event's {name} is",
-                        spec.ty.name(),
-                        self.kind
+                        "attributes.{name} is not {ty}; {} events carry {name} as {ty}",
+                        self.kind,
+                        ty = spec.ty.name()
                     ));
                 }
                 _ => {}
@@ -440,7 +503,7 @@ impl KindSpec {
             .find(|name| !self.attributes.contains_key(*name))
         {
             Some(unknown) => Err(format!(
-                "attributes.{unknown} is not an attribute of a {} event",
+                "attributes.{unknown} is not an attribute of {} events",
                 self.kind
             )),
             None => Ok(()),

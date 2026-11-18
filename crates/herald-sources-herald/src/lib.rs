@@ -47,8 +47,8 @@ impl SourceConfig for HeraldOptions {
         None
     }
 
-    fn kinds(&self) -> &'static [Kind] {
-        &[]
+    fn kinds(&self) -> Vec<Kind> {
+        Vec::new()
     }
 
     fn any_kind(&self) -> bool {

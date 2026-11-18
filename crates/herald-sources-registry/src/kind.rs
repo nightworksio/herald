@@ -89,8 +89,8 @@ impl SourceConfig for RegistrySource {
         self.options.token.as_ref()
     }
 
-    fn kinds(&self) -> &'static [Kind] {
-        &[Kind::PACKAGE_VERSION]
+    fn kinds(&self) -> Vec<Kind> {
+        vec![Kind::PACKAGE_VERSION]
     }
 
     fn backfill(&self) -> usize {

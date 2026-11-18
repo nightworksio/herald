@@ -640,6 +640,16 @@ ended, and its branches, triggers and workflows, and a route's
 covers the keys, the attributes, each forge's webhooks and what a poll
 reads.
 
+### Alerts
+
+`signals = ["alert"]` announces the repository's security alerts as
+`alert` events: GitHub's code scanning, Dependabot and secret scanning
+alerts, and GitLab Ultimate's vulnerabilities, each with one `tool`,
+`severity` and `action` vocabulary on every forge. `alert` is a private
+kind, so a route taking it says `private = true` or, on purpose,
+`private = false`. [`.docs/alerts.md`](.docs/alerts.md) covers the keys,
+the attributes, each forge's webhooks and what a poll reads.
+
 ### Every package of a namespace
 
 A registry source gives its registry's namespace key in place of

@@ -218,7 +218,7 @@ mod app {
         .unwrap_err();
         assert_eq!(
             refused.to_string(),
-            "attributes.region is missing; a deploy event carries it"
+            "attributes.region is missing; deploy events carry it"
         );
     }
 

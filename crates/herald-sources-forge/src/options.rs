@@ -9,6 +9,8 @@ use herald_wire::{PARSE_LIMIT, Reading};
 
 use crate::Forge;
 
+pub(crate) use alerts::AlertChoice;
+pub use alerts::{ALERT_ACTIONS, AlertAction, Alerts, Severity, Tool};
 pub use discovery::Discovery;
 pub use hooks::MemberHooks;
 pub use owner::{
@@ -266,6 +268,10 @@ pub struct SourceOptions {
     /// triggers and workflows; every finished run of the forge's own CI
     /// where absent.
     pub runs: Option<Runs>,
+    /// Which security alerts are announced where the signals take
+    /// "alert": what raised them, what they did and how severe they are;
+    /// every tool's raised and reopened alerts where absent.
+    pub alerts: Option<Alerts>,
 }
 
 /// Whether an override sets one of its keys.
@@ -358,6 +364,7 @@ impl SourceOptions {
         self.prefer_check()?;
         self.packages_check(forge)?;
         self.runs_check(forge)?;
+        self.alerts_check(forge)?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -388,6 +395,7 @@ impl SourceOptions {
     }
 }
 
+mod alerts;
 mod app;
 mod discovery;
 mod hooks;

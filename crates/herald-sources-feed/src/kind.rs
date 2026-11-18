@@ -32,8 +32,8 @@ impl SourceConfig for FeedOptions {
         None
     }
 
-    fn kinds(&self) -> &'static [Kind] {
-        &[Kind::FEED_ENTRY]
+    fn kinds(&self) -> Vec<Kind> {
+        vec![Kind::FEED_ENTRY]
     }
 
     fn backfill(&self) -> usize {

@@ -215,6 +215,7 @@ mod tests {
                 )
             })
             .collect(),
+            private: false,
         };
         let deploy = &samples(&declared)[0];
         assert_eq!(deploy.attribute("live"), Some(&Attribute::Flag(false)));

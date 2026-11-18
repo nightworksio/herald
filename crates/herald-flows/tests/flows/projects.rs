@@ -46,6 +46,7 @@ sources = ["org", "gate", "ci"]
 destination = "fedi"
 template = "t"
 actor = "{{ event.project | replace('.', '_') }}"
+private = false
 [[routes]]
 id = "fixed"
 sources = ["gate"]
@@ -201,11 +202,8 @@ fn each_project_s_actor_is_served_while_named_kept_while_followed_after_it_leave
 
 #[test]
 fn a_member_not_everyone_may_see_has_an_actor_only_on_a_private_route_or_where_doctor_allows_it() {
-    for (changed, status) in [
-        ("id = \"projects\"\nprivate = true", 200),
-        ("id = \"projects\"", 404),
-    ] {
-        let text = config_text().replacen("id = \"projects\"", changed, 1);
+    for (changed, status) in [("private = true", 200), ("private = false", 404)] {
+        let text = config_text().replacen("private = false", changed, 1);
         let world = world_of(configured(&text));
         assert_eq!(
             world.answer(&get("/users/secret")).reply.status,
@@ -473,7 +471,7 @@ fn an_event_whose_project_names_no_actor_skips_the_route() {
 #[test]
 fn doctor_names_each_project_of_a_source_app_or_member_that_names_no_actor() {
     let text = format!(
-        "{}[[routes]]\nid = \"apps\"\nsources = [\"ci\"]\ndestination = \"fedi\"\ntemplate = \"t\"\nactor = \"{{{{ event.project }}}}\"\n",
+        "{}[[routes]]\nid = \"apps\"\nsources = [\"ci\"]\ndestination = \"fedi\"\ntemplate = \"t\"\nactor = \"{{{{ event.project }}}}\"\nprivate = false\n",
         config_text()
     );
     let config = configured(&text);

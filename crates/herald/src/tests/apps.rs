@@ -9,12 +9,14 @@ sources = ["ci"]
 destination = "discord"
 channel = "1566200000000000200"
 template = "deploy"
+private = false
 [[routes]]
 id = "elsewhere"
 sources = ["ci"]
 destination = "discord"
 channel = "1566200000000000300"
 template = "deploy"
+private = false
 [templates.deploy]
 title = "{{{{ event.project }}}}: {{{{ event.title }}}}"
 body = "{{{{ event.body }}}}"

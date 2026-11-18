@@ -114,7 +114,12 @@ mod examples {
     #[test]
     fn every_toml_block_of_the_guides_holds_to_the_schema() {
         let schema = partial();
-        for (guide, least) in [("README.md", 6), (".docs/federation.md", 3)] {
+        for (guide, least) in [
+            ("README.md", 6),
+            (".docs/federation.md", 3),
+            (".docs/runs.md", 1),
+            (".docs/alerts.md", 1),
+        ] {
             let blocks = blocks(&read(Path::new(guide)));
             assert!(blocks.len() >= least, "{guide}: {blocks:?}");
             for block in blocks {

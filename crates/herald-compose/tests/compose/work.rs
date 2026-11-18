@@ -18,6 +18,7 @@ sources = ["ci"]
 destination = "chat"
 channel = "C0123456789"
 template = "t"
+private = false
 [apps.ci]
 tokens = ["sha256:{}"]
 projects = ["herald"]

@@ -230,8 +230,8 @@ impl SourceConfig for GhcrSource {
         Some(&self.options.token)
     }
 
-    fn kinds(&self) -> &'static [Kind] {
-        &[Kind::PACKAGE_VERSION]
+    fn kinds(&self) -> Vec<Kind> {
+        vec![Kind::PACKAGE_VERSION]
     }
 
     fn backfill(&self) -> usize {

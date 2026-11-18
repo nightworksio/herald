@@ -6,14 +6,15 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    ACTION, ACTOR, ATTEMPT, Address, Attribute, BRANCH, COMMIT, CONCLUSION, Cursor, Draft, Event,
-    FROM, Kind, NUMBER, Polled, RUN_LINK, SIGNAL, Signal, TRIGGER, Validators, WORKFLOW,
+    ACTION, ACTOR, ATTEMPT, Attribute, BRANCH, COMMIT, CONCLUSION, Cursor, Draft, Event, FROM,
+    Kind, NUMBER, Polled, RUN_LINK, SIGNAL, Signal, TRIGGER, Validators, WORKFLOW,
 };
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
 use herald_wire::{SourceError, answered};
 use jiff::Timestamp;
 
+use crate::alerts;
 use crate::forge::{Repository, validators};
 use crate::options::RunChoice;
 use crate::{Conclusion, Forge, Origin, RunAction, RunFrom, Token};
@@ -124,14 +125,7 @@ impl ForgeRun {
         what: &'static str,
         repository: &Repository,
     ) -> Result<Event, SourceError> {
-        let page = repository.page.as_deref().unwrap_or(&self.url);
-        let host = Address::parse(page)
-            .ok_or_else(|| SourceError::Unreadable {
-                what,
-                reason: "the repository's page names no host".to_owned(),
-            })?
-            .host()
-            .to_owned();
+        let host = crate::wire::host_named(what, repository, &self.url)?;
         let identity = format!(
             "{host}/{}/{}/{}/{}",
             repository.id,
@@ -254,6 +248,18 @@ impl Forge {
     /// What the webhook or CI event names that `headers` or the run's
     /// event name name, where it is of a run.
     pub(crate) fn run_delivery(self, headers: &[(&str, &str)]) -> Option<Delivery> {
+        self.event_named(headers)
+            .and_then(|name| Delivery::named(self, name))
+    }
+
+    /// What the alert webhook `headers` name, where it is of an alert.
+    pub(crate) fn alert_delivery(self, headers: &[(&str, &str)]) -> Option<alerts::Delivery> {
+        self.event_named(headers)
+            .and_then(|name| alerts::Delivery::named(self, name))
+    }
+
+    /// The name of the event a webhook's `headers` deliver.
+    fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
         let names: &[&str] = match self {
             Self::GitHub => &["x-github-event"],
             Self::GitLab => &["x-gitlab-event"],
@@ -262,7 +268,7 @@ impl Forge {
         headers
             .iter()
             .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
-            .and_then(|(_, value)| Delivery::named(self, value))
+            .map(|(_, value)| *value)
     }
 
     /// What the run `delivery`'s `payload` names.
@@ -351,10 +357,10 @@ struct Listing {
     ran: Ran,
 }
 
-/// What a poll of a repository's runs found: their events, and the
-/// validators of each listing it read.
+/// What a poll of a repository's runs or alerts found: their events, the
+/// validators of the run listing, and those of each other listing it read.
 #[derive(Debug, Default)]
-pub(crate) struct Runs {
+pub(crate) struct Found {
     pub(crate) events: Vec<Event>,
     pub(crate) validators: Option<Validators>,
     pub(crate) listings: BTreeMap<String, Validators>,
@@ -456,8 +462,8 @@ impl Asking<'_> {
     }
 
     /// The runs of `repository` the listings `asked` found.
-    pub(crate) fn read(&self, asked: &Asked, repository: &Repository) -> Result<Runs, Unpolled> {
-        let mut runs = Runs::default();
+    pub(crate) fn read(&self, asked: &Asked, repository: &Repository) -> Result<Found, Unpolled> {
+        let mut runs = Found::default();
         for (ran, kept, answer) in &asked.0 {
             let (ran, answer) = (*ran, answer);
             let kept = if Forge::unchanged(answer) {
@@ -510,7 +516,7 @@ const fn listed(forge: Forge, ran: Ran) -> &'static str {
 
 /// `polled` with `runs` merged in: their events, and the validators they
 /// were read under.
-pub(crate) fn merged(mut polled: Polled, runs: Runs) -> Polled {
+pub(crate) fn merged(mut polled: Polled, runs: Found) -> Polled {
     polled.events.extend(runs.events);
     if let Some(validators) = runs.validators {
         polled.signals.insert(Signal::Run, validators);
@@ -520,14 +526,14 @@ pub(crate) fn merged(mut polled: Polled, runs: Runs) -> Polled {
 }
 
 /// `polled`, a poll's answer where it found anything, with `runs`, what the
-/// same poll's listings `asked` found of the runs since `cursor`: nothing
-/// where neither changed.
+/// same poll's listings found of the runs or alerts since `cursor`, which
+/// `changed` says changed since: nothing where neither changed.
 pub(crate) fn merged_into(
     polled: Option<Polled>,
-    (asked, runs): (&Asked, Runs),
+    (changed, runs): (bool, Found),
     cursor: Option<&Cursor>,
 ) -> Option<Polled> {
-    if polled.is_none() && !asked.changed() {
+    if polled.is_none() && !changed {
         return None;
     }
     let kept = || Polled {

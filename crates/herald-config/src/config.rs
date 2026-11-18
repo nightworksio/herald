@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Attempts, DestinationName, Glob, Inbound, KindSpecs, Profile, Retention, Route, RouteId,
+    Attempts, DestinationName, Glob, Inbound, Kind, KindSpecs, Profile, Retention, Route, RouteId,
     Sandbox, SecretRef, SourceName, Templates,
 };
 use herald_kinds::{ConfiguredStore, Destination, Placed, Registering, Source};
@@ -78,6 +78,17 @@ pub enum Uses {
 impl Config {
     /// The version of the config this herald reads, as `version` writes it.
     pub const VERSION: i64 = 1;
+
+    /// Whether `route` may take an event of `kind`: a kind not private, to
+    /// a route that says whether its place is private, or where `[doctor]
+    /// private_kinds` lets an unstated route run. A kind not known is
+    /// private.
+    #[must_use]
+    pub fn places(&self, route: &RouteConfig, kind: &Kind) -> bool {
+        route.stated
+            || self.doctor.private_kinds != Guard::Refuse
+            || self.kinds.get(kind).is_some_and(|spec| !spec.private)
+    }
 
     /// The domains herald's sessions may connect under: each Discord
     /// gateway's and Slack Socket Mode session's own, and those its
@@ -172,6 +183,11 @@ pub struct RouteConfig {
     /// Whether its place is declared private, so it may take a private or
     /// internal repository's events.
     pub private: bool,
+    /// Whether it says whether its place is private.
+    pub stated: bool,
+    /// The private kinds it takes without saying whether its place is
+    /// private.
+    pub unstated: Vec<Kind>,
 }
 
 /// An app of the HTTP API: its token's hash and what it may announce to.
@@ -274,6 +290,9 @@ pub struct Doctor {
     /// What it does with a route that takes a private or internal
     /// repository's events to a place not declared private.
     pub private_to_public: Guard,
+    /// What it does with a route that takes a private kind's events and
+    /// says nothing of whether its place is private.
+    pub private_kinds: Guard,
 }
 
 /// How many routes and sources a run goes through at once.

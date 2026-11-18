@@ -84,6 +84,7 @@ kind = "herald"
 id = "mirror"
 sources = [{sources}]
 destination = "mirror"
+private = false
 "#,
         ed25519_public(&OLD),
         ed25519_public(&ORIGIN)

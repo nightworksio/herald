@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
-use herald_core::{Kind, Polled, Scheme, SecretRef, Selection, Signal};
+use herald_core::{Event, Kind, Polled, Scheme, SecretRef, Selection, Signal};
 use herald_kinds::{
     Credential, Fault, Hooked, Installed, Polling, Registering, SourceConfig, SourceKind, Unpolled,
 };
 
 use herald_wire::SourceError;
 
+use crate::alerts;
 use crate::forge::{UNSELECTED, api_of, host_of};
 use crate::owner::Owned;
 use crate::packages::{PackageList, Packaging};
@@ -59,6 +60,15 @@ const OWNER_HOOKED: &str = "a webhook's release is announced only where the owne
 /// What doctor says of an owner source announcing runs through the owner's
 /// events or feed.
 const RUNS_UNFOLLOWED: &str = "the owner's events name no runs, so a source announcing runs polls every member each round, conditionally; a webhook or a GitHub App delivers them as they finish";
+/// What doctor says of an owner source announcing alerts through the
+/// owner's events or feed.
+const ALERTS_UNFOLLOWED: &str = "the owner's events name no alerts, so a source announcing alerts polls every member each round; a webhook or a GitHub App delivers them as they change";
+/// What doctor says of a source announcing alerts with no webhook.
+const ALERTS_POLLED: &str = "a poll announces the first sighting and the closing of the alerts it lists, the newest of each tool's; a reopening, and the closing of an older alert, comes only by webhook";
+/// What doctor says of a GitHub source announcing alerts.
+const GITHUB_ALERTS: &str = "GitHub lists a tool's alerts where the repository has it enabled, to a token with security_events or a GitHub App that may read code scanning, Dependabot and secret scanning alerts; narrow alerts.tools to the tools it has";
+/// What doctor says of a GitLab source announcing alerts.
+const GITLAB_ALERTS: &str = "GitLab raises vulnerabilities only on GitLab Ultimate, to a token whose user may read them; a vulnerability set back to detected reads as its first sighting, so a reopening is not announced";
 /// What doctor says of a source reading checks by polling.
 const CHECKS_POLLED: &str = "a poll reads the check suites and statuses of one commit, the newest of the one branch runs.branches names or of the default branch; a webhook delivers every commit's";
 
@@ -151,19 +161,18 @@ impl SourceConfig for ForgeSource {
         self.options.webhook.as_ref()
     }
 
-    fn kinds(&self) -> &'static [Kind] {
-        let released = self.options.may_take(Signal::Release) || self.options.may_take(Signal::Tag);
-        let packaged = self.options.may_take(Signal::Package);
-        let ran = self.options.may_take(Signal::Run);
-        match (released || !(packaged || ran), packaged, ran) {
-            (true, true, true) => &[Kind::RELEASE, Kind::PACKAGE_VERSION, Kind::RUN],
-            (true, true, false) => &[Kind::RELEASE, Kind::PACKAGE_VERSION],
-            (true, false, true) => &[Kind::RELEASE, Kind::RUN],
-            (true, false, false) => &[Kind::RELEASE],
-            (false, true, true) => &[Kind::PACKAGE_VERSION, Kind::RUN],
-            (false, true, false) => &[Kind::PACKAGE_VERSION],
-            (false, false, _) => &[Kind::RUN],
+    fn kinds(&self) -> Vec<Kind> {
+        let mut kinds: Vec<Kind> = Vec::new();
+        for kind in Signal::ALL
+            .into_iter()
+            .filter(|signal| self.options.may_take(*signal))
+            .map(Signal::kind)
+        {
+            if !kinds.contains(&kind) {
+                kinds.push(kind);
+            }
         }
+        kinds
     }
 
     fn notes(&self) -> Vec<&'static str> {
@@ -178,9 +187,14 @@ impl SourceConfig for ForgeSource {
                 Transport::Events | Transport::Feed
             );
         let ran = self.options.may_take(Signal::Run);
+        let alerted = self.options.may_take(Signal::Alert);
         let checked = self.options.run_choice().reads(RunFrom::Checks);
         let unheard = [
             (ran && followed, RUNS_UNFOLLOWED),
+            (alerted && followed, ALERTS_UNFOLLOWED),
+            (alerted && self.options.webhook.is_none(), ALERTS_POLLED),
+            (alerted && self.forge == Forge::GitHub, GITHUB_ALERTS),
+            (alerted && self.forge == Forge::GitLab, GITLAB_ALERTS),
             (checked && self.options.webhook.is_none(), CHECKS_POLLED),
             (pushed && self.options.webhook.is_none(), UNPUSHED),
             (pushed && self.forge == Forge::GitLab, GITLAB_UNPUSHED),
@@ -276,6 +290,11 @@ impl SourceConfig for ForgeSource {
                 .ran(delivery, payload)
                 .map_err(|error| error.to_string());
         }
+        if let Some(delivery) = self.forge.alert_delivery(headers) {
+            return self
+                .alerted(delivery, payload)
+                .map_err(|error| error.to_string());
+        }
         let hooked = if let Some(owner) = &self.options.owner {
             self.forge.hooked_owned(
                 (headers, payload),
@@ -327,6 +346,7 @@ impl SourceConfig for ForgeSource {
                     list: PackageList::Own,
                     visibility: None,
                     runs: self.options.run_choice(),
+                    alerts: self.options.alert_choice(self.forge),
                 }))
             }
         }
@@ -339,18 +359,90 @@ const UNRAN: &str = "the source announces no runs of the repository";
 /// Why a run delivery announces nothing where the source does not announce
 /// that run.
 const UNCHOSEN: &str = "the run is not one the source's runs announce";
+/// Why an alert delivery announces nothing where the source announces no
+/// alerts of its repository.
+const UNALERTED: &str = "the source announces no alerts of the repository";
+/// Why an alert delivery announces nothing where the source does not
+/// announce that alert.
+const UNCHOSEN_ALERT: &str = "the alert is not one the source's alerts announce";
+
+/// What a delivery of a signal names: what it is read as, the signal, the
+/// repository's full path, id and description, and the event it makes
+/// where the source's choice announces it.
+struct Signalled {
+    what: &'static str,
+    signal: Signal,
+    path: String,
+    id: String,
+    delivered: herald_core::Delivered,
+    event: Option<Event>,
+}
 
 impl ForgeSource {
     /// What the run delivery `delivery`, `payload`, asks the source to
-    /// announce: the run's event where the source announces runs of its
-    /// repository and its `runs` choose the run, as of an owner's member
-    /// where the source names an owner.
+    /// announce.
     fn ran(&self, delivery: Delivery, payload: &[u8]) -> Result<Hooked, SourceError> {
         let what = self.forge.runs_what();
         let (path, event) =
             delivered_event(self.forge, (delivery, payload), &self.options.run_choice())?;
         let (id, delivered) = crate::delivered::delivered_run(self.forge, what, payload)?;
-        let named = named(&path);
+        let signalled = Signalled {
+            what,
+            signal: Signal::Run,
+            path,
+            id,
+            delivered,
+            event,
+        };
+        self.signalled(signalled, (UNRAN, UNCHOSEN))
+    }
+
+    /// What the alert delivery `delivery`, `payload`, asks the source to
+    /// announce.
+    fn alerted(&self, delivery: alerts::Delivery, payload: &[u8]) -> Result<Hooked, SourceError> {
+        let what = delivery.what();
+        let api = api_of(self.forge, &self.options);
+        let choice = self.options.alert_choice(self.forge);
+        let found = alerts::delivered((delivery, &api), payload, &choice)?;
+        let (id, delivered) = match delivery {
+            alerts::Delivery::GitHub(_) => crate::delivered::delivered(self.forge, what, payload)?,
+            alerts::Delivery::GitLab => (
+                found.repository.id.to_string(),
+                herald_core::Delivered {
+                    name: found.repository.name.clone(),
+                    path: found.path.clone(),
+                    ..herald_core::Delivered::default()
+                },
+            ),
+        };
+        let signalled = Signalled {
+            what,
+            signal: Signal::Alert,
+            path: found.path,
+            id,
+            delivered,
+            event: found.event,
+        };
+        self.signalled(signalled, (UNALERTED, UNCHOSEN_ALERT))
+    }
+
+    /// What the delivery `signalled` asks the source to announce: its event
+    /// where the source announces its signal of its repository and chooses
+    /// it, as of an owner's member where the source names an owner, and
+    /// else nothing, for `unsignalled` or `unchosen`.
+    fn signalled(
+        &self,
+        signalled: Signalled,
+        (unsignalled, unchosen): (&'static str, &'static str),
+    ) -> Result<Hooked, SourceError> {
+        let Signalled {
+            what,
+            signal,
+            path,
+            id,
+            delivered,
+            event,
+        } = signalled;
         let unheld = |reason: String| SourceError::Unreadable { what, reason };
         let (owned, admitted) = if let Some(owner) = &self.options.owner {
             let holder = path.rsplit_once('/').map_or("", |(holder, _)| holder);
@@ -376,11 +468,11 @@ impl ForgeSource {
         if !admitted {
             return Ok(Hooked::Nothing(UNSELECTED));
         }
-        if !self.options.signals_of(named).takes(Signal::Run) {
-            return Ok(Hooked::Nothing(UNRAN));
+        if !self.options.signals_of(named(&path)).takes(signal) {
+            return Ok(Hooked::Nothing(unsignalled));
         }
         let Some(event) = event else {
-            return Ok(Hooked::Nothing(UNCHOSEN));
+            return Ok(Hooked::Nothing(unchosen));
         };
         if owned {
             return Ok(Hooked::Member {

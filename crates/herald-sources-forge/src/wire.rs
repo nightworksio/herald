@@ -64,6 +64,22 @@ pub(crate) fn identity(host: &str, id: u64, tag: &str) -> Identity {
     Identity::new(format!("{host}/{id}/{tag}"))
 }
 
+/// The host an event of `repository` linking `url` is named on: its page's,
+/// or else the link's.
+pub(crate) fn host_named(
+    what: &'static str,
+    repository: &Repository,
+    url: &str,
+) -> Result<String, SourceError> {
+    let page = repository.page.as_deref().unwrap_or(url);
+    Address::parse(page)
+        .map(|address| address.host().to_owned())
+        .ok_or_else(|| SourceError::Unreadable {
+            what,
+            reason: "the repository's page names no host".to_owned(),
+        })
+}
+
 /// `bytes` read as JSON, within the bytes a forge parser reads.
 pub(crate) fn read<T: DeserializeOwned>(
     what: &'static str,

@@ -691,6 +691,7 @@ fn a_member_s_events_come_from_its_listing_on_the_owner_s_host_and_reach_its_ove
     );
 }
 
+mod alerts;
 mod members;
 mod packages;
 mod runs;

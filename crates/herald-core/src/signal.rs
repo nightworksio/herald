@@ -1,6 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::Kind;
 use crate::version::prerelease_version;
 
 /// The attribute naming the signal an event is of.
@@ -30,13 +31,22 @@ pub enum Signal {
     /// A finished CI run: a workflow run, a pipeline, or a check suite or
     /// commit status where the source reads checks.
     Run,
+    /// A security alert: code scanning's, Dependabot's or secret
+    /// scanning's, or a GitLab vulnerability.
+    Alert,
 }
 
 impl Signal {
     /// The signals a source announces where `signals` is absent.
     pub const DEFAULT: [Self; 1] = [Self::Release];
     /// Every signal.
-    pub const ALL: [Self; 4] = [Self::Release, Self::Tag, Self::Package, Self::Run];
+    pub const ALL: [Self; 5] = [
+        Self::Release,
+        Self::Tag,
+        Self::Package,
+        Self::Run,
+        Self::Alert,
+    ];
 
     /// Its name, as `signals` writes it and an event's `signal` attribute
     /// holds it.
@@ -47,6 +57,18 @@ impl Signal {
             Self::Tag => "tag",
             Self::Package => "package",
             Self::Run => "run",
+            Self::Alert => "alert",
+        }
+    }
+
+    /// The kind of event it announces.
+    #[must_use]
+    pub const fn kind(self) -> Kind {
+        match self {
+            Self::Release | Self::Tag => Kind::RELEASE,
+            Self::Package => Kind::PACKAGE_VERSION,
+            Self::Run => Kind::RUN,
+            Self::Alert => Kind::ALERT,
         }
     }
 
@@ -117,6 +139,7 @@ mod tests {
             (Signal::Tag, "tag"),
             (Signal::Package, "package"),
             (Signal::Run, "run"),
+            (Signal::Alert, "alert"),
         ] {
             assert_eq!(signal.name(), name);
             assert_eq!(Signal::named(name), Some(signal));

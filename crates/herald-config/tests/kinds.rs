@@ -69,6 +69,88 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn a_route_taking_a_private_kind_says_whether_its_place_is_private() {
+        let private = EXAMPLE.replace("[kinds.deploy]\n", "[kinds.deploy]\nprivate = true\n");
+        assert!(
+            errors(&private).contains("routes[0]: this route takes \"deploy\" events, which belong in private places, and says nothing of whether its place is private; set private = true where it is, private = false to send them to a public place on purpose, or set [doctor] private_kinds = \"warn\""),
+            "{}",
+            errors(&private)
+        );
+        let load =
+            |text: &str| load("herald.toml", text, &nothing, &crate::common::kinds()).unwrap();
+        let deploy = Kind::new("deploy").unwrap();
+        for (stated, private_place) in [("private = true", true), ("private = false", false)] {
+            let config = load(&private.replace(
+                "kinds = [\"deploy\"]\n",
+                &format!("kinds = [\"deploy\"]\n{stated}\n"),
+            ));
+            assert_eq!(config.routes[0].unstated, Vec::<Kind>::new(), "{stated}");
+            assert_eq!(config.routes[0].private, private_place, "{stated}");
+            assert!(config.routes[0].stated, "{stated}");
+            assert!(config.places(&config.routes[0], &deploy), "{stated}");
+        }
+        let mut warned = load(&format!("{private}\n[doctor]\nprivate_kinds = \"warn\"\n"));
+        assert!(!warned.routes[0].stated);
+        assert!(warned.places(&warned.routes[0], &deploy));
+        warned.doctor.private_kinds = herald_config::Guard::Allow;
+        assert!(warned.places(&warned.routes[0], &deploy));
+        warned.doctor.private_kinds = herald_config::Guard::Refuse;
+        assert!(!warned.places(&warned.routes[0], &deploy));
+        assert!(warned.places(&warned.routes[0], &Kind::new("build").unwrap()));
+        assert!(!warned.places(&warned.routes[0], &Kind::new("tweet").unwrap()));
+        warned.doctor.private_kinds = herald_config::Guard::Warn;
+        assert_eq!(warned.routes[0].unstated, [deploy]);
+        assert_eq!(warned.routes[1].unstated, Vec::<Kind>::new());
+        assert_eq!(warned.doctor.private_kinds, herald_config::Guard::Warn);
+        assert!(
+            warned
+                .kinds
+                .get(&Kind::new("deploy").unwrap())
+                .unwrap()
+                .private
+        );
+        assert!(
+            !load(EXAMPLE)
+                .kinds
+                .get(&Kind::new("build").unwrap())
+                .unwrap()
+                .private
+        );
+    }
+
+    #[test]
+    fn a_route_fed_by_an_app_takes_every_private_kind_the_app_may_post() {
+        let private = EXAMPLE
+            .replace("[kinds.deploy]\n", "[kinds.deploy]\nprivate = true\n")
+            .replace("kinds = [\"build\"]\nversions = \"1.*\"\n", "")
+            .replace(
+                "{{ event.project }} {{ event.attributes.version }}",
+                "{{ event.title }}",
+            );
+        let refused = errors(&private);
+        assert!(
+            refused.contains("routes[1]: this route takes \"alert\", \"deploy\" events, which belong in private places"),
+            "{refused}"
+        );
+        let warned = load(
+            "herald.toml",
+            &format!("{private}\n[doctor]\nprivate_kinds = \"warn\"\n"),
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap();
+        let unstated: Vec<&str> = warned.routes[1].unstated.iter().map(Kind::as_str).collect();
+        assert_eq!(unstated, ["alert", "deploy"]);
+        let stated = private.replace(
+            "channel = \"1566200000000000200\"\n",
+            "channel = \"1566200000000000200\"\nprivate = true\n",
+        );
+        let stated = errors(&stated);
+        assert!(stated.contains("routes[0]: "), "{stated}");
+        assert!(!stated.contains("routes[1]: "), "{stated}");
+    }
+
+    #[test]
     fn a_declared_kind_is_known_beside_the_kinds_herald_ships() {
         let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         let deploy = config.kinds.get(&Kind::new("deploy").unwrap()).unwrap();
@@ -102,6 +184,7 @@ body = "{{ event.body }}"
                 "feed-entry",
                 "message",
                 "run",
+                "alert",
                 "build",
                 "deploy"
             ]
@@ -113,13 +196,13 @@ body = "{{ event.body }}"
         let release = EXAMPLE.replace("kinds = [\"deploy\"]", "kinds = [\"deploy\", \"release\"]");
         let error = errors(&release);
         assert!(
-            error.contains("templates.deploy.title: it does not render a sample release event: it prints event.attributes.region, which a release event does not carry"),
+            error.contains("templates.deploy.title: it does not render a sample release event: it prints event.attributes.region, which release events do not carry"),
             "{error}"
         );
         let every = EXAMPLE.replace("kinds = [\"deploy\"]\n", "");
         let error = errors(&every);
         assert!(
-            error.contains("it prints event.attributes.region, which a build event does not carry"),
+            error.contains("it prints event.attributes.region, which alert events do not carry"),
             "{error}"
         );
     }

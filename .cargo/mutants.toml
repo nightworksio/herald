@@ -28,6 +28,8 @@ exclude_re = [
     # A herald feed names no secret of its own and places every route as it is, and `Vec::new()` is `vec![]`.
     "impl DestinationConfig for FeedOptions>::secret_refs -> Vec<&SecretRef> with vec!\\[\\]",
     "impl DestinationKind for HeraldKind>::placed -> Vec<Fault> with vec!\\[\\]",
+    # A source pulling another herald's feed takes every kind the config declares rather than a list of its own, and `Vec::new()` is `vec![]`.
+    "impl SourceConfig for HeraldOptions>::kinds -> Vec<Kind> with vec!\\[\\]",
     # A source says nothing to the doctor unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::notes -> Vec<&'static str> with vec!\\[\\]",
     # A poll and an owner ask only their API's origin unless their kind names more bases, and an empty slice is an empty slice.
@@ -36,8 +38,6 @@ exclude_re = [
     "(SourceConfig|Expand)::standing -> Option<Standing> with None",
     # A source remembers only its newest identities, and no store fits it, unless its kind says otherwise; a store bounds no record unless its kind does; and `None` is `None`.
     "(SourceConfig::remembers -> Option<Remembers>|SourceConfig::fitted -> Option<Source>|StoreConfig::most_record -> Option<usize>) with None",
-    # A source pulling another herald's feed takes every kind the config declares rather than a list of its own, and an empty slice is an empty slice.
-    "impl SourceConfig for HeraldOptions>::kinds -> &'static\\[Kind\\] with Vec::leak\\(Vec::new\\(\\)\\)",
     # A source names no signal its events carry unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::signals -> Vec<herald_core::Signal> with vec!\\[\\]",
     # An owner polls one member a request unless its kind batches them, and `1.try_into().unwrap()` is `NonZeroUsize::MIN`.

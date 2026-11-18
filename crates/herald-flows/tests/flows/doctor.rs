@@ -513,6 +513,28 @@ fn a_route_taking_private_repositories_to_a_public_place_is_named_where_doctor_w
     )));
 }
 
+#[test]
+fn a_route_taking_a_private_kind_without_saying_where_it_goes_is_named_where_doctor_warns() {
+    let said = "The route releases takes alert events, which belong in private places, and says nothing of whether its place is private, as [doctor] private_kinds = \"warn\" lets it.".to_owned();
+    let actions = layer(&["sqlite"]);
+    let config = |guard: herald_config::Guard, unstated: Vec<herald_core::Kind>| {
+        let mut config = crate::owner::owned_in("", |_| {});
+        config.doctor.private_kinds = guard;
+        config.routes[0].unstated = unstated;
+        config
+    };
+    let named = |config: &herald_config::Config| doctored(config, &actions).notes.contains(&said);
+    assert!(named(&config(
+        herald_config::Guard::Warn,
+        vec![herald_core::Kind::ALERT]
+    )));
+    assert!(!named(&config(
+        herald_config::Guard::Allow,
+        vec![herald_core::Kind::ALERT]
+    )));
+    assert!(!named(&config(herald_config::Guard::Warn, Vec::new())));
+}
+
 /// The grouping config, its store `store`.
 fn grouped_on(store: &str, group: &str) -> herald_config::Config {
     let mut config = crate::grouping::grouped(group, "");

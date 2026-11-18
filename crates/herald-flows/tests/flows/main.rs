@@ -50,6 +50,8 @@ mod poll;
 #[cfg(test)]
 mod preview;
 #[cfg(test)]
+mod private_kinds;
+#[cfg(test)]
 mod projects;
 #[cfg(test)]
 mod pulls;

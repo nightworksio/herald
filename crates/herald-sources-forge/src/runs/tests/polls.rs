@@ -78,7 +78,7 @@ fn asking_polled(
     forge: Forge,
     choice: &RunChoice,
     (http, cursor): (&ScriptedHttp, Option<&Cursor>),
-) -> Result<(bool, Runs), Unpolled> {
+) -> Result<(bool, Found), Unpolled> {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
         ..SourceOptions::default()
@@ -200,7 +200,7 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
         .event("runs", &repository())
         .unwrap()
     };
-    let runs = || Runs {
+    let runs = || Found {
         events: vec![event(1, "2026-11-17T09:00:00Z")],
         validators: Some(Validators {
             etag: Some("r".to_owned()),
@@ -218,8 +218,11 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
     };
     let changed = Asked(vec![(Ran::Run, None, answer(200, &json!({}), None))]);
     let unchanged = Asked(vec![(Ran::Run, None, answer(304, &Value::Null, None))]);
-    assert_eq!(merged_into(None, (&unchanged, runs()), Some(&cursor)), None);
-    let kept = merged_into(None, (&changed, runs()), Some(&cursor)).unwrap();
+    assert_eq!(
+        merged_into(None, (unchanged.changed(), runs()), Some(&cursor)),
+        None
+    );
+    let kept = merged_into(None, (changed.changed(), runs()), Some(&cursor)).unwrap();
     assert_eq!(kept.etag.as_deref(), Some("releases"));
     assert!(kept.signals.contains_key(&Signal::Tag));
     assert_eq!(kept.signals[&Signal::Run].etag.as_deref(), Some("r"));
@@ -234,7 +237,7 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
         events: vec![event(2, "2026-11-17T10:00:00Z")],
         ..Polled::default()
     };
-    let both = merged_into(Some(found), (&unchanged, runs()), None).unwrap();
+    let both = merged_into(Some(found), (unchanged.changed(), runs()), None).unwrap();
     let identities: Vec<&Identity> = both.events.iter().map(Event::identity).collect();
     assert_eq!(
         identities,
@@ -243,7 +246,7 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
             &Identity::new("github.com/7/run/1/1")
         ]
     );
-    let bare = merged_into(None, (&changed, Runs::default()), None).unwrap();
+    let bare = merged_into(None, (changed.changed(), Found::default()), None).unwrap();
     assert!(!bare.signals.contains_key(&Signal::Run));
 }
 
