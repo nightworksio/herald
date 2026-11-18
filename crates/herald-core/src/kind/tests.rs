@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_seven_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_eight_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -105,7 +105,8 @@ fn herald_ships_seven_kinds_and_only_releases_and_package_versions_are_versioned
             ("message", false),
             ("run", false),
             ("alert", false),
-            ("pull-request", false)
+            ("pull-request", false),
+            ("issue", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -128,6 +129,7 @@ fn herald_ships_seven_kinds_and_only_releases_and_package_versions_are_versioned
             Some(&signalled),
             None,
             None,
+            Some(&signalled),
             Some(&signalled),
             Some(&signalled),
             Some(&signalled)
@@ -211,7 +213,10 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     let alert = &shipped[5];
     assert_eq!(alert.kind, Kind::ALERT);
     let private: Vec<bool> = shipped.iter().map(|spec| spec.private).collect();
-    assert_eq!(private, [false, false, false, false, false, true, false]);
+    assert_eq!(
+        private,
+        [false, false, false, false, false, true, false, false]
+    );
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
     let required: Vec<&str> = alert
         .attributes
@@ -342,6 +347,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "run",
             "alert",
             "pull-request",
+            "issue",
             "deploy"
         ]
     );
@@ -399,5 +405,34 @@ fn a_pull_request_names_its_number_and_what_it_did() {
         let mut missing = attributes.clone();
         missing.remove(required);
         assert!(pull.check(&missing).is_err(), "{required}");
+    }
+}
+
+#[test]
+fn an_issue_names_its_number_what_it_did_and_why_it_closed() {
+    let shipped = KindSpec::shipped();
+    let issue = &shipped[7];
+    assert_eq!(issue.kind, Kind::ISSUE);
+    assert!(!issue.private);
+    assert_eq!(issue.links, [LinkSpec::named("issue")]);
+    let attributes = BTreeMap::from([
+        (
+            crate::ACTION.to_owned(),
+            Attribute::Text("closed".to_owned()),
+        ),
+        (crate::NUMBER.to_owned(), Attribute::Number(9.into())),
+        (crate::AUTHOR.to_owned(), Attribute::Text("ann".to_owned())),
+        (crate::BOT.to_owned(), Attribute::Flag(false)),
+        (
+            crate::STATE_REASON.to_owned(),
+            Attribute::Text("not_planned".to_owned()),
+        ),
+        (crate::LABELS.to_owned(), Attribute::Text("bug".to_owned())),
+    ]);
+    assert!(issue.check(&attributes).is_ok());
+    for required in [crate::ACTION, crate::NUMBER] {
+        let mut missing = attributes.clone();
+        missing.remove(required);
+        assert!(issue.check(&missing).is_err(), "{required}");
     }
 }

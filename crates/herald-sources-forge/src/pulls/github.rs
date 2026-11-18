@@ -6,49 +6,17 @@ use serde::Deserialize;
 
 use super::{ForgePull, PullAction};
 use crate::forge::Repository;
+use crate::github::{Account, Label};
 use crate::wire::read;
 
-/// What GitHub's pull request event is read as.
-pub(super) const HOOKED: &str = "GitHub's pull request event";
-/// What GitHub's listing of pull requests is read as.
-pub(super) const LISTED: &str = "GitHub's pull requests";
-/// What Forgejo's pull request event is read as.
-pub(super) const FORGEJO_HOOKED: &str = "Forgejo's pull request event";
-/// What Forgejo's listing of pull requests is read as.
-pub(super) const FORGEJO_LISTED: &str = "Forgejo's pull requests";
 /// The name GitHub and Forgejo give their pull request webhook's
 /// deliveries.
 pub(super) const HOOK: &str = "pull_request";
-/// The kind of account GitHub names a bot's or an app's.
-const BOT: &str = "Bot";
-/// What a bot's login ends with on Forgejo, which names no account kind.
-const BOT_SUFFIX: &str = "[bot]";
-
-/// An account, as a pull request names it.
-#[derive(Deserialize)]
-struct User {
-    login: String,
-    #[serde(rename = "type")]
-    kind: Option<String>,
-}
-
-impl User {
-    /// Whether it is a bot's or an app's.
-    fn bot(&self) -> bool {
-        self.kind.as_deref() == Some(BOT) || self.login.ends_with(BOT_SUFFIX)
-    }
-}
 
 /// A branch a pull request names.
 #[derive(Deserialize)]
 struct Branch {
     #[serde(rename = "ref")]
-    name: String,
-}
-
-/// A label a pull request carries.
-#[derive(Deserialize)]
-struct Label {
     name: String,
 }
 
@@ -59,13 +27,13 @@ struct Pull {
     title: String,
     html_url: String,
     state: String,
-    user: User,
+    user: Account,
     #[serde(default)]
     draft: bool,
     #[serde(default)]
     merged: bool,
     merged_at: Option<Timestamp>,
-    merged_by: Option<User>,
+    merged_by: Option<Account>,
     closed_at: Option<Timestamp>,
     created_at: Timestamp,
     updated_at: Option<Timestamp>,

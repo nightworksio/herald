@@ -5,24 +5,6 @@ use herald_core::{Identity, Signal};
 
 use super::*;
 
-const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
-
-fn member() -> Listed {
-    Listed {
-        id: "9".to_owned(),
-        name: "cli".to_owned(),
-        path: "lemonfiber/cli".to_owned(),
-        topics: Vec::new(),
-        properties: BTreeMap::new(),
-        visibility: Visibility::Public,
-        archived: false,
-        fork: false,
-        template: false,
-        language: None,
-        linked: None,
-    }
-}
-
 fn alerted(transport: Option<Transport>) -> Owned {
     owned(
         Forge::GitHub,
@@ -39,11 +21,6 @@ fn alerted(transport: Option<Transport>) -> Owned {
             ..SourceOptions::default()
         },
     )
-}
-
-fn released() -> Response {
-    let releases = json!({ "databaseId": 9, "releases": { "nodes": [] } });
-    answer(200, &json!({ "data": { "m0": releases } }), "", false)
 }
 
 fn alerts() -> Response {

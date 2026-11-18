@@ -38,19 +38,22 @@ pub enum Signal {
     /// review, merged or closed.
     #[serde(rename = "pull-request")]
     PullRequest,
+    /// An issue opened, closed or reopened.
+    Issue,
 }
 
 impl Signal {
     /// The signals a source announces where `signals` is absent.
     pub const DEFAULT: [Self; 1] = [Self::Release];
     /// Every signal.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Release,
         Self::Tag,
         Self::Package,
         Self::Run,
         Self::Alert,
         Self::PullRequest,
+        Self::Issue,
     ];
 
     /// Its name, as `signals` writes it and an event's `signal` attribute
@@ -64,6 +67,7 @@ impl Signal {
             Self::Run => "run",
             Self::Alert => "alert",
             Self::PullRequest => "pull-request",
+            Self::Issue => "issue",
         }
     }
 
@@ -76,6 +80,7 @@ impl Signal {
             Self::Run => Kind::RUN,
             Self::Alert => Kind::ALERT,
             Self::PullRequest => Kind::PULL_REQUEST,
+            Self::Issue => Kind::ISSUE,
         }
     }
 
@@ -148,6 +153,7 @@ mod tests {
             (Signal::Run, "run", Kind::RUN),
             (Signal::Alert, "alert", Kind::ALERT),
             (Signal::PullRequest, "pull-request", Kind::PULL_REQUEST),
+            (Signal::Issue, "issue", Kind::ISSUE),
         ] {
             assert_eq!(signal.name(), name);
             assert_eq!(signal.kind(), kind);

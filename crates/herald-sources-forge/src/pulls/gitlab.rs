@@ -9,20 +9,11 @@ use crate::forge::Repository;
 use crate::wire::read;
 
 /// What GitLab's merge request event is read as.
-pub(super) const HOOKED: &str = "GitLab's merge request event";
+const HOOKED: &str = super::HOOKED.gitlab;
 /// What GitLab's listing of merge requests is read as.
-pub(super) const LISTED: &str = "GitLab's merge requests";
+const LISTED: &str = super::LISTED.gitlab;
 /// The name GitLab gives its merge request webhook's deliveries.
 pub(super) const HOOK: &str = "Merge Request Hook";
-/// What a project's or a group's access token bot's username holds.
-const TOKEN_BOT: &str = "_bot_";
-/// What a service's bot's username ends with.
-const BOT_ENDS: [&str; 2] = ["-bot", "[bot]"];
-
-/// Whether `username` is a bot's.
-fn bot(username: &str) -> bool {
-    username.contains(TOKEN_BOT) || BOT_ENDS.iter().any(|end| username.ends_with(end))
-}
 
 /// An account, as GitLab names it.
 #[derive(Deserialize)]
@@ -82,7 +73,7 @@ impl Listed {
             number: self.iid,
             action,
             title: self.title,
-            bot: bot(&self.author.username),
+            bot: crate::gitlab::bot(&self.author.username),
             author: Some(self.author.username),
             base: self.target_branch,
             head: self.source_branch,
@@ -201,7 +192,7 @@ pub(super) fn delivered(
         number: attributes.iid,
         action,
         title: attributes.title,
-        bot: opened && bot(&actor),
+        bot: opened && crate::gitlab::bot(&actor),
         author: opened.then(|| actor.clone()),
         base: attributes.target_branch,
         head: attributes.source_branch,

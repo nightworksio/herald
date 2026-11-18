@@ -13,6 +13,8 @@ pub(crate) use alerts::AlertChoice;
 pub use alerts::{ALERT_ACTIONS, AlertAction, Alerts, Severity, Tool};
 pub use discovery::Discovery;
 pub use hooks::MemberHooks;
+pub(crate) use issues::IssueChoice;
+pub use issues::{ISSUE_ACTIONS, IssueAction, Issues};
 pub use owner::{
     KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, Members, Values,
 };
@@ -279,6 +281,10 @@ pub struct SourceOptions {
     /// and authors; every pull request opened, ready for review or merged
     /// where absent.
     pub pulls: Option<Pulls>,
+    /// Which issues are announced where the signals take "issue": what
+    /// they did, and their labels and authors; every issue opened, closed
+    /// or reopened where absent.
+    pub issues: Option<Issues>,
 }
 
 /// Whether an override sets one of its keys.
@@ -373,6 +379,7 @@ impl SourceOptions {
         self.runs_check(forge)?;
         self.alerts_check(forge)?;
         self.pulls_check()?;
+        self.issues_check(forge)?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -407,6 +414,7 @@ mod alerts;
 mod app;
 mod discovery;
 mod hooks;
+mod issues;
 mod overrides;
 mod owner;
 mod packages;

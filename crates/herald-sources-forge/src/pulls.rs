@@ -6,14 +6,16 @@ use std::collections::BTreeMap;
 
 use herald_core::{
     ACTION, AUTHOR, Attribute, BASE, BOT, Cursor, DRAFT, Draft, Event, HEAD, Kind, LABELS,
-    MERGED_BY, NUMBER, PULL_LINK, SIGNAL, Signal, Validators,
+    MERGED_BY, NUMBER, PULL_LINK, SIGNAL, Signal,
 };
 use herald_kinds::Unpolled;
-use herald_ports::{DynHttp, Erased, Http as _, Response};
-use herald_wire::{SourceError, answered};
+use herald_ports::{DynHttp, Erased};
+use herald_wire::SourceError;
 use jiff::Timestamp;
 
-use crate::forge::{Repository, validators};
+use crate::forge::Repository;
+pub(crate) use crate::listing::Asked;
+use crate::listing::Named;
 use crate::options::{PullAction, PullChoice};
 use crate::runs::Found;
 use crate::{Forge, Origin, Token};
@@ -131,22 +133,23 @@ impl ForgePull {
     }
 }
 
+/// What a pull request's webhook delivery is read as on each forge.
+pub(crate) const HOOKED: Named = Named {
+    github: "GitHub's pull request event",
+    gitlab: "GitLab's merge request event",
+    forgejo: "Forgejo's pull request event",
+};
+
+/// What a listing of pull requests is read as on each forge.
+const LISTED: Named = Named {
+    github: "GitHub's pull requests",
+    gitlab: "GitLab's merge requests",
+    forgejo: "Forgejo's pull requests",
+};
+
 /// What a pull request's webhook delivery is read as on `forge`.
 pub(crate) const fn hooked_what(forge: Forge) -> &'static str {
-    match forge {
-        Forge::GitHub => github::HOOKED,
-        Forge::GitLab => gitlab::HOOKED,
-        Forge::Forgejo => github::FORGEJO_HOOKED,
-    }
-}
-
-/// What a listing of pull requests is read as on `forge`.
-const fn listed_what(forge: Forge) -> &'static str {
-    match forge {
-        Forge::GitHub => github::LISTED,
-        Forge::GitLab => gitlab::LISTED,
-        Forge::Forgejo => github::FORGEJO_LISTED,
-    }
+    HOOKED.on(forge)
 }
 
 /// Whether the event `name` on `forge` is of a pull request.
@@ -214,28 +217,20 @@ impl Asking<'_> {
             Forge::GitLab => gitlab::listing_path(page),
             Forge::Forgejo => github::forgejo_listing_path(page),
         };
-        let kept = cursor.and_then(|cursor| cursor.listings.get(KEPT)).cloned();
-        let request = self.origin.get(&path, self.token).conditional(
-            kept.as_ref().and_then(|kept| kept.etag.as_deref()),
-            kept.as_ref().and_then(|kept| kept.last_modified.as_deref()),
-        );
-        let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
-        Ok(Asked { kept, answer })
+        Asked::asked(http, (self.origin, self.token), &path, (cursor, KEPT)).await
     }
 
     /// The pull requests of `repository` the listing `asked` found.
     pub(crate) fn read(&self, asked: &Asked, repository: &Repository) -> Result<Found, Unpolled> {
         let forge = self.origin.forge();
+        let what = LISTED.on(forge);
         let mut found = Found::default();
-        let kept = if Forge::unchanged(&asked.answer) {
-            asked.kept.clone().unwrap_or_default()
-        } else {
-            let what = listed_what(forge);
-            answered(what, &asked.answer).map_err(Unpolled::unreadable)?;
+        let (kept, body) = asked.read(what)?;
+        if let Some(body) = body {
             let parse = self.origin.reading().parse;
             let pulls = match forge {
-                Forge::GitLab => gitlab::listed(parse, &asked.answer.body),
-                Forge::GitHub | Forge::Forgejo => github::listed(what, parse, &asked.answer.body),
+                Forge::GitLab => gitlab::listed(parse, body),
+                Forge::GitHub | Forge::Forgejo => github::listed(what, parse, body),
             }
             .map_err(Unpolled::unreadable)?;
             for pull in pulls.into_iter().filter(|pull| pull.chosen(self.choice)) {
@@ -244,25 +239,9 @@ impl Asking<'_> {
                     .map_err(Unpolled::unreadable)?;
                 found.events.push(event);
             }
-            validators(&asked.answer)
-        };
+        }
         found.listings.insert(KEPT.to_owned(), kept);
         Ok(found)
-    }
-}
-
-/// A poll's listing of pull requests: the validators it was asked under,
-/// and its answer.
-#[derive(Debug)]
-pub(crate) struct Asked {
-    kept: Option<Validators>,
-    answer: Response,
-}
-
-impl Asked {
-    /// Whether the listing changed since it was last read.
-    pub(crate) fn changed(&self) -> bool {
-        !Forge::unchanged(&self.answer)
     }
 }
 

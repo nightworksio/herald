@@ -44,6 +44,16 @@ impl Visibility {
             Self::Private => "private",
         }
     }
+
+    /// The stricter of it and `other`: the one fewer may see.
+    #[must_use]
+    pub const fn stricter(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Private, _) | (_, Self::Private) => Self::Private,
+            (Self::Internal, _) | (_, Self::Internal) => Self::Internal,
+            _ => Self::Public,
+        }
+    }
 }
 
 /// One repository an owner's listing names, as its selection reads it.

@@ -66,15 +66,20 @@ fn kept(store: &Failing, visibility: Visibility) {
 
 /// The tag held for the member `herald`, due at noon.
 fn held(store: &Failing) {
+    held_as(store, tag());
+}
+
+/// `event` held for the member `herald`, due at noon.
+fn held_as(store: &Failing, event: Event) {
     let pending = Pending {
         hold: Hold::Tag {
             source: SourceName::new("gate"),
-            identity: tag().identity().clone(),
+            identity: event.identity().clone(),
         },
         events: vec![HeldEvent {
             source: SourceName::new("gate"),
             member: Some("1".to_owned()),
-            event: tag(),
+            event,
         }],
         opened: NOON,
         due: NOON,
@@ -185,6 +190,34 @@ fn a_held_tag_of_a_member_is_bounded_by_its_record_whether_or_not_its_source_sti
         .map(|done| done.route.as_str())
         .collect();
     assert_eq!(routes, ["team"]);
+}
+
+#[test]
+fn a_held_private_event_of_a_public_member_stays_private_whether_or_not_its_source_expands() {
+    let posted = (
+        "/channels/1566200000000000300/messages",
+        200,
+        r#"{"id":"3"}"#,
+    );
+    for (config, script) in [
+        (config(TEAM), Script::answering(&[posted])),
+        (owned_in(TEAM, |_| ()), Script::answering(&[posted])),
+    ] {
+        let store = healthy();
+        kept(&store, Visibility::Public);
+        held_as(&store, tag().seen_as(Visibility::Private));
+        let swept = swept_held(&config, &store, &script);
+        let Sweep::Released { announced, .. } = &swept[0].outcome else {
+            panic!("{swept:?}");
+        };
+        assert_eq!(announced[0].event.bounded_by(), Some(Visibility::Private));
+        let routes: Vec<&str> = announced[0]
+            .announced
+            .iter()
+            .map(|done| done.route.as_str())
+            .collect();
+        assert_eq!(routes, ["team"]);
+    }
 }
 
 #[test]

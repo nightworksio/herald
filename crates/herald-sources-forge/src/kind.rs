@@ -74,9 +74,14 @@ const GITLAB_ALERTS: &str = "GitLab raises vulnerabilities only on GitLab Ultima
 const PULLS_UNFOLLOWED: &str = "an owner source announcing pull requests polls every member each round; a webhook or a GitHub App delivers them as they change";
 /// What doctor says of a source announcing pull requests with no webhook.
 const PULLS_POLLED: &str = "a poll announces the opening and the merge or close of the pull requests it lists, the newest; a pull request readied for review or reopened comes only by webhook";
-/// What doctor says of a GitLab source announcing pull requests through a
-/// webhook.
-const GITLAB_PULL_AUTHORS: &str = "GitLab's merge request webhook names only who acted, so a merge request's author is known from its opening alone, and pulls.authors takes no other webhook event";
+/// What doctor says of an owner source announcing issues through the
+/// owner's events or feed.
+const ISSUES_UNFOLLOWED: &str = "an owner source announcing issues polls every member each round; a webhook or a GitHub App delivers them as they change";
+/// What doctor says of a source announcing issues with no webhook.
+const ISSUES_POLLED: &str = "a poll announces the opening and the closing of the issues it lists, the newest; a reopened issue comes only by webhook";
+/// What doctor says of a GitLab source announcing pull requests or issues
+/// through a webhook.
+const GITLAB_AUTHORS: &str = "GitLab's merge request and issue webhooks name only who acted, so an author is known from the opening alone, and pulls.authors and issues.authors take no other webhook event";
 /// What doctor says of a source reading checks by polling.
 const CHECKS_POLLED: &str = "a poll reads the check suites and statuses of one commit, the newest of the one branch runs.branches names or of the default branch; a webhook delivers every commit's";
 
@@ -197,6 +202,7 @@ impl SourceConfig for ForgeSource {
         let ran = self.options.may_take(Signal::Run);
         let alerted = self.options.may_take(Signal::Alert);
         let pulled = self.options.may_take(Signal::PullRequest);
+        let issued = self.options.may_take(Signal::Issue);
         let hooked = self.options.webhook.is_some();
         let checked = self.options.run_choice().reads(RunFrom::Checks);
         let unheard = [
@@ -207,9 +213,11 @@ impl SourceConfig for ForgeSource {
             (alerted && self.forge == Forge::GitLab, GITLAB_ALERTS),
             (pulled && followed, PULLS_UNFOLLOWED),
             (pulled && !hooked, PULLS_POLLED),
+            (issued && followed, ISSUES_UNFOLLOWED),
+            (issued && !hooked, ISSUES_POLLED),
             (
-                pulled && hooked && self.forge == Forge::GitLab,
-                GITLAB_PULL_AUTHORS,
+                (pulled || issued) && hooked && self.forge == Forge::GitLab,
+                GITLAB_AUTHORS,
             ),
             (checked && self.options.webhook.is_none(), CHECKS_POLLED),
             (pushed && self.options.webhook.is_none(), UNPUSHED),
@@ -314,6 +322,11 @@ impl SourceConfig for ForgeSource {
         if self.forge.pull_delivery(headers) {
             return self.pulled(payload).map_err(|error| error.to_string());
         }
+        if let Some(name) = self.forge.issue_event(headers) {
+            return self
+                .issued((name, payload))
+                .map_err(|error| error.to_string());
+        }
         let hooked = if let Some(owner) = &self.options.owner {
             self.forge.hooked_owned(
                 (headers, payload),
@@ -367,6 +380,7 @@ impl SourceConfig for ForgeSource {
                     runs: self.options.run_choice(),
                     alerts: self.options.alert_choice(self.forge),
                     pulls: self.options.pull_choice(),
+                    issues: self.options.issue_choice(),
                 }))
             }
         }
@@ -392,6 +406,13 @@ const UNPULLED: &str = "the source announces no pull requests of the repository"
 /// Why a pull request delivery announces nothing where the source does not
 /// announce that pull request.
 const UNCHOSEN_PULL: &str = "the pull request is not one the source's pulls announce";
+
+/// Why an issue delivery announces nothing where the source announces no
+/// issues of its repository.
+const UNISSUED: &str = "the source announces no issues of the repository";
+/// Why an issue delivery announces nothing where the source does not
+/// announce that issue.
+const UNCHOSEN_ISSUE: &str = "the issue is not one the source's issues announce";
 
 /// What a delivery of a signal names: what it is read as, the signal, the
 /// repository's full path, id and description, and the event it makes
@@ -468,6 +489,24 @@ impl ForgeSource {
             event: found.event,
         };
         self.signalled(signalled, (UNPULLED, UNCHOSEN_PULL))
+    }
+
+    /// What the issue delivery `payload`, of the event named `name`, asks
+    /// the source to announce.
+    fn issued(&self, (name, payload): (&str, &[u8])) -> Result<Hooked, SourceError> {
+        let what = crate::issues::hooked_what(self.forge);
+        let found =
+            crate::issues::delivered(self.forge, (name, payload), &self.options.issue_choice())?;
+        let (id, delivered) = crate::delivered::delivered(self.forge, what, payload)?;
+        let signalled = Signalled {
+            what,
+            signal: Signal::Issue,
+            path: found.path,
+            id,
+            delivered,
+            event: found.event,
+        };
+        self.signalled(signalled, (UNISSUED, UNCHOSEN_ISSUE))
     }
 
     /// What the delivery `signalled` asks the source to announce: its event

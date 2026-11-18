@@ -601,6 +601,32 @@ fn a_gitlab_owner_asks_its_members_hooks_and_its_token_s_scopes_at_its_api() {
     );
 }
 
+/// A source of `repository` on `forge` announcing `signal`, with a webhook
+/// where `webhook` says so.
+fn signalled(forge: Forge, repository: &str, webhook: bool, signal: Signal) -> ForgeSource {
+    ForgeSource {
+        forge,
+        options: SourceOptions {
+            signals: Some(vec![signal]),
+            webhook: webhook.then(|| SecretRef {
+                secret: "HERALD_WEBHOOK".to_owned(),
+            }),
+            ..options(repository)
+        },
+        names: None,
+    }
+}
+
+/// What `source` makes of `payload`, delivered with `header`.
+fn hooked(
+    source: &ForgeSource,
+    header: (&str, &str),
+    payload: &serde_json::Value,
+) -> Result<Hooked, String> {
+    source.hooked(&[header], payload.to_string().as_bytes())
+}
+
 mod alerts;
+mod issues;
 mod pulls;
 mod runs;

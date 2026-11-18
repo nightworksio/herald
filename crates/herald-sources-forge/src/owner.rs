@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use herald_core::{
     Cursor, EventsRead, Glob, Listed, Listing, Owner, Polled, ProjectName, Selection, Signal,
-    Visibility, status, unreserved,
+    status, unreserved,
 };
 use herald_kinds::{
     Changed, Expand, Expanded, Poll, Registered, Registering, Rounded, Unlisted, Unpolled,
@@ -14,7 +13,6 @@ use herald_ports::{
 };
 use herald_wire::{Reading, SourceError, answered};
 use jiff::SignedDuration;
-use serde::Deserialize;
 
 use crate::forge::{api_of, authorized};
 use crate::graphql::{Asking, polled_together};
@@ -22,6 +20,9 @@ use crate::kind::projected;
 use crate::packages::{self, OwnerPackages, PackageList, Packaging, merged, seen_packages};
 use crate::polled::Releases;
 use crate::{Discovery, Forge, Members, Origin, SourceOptions, Token, Transport, events};
+
+use listed::{Forgejo, GitLab};
+pub(crate) use listed::{GitHub, Property, flagged, levelled, named, properties};
 
 /// An owner's repositories on a forge, each taken by the selection polled on
 /// its own (ADR-0029).
@@ -172,6 +173,7 @@ impl Owned {
             runs: self.options.run_choice(),
             alerts: self.options.alert_choice(self.forge),
             pulls: self.options.pull_choice(),
+            issues: self.options.issue_choice(),
         }
     }
 
@@ -274,6 +276,27 @@ impl Owned {
         let asked = asking.asked(http, cursor).await?;
         let pulls = asking.read(&asked, &described)?;
         Ok((asked.changed(), pulls))
+    }
+
+    /// What the member `repository`'s issues since `cursor` are, read
+    /// through `http` beside what GraphQL read of it, and whether they
+    /// changed.
+    async fn issued(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        repository: &Listed,
+        cursor: Option<&Cursor>,
+    ) -> Result<(bool, crate::runs::Found), Unpolled> {
+        let (described, origin) = self.reached(repository)?;
+        let choice = self.options.issue_choice();
+        let asking = crate::issues::Asking {
+            origin: &origin,
+            token: self.token.as_ref(),
+            choice: &choice,
+        };
+        let asked = asking.asked(http, cursor).await?;
+        let issues = asking.read(&asked, &described)?;
+        Ok((asked.changed(), issues))
     }
 
     /// What the member `repository`'s alerts since `cursor` are, read
@@ -479,6 +502,27 @@ impl Owned {
             missing,
         })
     }
+
+    /// What a hook herald registers on the member named `name` sends,
+    /// beside its releases and tags.
+    fn sent(&self, name: &str) -> Vec<crate::hooks::Sent> {
+        use crate::hooks::Sent;
+        let signals = self.options.signals_of(name);
+        let confidential = self.options.issue_choice().confidential;
+        [
+            (Sent::Pipelines, signals.takes(Signal::Run)),
+            (Sent::Vulnerabilities, signals.takes(Signal::Alert)),
+            (Sent::MergeRequests, signals.takes(Signal::PullRequest)),
+            (Sent::Issues, signals.takes(Signal::Issue)),
+            (
+                Sent::ConfidentialIssues,
+                signals.takes(Signal::Issue) && confidential,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(sent, taken)| taken.then_some(sent))
+        .collect()
+    }
 }
 
 fn failed(error: SourceError) -> Unlisted {
@@ -557,19 +601,16 @@ impl Expand for Owned {
         repository: &'a Listed,
         hook: (&'a str, &'a Secret),
     ) -> Boxed<'a, Result<Registered, Unpolled>> {
-        Box::pin(crate::hooks::registered(
-            http,
-            (&self.api, self.token.as_ref()),
-            (&repository.id, {
-                let signals = self.options.signals_of(&repository.name);
-                (
-                    signals.takes(Signal::Run),
-                    signals.takes(Signal::Alert),
-                    signals.takes(Signal::PullRequest),
-                )
-            }),
-            hook,
-        ))
+        Box::pin(async move {
+            let sent = self.sent(&repository.name);
+            crate::hooks::registered(
+                http,
+                (&self.api, self.token.as_ref()),
+                (&repository.id, &sent),
+                hook,
+            )
+            .await
+        })
     }
 
     fn hooked<'a>(
@@ -609,6 +650,7 @@ impl Expand for Owned {
                 || self.options.may_take(Signal::Run)
                 || self.options.may_take(Signal::Alert)
                 || self.options.may_take(Signal::PullRequest)
+                || self.options.may_take(Signal::Issue)
             {
                 return None;
             }
@@ -747,6 +789,13 @@ impl Expand for Owned {
                         .map(|pulled| crate::runs::merged_into(found, pulled, *cursor)),
                     answered => answered,
                 };
+                let answered = match answered {
+                    Ok(found) if signals.takes(Signal::Issue) => self
+                        .issued(&http, repository, *cursor)
+                        .await
+                        .map(|issued| crate::runs::merged_into(found, issued, *cursor)),
+                    answered => answered,
+                };
                 polled.push(answered.and_then(|found| {
                     found
                         .map(|found| projected(found, self.named_project(repository)))
@@ -790,187 +839,6 @@ impl Expand for Owned {
     }
 }
 
-/// The visibility a forge names, as GitHub's and GitLab's listings spell
-/// it; any other name is private, so an unknown one is never announced to
-/// a public place.
-pub(crate) fn named(name: &str) -> Visibility {
-    match name {
-        "public" => Visibility::Public,
-        "internal" => Visibility::Internal,
-        _ => Visibility::Private,
-    }
-}
-
-/// The visibility a repository's flags give: private unless it says it is
-/// not, and internal where it says so.
-pub(crate) const fn flagged(private: Option<bool>, internal: Option<bool>) -> Visibility {
-    match (private, internal) {
-        (Some(false), Some(true)) => Visibility::Internal,
-        (Some(false), _) => Visibility::Public,
-        _ => Visibility::Private,
-    }
-}
-
-/// The visibility GitLab's numeric level gives: 20 public, 10 internal,
-/// and private otherwise.
-pub(crate) const fn levelled(level: Option<u8>) -> Visibility {
-    match level {
-        Some(20) => Visibility::Public,
-        Some(10) => Visibility::Internal,
-        _ => Visibility::Private,
-    }
-}
-
-/// A custom property's value, as GitHub names it.
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub(crate) enum Property {
-    One(String),
-    Many(Vec<String>),
-}
-
-/// Each custom property `properties` sets, with its values; one GitHub
-/// leaves unset is left out.
-pub(crate) fn properties(
-    properties: BTreeMap<String, Option<Property>>,
-) -> BTreeMap<String, Vec<String>> {
-    properties
-        .into_iter()
-        .filter_map(|(name, value)| {
-            value.map(|value| {
-                let values = match value {
-                    Property::One(value) => vec![value],
-                    Property::Many(values) => values,
-                };
-                (name, values)
-            })
-        })
-        .collect()
-}
-
-/// A repository, as GitHub lists it.
-#[derive(Deserialize)]
-pub(crate) struct GitHub {
-    id: u64,
-    name: String,
-    full_name: String,
-    #[serde(default)]
-    topics: Vec<String>,
-    #[serde(default)]
-    custom_properties: BTreeMap<String, Option<Property>>,
-    visibility: Option<String>,
-    private: Option<bool>,
-    #[serde(default)]
-    archived: bool,
-    #[serde(default)]
-    fork: bool,
-    #[serde(default)]
-    is_template: bool,
-    language: Option<String>,
-}
-
-impl From<GitHub> for Listed {
-    fn from(repository: GitHub) -> Self {
-        let visibility = repository
-            .visibility
-            .as_deref()
-            .map_or_else(|| flagged(repository.private, None), named);
-        Self {
-            id: repository.id.to_string(),
-            name: repository.name,
-            path: repository.full_name,
-            topics: repository.topics,
-            properties: properties(repository.custom_properties),
-            visibility,
-            archived: repository.archived,
-            fork: repository.fork,
-            template: repository.is_template,
-            language: repository.language,
-            linked: None,
-        }
-    }
-}
-
-/// A project, as GitLab lists it.
-#[derive(Deserialize)]
-struct GitLab {
-    id: u64,
-    path: String,
-    path_with_namespace: String,
-    #[serde(default)]
-    topics: Vec<String>,
-    visibility: Option<String>,
-    visibility_level: Option<u8>,
-    #[serde(default)]
-    archived: bool,
-    forked_from_project: Option<serde_json::Value>,
-}
-
-impl From<GitLab> for Listed {
-    fn from(project: GitLab) -> Self {
-        Self {
-            id: project.id.to_string(),
-            name: project.path,
-            path: project.path_with_namespace,
-            topics: project.topics,
-            properties: BTreeMap::new(),
-            visibility: project
-                .visibility
-                .as_deref()
-                .map_or_else(|| levelled(project.visibility_level), named),
-            archived: project.archived,
-            fork: project.forked_from_project.is_some(),
-            template: false,
-            language: None,
-            linked: None,
-        }
-    }
-}
-
-/// A repository, as Forgejo and Gitea list it.
-#[derive(Deserialize)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "the struct reads Forgejo's answer, which names each flag"
-)]
-struct Forgejo {
-    id: u64,
-    name: String,
-    full_name: String,
-    #[serde(default)]
-    topics: Vec<String>,
-    private: Option<bool>,
-    #[serde(default)]
-    internal: bool,
-    #[serde(default)]
-    archived: bool,
-    #[serde(default)]
-    fork: bool,
-    #[serde(default)]
-    template: bool,
-    #[serde(default)]
-    language: String,
-}
-
-impl From<Forgejo> for Listed {
-    fn from(repository: Forgejo) -> Self {
-        let visibility = flagged(repository.private, Some(repository.internal));
-        Self {
-            id: repository.id.to_string(),
-            name: repository.name,
-            path: repository.full_name,
-            topics: repository.topics,
-            properties: BTreeMap::new(),
-            visibility,
-            archived: repository.archived,
-            fork: repository.fork,
-            template: repository.template,
-            language: Some(repository.language).filter(|language| !language.is_empty()),
-            linked: None,
-        }
-    }
-}
-
 /// The GraphQL endpoint beside `api`, the REST API of `forge`.
 fn graphql_beside(forge: Forge, api: &str) -> String {
     if forge == Forge::GitLab {
@@ -980,5 +848,6 @@ fn graphql_beside(forge: Forge, api: &str) -> String {
     }
 }
 
+mod listed;
 #[cfg(test)]
 mod tests;

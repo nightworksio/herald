@@ -7,7 +7,8 @@
 //! polled, is named as a run of its repository's id; and an alert,
 //! delivered or polled, is named as an alert of its repository's id and
 //! carries only the attributes an alert carries; and a pull request,
-//! delivered or polled, is named as a pull request of its repository's id.
+//! delivered or polled, is named as a pull request of its repository's id,
+//! and an issue as an issue of its repository's id.
 
 #![no_main]
 
@@ -385,12 +386,56 @@ fn pulls(bytes: &[u8]) {
     }
 }
 
+/// What a source announcing every issue of every forge makes of
+/// `bytes` as a issue's delivery and its listing.
+fn issues(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let headers = [
+        ("X-GitHub-Event", "issues"),
+        ("X-Gitlab-Event", "Issue Hook"),
+        ("X-Forgejo-Event", "issues"),
+    ];
+    for forge in FORGES {
+        let source = ForgeSource {
+            forge,
+            options: SourceOptions {
+                repository: Some("fuzzer/fuzzed".to_owned()),
+                signals: Some(vec![Signal::Issue]),
+                ..SourceOptions::default()
+            },
+            names: None,
+        };
+        let issued = |event: &Event, id: &str| {
+            assert!(
+                event.identity().as_str().contains(&format!("/{id}/issue/")),
+                "{event:?}"
+            );
+        };
+        for header in headers {
+            if let Ok(Hooked::Event(event)) = source.hooked(&[header], bytes) {
+                let origin = event.origin().expect("a delivered issue names its origin");
+                issued(&event, &origin.id);
+            }
+        }
+        if let Polling::One(poll) = source.poller(None, false)
+            && let Ok(Some(polled)) =
+                pollster::block_on(poll.polled(&http, None, jiff::Timestamp::UNIX_EPOCH))
+        {
+            for event in &polled.events {
+                let origin = event.origin().expect("a polled issue names its origin");
+                issued(event, &origin.id);
+            }
+        }
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
     owned(bytes);
     images(bytes);
     runs(bytes);
     alerts(bytes);
     pulls(bytes);
+    issues(bytes);
     let response = Response {
         status: 200,
         headers: Vec::new(),

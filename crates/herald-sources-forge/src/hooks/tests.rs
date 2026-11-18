@@ -17,18 +17,15 @@ fn answer(status: u16, body: &Value) -> Response {
 }
 
 fn register(scripted: &ScriptedHttp) -> Result<Registered, Unpolled> {
-    registering(scripted, (false, false, false))
+    registering(scripted, &[])
 }
 
-fn registering(
-    scripted: &ScriptedHttp,
-    signalled: (bool, bool, bool),
-) -> Result<Registered, Unpolled> {
+fn registering(scripted: &ScriptedHttp, sent: &[Sent]) -> Result<Registered, Unpolled> {
     let token = Token::Named(Secret::new("GITLAB_TOKEN", "glpat"));
     pollster::block_on(registered(
         scripted,
         (API, Some(&token)),
-        ("7", signalled),
+        ("7", sent),
         (URL, &Secret::new("HERALD_WEBHOOK", "hook-secret")),
     ))
 }
@@ -66,6 +63,8 @@ fn a_member_with_a_hook_to_herald_keeps_it_and_one_without_is_given_one() {
             "pipeline_events": false,
             "vulnerability_events": false,
             "merge_requests_events": false,
+            "issues_events": false,
+            "confidential_issues_events": false,
         })
     );
     assert_eq!(posted.method, Method::Post);
@@ -78,10 +77,7 @@ fn a_member_announcing_runs_is_given_a_hook_sending_its_pipelines() {
         answer(200, &json!([])),
         answer(201, &json!({ "id": 1 })),
     ]);
-    assert_eq!(
-        registering(&made, (true, false, false)),
-        Ok(Registered::Made)
-    );
+    assert_eq!(registering(&made, &[Sent::Pipelines]), Ok(Registered::Made));
     let posted: Value = serde_json::from_slice(&made.requests()[1].body).unwrap();
     assert_eq!(posted["pipeline_events"], json!(true));
     assert_eq!(posted["vulnerability_events"], json!(false));
@@ -95,7 +91,7 @@ fn a_member_announcing_alerts_is_given_a_hook_sending_its_vulnerabilities() {
         answer(201, &json!({ "id": 1 })),
     ]);
     assert_eq!(
-        registering(&made, (false, true, false)),
+        registering(&made, &[Sent::Vulnerabilities]),
         Ok(Registered::Made)
     );
     let posted: Value = serde_json::from_slice(&made.requests()[1].body).unwrap();
@@ -184,10 +180,26 @@ fn a_member_announcing_pull_requests_is_given_a_hook_sending_its_merge_requests(
         answer(201, &json!({ "id": 1 })),
     ]);
     assert_eq!(
-        registering(&made, (false, false, true)),
+        registering(&made, &[Sent::MergeRequests]),
         Ok(Registered::Made)
     );
     let posted: Value = serde_json::from_slice(&made.requests()[1].body).unwrap();
     assert_eq!(posted["merge_requests_events"], json!(true));
     assert_eq!(posted["vulnerability_events"], json!(false));
+}
+
+#[test]
+fn a_member_announcing_issues_is_given_a_hook_sending_its_issues() {
+    let made = ScriptedHttp::new(vec![
+        answer(200, &json!([])),
+        answer(201, &json!({ "id": 1 })),
+    ]);
+    assert_eq!(
+        registering(&made, &[Sent::Issues, Sent::ConfidentialIssues]),
+        Ok(Registered::Made)
+    );
+    let posted: Value = serde_json::from_slice(&made.requests()[1].body).unwrap();
+    assert_eq!(posted["issues_events"], json!(true));
+    assert_eq!(posted["confidential_issues_events"], json!(true));
+    assert_eq!(posted["merge_requests_events"], json!(false));
 }

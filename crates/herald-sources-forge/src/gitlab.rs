@@ -116,6 +116,17 @@ pub(crate) fn graphql(api: &str) -> String {
     }
 }
 
+/// What a project's or a group's access token bot's username holds.
+const TOKEN_BOT: &str = "_bot_";
+/// What a service's bot's username ends with.
+const BOT_ENDS: [&str; 2] = ["-bot", "[bot]"];
+
+/// Whether `username` is a bot's: a project's or a group's access
+/// token bot, or one ending in `-bot` or `[bot]`.
+pub(crate) fn bot(username: &str) -> bool {
+    username.contains(TOKEN_BOT) || BOT_ENDS.iter().any(|end| username.ends_with(end))
+}
+
 /// The web root of the instance whose REST API is `api`: `api` without
 /// its `/api/v4`.
 pub(crate) fn web(api: &str) -> String {

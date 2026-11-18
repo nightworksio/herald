@@ -118,3 +118,30 @@ pub(crate) fn all_found(
     let releases: Vec<Release> = herald_wire::read(what, limit, body)?;
     Ok(releases.into_iter().map(ForgeRelease::from).collect())
 }
+
+/// The kind of account GitHub names a bot's or an app's.
+const BOT: &str = "Bot";
+/// What a bot's login ends with, on Forgejo too, which names no account
+/// kind.
+const BOT_SUFFIX: &str = "[bot]";
+
+/// An account, as GitHub and Forgejo name one.
+#[derive(Deserialize)]
+pub(crate) struct Account {
+    pub(crate) login: String,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+}
+
+impl Account {
+    /// Whether it is a bot's or an app's.
+    pub(crate) fn bot(&self) -> bool {
+        self.kind.as_deref() == Some(BOT) || self.login.ends_with(BOT_SUFFIX)
+    }
+}
+
+/// A label, as GitHub and Forgejo name one.
+#[derive(Deserialize)]
+pub(crate) struct Label {
+    pub(crate) name: String,
+}
