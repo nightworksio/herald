@@ -9,8 +9,9 @@ use herald_ports::{Boxed, DynHttp, Erased, Http as _, Response};
 use crate::alerts;
 use crate::forge::{Repository, validators};
 use crate::kind::{originated, projected};
-use crate::options::{AlertChoice, RunChoice};
+use crate::options::{AlertChoice, PullChoice, RunChoice};
 use crate::packages::{Asking, PackageList, Packaging, merged, packaged_of};
+use crate::pulls;
 use crate::runs;
 use crate::tags::{Listed, Pointed};
 use crate::wire::{ForgeTag, tag_event};
@@ -34,6 +35,7 @@ pub(crate) struct Releases {
     pub(crate) visibility: Option<herald_core::Visibility>,
     pub(crate) runs: RunChoice,
     pub(crate) alerts: AlertChoice,
+    pub(crate) pulls: PullChoice,
 }
 
 /// What a poll asked of a repository's runs and alerts, with the
@@ -41,6 +43,7 @@ pub(crate) struct Releases {
 struct Signalled<'a> {
     runs: Option<(runs::Asking<'a>, runs::Asked)>,
     alerts: Option<(alerts::Asking<'a>, alerts::Asked)>,
+    pulls: Option<(pulls::Asking<'a>, pulls::Asked)>,
 }
 
 impl Signalled<'_> {
@@ -49,6 +52,10 @@ impl Signalled<'_> {
         self.runs.as_ref().is_some_and(|(_, asked)| asked.changed())
             || self
                 .alerts
+                .as_ref()
+                .is_some_and(|(_, asked)| asked.changed())
+            || self
+                .pulls
                 .as_ref()
                 .is_some_and(|(_, asked)| asked.changed())
     }
@@ -60,6 +67,9 @@ impl Signalled<'_> {
             polled = runs::merged(polled, asking.read(&asked, repository)?);
         }
         if let Some((asking, asked)) = self.alerts {
+            polled = runs::merged(polled, asking.read(&asked, repository)?);
+        }
+        if let Some((asking, asked)) = self.pulls {
             polled = runs::merged(polled, asking.read(&asked, repository)?);
         }
         Ok(polled)
@@ -219,6 +229,7 @@ pub async fn tag_event_of(
         visibility: None,
         runs: RunChoice::default(),
         alerts: crate::SourceOptions::default().alert_choice(origin.forge()),
+        pulls: crate::SourceOptions::default().pull_choice(),
     };
     let http = Erased(http);
     let forge = origin.forge();
@@ -278,7 +289,30 @@ impl Releases {
             }
             None => None,
         };
-        Ok(Signalled { runs, alerts })
+        let pulls = match self.pull_asking() {
+            Some(asking) => {
+                let asked = asking.asked(http, cursor).await?;
+                Some((asking, asked))
+            }
+            None => None,
+        };
+        Ok(Signalled {
+            runs,
+            alerts,
+            pulls,
+        })
+    }
+
+    /// How its repository's pull requests are asked, where its signals
+    /// take them.
+    fn pull_asking(&self) -> Option<pulls::Asking<'_>> {
+        self.signals
+            .takes(Signal::PullRequest)
+            .then_some(pulls::Asking {
+                origin: &self.origin,
+                token: self.token.as_ref(),
+                choice: &self.pulls,
+            })
     }
 
     /// How its repository's alerts are asked, where its signals take them.

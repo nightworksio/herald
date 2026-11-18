@@ -24,6 +24,8 @@ impl Kind {
     pub const RUN: Self = Self(Cow::Borrowed("run"));
     /// A security alert on a forge.
     pub const ALERT: Self = Self(Cow::Borrowed("alert"));
+    /// A pull request, or a GitLab merge request, on a forge.
+    pub const PULL_REQUEST: Self = Self(Cow::Borrowed("pull-request"));
 
     /// The kind named `name`.
     ///
@@ -205,6 +207,22 @@ pub const ECOSYSTEM: &str = "ecosystem";
 pub const PATH: &str = "path";
 /// Why a secret scanning alert was resolved, such as `revoked`.
 pub const RESOLUTION: &str = "resolution";
+/// The link to a pull request's page.
+pub const PULL_LINK: &str = "pull";
+/// Who opened a pull request.
+pub const AUTHOR: &str = "author";
+/// Whether a pull request's author is a bot or an app.
+pub const BOT: &str = "bot";
+/// The branch a pull request merges into.
+pub const BASE: &str = "base";
+/// The branch a pull request merges from.
+pub const HEAD: &str = "head";
+/// Whether a pull request is a draft.
+pub const DRAFT: &str = "draft";
+/// Who merged a pull request.
+pub const MERGED_BY: &str = "merged_by";
+/// A pull request's labels, joined by ", ".
+pub const LABELS: &str = "labels";
 /// What a run is read from: `actions`, the forge's own CI, or `checks`, a
 /// check suite or a commit status.
 pub const FROM: &str = "from";
@@ -303,6 +321,27 @@ fn ran() -> BTreeMap<String, AttributeSpec> {
         (ATTEMPT, AttributeType::Number, false),
         (ACTOR, AttributeType::Text, false),
         (FROM, AttributeType::Text, true),
+    ];
+    for (name, ty, required) in typed {
+        attributes.insert(name.to_owned(), AttributeSpec { ty, required });
+    }
+    attributes
+}
+
+/// The attributes of a pull request: a forge's signals', and what the pull
+/// request is.
+fn pulled() -> BTreeMap<String, AttributeSpec> {
+    let mut attributes = signalled();
+    let typed = [
+        (ACTION, AttributeType::Text, true),
+        (NUMBER, AttributeType::Number, true),
+        (AUTHOR, AttributeType::Text, false),
+        (BOT, AttributeType::Flag, false),
+        (BASE, AttributeType::Text, false),
+        (HEAD, AttributeType::Text, false),
+        (DRAFT, AttributeType::Flag, false),
+        (MERGED_BY, AttributeType::Text, false),
+        (LABELS, AttributeType::Text, false),
     ];
     for (name, ty, required) in typed {
         attributes.insert(name.to_owned(), AttributeSpec { ty, required });
@@ -470,6 +509,13 @@ impl KindSpec {
                 alerted(),
             )
             .private(),
+            Self::new(
+                Kind::PULL_REQUEST,
+                "A pull request, or a GitLab merge request, on a forge.",
+                false,
+                buttons(&[PULL_LINK]),
+                pulled(),
+            ),
         ]
     }
 

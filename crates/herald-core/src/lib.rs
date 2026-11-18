@@ -90,10 +90,11 @@ pub use interact::{
 pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, SHA256_HEX_DIGITS, digest, hex, unhex};
 pub use kind::{
-    ACTION, ACTOR, ALERT_LINK, ATTEMPT, Attribute, AttributeSpec, AttributeType, BRANCH,
-    CHANGELOG_LINK, COMMIT, CONCLUSION, ECOSYSTEM, ENTRY_LINK, FROM, Kind, KindSpec, KindSpecs,
-    LinkSpec, NUMBER, PACKAGE, PACKAGE_TYPE, PATH, PRERELEASE, RELEASE_LINK, RESOLUTION, RULE,
-    RUN_LINK, SEVERITY, TOOL, TRIGGER, VERSION, WORKFLOW, readable, versioned,
+    ACTION, ACTOR, ALERT_LINK, ATTEMPT, AUTHOR, Attribute, AttributeSpec, AttributeType, BASE, BOT,
+    BRANCH, CHANGELOG_LINK, COMMIT, CONCLUSION, DRAFT, ECOSYSTEM, ENTRY_LINK, FROM, HEAD, Kind,
+    KindSpec, KindSpecs, LABELS, LinkSpec, MERGED_BY, NUMBER, PACKAGE, PACKAGE_TYPE, PATH,
+    PRERELEASE, PULL_LINK, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK, SEVERITY, TOOL, TRIGGER,
+    VERSION, WORKFLOW, readable, versioned,
 };
 pub use latest::{Latest, Shown};
 pub use ledger::{

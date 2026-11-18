@@ -2454,6 +2454,70 @@
         }
       ]
     },
+    "PullAction": {
+      "description": "What a pull request did that is announced.",
+      "oneOf": [
+        {
+          "description": "It was opened, or, where drafts are announced, opened as a draft.",
+          "type": "string",
+          "const": "opened"
+        },
+        {
+          "description": "A draft was marked ready for review.",
+          "type": "string",
+          "const": "ready_for_review"
+        },
+        {
+          "description": "It was opened again after it closed.",
+          "type": "string",
+          "const": "reopened"
+        },
+        {
+          "description": "It was merged.",
+          "type": "string",
+          "const": "merged"
+        },
+        {
+          "description": "It was closed without being merged.",
+          "type": "string",
+          "const": "closed"
+        }
+      ]
+    },
+    "Pulls": {
+      "description": "Which pull requests a source announces, where its signals take\n\"pull-request\".",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What a pull request did that is announced: `opened`,\n`ready_for_review`, `reopened`, `merged`, `closed`; `[\"opened\",\n\"ready_for_review\", \"merged\"]` where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PullAction"
+          }
+        },
+        "authors": {
+          "description": "The authors, as globs, whose pull requests are announced, such as\n`dependabot[bot]`; every author where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "drafts": {
+          "description": "Whether a draft's opening is announced; false where absent, so a\ndraft is announced once it is ready for review.",
+          "type": "boolean"
+        },
+        "labels": {
+          "description": "The labels, as globs as `include` writes them, any one of which a\npull request announced carries; every pull request where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "Rate": {
       "description": "How many in a length of time: a number, a slash and s, m, h or d, as \"120/m\".",
       "type": "string",
@@ -2948,6 +3012,11 @@
           "description": "A security alert: code scanning's, Dependabot's or secret\nscanning's, or a GitLab vulnerability.",
           "type": "string",
           "const": "alert"
+        },
+        {
+          "description": "A pull request, or a GitLab merge request, opened, readied for\nreview, merged or closed.",
+          "type": "string",
+          "const": "pull-request"
         }
       ]
     },
@@ -3371,6 +3440,10 @@
                 "$ref": "#/$defs/Values"
               }
             },
+            "pulls": {
+              "description": "Which pull requests are announced where the signals take\n\"pull-request\": what they did, whether drafts are, and their labels\nand authors; every pull request opened, ready for review or merged\nwhere absent.",
+              "$ref": "#/$defs/Pulls"
+            },
             "registry": {
               "description": "The host of the container registry an image is named on, as in\n`registry.example:5000`: where absent, ghcr.io beside GitHub's API,\n`containers.<host>` beside a GitHub Enterprise Server's or a GHE.com\ntenant's, each image's own on GitLab, and the instance's on Forgejo.",
               "type": "string"
@@ -3675,6 +3748,10 @@
                 "$ref": "#/$defs/Values"
               }
             },
+            "pulls": {
+              "description": "Which pull requests are announced where the signals take\n\"pull-request\": what they did, whether drafts are, and their labels\nand authors; every pull request opened, ready for review or merged\nwhere absent.",
+              "$ref": "#/$defs/Pulls"
+            },
             "registry": {
               "description": "The host of the container registry an image is named on, as in\n`registry.example:5000`: where absent, ghcr.io beside GitHub's API,\n`containers.<host>` beside a GitHub Enterprise Server's or a GHE.com\ntenant's, each image's own on GitLab, and the instance's on Forgejo.",
               "type": "string"
@@ -3978,6 +4055,10 @@
               "additionalProperties": {
                 "$ref": "#/$defs/Values"
               }
+            },
+            "pulls": {
+              "description": "Which pull requests are announced where the signals take\n\"pull-request\": what they did, whether drafts are, and their labels\nand authors; every pull request opened, ready for review or merged\nwhere absent.",
+              "$ref": "#/$defs/Pulls"
             },
             "registry": {
               "description": "The host of the container registry an image is named on, as in\n`registry.example:5000`: where absent, ghcr.io beside GitHub's API,\n`containers.<host>` beside a GitHub Enterprise Server's or a GHE.com\ntenant's, each image's own on GitLab, and the instance's on Forgejo.",

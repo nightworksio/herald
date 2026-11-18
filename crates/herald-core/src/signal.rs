@@ -34,18 +34,23 @@ pub enum Signal {
     /// A security alert: code scanning's, Dependabot's or secret
     /// scanning's, or a GitLab vulnerability.
     Alert,
+    /// A pull request, or a GitLab merge request, opened, readied for
+    /// review, merged or closed.
+    #[serde(rename = "pull-request")]
+    PullRequest,
 }
 
 impl Signal {
     /// The signals a source announces where `signals` is absent.
     pub const DEFAULT: [Self; 1] = [Self::Release];
     /// Every signal.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Release,
         Self::Tag,
         Self::Package,
         Self::Run,
         Self::Alert,
+        Self::PullRequest,
     ];
 
     /// Its name, as `signals` writes it and an event's `signal` attribute
@@ -58,6 +63,7 @@ impl Signal {
             Self::Package => "package",
             Self::Run => "run",
             Self::Alert => "alert",
+            Self::PullRequest => "pull-request",
         }
     }
 
@@ -69,6 +75,7 @@ impl Signal {
             Self::Package => Kind::PACKAGE_VERSION,
             Self::Run => Kind::RUN,
             Self::Alert => Kind::ALERT,
+            Self::PullRequest => Kind::PULL_REQUEST,
         }
     }
 
@@ -134,14 +141,16 @@ mod tests {
 
     #[test]
     fn each_signal_is_named_as_signals_writes_it() {
-        for (signal, name) in [
-            (Signal::Release, "release"),
-            (Signal::Tag, "tag"),
-            (Signal::Package, "package"),
-            (Signal::Run, "run"),
-            (Signal::Alert, "alert"),
+        for (signal, name, kind) in [
+            (Signal::Release, "release", Kind::RELEASE),
+            (Signal::Tag, "tag", Kind::RELEASE),
+            (Signal::Package, "package", Kind::PACKAGE_VERSION),
+            (Signal::Run, "run", Kind::RUN),
+            (Signal::Alert, "alert", Kind::ALERT),
+            (Signal::PullRequest, "pull-request", Kind::PULL_REQUEST),
         ] {
             assert_eq!(signal.name(), name);
+            assert_eq!(signal.kind(), kind);
             assert_eq!(Signal::named(name), Some(signal));
             assert_eq!(
                 serde_json::to_value(signal).unwrap(),

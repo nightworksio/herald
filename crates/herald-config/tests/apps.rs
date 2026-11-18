@@ -155,7 +155,7 @@ body = "{{ event.body }}"
         );
         assert!(
             errors(&kinds).contains(
-                "routes[1].versions: \"alert\", \"feed-entry\", \"message\", \"run\" events carry no version"
+                "routes[1].versions: \"alert\", \"feed-entry\", \"message\", \"pull-request\", \"run\" events carry no version"
             ),
             "{}",
             errors(&kinds)

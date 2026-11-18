@@ -6,23 +6,24 @@
 //! identity names its registry, owner and image; a run, delivered or
 //! polled, is named as a run of its repository's id; and an alert,
 //! delivered or polled, is named as an alert of its repository's id and
-//! carries only the attributes an alert carries.
+//! carries only the attributes an alert carries; and a pull request,
+//! delivered or polled, is named as a pull request of its repository's id.
 
 #![no_main]
 
 use std::collections::BTreeMap;
 
+use herald_core::Signal;
 use herald_core::{
     Event, EventsRead, Listed, Owner, Polled, PrereleaseRule, SecretRef, Selection, Visibility,
 };
 use herald_kinds::{Changed, Credential, Polling, Rounded, SourceConfig as _};
 use herald_ports::{Http, HttpError, Request, Response, Secret};
-use herald_sources_forge::{Forge, Hooked, Repository, Signals};
-use herald_core::Signal;
 use herald_sources_forge::{
-    AlertAction, Alerts, ForgeSource, GhcrOptions, GhcrSource, RunFrom, Runs, SourceOptions,
+    AlertAction, Alerts, ForgeSource, GhcrOptions, GhcrSource, Pulls, RunFrom, Runs, SourceOptions,
     Transport, ci_run,
 };
+use herald_sources_forge::{Forge, Hooked, Repository, Signals};
 use herald_wire::PARSE_LIMIT;
 use libfuzzer_sys::fuzz_target;
 
@@ -99,10 +100,15 @@ fn owned(bytes: &[u8]) {
             assert!(ids.iter().all(|id| id.parse::<u64>().is_ok()), "{ids:?}");
         }
         let members = [(&member, None)];
-        for polled in pollster::block_on(expand.polled(&http, &members, &Rounded::Nothing, jiff::Timestamp::UNIX_EPOCH))
-            .into_iter()
-            .flatten()
-            .flatten()
+        for polled in pollster::block_on(expand.polled(
+            &http,
+            &members,
+            &Rounded::Nothing,
+            jiff::Timestamp::UNIX_EPOCH,
+        ))
+        .into_iter()
+        .flatten()
+        .flatten()
         {
             for event in &polled.events {
                 identified(event, None);
@@ -166,7 +172,11 @@ fn images(bytes: &[u8]) {
         language: None,
         linked: None,
     };
-    if let Ok(Some(polled)) = pollster::block_on(expand.member(&image).polled(&http, None, jiff::Timestamp::UNIX_EPOCH)) {
+    if let Ok(Some(polled)) = pollster::block_on(expand.member(&image).polled(
+        &http,
+        None,
+        jiff::Timestamp::UNIX_EPOCH,
+    )) {
         for event in &polled.events {
             identified(event, None);
             assert!(
@@ -324,11 +334,63 @@ fn alerts(bytes: &[u8]) {
     }
 }
 
+/// What a source announcing every pull request of every forge makes of
+/// `bytes` as a pull request's delivery and its listing.
+fn pulls(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let headers = [
+        ("X-GitHub-Event", "pull_request"),
+        ("X-Gitlab-Event", "Merge Request Hook"),
+        ("X-Forgejo-Event", "pull_request"),
+    ];
+    for forge in FORGES {
+        let source = ForgeSource {
+            forge,
+            options: SourceOptions {
+                repository: Some("fuzzer/fuzzed".to_owned()),
+                signals: Some(vec![Signal::PullRequest]),
+                pulls: Some(Pulls {
+                    drafts: Some(true),
+                    ..Pulls::default()
+                }),
+                ..SourceOptions::default()
+            },
+            names: None,
+        };
+        let pulled = |event: &Event, id: &str| {
+            assert!(
+                event.identity().as_str().contains(&format!("/{id}/pull/")),
+                "{event:?}"
+            );
+        };
+        for header in headers {
+            if let Ok(Hooked::Event(event)) = source.hooked(&[header], bytes) {
+                let origin = event
+                    .origin()
+                    .expect("a delivered pull request names its origin");
+                pulled(&event, &origin.id);
+            }
+        }
+        if let Polling::One(poll) = source.poller(None, false)
+            && let Ok(Some(polled)) =
+                pollster::block_on(poll.polled(&http, None, jiff::Timestamp::UNIX_EPOCH))
+        {
+            for event in &polled.events {
+                let origin = event
+                    .origin()
+                    .expect("a polled pull request names its origin");
+                pulled(event, &origin.id);
+            }
+        }
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
     owned(bytes);
     images(bytes);
     runs(bytes);
     alerts(bytes);
+    pulls(bytes);
     let response = Response {
         status: 200,
         headers: Vec::new(),

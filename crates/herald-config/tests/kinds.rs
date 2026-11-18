@@ -185,6 +185,7 @@ body = "{{ event.body }}"
                 "message",
                 "run",
                 "alert",
+                "pull-request",
                 "build",
                 "deploy"
             ]
