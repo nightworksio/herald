@@ -170,7 +170,7 @@ body = "{{ event.body }}"
                 "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"github_apps\", \"schedule\", \"server\", \"federation\", \"peers\", \"http\", \"render\", \"announce\", \"run\", \"doctor\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"deno-kv\", \"fastly-kv\", \"dynamodb\", \"git-branch\", \"markers\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
-                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"ghcr\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"oci\", \"feed\"",
+                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"ghcr\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"oci\", \"feed\", \"herald\"",
             ]
             .join("\n")
         );
@@ -303,6 +303,14 @@ body = "{{ event.body }}"
                         "registry = \"https://ghcr.io\"\nrepository = \"nightworksio/php-mutation-gate\"",
                     )
                     .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
+            } else if kind == "herald" {
+                text = text.replace(
+                    "repository = \"nightworksio/php-mutation-gate\"",
+                    &format!(
+                        "url = \"https://herald.example.net/herald/v1/feeds/releases\"\nkeys = [\"{}\"]",
+                        herald_peers::multibase::ed25519_public(&[7; 32])
+                    ),
+                );
             } else if !forge {
                 let package = match kind {
                     "crates-io" => "herald",
@@ -328,11 +336,13 @@ body = "{{ event.body }}"
             assert_eq!(source.kind(), kind);
             assert!(config.secrets().contains("HERALD_DISCORD_TOKEN"));
             let made = match kind {
-                "feed" => Kind::FEED_ENTRY,
-                _ if forge => Kind::RELEASE,
-                _ => Kind::PACKAGE_VERSION,
+                "feed" => vec![Kind::FEED_ENTRY],
+                "herald" => Vec::new(),
+                _ if forge => vec![Kind::RELEASE],
+                _ => vec![Kind::PACKAGE_VERSION],
             };
-            assert_eq!(source.kinds(), [made]);
+            assert_eq!(source.kinds(), made);
+            assert_eq!(source.any_kind(), kind == "herald");
         }
     }
 

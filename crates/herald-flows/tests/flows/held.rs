@@ -37,7 +37,13 @@ fn round(config: &Config, store: &Failing, script: &Script, at: Timestamp) -> Ve
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    pollster::block_on(poll(config, &connected, &ports, "r1"))
+    pollster::block_on(poll(
+        config,
+        &connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ))
 }
 
 fn release(version: &str) -> String {

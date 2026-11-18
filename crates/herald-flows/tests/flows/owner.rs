@@ -132,7 +132,13 @@ fn polled_within(
             ..Budget::UNBOUNDED
         },
     };
-    pollster::block_on(poll(config, &connected, &ports, "r1"))
+    pollster::block_on(poll(
+        config,
+        &connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ))
 }
 
 fn polled(

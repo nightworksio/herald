@@ -102,7 +102,7 @@ impl Projects {
             }
             match source.poller(None, false) {
                 Polling::Many(expand) => owners.push((name.clone(), expand, sourced)),
-                Polling::One(_) => named.extend(
+                Polling::One(_) | Polling::Pull(_) => named.extend(
                     source
                         .projects()
                         .into_iter()

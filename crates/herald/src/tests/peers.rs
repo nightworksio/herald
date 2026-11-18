@@ -14,8 +14,10 @@ use herald_ports::{Algorithm, Response, Secret, Signer as _};
 const PKCS8_ED25519: [u8; 16] = [
     0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
 ];
-const NEWER: &str = include_str!("../../../herald-crypto/fixtures/ed25519-rfc9421-seed.test.hex");
-const OLDER: &str = include_str!("../../../herald-crypto/fixtures/ed25519-w3c-seed.test.hex");
+pub(super) const NEWER: &str =
+    include_str!("../../../herald-crypto/fixtures/ed25519-rfc9421-seed.test.hex");
+pub(super) const OLDER: &str =
+    include_str!("../../../herald-crypto/fixtures/ed25519-w3c-seed.test.hex");
 const DOMAIN: &str = "herald.peer.example";
 const DISCOVERY: &str = "https://herald.peer.example/.well-known/herald";
 
@@ -59,7 +61,7 @@ fn served(seeds: &[&str], sequence: u64) -> Response {
         version: "1.0.0",
         repository: "https://github.com/nightworksio/herald",
     };
-    let body = instance.document(&set, &[]).into_bytes();
+    let body = instance.document(&set.document(DOMAIN), &[]).into_bytes();
     let mut headers = vec![
         (CONTENT_TYPE.to_owned(), "application/json".to_owned()),
         (CONTENT_DIGEST.to_owned(), content_digest(&body)),
@@ -134,7 +136,7 @@ fn answered(setup: &Setup, world: &World, args: &[&str], answer: &str) -> (u8, S
         &config,
         &path,
         &asked,
-        &connector,
+        (&setup.vars, &connector),
         &mut answers,
         &mut out,
     ))
@@ -558,3 +560,5 @@ fn revoke_refuses_a_key_the_peer_does_not_pin() {
         run.err
     );
 }
+
+pub(super) mod handed;

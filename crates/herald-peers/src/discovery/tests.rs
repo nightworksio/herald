@@ -22,7 +22,7 @@ fn the_discovery_document_names_the_api_the_software_and_the_key_set() {
         keys: vec![[1; 32]],
     };
     assert_eq!(
-        read(&INSTANCE.document(&keys, &[])),
+        read(&INSTANCE.document(&keys.document("herald.example"), &[])),
         json!({
             "version": 1,
             "api": "https://herald.example/herald/herald/v1",
@@ -36,7 +36,7 @@ fn the_discovery_document_names_the_api_the_software_and_the_key_set() {
         INSTANCE.discovery(),
         "https://herald.example/herald/.well-known/herald"
     );
-    let feeding = read(&INSTANCE.document(&keys, &["releases", "tags"]));
+    let feeding = read(&INSTANCE.document(&keys.document("herald.example"), &["releases", "tags"]));
     assert_eq!(feeding["features"], json!(["feeds"]));
     assert_eq!(
         feeding["feeds"],
@@ -120,7 +120,12 @@ fn the_key_set_a_discovery_document_lists_reads_back_as_written() {
         refresh: 3_600,
         keys: vec![[5; 32], [6; 32]],
     };
-    let document = INSTANCE.document(&keys, &[]);
+    let proved = json!({ "proof": { "type": "DataIntegrityProof" } });
+    let mut written = keys.document("herald.example");
+    written["proof"] = proved["proof"].clone();
+    let document = INSTANCE.document(&written, &[]);
+    assert_eq!(super::keys(document.as_bytes()), Ok(written));
+    assert_eq!(super::keys(br#"{"version": 1}"#), Ok(Value::Null));
     assert_eq!(key_set(document.as_bytes(), "herald.example"), Ok(keys));
     assert!(matches!(
         key_set(document.as_bytes(), "other.example"),
@@ -133,5 +138,59 @@ fn the_key_set_a_discovery_document_lists_reads_back_as_written() {
     assert_eq!(
         key_set(b"<html>", "herald.example"),
         Err(Unkeyed::Shape("it is no JSON"))
+    );
+}
+
+#[test]
+fn an_instance_is_reached_at_an_https_domain_alone() {
+    for url in [
+        "http://herald.example",
+        "https://herald.example:8443",
+        "https://127.0.0.1",
+        "https://localhost",
+        "https://user@herald.example",
+        "https://herald.example/?page=1",
+        "https://herald.example/#top",
+        "herald.example",
+    ] {
+        assert_eq!(address(url), None, "{url}");
+    }
+    let at = |url: &str, domain: &str| Some((url.to_owned(), domain.to_owned()));
+    assert_eq!(
+        address("https://herald.example"),
+        at("https://herald.example", "herald.example")
+    );
+    assert_eq!(
+        address("https://herald.example/under/"),
+        at("https://herald.example/under", "herald.example")
+    );
+}
+
+#[test]
+fn a_discovery_document_s_key_set_reads_as_a_rotation_statement() {
+    let held = KeySet {
+        sequence: 1,
+        refresh: 60,
+        keys: vec![[5; 32]],
+    };
+    let next = KeySet {
+        sequence: 2,
+        refresh: 60,
+        keys: vec![[6; 32], [5; 32]],
+    };
+    let unproved = crate::proof::unproved(
+        &next.document("herald.example"),
+        &crate::keys::method("herald.example", &[5; 32]),
+        jiff::Timestamp::UNIX_EPOCH,
+    )
+    .unwrap();
+    let proved = unproved.clone().proved(&[1; 64]);
+    let document = INSTANCE.document(&proved, &[]);
+    let rotated = handed_over(document.as_bytes(), &held, "herald.example").unwrap();
+    assert_eq!((rotated.set, rotated.by), (next, [5; 32]));
+    assert_eq!(rotated.proof.message, unproved.message());
+    assert_eq!(
+        handed_over(b"<html>", &held, "herald.example"),
+        Err(Unrotated::Unkeyed(Unkeyed::Shape("it is no JSON")))
     );
 }

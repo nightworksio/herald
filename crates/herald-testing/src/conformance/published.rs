@@ -1,5 +1,6 @@
-use herald_core::{DestinationName, Feed, PublishedKeys};
+use herald_core::{DestinationName, Feed, PeerKeys, PublishedKeys};
 use herald_ports::{Published, StoreError, Version, Written};
+use jiff::Timestamp;
 use serde_json::json;
 
 use super::Checks;
@@ -70,6 +71,57 @@ pub(super) async fn feeds<S: Published>(store: &S, checks: &mut Checks) -> Resul
             .await?
             .is_some_and(|kept| kept.value == next),
         "a feed read back was not the one written last",
+    );
+    Ok(())
+}
+
+/// Whether each peer's key set is kept apart from every other peer's,
+/// written with compare-and-set, and read back as written last.
+pub(super) async fn peers<S: Published>(store: &S, checks: &mut Checks) -> Result<(), StoreError> {
+    let (upstream, other) = ("upstream", "other");
+    checks.ensure(
+        store.peer_keys(upstream).await?.is_none(),
+        "a new store keeps a peer's key set",
+    );
+    let first = PeerKeys {
+        pinned: vec!["z6Mkold".to_owned()],
+        sequence: 1,
+        keys: vec!["z6Mkold".to_owned()],
+        read: Timestamp::UNIX_EPOCH,
+        refresh: 86_400,
+    };
+    let at = checks.written(store.put_peer_keys(upstream, &first, None).await?);
+    checks.ensure(
+        store.put_peer_keys(upstream, &first, None).await? == Written::Conflict
+            && store
+                .put_peer_keys(upstream, &first, Some(Version(0)))
+                .await?
+                == Written::Conflict,
+        "a peer's key set was written over a version it did not expect",
+    );
+    checks.ensure(
+        store.peer_keys(other).await?.is_none(),
+        "a peer's key set was kept as another peer's",
+    );
+    let next = PeerKeys {
+        sequence: 2,
+        keys: vec!["z6Mknew".to_owned(), "z6Mkold".to_owned()],
+        ..first
+    };
+    checks.written(store.put_peer_keys(upstream, &next, Some(at)).await?);
+    checks.ensure(
+        store
+            .peer_keys(upstream)
+            .await?
+            .is_some_and(|kept| kept.value == next),
+        "a peer's key set read back was not the one written last",
+    );
+    checks.ensure(
+        store
+            .peer_keys(upstream)
+            .await?
+            .is_some_and(|kept| kept.value.keys.len() == 2),
+        "a peer's key set read back did not list the keys written last",
     );
     Ok(())
 }

@@ -1,7 +1,8 @@
 //! A peer's answer checked before its body is read: signed by a key the
 //! reader trusts, over its status, type, body's digest and the URL it
 //! answers, live now, and carrying the digest of the body it came with
-//! (ADR-0046).
+//! (ADR-0046); an answer saying nothing changed signed over its status,
+//! the entity tag asked for and the URL it answers (ADR-0049).
 
 use std::fmt;
 
@@ -11,6 +12,9 @@ use crate::message::{Component, Demands, Message, Presented, Refusal, presented}
 
 /// The header naming what a body is.
 pub const CONTENT_TYPE: &str = "content-type";
+
+/// The header naming an answer's entity tag.
+pub const ETAG: &str = "etag";
 
 /// A peer's answer to a request.
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +54,9 @@ pub enum Unanswered {
     Undigested,
     /// It is signed by a key the reader does not trust: its id.
     Stranger(String),
+    /// It says nothing changed, its signature covering another entity tag
+    /// than the one asked for.
+    Retagged,
 }
 
 impl fmt::Display for Unanswered {
@@ -60,6 +67,10 @@ impl fmt::Display for Unanswered {
             Self::Stranger(keyid) => {
                 write!(f, "the answer is signed by {keyid}, a key not trusted")
             }
+            Self::Retagged => write!(
+                f,
+                "the answer says nothing changed of another entity tag than the one asked for"
+            ),
         }
     }
 }
@@ -72,6 +83,17 @@ pub fn demanded() -> [Component; 4] {
         Component::Status,
         Component::Field(CONTENT_TYPE.to_owned()),
         Component::Field(CONTENT_DIGEST.to_owned()),
+        Component::Request(Box::new(Component::TargetUri)),
+    ]
+}
+
+/// What every answer saying nothing changed must cover: its status, its
+/// entity tag, and the URL of the request it answers.
+#[must_use]
+pub fn demanded_unchanged() -> [Component; 3] {
+    [
+        Component::Status,
+        Component::Field(ETAG.to_owned()),
         Component::Request(Box::new(Component::TargetUri)),
     ]
 }
@@ -91,22 +113,7 @@ pub fn checked<'k>(
     keys: &'k [Key],
     bounds: Bounds,
 ) -> Result<(&'k Key, Presented), Unanswered> {
-    let message = Message {
-        method: answer.method,
-        url: answer.url,
-        status: Some(answer.status),
-        fields: answer.fields,
-    };
-    let shown = presented(&message, bounds.fields).map_err(Unanswered::Refused)?;
-    shown
-        .meets(Demands {
-            components: &demanded(),
-            single_use: false,
-            now: bounds.now,
-            skew: bounds.skew,
-            longest: bounds.longest,
-        })
-        .map_err(Unanswered::Refused)?;
+    let shown = met(answer, &demanded(), bounds)?;
     let digests: Vec<&str> = answer
         .fields
         .iter()
@@ -116,11 +123,78 @@ pub fn checked<'k>(
     if !digest_names(&digests.join(", "), answer.body, bounds.fields) {
         return Err(Unanswered::Undigested);
     }
-    let key = keys
-        .iter()
+    Ok((trusted(keys, domain, &shown)?, shown))
+}
+
+/// The key among `keys`, each of the instance on `domain`, that signed
+/// `answer`, saying nothing changed of the entity tag `etag`, and its
+/// signature, whose bytes are still to be checked against that key;
+/// checked against `bounds`. Its body is not read.
+///
+/// # Errors
+///
+/// Its signature is missing, unreadable, covers too little or is not live;
+/// it covers another entity tag than `etag`; or a key not among `keys`
+/// signed it.
+pub fn unchanged<'k>(
+    answer: &Answer<'_>,
+    domain: &str,
+    keys: &'k [Key],
+    bounds: Bounds,
+    etag: &str,
+) -> Result<(&'k Key, Presented), Unanswered> {
+    let shown = met(answer, &demanded_unchanged(), bounds)?;
+    if entity_tag(answer, &shown).as_deref() != Some(etag) {
+        return Err(Unanswered::Retagged);
+    }
+    Ok((trusted(keys, domain, &shown)?, shown))
+}
+
+/// The entity tag `answer` carries, where its signature `shown` covers it.
+#[must_use]
+pub fn entity_tag(answer: &Answer<'_>, shown: &Presented) -> Option<String> {
+    let tag = Component::Field(ETAG.to_owned());
+    if !shown.covered.components.contains(&tag) {
+        return None;
+    }
+    message(answer).value(&tag).ok()
+}
+
+/// `answer` as a message whose signature is read.
+fn message<'a>(answer: &Answer<'a>) -> Message<'a> {
+    Message {
+        method: answer.method,
+        url: answer.url,
+        status: Some(answer.status),
+        fields: answer.fields,
+    }
+}
+
+/// The signature `answer` carries, meeting `components` within `bounds`.
+fn met(
+    answer: &Answer<'_>,
+    components: &[Component],
+    bounds: Bounds,
+) -> Result<Presented, Unanswered> {
+    let shown = presented(&message(answer), bounds.fields).map_err(Unanswered::Refused)?;
+    shown
+        .meets(Demands {
+            components,
+            single_use: false,
+            now: bounds.now,
+            skew: bounds.skew,
+            longest: bounds.longest,
+        })
+        .map_err(Unanswered::Refused)?;
+    Ok(shown)
+}
+
+/// The key among `keys`, each of the instance on `domain`, that `shown`
+/// names.
+fn trusted<'k>(keys: &'k [Key], domain: &str, shown: &Presented) -> Result<&'k Key, Unanswered> {
+    keys.iter()
         .find(|key| method(domain, key) == shown.covered.keyid)
-        .ok_or_else(|| Unanswered::Stranger(shown.covered.keyid.clone()))?;
-    Ok((key, shown))
+        .ok_or_else(|| Unanswered::Stranger(shown.covered.keyid.clone()))
 }
 
 #[cfg(test)]

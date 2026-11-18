@@ -1,8 +1,8 @@
 //! Each port of a store, reached through [`DynStore`].
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
-    Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
+    RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -11,8 +11,8 @@ use crate::erased::Erased;
 use crate::keyring::{Keyring, KnownKey};
 use crate::store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Outboxed, Pins, Positions, Published, Schedules, StoreError, Subscriptions, Tokens, Version,
-    Versioned, Waiting, Written,
+    Outboxed, Pins, Positions, Schedules, StoreError, Subscriptions, Tokens, Version, Versioned,
+    Waiting, Written,
 };
 
 impl Ledger for Erased<'_, dyn DynStore + '_> {
@@ -161,36 +161,6 @@ impl Tokens for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_token_boxed(token, expected).await
-    }
-}
-
-impl Published for Erased<'_, dyn DynStore + '_> {
-    async fn published_keys(&self) -> Result<Option<Versioned<PublishedKeys>>, StoreError> {
-        self.0.published_keys_boxed().await
-    }
-
-    async fn put_published_keys(
-        &self,
-        keys: &PublishedKeys,
-        expected: Option<Version>,
-    ) -> Result<Written, StoreError> {
-        self.0.put_published_keys_boxed(keys, expected).await
-    }
-
-    async fn feed(
-        &self,
-        destination: &DestinationName,
-    ) -> Result<Option<Versioned<Feed>>, StoreError> {
-        self.0.feed_boxed(destination).await
-    }
-
-    async fn put_feed(
-        &self,
-        destination: &DestinationName,
-        feed: &Feed,
-        expected: Option<Version>,
-    ) -> Result<Written, StoreError> {
-        self.0.put_feed_boxed(destination, feed, expected).await
     }
 }
 

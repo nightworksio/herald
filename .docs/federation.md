@@ -82,3 +82,32 @@ keys = ["z6Mk…"]
 - `herald peer revoke <name>` removes the peer and adds its keys to `[federation] revoked`, and `--key` revokes one key and keeps the peer while it pins another. A peer pinning a revoked key does not load, nor does a key pinned for two peers.
 - A peer is reached through `[http]`, as a forge herald is configured for is. Each answer must carry a signature by a pinned key over its status, type, `Content-Digest` and the URL asked, made and expiring within `[server] inbound.replay_window` of now and living at most 20 minutes, and its body is read only up to `most` (`"2MiB"`, at most `"8MiB"`). `herald peer test` takes the key set it lists only once that signature and its digest hold.
 - `rotation` (`"manual"`, or `"signed"`), `rate` (`"120/m"`, at most `"480/m"`), `hops` (2, at most 8) and `private` (false) bound what a peer may send and receive.
+
+## A peer's feed as a source
+
+A `herald` source pulls a peer's feed, reading each page only once a key
+pinned for the peer signed the answer, and each envelope only once its
+proof holds:
+
+```toml
+[sources.upstream]
+kind = "herald"
+peer = "herald-example-net"
+feed = "releases"
+
+[[routes]]
+id = "upstream-releases"
+sources = ["upstream"]
+destination = "discord"
+template = "release"
+```
+
+- `peer` names a table of `[peers]`, and `feed` the feed its discovery document lists. An instance that is no peer is pulled with `url` (the feed's full URL) and `keys` (its Ed25519 Multikeys, given out of band) instead, within the bounds a peer takes where it says nothing.
+- The first pull is quiet: it remembers where the feed stands and announces nothing, unless `backfill` names how many of the newest envelopes to announce (at most `pages` pages of 80). Later pulls ask with `If-None-Match` and walk `?before=` down to the newest sequence read, at most `pages` (5, at most 20) a pull.
+- Every answer must be signed by a pinned key over its status, type, `Content-Digest` and the URL asked, as `herald peer test` checks, its body read only up to the peer's `most`. An answer that nothing changed (`304`) must be signed over its status, its `ETag` and the URL asked, its `ETag` the one asked for, and the cursor keeps an `ETag` only where the answer's signature covers it. Each envelope's `eddsa-jcs-2022` proof must hold for the instance that made it.
+- An envelope is taken only where its proof was made later than the newest the source took of its identity, so a replayed or relayed envelope never edits, withdraws or brings back an event taken under a newer proof.
+- `verify = "origin"` (the default) takes only envelopes the peer made itself. `verify = "hop"` also takes those it passes on from another peer of `[peers]`, proved by that peer's key, through at most the peer's `hops` instances and none twice.
+- Each event's identity is taken as `herald/<peer>/<identity>` (`herald/<domain>/<identity>` for an instance pulled by `url`), so a peer cannot pre-empt another source's event, and its origin names the peer (forge `herald`, host the peer's domain), never the forge it claims; the claimed forge, host and repository are the attributes `claimed_forge`, `claimed_host` and `claimed_repository`. `namespaces` grants the identities the peer may give as they are, each the start of identities up to a `/` such as `"github.com/123456"`: an identity it grants keeps the host and repository its origin names only where they lie under the same namespace (`"github.com/acme"` grants `github.com/acme/gate/v1` with the origin `github.com` `acme/gate`), its forge still `herald`, as no envelope proves its forge; and only one the peer made itself is ever granted. An event of a kind this config does not declare, or not of its kind's shape, is passed over.
+- A tombstone is checked like any envelope, and withdraws an identity the source took from every route taking the source as the route's `withdraw` says: only a post this source announced goes, never one another source announced under the same identity, and a route announcing each project as an actor of its own keeps its post. Its release entering again under a newer proof is announced anew.
+
+With `rotation = "signed"` on the peer, a key set its discovery document lists, proved by a key that stands for the peer under a later sequence and naming no revoked key, replaces the pinned keys while those stay pinned. A kept set naming a key `[federation] revoked` lists stands for nothing from the next pull on, and no revoked key ever verifies a page or an envelope. herald reads it again after the set's `refresh` (at most 7 days), and at once when an answer is signed by a key it does not trust, and keeps it in the store. `herald doctor` names every peer whose rotation is signed and, with `--online`, each set it took that herald.toml does not pin; `herald peer add --update` pins it. herald proves its own key set by its oldest key, so a peer pinning that key takes the newer ones.

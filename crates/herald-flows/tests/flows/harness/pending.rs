@@ -149,6 +149,31 @@ impl herald_ports::Published for Failing {
         }
         self.inner.put_feed(destination, feed, expected).await
     }
+
+    async fn peer_keys(
+        &self,
+        peer: &str,
+    ) -> Result<Option<Versioned<herald_core::PeerKeys>>, StoreError> {
+        if self.fault == Fault::ReadsPeerKeys {
+            return Err(broken());
+        }
+        self.inner.peer_keys(peer).await
+    }
+
+    async fn put_peer_keys(
+        &self,
+        peer: &str,
+        keys: &herald_core::PeerKeys,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesPeerKeys {
+            return Err(broken());
+        }
+        if self.fault == Fault::ConflictsPeerKeys {
+            return Ok(Written::Conflict);
+        }
+        self.inner.put_peer_keys(peer, keys, expected).await
+    }
 }
 
 impl herald_ports::Published for Refusing {
@@ -177,6 +202,22 @@ impl herald_ports::Published for Refusing {
         &self,
         _: &herald_core::DestinationName,
         _: &herald_core::Feed,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn peer_keys(
+        &self,
+        _: &str,
+    ) -> Result<Option<Versioned<herald_core::PeerKeys>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_peer_keys(
+        &self,
+        _: &str,
+        _: &herald_core::PeerKeys,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(self.0.clone())

@@ -52,6 +52,8 @@ mod preview;
 #[cfg(test)]
 mod projects;
 #[cfg(test)]
+mod pulls;
+#[cfg(test)]
 mod revise;
 #[cfg(test)]
 mod serving;

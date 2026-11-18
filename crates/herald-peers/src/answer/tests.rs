@@ -173,3 +173,106 @@ fn an_unsigned_answer_is_refused() {
         Unanswered::Refused(Refusal::Unsigned)
     );
 }
+
+fn unmodified(fields: &[(String, String)]) -> Answer<'_> {
+    Answer {
+        method: "GET",
+        url: URL,
+        status: 304,
+        fields,
+        body: &[],
+    }
+}
+
+fn tagged(components: Vec<Component>, key: &Key, etag: &str) -> Vec<(String, String)> {
+    let mut fields = vec![(ETAG.to_owned(), etag.to_owned())];
+    let covered = Covered {
+        components,
+        created: NOW,
+        expires: NOW + 300,
+        nonce: None,
+        keyid: method(DOMAIN, key),
+    };
+    fields.extend(covered.fields(&[7; 64]));
+    fields
+}
+
+#[test]
+fn an_unchanged_answer_signed_over_its_status_tag_and_url_is_read_without_a_digest() {
+    let keys = [[1; 32]];
+    let fields = tagged(demanded_unchanged().to_vec(), &keys[0], "\"1.0.2\"");
+    let (key, shown) =
+        unchanged(&unmodified(&fields), DOMAIN, &keys, bounds(), "\"1.0.2\"").unwrap();
+    assert_eq!(key, &keys[0]);
+    assert_eq!(
+        String::from_utf8(shown.base).unwrap(),
+        format!(
+            "\"@status\": 304\n\"etag\": \"1.0.2\"\n\"@target-uri\";req: {URL}\n\"@signature-params\": {}",
+            shown.covered.params()
+        )
+    );
+    assert_eq!(
+        unchanged(
+            &unmodified(&fields),
+            DOMAIN,
+            &[[2; 32]],
+            bounds(),
+            "\"1.0.2\""
+        )
+        .unwrap_err(),
+        Unanswered::Stranger(method(DOMAIN, &keys[0]))
+    );
+}
+
+#[test]
+fn an_unchanged_answer_of_another_tag_or_covering_too_little_is_refused() {
+    let keys = [[1; 32]];
+    let fields = tagged(demanded_unchanged().to_vec(), &keys[0], "\"1.0.2\"");
+    assert_eq!(
+        unchanged(&unmodified(&fields), DOMAIN, &keys, bounds(), "\"0.0.2\"").unwrap_err(),
+        Unanswered::Retagged
+    );
+    assert_eq!(
+        Unanswered::Retagged.to_string(),
+        "the answer says nothing changed of another entity tag than the one asked for"
+    );
+    for left_out in demanded_unchanged() {
+        let components = demanded_unchanged()
+            .into_iter()
+            .filter(|component| *component != left_out)
+            .collect();
+        let fields = tagged(components, &keys[0], "\"1.0.2\"");
+        assert_eq!(
+            unchanged(&unmodified(&fields), DOMAIN, &keys, bounds(), "\"1.0.2\"").unwrap_err(),
+            Unanswered::Refused(Refusal::Uncovered(left_out.name().to_owned()))
+        );
+    }
+    let unsigned = [(ETAG.to_owned(), "\"1.0.2\"".to_owned())];
+    assert_eq!(
+        unchanged(&unmodified(&unsigned), DOMAIN, &keys, bounds(), "\"1.0.2\"").unwrap_err(),
+        Unanswered::Refused(Refusal::Unsigned)
+    );
+    let mut late = bounds();
+    late.now += 1000;
+    assert_eq!(
+        unchanged(&unmodified(&fields), DOMAIN, &keys, late, "\"1.0.2\"").unwrap_err(),
+        Unanswered::Refused(Refusal::Expired)
+    );
+}
+
+#[test]
+fn an_answer_s_entity_tag_is_read_only_where_its_signature_covers_it() {
+    let keys = [[1; 32]];
+    let mut covering = demanded().to_vec();
+    covering.push(Component::Field(ETAG.to_owned()));
+    let mut fields = signed(covering, &keys[0], NOW, NOW + 300);
+    fields.push((ETAG.to_owned(), "\"3.0.2\"".to_owned()));
+    let read = answer(&fields, BODY);
+    let (_, shown) = checked(&read, DOMAIN, &keys, bounds()).unwrap();
+    assert_eq!(entity_tag(&read, &shown).as_deref(), Some("\"3.0.2\""));
+    let mut uncovered = signed(demanded().to_vec(), &keys[0], NOW, NOW + 300);
+    uncovered.push((ETAG.to_owned(), "\"3.0.2\"".to_owned()));
+    let read = answer(&uncovered, BODY);
+    let (_, shown) = checked(&read, DOMAIN, &keys, bounds()).unwrap();
+    assert_eq!(entity_tag(&read, &shown), None);
+}

@@ -220,6 +220,12 @@ impl Event {
         self.origin.as_deref()
     }
 
+    /// The source it reached herald through, where its origin names one.
+    #[must_use]
+    pub fn source(&self) -> Option<&SourceName> {
+        self.origin().and_then(|origin| origin.source.as_ref())
+    }
+
     /// The event, its origin naming `source` as what it reached herald
     /// through, where it has an origin.
     #[must_use]

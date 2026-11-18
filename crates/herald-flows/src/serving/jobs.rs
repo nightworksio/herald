@@ -4,7 +4,7 @@
 
 use herald_core::{Asked, DestinationName, Event, Listing, Origin, Scheme, SourceName, Visibility};
 use herald_kinds::Replying;
-use herald_ports::{Clock, Cursors, Http, Signer, Store};
+use herald_ports::{Clock, Cursors, Http, Signer, Store, Verifier};
 
 use super::Serving;
 use super::replies::{Answered, busy, unreleased};
@@ -283,7 +283,7 @@ pub async fn unplaced<S: Store, C, G, V, H, P, K>(
 /// `job` done, under the run name `run`: a delivery whose work stopped or
 /// failed is released, so its sender's next delivery of it is admitted
 /// (ADR-0013).
-pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+pub async fn work<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     job: Job,
     run: &str,
@@ -305,7 +305,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
 }
 
 /// What `job` did, under the run name `run`.
-async fn done<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+async fn done<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     job: Job,
     run: &str,
@@ -328,6 +328,7 @@ async fn done<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                         serving.config,
                         serving.connected,
                         serving.ports,
+                        serving.verifier,
                         (run, Some(&source)),
                     )
                     .await

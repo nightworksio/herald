@@ -88,10 +88,16 @@ fn round_signed<G: Signer>(
         signer,
         budget: Budget::UNBOUNDED,
     };
-    pollster::block_on(poll(config, connected, &ports, "r1"))
-        .into_iter()
-        .map(|swept| (swept.member, swept.outcome))
-        .collect()
+    pollster::block_on(poll(
+        config,
+        connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ))
+    .into_iter()
+    .map(|swept| (swept.member, swept.outcome))
+    .collect()
 }
 
 fn answer(script: &Script, answers: &[(&str, u16, &str)]) {

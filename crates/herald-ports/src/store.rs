@@ -177,7 +177,7 @@ impl Held {
             Self::Positions => "session positions",
             Self::Pending => "held events",
             Self::Tokens => "minted tokens",
-            Self::Published => "published key sets and feeds",
+            Self::Published => "published key sets, feeds and peers' key sets",
         }
     }
 

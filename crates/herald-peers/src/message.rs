@@ -141,7 +141,7 @@ pub struct Message<'a> {
 }
 
 impl Message<'_> {
-    fn value(&self, component: &Component) -> Result<String, Unsigned> {
+    pub(crate) fn value(&self, component: &Component) -> Result<String, Unsigned> {
         let missing = || Unsigned::Missing {
             component: component.name().to_owned(),
         };

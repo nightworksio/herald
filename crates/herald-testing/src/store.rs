@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use herald_core::{
     Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
-    Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
@@ -32,6 +32,7 @@ struct FakeState {
     tokens: BTreeMap<String, Versioned<KeptToken>>,
     published: BTreeMap<(), Versioned<PublishedKeys>>,
     feeds: BTreeMap<DestinationName, Versioned<Feed>>,
+    peer_keys: BTreeMap<String, Versioned<PeerKeys>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -488,6 +489,25 @@ impl Published for FakeStore {
             &mut state.feeds,
             destination.clone(),
             feed,
+            expected,
+        ))
+    }
+
+    async fn peer_keys(&self, peer: &str) -> Result<Option<Versioned<PeerKeys>>, StoreError> {
+        Ok(lock(&self.state).peer_keys.get(peer).cloned())
+    }
+
+    async fn put_peer_keys(
+        &self,
+        peer: &str,
+        keys: &PeerKeys,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.peer_keys,
+            peer.to_owned(),
+            keys,
             expected,
         ))
     }

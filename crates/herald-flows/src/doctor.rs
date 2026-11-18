@@ -14,9 +14,11 @@ use crate::acting::{Claimed, Projects};
 
 mod layer;
 mod online;
+mod peers;
 
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
 pub use online::{kept_tokens, keys, online, secrets};
+pub use peers::handed_over;
 
 /// A feature the config asks for that this herald cannot serve (ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -658,6 +660,7 @@ fn marked(config: &Config, findings: &mut Findings) {
             "the markers store keeps no held events; set prefer = \"first\", or choose a store that does".to_owned(),
         ));
     }
+    peers::unkept(config, &mut findings.gaps);
     if !config.federation.keys.is_empty() {
         findings.gaps.push(gap(
             "raising the key set's sequence with each new set",
@@ -779,6 +782,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     webhooked(config, &mut findings.notes);
     revising(config, &mut findings.notes);
     undeleted(config, &mut findings.notes);
+    peers::signed(config, &mut findings.notes);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);

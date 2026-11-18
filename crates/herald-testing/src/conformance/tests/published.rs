@@ -52,6 +52,32 @@ impl herald_ports::Published for Faulty {
         };
         self.inner.put_feed(destination, feed, expected).await
     }
+
+    async fn peer_keys(
+        &self,
+        peer: &str,
+    ) -> Result<Option<herald_ports::Versioned<herald_core::PeerKeys>>, StoreError> {
+        let kept = match self.fault {
+            Fault::SharesPeerKeys => self.inner.peer_keys("upstream").await?,
+            _ => self.inner.peer_keys(peer).await?,
+        };
+        Ok(kept.filter(|kept| self.fault != Fault::ForgetsPeerKeys || kept.value.sequence == 1))
+    }
+
+    async fn put_peer_keys(
+        &self,
+        peer: &str,
+        keys: &herald_core::PeerKeys,
+        expected: Option<herald_ports::Version>,
+    ) -> Result<herald_ports::Written, StoreError> {
+        let expected = match expected {
+            Some(_) if self.fault == Fault::OverwritesAnyPeerKeysVersion => {
+                self.inner.peer_keys(peer).await?.map(|kept| kept.version)
+            }
+            expected => expected,
+        };
+        self.inner.put_peer_keys(peer, keys, expected).await
+    }
 }
 
 #[test]
@@ -79,6 +105,24 @@ fn a_store_that_forgets_a_feed_shares_feeds_or_writes_over_any_version_is_refuse
         (
             Fault::OverwritesAnyFeedVersion,
             "a feed was written over a version it did not expect",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_forgets_a_peer_s_key_set_shares_them_or_writes_over_any_version_is_refused() {
+    refused(&[
+        (
+            Fault::ForgetsPeerKeys,
+            "a peer's key set read back was not the one written last",
+        ),
+        (
+            Fault::SharesPeerKeys,
+            "a peer's key set was kept as another peer's",
+        ),
+        (
+            Fault::OverwritesAnyPeerKeysVersion,
+            "a peer's key set was written over a version it did not expect",
         ),
     ]);
 }

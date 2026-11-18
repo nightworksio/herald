@@ -119,7 +119,13 @@ fn posted(config: &Config, answers: Vec<(&str, u16, String)>) -> usize {
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    let swept = pollster::block_on(poll(config, &connected, &ports, "r1"));
+    let swept = pollster::block_on(poll(
+        config,
+        &connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ));
     assert!(
         swept
             .iter()

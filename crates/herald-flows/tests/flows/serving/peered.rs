@@ -180,6 +180,17 @@ fn every_reason_a_document_is_not_read_reads_as_a_sentence() {
             Undiscovered::Unkeyed(Unkeyed::Shape("it is no JSON")),
             "the key set cannot be read: it is no JSON",
         ),
+        (
+            Undiscovered::Unrotated(herald_peers::keys::Unrotated::Stale {
+                sequence: 1,
+                pinned: 2,
+            }),
+            "the new key set's sequence 1 is not past the pinned set's 2",
+        ),
+        (
+            Undiscovered::Unhanded,
+            "the discovery document's key set's proof does not hold",
+        ),
     ] {
         assert_eq!(why.to_string(), said);
     }

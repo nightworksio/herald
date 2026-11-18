@@ -65,6 +65,7 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
         };
         let landed = self
             .fed_entry(key, entry.as_ref())
+            .through(event.source())
             .revising(revision)
             .landed(
                 Step::Post,

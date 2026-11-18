@@ -27,7 +27,9 @@ pub use clock::Clock;
 pub use credential::Credential;
 pub use crypto::{CryptoError, Sealing, Signer, Verifier};
 pub use dyn_store::DynStore;
-pub use erased::{Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, Erased, Owned};
+pub use erased::{
+    Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, DynVerifier, Erased, Owned,
+};
 pub use herald_core::Algorithm;
 pub use http::{Base, Http, HttpError, Method, Request, Response, USER_AGENT, WithBody};
 pub use keyring::{Keyring, KnownKey};

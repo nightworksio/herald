@@ -587,7 +587,13 @@ fn an_image_a_repository_s_package_signal_and_a_ghcr_source_both_see_is_announce
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    let swept = pollster::block_on(poll(&config, &connected, &ports, "r1"));
+    let swept = pollster::block_on(poll(
+        &config,
+        &connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ));
     let seen = script.seen.lock().unwrap().clone();
     let posted = seen
         .iter()
@@ -686,7 +692,13 @@ fn a_ghcr_image_announcing_as_an_unrelated_source_s_project_is_withheld() {
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    let swept = pollster::block_on(poll(&config, &connected, &ports, "r1"));
+    let swept = pollster::block_on(poll(
+        &config,
+        &connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ));
     assert!(
         swept.iter().any(|swept| swept.member.as_deref() == Some("other-image")
             && swept.outcome

@@ -4,6 +4,7 @@ use herald_core::{Profile, SecretRef, Size, Symbols, WaitOptions};
 use herald_kinds::{
     Bound, Destination, DestinationConfig, Fault, Feeding, Placed, Placement, Reached,
 };
+use herald_peers::feed;
 use herald_ports::Secret;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -39,13 +40,13 @@ impl FeedOptions {
     /// The most envelopes a feed keeps.
     pub const KEEP_ALLOWED: usize = 4 * Self::KEEP;
     /// The envelopes a page lists where `page` is unset.
-    pub const PAGE: usize = 20;
+    pub const PAGE: usize = feed::PAGE;
     /// The most envelopes a page lists.
-    pub const PAGE_ALLOWED: usize = 4 * Self::PAGE;
+    pub const PAGE_ALLOWED: usize = feed::PAGE_MOST;
     /// The bytes an envelope takes at most where `envelope` is unset.
-    pub const ENVELOPE: usize = 16 * Size::KIB;
+    pub const ENVELOPE: usize = feed::ENVELOPE;
     /// The most bytes `envelope` allows.
-    pub const ENVELOPE_ALLOWED: usize = 4 * Self::ENVELOPE;
+    pub const ENVELOPE_ALLOWED: usize = feed::ENVELOPE_MOST;
 
     /// The options, where every one is within its bound.
     ///

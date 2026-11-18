@@ -1,10 +1,10 @@
-//! A release's posts withdrawn as the operator asks, what a withdrawal
-//! would remove, and a withdrawal a run stopped part-way finished by a
-//! round (ADR-0048).
+//! A release's posts withdrawn as the operator asks, or as a tombstone of
+//! another herald's feed does (ADR-0049), what a withdrawal would remove,
+//! and a withdrawal a run stopped part-way finished by a round (ADR-0048).
 
 use herald_config::Config;
 use herald_core::{
-    Entry, HeldEvent, Identity, Key, Pending, RouteId, Step, Visibility, withdrawal,
+    Entry, HeldEvent, Identity, Key, Pending, RouteId, SourceName, Step, Visibility, withdrawal,
 };
 use herald_ports::{Clock, Http, Ledger, Signer, Store, Versioned, Waiting};
 
@@ -16,6 +16,10 @@ use crate::prepare::{Connected, PreparedRoute};
 /// Why a route announcing each project as an actor of its own withdraws
 /// nothing the operator asks it to.
 const ACTING: &str = "the route announces each project as an actor of its own, and the operator names no project, so only the forge's deletion of the release withdraws it";
+
+/// Why a route announcing each project as an actor of its own withdraws
+/// nothing a tombstone of another herald's feed withdraws.
+const TOMBSTONED: &str = "the route announces each project as an actor of its own, and a tombstone names no project, so its post stays";
 
 /// What a route of the operator's choice would withdraw of a release.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +80,38 @@ pub async fn withdraw<S: Store, C: Clock, G: Signer, H: Http>(
             let running = running(config, ports, (prepared, http), run);
             running
                 .withdraw(config, (identity, None), None, Asked::Operator)
+                .await
+        };
+        withdrawn.push(Announced {
+            route: prepared.config.route.id.clone(),
+            outcome,
+        });
+    }
+    withdrawn
+}
+
+/// What each route taking `source` did, as `run`, with `identity`, which
+/// another herald's feed withdrew by a tombstone (ADR-0049): its posts
+/// withdrawn as the route's `withdraw` says, where `source` announced them;
+/// nothing where the route announced nothing of it, or another source did.
+pub(crate) async fn tombstoned<S: Store, C: Clock, G: Signer, H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    ports: &Ports<'_, S, C, G>,
+    (source, identity): (&SourceName, &Identity),
+    run: &str,
+) -> Vec<Announced> {
+    let mut withdrawn = Vec::new();
+    let taking = connected
+        .routes
+        .iter()
+        .filter(|(prepared, _)| prepared.config.route.filter.sources.contains(source));
+    for (prepared, http) in taking {
+        let outcome = if acts(prepared) {
+            Outcome::Skipped(TOMBSTONED.to_owned())
+        } else {
+            running(config, ports, (prepared, http), run)
+                .withdraw(config, (identity, None), None, Asked::Tombstone(source))
                 .await
         };
         withdrawn.push(Announced {

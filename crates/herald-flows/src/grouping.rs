@@ -467,7 +467,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Grouped<'_, '_, S, C, G, H> {
         let ledger = self.run.ports.store.ledger();
         for event in events {
             let member = Key::derive(self.route(), event.identity());
-            let entry = Entry::grouped(member, key, shown(event), now);
+            let entry = Entry::grouped(member, key, shown(event), now).through(event.source());
             let expected = ledger
                 .entry(&member)
                 .await

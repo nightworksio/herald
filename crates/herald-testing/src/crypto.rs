@@ -7,7 +7,7 @@ use herald_ports::{Algorithm, CryptoError, Sealing, Secret, Signer, Verifier};
 pub struct FakeSigner;
 
 /// A verifier that accepts exactly the signatures [`FakeSigner`] makes for
-/// the key it is handed.
+/// the key it is handed, and the Ed25519-sized ones [`fake_ed25519`] makes.
 #[derive(Debug, Default)]
 pub struct FakeVerifier;
 
@@ -17,6 +17,28 @@ const ED25519_SUBJECT: [u8; 12] = [
 ];
 /// The bytes of an Ed25519 public key.
 const ED25519_LENGTH: usize = 32;
+
+/// The bytes of an Ed25519 signature.
+const SIGNATURE_LENGTH: usize = 64;
+
+/// A stand-in for the Ed25519 signature of `message` by the key whose
+/// public half is `key`: 64 bytes folded from both, so what checks a
+/// signature's length takes it, and [`FakeVerifier`] accepts it for `key`
+/// alone.
+#[must_use]
+pub fn fake_ed25519(key: &[u8], message: &[u8]) -> Vec<u8> {
+    let mut folded = vec![0_u8; SIGNATURE_LENGTH];
+    let signed = [key, message].concat();
+    for (round, chunk) in (0_u8..=u8::MAX)
+        .cycle()
+        .zip(signed.chunks(SIGNATURE_LENGTH))
+    {
+        for (slot, byte) in folded.iter_mut().zip(chunk) {
+            *slot = slot.rotate_left(3) ^ byte ^ round;
+        }
+    }
+    folded
+}
 
 fn spelled(algorithm: Algorithm, key: &[u8], message: &[u8]) -> Vec<u8> {
     [format!("{algorithm:?}").as_bytes(), key, message].join(&b'|')
@@ -104,12 +126,39 @@ impl Verifier for FakeVerifier {
         signature: &[u8],
     ) -> bool {
         spelled(algorithm, key, message) == signature
+            || (algorithm == Algorithm::Ed25519 && fake_ed25519(key, message) == signature)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_verifier_accepts_a_fake_ed25519_signature_for_its_key_alone() {
+        let signature = fake_ed25519(b"key", b"message");
+        assert_eq!(signature.len(), 64);
+        assert!(pollster::block_on(FakeVerifier.verify(
+            Algorithm::Ed25519,
+            b"key",
+            b"message",
+            &signature
+        )));
+        for (algorithm, key, message) in [
+            (Algorithm::HmacSha256, &b"key"[..], &b"message"[..]),
+            (Algorithm::Ed25519, b"kez", b"message"),
+            (Algorithm::Ed25519, b"key", b"messagf"),
+        ] {
+            assert!(!pollster::block_on(
+                FakeVerifier.verify(algorithm, key, message, &signature)
+            ));
+        }
+        assert_ne!(fake_ed25519(b"xy", b""), fake_ed25519(b"yx", b""));
+        assert_ne!(fake_ed25519(&[0; 64], b""), fake_ed25519(&[0; 65], b""));
+        let mut wrapped = vec![0; 63];
+        wrapped.push(9);
+        assert_eq!(fake_ed25519(&[1], &wrapped)[0], 0);
+    }
 
     #[test]
     fn the_verifier_accepts_the_signers_signature_and_nothing_else() {

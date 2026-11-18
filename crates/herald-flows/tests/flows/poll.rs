@@ -96,7 +96,13 @@ fn swept_within(
         signer: &FakeSigner,
         budget,
     };
-    let mut swept = pollster::block_on(poll(config, &connected, &ports, "r1"));
+    let mut swept = pollster::block_on(poll(
+        config,
+        &connected,
+        &ports,
+        &herald_testing::FakeVerifier,
+        "r1",
+    ));
     assert_eq!(swept.len(), 1);
     let swept = swept.remove(0);
     assert_eq!(swept.source, SourceName::new("gate"));

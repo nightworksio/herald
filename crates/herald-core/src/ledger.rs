@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::key::Key;
 use crate::profile::{Features, Pins, Threads};
 use crate::revision::Revision;
-use crate::route::Delivery;
+use crate::route::{Delivery, SourceName};
 
 /// One step of an announcement, in the order a destination takes them.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -166,6 +166,11 @@ pub struct Entry {
     /// is announced under an identity of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub withdrawn: Option<Timestamp>,
+    /// The source whose event it announced, where the run that first
+    /// claimed it knew; only that source's tombstone withdraws its post
+    /// (ADR-0049).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceName>,
 }
 
 impl Entry {
@@ -181,7 +186,18 @@ impl Entry {
             revision: None,
             group: None,
             withdrawn: None,
+            source: None,
         }
+    }
+
+    /// The entry, of an event that reached herald through `source`, where
+    /// it names no source yet.
+    #[must_use]
+    pub fn through(mut self, source: Option<&SourceName>) -> Self {
+        if self.source.is_none() {
+            self.source = source.cloned();
+        }
+        self
     }
 
     /// The entry of a member announced in the group `key` at `at`, showing
@@ -498,6 +514,17 @@ mod tests {
     use crate::key::{Identity, RouteId};
     use crate::profile::MentionStyle;
     use crate::route::{Pinning, Thread};
+
+    #[test]
+    fn an_entry_names_the_source_that_first_announced_it() {
+        let gate = SourceName::new("gate");
+        let entry = Entry::new(key()).through(None);
+        assert_eq!(entry.source, None);
+        let named = entry
+            .through(Some(&gate))
+            .through(Some(&SourceName::new("up")));
+        assert_eq!(named.source, Some(gate));
+    }
 
     fn key() -> Key {
         Key::derive(&RouteId::new("route"), &Identity::new("identity"))

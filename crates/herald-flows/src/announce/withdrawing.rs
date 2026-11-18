@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use herald_config::Config;
 use herald_core::{
     Announcement, Chore, Entry, Event, HeldEvent, Hold, Identity, Key, Pending, Pinning, Plan,
-    Schedule, Step, WITHDRAWN, plan, reissued, withdrawal,
+    Schedule, SourceName, Step, WITHDRAWN, plan, reissued, withdrawal,
 };
 use herald_ports::{
     Announcements, Clock, Http, Ledger, Notes, Pins, Schedules, Signer, Store, Versioned, Waiting,
@@ -25,6 +25,9 @@ const KEPT: &str = "the route keeps a deleted release's post, as its withdraw = 
 /// Why a route withdraws nothing: its destination deletes no posts.
 const UNDELETABLE: &str = "the destination deletes no posts, so the post stays";
 
+/// Why a tombstone withdraws nothing: another source announced the post.
+const FOREIGN: &str = "another source announced the release, so the tombstone leaves its post";
+
 /// Why a withdrawal sends nothing: the route announced nothing of it.
 const UNANNOUNCED: &str = "the route announced nothing of the release";
 
@@ -36,9 +39,13 @@ pub(crate) fn undeletable(route: &PreparedRoute) -> Option<&'static str> {
 
 /// Who asks for a release's posts to be withdrawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Asked {
+pub(crate) enum Asked<'a> {
     /// The forge, deleting the release: the route's `withdraw` decides.
     Forge,
+    /// Another herald's feed, by a tombstone the source took: the route's
+    /// `withdraw` decides, and only a post the source announced goes
+    /// (ADR-0049).
+    Tombstone(&'a SourceName),
     /// The operator, or a round finishing a withdrawal begun before:
     /// withdrawn whatever the route's `withdraw` says.
     Operator,
@@ -56,10 +63,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         config: &Config,
         (identity, project): (&Identity, Option<&str>),
         deletion: Option<HeldEvent>,
-        asked: Asked,
+        asked: Asked<'_>,
     ) -> Outcome {
         let delivery = &self.route.config.route.delivery;
-        if asked == Asked::Forge && delivery.withdraw == herald_core::Withdraw::Keep {
+        if asked != Asked::Operator && delivery.withdraw == herald_core::Withdraw::Keep {
             return Outcome::Skipped(KEPT.to_owned());
         }
         if let Some(why) = undeletable(self.route) {
@@ -69,6 +76,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Ok(live) => live,
             Err(reason) => return stopped(reason),
         };
+        if let Asked::Tombstone(source) = asked {
+            match self.foreign(&live, source).await {
+                Ok(false) => {}
+                Ok(true) => return Outcome::Skipped(FOREIGN.to_owned()),
+                Err(reason) => return stopped(reason),
+            }
+        }
         let hold = Hold::Withdraw {
             route: self.route.config.route.id.clone(),
             identity: identity.clone(),
@@ -95,6 +109,25 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             (Ok(()), false) => Outcome::Skipped(UNANNOUNCED.to_owned()),
             (Ok(()), true) => Outcome::Sent { steps: landed },
         }
+    }
+
+    /// Whether the route keeps a post of `live`, or its place in a group,
+    /// that another source than `source` announced, or one its entry does
+    /// not name.
+    async fn foreign(&self, live: &Identity, source: &SourceName) -> Result<bool, Stop> {
+        let key = Key::derive(&self.route.config.route.id, live);
+        let kept = self
+            .ports
+            .store
+            .ledger()
+            .entry(&key)
+            .await
+            .map_err(stored)?;
+        Ok(kept.is_some_and(|kept| {
+            let entry = &kept.value;
+            (entry.message(&Step::Post).is_some() || entry.group.is_some())
+                && entry.source.as_ref() != Some(source)
+        }))
     }
 
     /// The identity the route announces a release of `identity` under now:

@@ -244,7 +244,13 @@ body = "{{{{ event.body }}}}"
         budget: herald_flows::Budget::UNBOUNDED,
     };
     (
-        pollster::block_on(poll(&config, &connected, &ports, "r1")),
+        pollster::block_on(poll(
+            &config,
+            &connected,
+            &ports,
+            &herald_testing::FakeVerifier,
+            "r1",
+        )),
         http,
     )
 }

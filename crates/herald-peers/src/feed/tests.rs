@@ -298,3 +298,36 @@ fn a_listed_envelope_shows_what_it_carries_whatever_its_proof() {
     assert_eq!(identity(&proved), "forge.example/1/v1");
     assert_eq!(identity(&json!({ "identity": 1 })), "");
 }
+
+#[test]
+fn a_feed_s_url_names_the_instance_it_is_served_by() {
+    let url = feed_of("https://herald.example/h", "releases/all");
+    assert_eq!(
+        url,
+        "https://herald.example/h/herald/v1/feeds/releases%2Fall"
+    );
+    assert_eq!(
+        feed_at(&url),
+        Some(FeedAt {
+            feed: url.clone(),
+            instance: "https://herald.example/h".to_owned(),
+            domain: "herald.example".to_owned(),
+        })
+    );
+    assert_eq!(
+        feed_at("https://herald.example/herald/v1/feeds/releases/"),
+        Some(FeedAt {
+            feed: "https://herald.example/herald/v1/feeds/releases".to_owned(),
+            instance: "https://herald.example".to_owned(),
+            domain: "herald.example".to_owned(),
+        })
+    );
+    for other in [
+        "https://herald.example/herald/v1/feeds/",
+        "https://herald.example/herald/v1/feeds/a/b",
+        "https://herald.example/herald/v1/releases",
+        "http://herald.example/herald/v1/feeds/releases",
+    ] {
+        assert_eq!(feed_at(other), None, "{other}");
+    }
+}
