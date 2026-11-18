@@ -236,6 +236,10 @@ pub(crate) struct KindFile {
     /// reads them.
     #[serde(default)]
     pub(crate) attributes: BTreeMap<String, AttributeSpec>,
+    /// Whether its events belong in private places only, so a route taking
+    /// them must say whether its place is private (`[doctor] private_kinds`).
+    #[serde(default)]
+    pub(crate) private: bool,
 }
 
 /// What a route says whatever its destination.
@@ -282,8 +286,10 @@ pub(crate) struct RouteFile {
     /// Whether its place is private, so it may take a private or internal
     /// repository's events; a place is public where absent, and a config
     /// sending such events to it does not load (`[doctor] private_to_public`).
-    #[serde(default)]
-    pub(crate) private: bool,
+    /// A route taking a private kind, such as `alert`, says it either way:
+    /// `false` sends them to a public place on purpose (`[doctor]
+    /// private_kinds`).
+    pub(crate) private: Option<bool>,
     /// What it does with a Release whose tag it already announced: edits
     /// the tag's post to it, or posts it anew where the destination cannot
     /// edit (`edit`); posts it anew (`post`); or leaves the tag's post
@@ -658,6 +664,11 @@ pub(crate) struct DoctorFile {
     /// the config does not load and no such event reaches it; "warn" to load
     /// it and have doctor name it; or "allow".
     pub(crate) private_to_public: Option<crate::config::Guard>,
+    /// What becomes of a route that takes a private kind's events, such as
+    /// `alert`'s, and says nothing of whether its place is private:
+    /// "refuse" where absent, "warn" to load it and have doctor name it, or
+    /// "allow".
+    pub(crate) private_kinds: Option<crate::config::Guard>,
 }
 
 /// `[run]`: how many routes and sources a run goes through at once.

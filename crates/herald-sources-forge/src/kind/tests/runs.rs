@@ -156,7 +156,7 @@ fn a_run_delivered_to_an_owner_source_is_its_member_s_where_the_owner_holds_and_
 }
 #[test]
 fn a_source_s_kinds_follow_every_signal_it_may_announce() {
-    let cases: [(&[Signal], &[Kind]); 8] = [
+    let cases: [(&[Signal], &[Kind]); 10] = [
         (&[Signal::Release], &[Kind::RELEASE]),
         (&[Signal::Tag, Signal::Run], &[Kind::RELEASE, Kind::RUN]),
         (&[Signal::Package], &[Kind::PACKAGE_VERSION]),
@@ -173,7 +173,12 @@ fn a_source_s_kinds_follow_every_signal_it_may_announce() {
             &[Signal::Release, Signal::Package],
             &[Kind::RELEASE, Kind::PACKAGE_VERSION],
         ),
-        (&[], &[Kind::RELEASE]),
+        (&[], &[]),
+        (&[Signal::Alert], &[Kind::ALERT]),
+        (
+            &[Signal::Alert, Signal::Tag, Signal::Release],
+            &[Kind::RELEASE, Kind::ALERT],
+        ),
     ];
     for (signals, kinds) in cases {
         assert_eq!(source(ran(signals)).kinds(), kinds, "{signals:?}");

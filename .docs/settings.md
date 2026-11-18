@@ -214,6 +214,7 @@ How doctor judges the config.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `doctor.private_kinds` | [Guard](#guard) | What becomes of a route that takes a private kind's events, such as `alert`'s, and says nothing of whether its place is private: "refuse" where absent, "warn" to load it and have doctor name it, or "allow". |
 | `doctor.private_to_public` | [Guard](#guard) | What becomes of a route that takes a private or internal repository's events and is not `private`: "refuse" where absent, so the config does not load and no such event reaches it; "warn" to load it and have doctor name it; or "allow". |
 
 ## `federation`
@@ -293,6 +294,7 @@ The kinds of event the config declares beside those herald ships, by name; its a
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `kinds.<name>.private` | boolean | Whether its events belong in private places only, so a route taking them must say whether its place is private (`[doctor] private_kinds`). |
 | `kinds.<name>.versioned` | boolean | Whether its events carry a version, as `attributes.version`, and may be pre-releases, as `attributes.prerelease`. |
 
 ## `markers`
@@ -366,7 +368,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | The opt-in role members subscribe to, where the route offers one. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
@@ -415,7 +417,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -459,7 +461,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
@@ -503,7 +505,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
@@ -550,7 +552,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -593,7 +595,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -673,6 +675,10 @@ A GitHub repository's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>` | table | A GitHub repository's releases, tags and packages. |
+| `sources.<name>.alerts` | table | Which security alerts are announced where the signals take "alert": what raised them, what they did and how severe they are; every tool's raised and reopened alerts where absent. |
+| `sources.<name>.alerts.actions` | array of [AlertAction](#alertaction) | What an alert did that is announced: `created`, `reopened`, `confirmed` (GitLab), `fixed`, `dismissed`; `["created", "reopened"]` where absent. |
+| `sources.<name>.alerts.severities` | array of [Severity](#severity) | How severe an alert is for it to be announced; every alert, those with no severity too, where empty. |
+| `sources.<name>.alerts.tools` | array of [Tool](#tool) | What raised the alerts announced; every tool the forge raises alerts with where absent. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
@@ -761,6 +767,10 @@ A GitLab project's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>` | table | A GitLab project's releases, tags and packages. |
+| `sources.<name>.alerts` | table | Which security alerts are announced where the signals take "alert": what raised them, what they did and how severe they are; every tool's raised and reopened alerts where absent. |
+| `sources.<name>.alerts.actions` | array of [AlertAction](#alertaction) | What an alert did that is announced: `created`, `reopened`, `confirmed` (GitLab), `fixed`, `dismissed`; `["created", "reopened"]` where absent. |
+| `sources.<name>.alerts.severities` | array of [Severity](#severity) | How severe an alert is for it to be announced; every alert, those with no severity too, where empty. |
+| `sources.<name>.alerts.tools` | array of [Tool](#tool) | What raised the alerts announced; every tool the forge raises alerts with where absent. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
@@ -849,6 +859,10 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>` | table | A Forgejo or Gitea repository's releases, tags and packages. |
+| `sources.<name>.alerts` | table | Which security alerts are announced where the signals take "alert": what raised them, what they did and how severe they are; every tool's raised and reopened alerts where absent. |
+| `sources.<name>.alerts.actions` | array of [AlertAction](#alertaction) | What an alert did that is announced: `created`, `reopened`, `confirmed` (GitLab), `fixed`, `dismissed`; `["created", "reopened"]` where absent. |
+| `sources.<name>.alerts.severities` | array of [Severity](#severity) | How severe an alert is for it to be announced; every alert, those with no severity too, where empty. |
+| `sources.<name>.alerts.tools` | array of [Tool](#tool) | What raised the alerts announced; every tool the forge raises alerts with where absent. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
@@ -1358,6 +1372,10 @@ The version of the config: 1.
 
 ## Types
 
+### AlertAction
+
+What an alert did that is announced.
+
 ### Approve
 
 Who decides whether a follow of herald's actors is taken.
@@ -1440,7 +1458,7 @@ Where `herald server` keeps the keys inbound activities are checked with.
 
 ### Kind
 
-What kind of thing an event announces: release, package-version, feed-entry, message, run, or a kind the config declares.
+What kind of thing an event announces: release, package-version, feed-entry, message, run, alert, or a kind the config declares.
 
 ### LateRelease
 
@@ -1526,6 +1544,10 @@ What a run did that is announced.
 
 What a run is read from.
 
+### Severity
+
+How severe an alert is, in lowercase on every forge.
+
 ### Signal
 
 What a source announces of a repository.
@@ -1543,6 +1565,10 @@ How Slack carries commands to herald.
 How Docker Hub lists a repository's tags.
 
 ### TokenHash
+
+### Tool
+
+What raised an alert, in words every forge's alerts are read as.
 
 ### Transport
 

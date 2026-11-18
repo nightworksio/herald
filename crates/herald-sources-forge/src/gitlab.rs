@@ -116,6 +116,13 @@ pub(crate) fn graphql(api: &str) -> String {
     }
 }
 
+/// The web root of the instance whose REST API is `api`: `api` without
+/// its `/api/v4`.
+pub(crate) fn web(api: &str) -> String {
+    let api = api.trim_end_matches('/');
+    api.strip_suffix("/api/v4").unwrap_or(api).to_owned()
+}
+
 /// The base URL of a project's API, named by its full path.
 pub(crate) fn project(api: &str, path: &str) -> String {
     format!("{api}/projects/{}", unreserved(path))

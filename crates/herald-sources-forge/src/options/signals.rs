@@ -60,7 +60,7 @@ impl SourceOptions {
         {
             if signals.as_ref().is_some_and(Vec::is_empty) {
                 return Err(format!(
-                    "{at}signals names no signal; give release, tag, package, run or several, or remove it"
+                    "{at}signals names no signal; give release, tag, package, run, alert or several, or remove it"
                 ));
             }
             if forge == Forge::GitLab && prerelease == Some(PrereleaseRule::Flag) {

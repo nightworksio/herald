@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::SourceName;
+use herald_core::{Kind, SourceName};
 use herald_kinds::Source;
 
 use super::route::Read;
-use super::{Loader, Value};
+use super::{Loader, Value, list};
 use crate::config::{Doctor, Guard};
 use crate::kinds::At;
 
@@ -81,6 +81,29 @@ impl Loader<'_> {
                     ));
                 }
             }
+        }
+    }
+
+    /// Each route that takes a private kind's events without saying whether
+    /// its place is private, refused where `[doctor] private_kinds`
+    /// refuses.
+    pub(super) fn unstated(&mut self, routes: &[Read], doctor: Doctor) {
+        if doctor.private_kinds != Guard::Refuse {
+            return;
+        }
+        for read in routes
+            .iter()
+            .filter(|read| !read.config.unstated.is_empty())
+        {
+            let kinds: Vec<&str> = read.config.unstated.iter().map(Kind::as_str).collect();
+            self.error(
+                &read.id_span,
+                &read.path,
+                format!(
+                    "this route takes {} events, which belong in private places, and says nothing of whether its place is private; set private = true where it is, private = false to send them to a public place on purpose, or set [doctor] private_kinds = \"warn\"",
+                    list(&kinds)
+                ),
+            );
         }
     }
 

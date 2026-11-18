@@ -159,7 +159,7 @@ impl Templates {
                 Some(attribute) => TemplateError {
                     name: name.to_owned(),
                     reason: format!(
-                        "it prints event.attributes.{attribute}, which a {} event does not carry",
+                        "it prints event.attributes.{attribute}, which {} events do not carry",
                         context.event.kind()
                     ),
                 },

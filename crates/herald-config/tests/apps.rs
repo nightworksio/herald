@@ -34,6 +34,7 @@ sources = ["ci"]
 destination = "discord"
 channel = "1566200000000000200"
 template = "t"
+private = false
 
 [[routes]]
 id = "everything"
@@ -41,6 +42,7 @@ sources = ["gate", "ci"]
 destination = "discord"
 channel = "1566200000000000300"
 template = "t"
+private = false
 
 [templates.t]
 title = "{{ event.title }}"
@@ -153,7 +155,7 @@ body = "{{ event.body }}"
         );
         assert!(
             errors(&kinds).contains(
-                "routes[1].versions: \"feed-entry\", \"message\", \"run\" events carry no version"
+                "routes[1].versions: \"alert\", \"feed-entry\", \"message\", \"run\" events carry no version"
             ),
             "{}",
             errors(&kinds)

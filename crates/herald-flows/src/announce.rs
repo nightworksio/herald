@@ -700,6 +700,10 @@ pub async fn announce<S: Store, C: Clock, G: Signer, H: Http>(
     .await
 }
 
+/// Why an event of a private kind reaches no route that says nothing of
+/// whether its place is private.
+const UNPLACED: &str = "the event's kind belongs in private places, and the route says nothing of whether its place is private";
+
 /// The routes an event may reach beside what each route takes: those an
 /// app may announce to, and those an owner's member names.
 #[derive(Debug, Clone, Copy, Default)]
@@ -726,7 +730,9 @@ impl<'a> Within<'a> {
 /// names beside or in place of its source's; and to the `private` routes
 /// alone where the event is not public, or is an owner's member's and says
 /// nothing of who may see it, and `[doctor] private_to_public` refuses
-/// (ADR-0029). As many routes as `[run] routes` says are announced
+/// (ADR-0029); an event of a private kind is skipped by a route that says
+/// nothing of whether its place is private, where `[doctor] private_kinds`
+/// refuses. As many routes as `[run] routes` says are announced
 /// to at once, one at a time where the store writes one record at a time,
 /// and what the project last announced is kept for each route in the
 /// file's order (ADR-0025). A route that groups gathers the event into the
@@ -768,6 +774,9 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
         .collect();
     let now = ports.clock.now();
     let outcomes: Vec<Outcome> = stream::iter(taking.iter().map(|(route, http)| async move {
+        if !config.places(&route.config, event.kind()) {
+            return Outcome::Skipped(UNPLACED.to_owned());
+        }
         let route = match acting((connected, ports.store, now), route, (source, event)).await {
             Ok(route) => route,
             Err(outcome) => return outcome,

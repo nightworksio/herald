@@ -369,6 +369,7 @@ impl Loader<'_> {
             .and_then(|value| self.typed::<DoctorFile>(value, "doctor"))
             .map_or_else(Doctor::default, |file| Doctor {
                 private_to_public: file.private_to_public.unwrap_or_default(),
+                private_kinds: file.private_kinds.unwrap_or_default(),
             })
     }
 

@@ -158,6 +158,15 @@ impl Loader<'_> {
             .any(|spec| spec.attributes.contains_key(name))
     }
 
+    /// The private kinds of `taken`, the kinds a route takes.
+    fn private_kinds(&self, taken: &BTreeSet<Kind>) -> Vec<Kind> {
+        taken
+            .iter()
+            .filter(|kind| self.specs.get(kind).is_some_and(|spec| spec.private))
+            .cloned()
+            .collect()
+    }
+
     /// The kinds of event `route` takes, each known, where its versions
     /// can match them.
     fn sample_kinds(
@@ -204,7 +213,7 @@ impl Loader<'_> {
                         Vec::new()
                     };
                 named
-                    .map(|source| source.kinds().to_vec())
+                    .map(|source| source.kinds())
                     .unwrap_or_default()
                     .into_iter()
                     .chain(posted)
@@ -516,7 +525,7 @@ impl Loader<'_> {
             ..profile
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
-        let private = route.private;
+        let (private, stated) = (route.private.unwrap_or_default(), route.private.is_some());
         let (group, group_key) = self.grouping(route.group, (&path, &options, feeds)).unzip();
         let delivery = Delivery {
             crosspost: route.crosspost,
@@ -553,13 +562,15 @@ impl Loader<'_> {
                 .get(&SourceName::new(name.get_ref()))
                 .is_some_and(|source| source.origins())
         });
+        let filter_sources: Vec<SourceName> = route
+            .sources
+            .iter()
+            .map(|source| SourceName::new(source.get_ref()))
+            .collect();
+        let filter_kinds: Vec<Kind> = route.kinds.into_iter().map(Spanned::into_inner).collect();
         let filter = Filter {
-            sources: route
-                .sources
-                .iter()
-                .map(|source| SourceName::new(source.get_ref()))
-                .collect(),
-            kinds: route.kinds.into_iter().map(Spanned::into_inner).collect(),
+            sources: filter_sources,
+            kinds: filter_kinds,
             prereleases: route.prereleases,
             versions: route
                 .versions
@@ -577,6 +588,12 @@ impl Loader<'_> {
             options,
             profile,
             private,
+            stated,
+            unstated: if stated {
+                Vec::new()
+            } else {
+                self.private_kinds(&sample_kinds)
+            },
         };
         Some(Read {
             config,

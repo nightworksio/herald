@@ -352,6 +352,7 @@ destination = "fedi"
 template = "t"
 actor = "{{{{ event.project }}}}"
 withdraw = "delete"
+private = false
 [templates.t]
 title = "{{{{ event.title }}}}"
 body = "{{{{ event.body }}}}"

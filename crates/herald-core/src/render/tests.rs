@@ -380,7 +380,7 @@ fn an_attribute_the_event_lacks_is_named_where_the_template_prints_it() {
     .unwrap_err();
     assert_eq!(
         error.reason,
-        "it prints event.attributes.region, which a release event does not carry"
+        "it prints event.attributes.region, which release events do not carry"
     );
     let error = render(
         "{{ event.attributes.version }} {{ event.attributes.region_2 }}",
@@ -389,7 +389,7 @@ fn an_attribute_the_event_lacks_is_named_where_the_template_prints_it() {
     .unwrap_err();
     assert_eq!(
         error.reason,
-        "it prints event.attributes.region_2, which a release event does not carry"
+        "it prints event.attributes.region_2, which release events do not carry"
     );
     let reasons: Vec<String> = [
         "{{ event.attributes.version }} {{ nothing.here }}",

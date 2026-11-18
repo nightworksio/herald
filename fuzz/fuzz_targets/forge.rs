@@ -3,8 +3,10 @@
 //! an owner's webhook names the member its event's identity names, and its
 //! events, feed and GraphQL answers name members by their numeric ids; a
 //! ghcr source's listing names images with a project, and each version's
-//! identity names its registry, owner and image; and a run, delivered or
-//! polled, is named as a run of its repository's id.
+//! identity names its registry, owner and image; a run, delivered or
+//! polled, is named as a run of its repository's id; and an alert,
+//! delivered or polled, is named as an alert of its repository's id and
+//! carries only the attributes an alert carries.
 
 #![no_main]
 
@@ -18,7 +20,8 @@ use herald_ports::{Http, HttpError, Request, Response, Secret};
 use herald_sources_forge::{Forge, Hooked, Repository, Signals};
 use herald_core::Signal;
 use herald_sources_forge::{
-    ForgeSource, GhcrOptions, GhcrSource, RunFrom, Runs, SourceOptions, Transport, ci_run,
+    AlertAction, Alerts, ForgeSource, GhcrOptions, GhcrSource, RunFrom, Runs, SourceOptions,
+    Transport, ci_run,
 };
 use herald_wire::PARSE_LIMIT;
 use libfuzzer_sys::fuzz_target;
@@ -243,10 +246,89 @@ fn runs(bytes: &[u8]) {
     }
 }
 
+/// The attributes an alert's event may carry.
+const ALERTED: [&str; 10] = [
+    "action",
+    "ecosystem",
+    "number",
+    "package",
+    "path",
+    "resolution",
+    "rule",
+    "severity",
+    "signal",
+    "tool",
+];
+
+/// That `event` is an alert of the repository of id `id`, delivered or
+/// polled, carrying only what an alert carries.
+fn alerted(event: &Event, id: &str) {
+    assert!(
+        event.identity().as_str().contains(&format!("/{id}/alert/")),
+        "{event:?}"
+    );
+    assert!(
+        event
+            .attributes()
+            .keys()
+            .all(|name| ALERTED.contains(&name.as_str())),
+        "{event:?}"
+    );
+}
+
+/// What a source announcing every alert of GitHub and GitLab makes of
+/// `bytes` as an alert's delivery and its alerts' listings.
+fn alerts(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let headers = [
+        ("X-GitHub-Event", "code_scanning_alert"),
+        ("X-GitHub-Event", "dependabot_alert"),
+        ("X-GitHub-Event", "secret_scanning_alert"),
+        ("X-Gitlab-Event", "Vulnerability Hook"),
+    ];
+    for forge in [Forge::GitHub, Forge::GitLab] {
+        let source = ForgeSource {
+            forge,
+            options: SourceOptions {
+                repository: Some("fuzzer/fuzzed".to_owned()),
+                signals: Some(vec![Signal::Alert]),
+                alerts: Some(Alerts {
+                    actions: Some(vec![
+                        AlertAction::Created,
+                        AlertAction::Reopened,
+                        AlertAction::Confirmed,
+                        AlertAction::Fixed,
+                        AlertAction::Dismissed,
+                    ]),
+                    ..Alerts::default()
+                }),
+                ..SourceOptions::default()
+            },
+            names: None,
+        };
+        for header in headers {
+            if let Ok(Hooked::Event(event)) = source.hooked(&[header], bytes) {
+                let origin = event.origin().expect("a delivered alert names its origin");
+                alerted(&event, &origin.id);
+            }
+        }
+        if let Polling::One(poll) = source.poller(None, false)
+            && let Ok(Some(polled)) =
+                pollster::block_on(poll.polled(&http, None, jiff::Timestamp::UNIX_EPOCH))
+        {
+            for event in &polled.events {
+                let origin = event.origin().expect("a polled alert names its origin");
+                alerted(event, &origin.id);
+            }
+        }
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
     owned(bytes);
     images(bytes);
     runs(bytes);
+    alerts(bytes);
     let response = Response {
         status: 200,
         headers: Vec::new(),

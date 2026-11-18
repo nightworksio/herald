@@ -724,6 +724,12 @@ impl Origin {
         self.forge
     }
 
+    /// The repository's full path.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.repository
+    }
+
     /// The base URL of everything it asks.
     #[must_use]
     pub fn api(&self) -> &str {

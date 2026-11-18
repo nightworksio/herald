@@ -6,6 +6,7 @@
 //! releases API is described as requests the flow sends and responses it
 //! hands back.
 
+mod alerts;
 mod delivered;
 mod events;
 mod forge;
@@ -31,10 +32,11 @@ pub use ghcr::{GhcrKind, GhcrOptions, GhcrSource};
 pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
 pub use options::{
-    Conclusion, Discovery, EDITS_DEPTH, FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH,
-    GRAPHQL_BATCH_ALLOWED, KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED,
-    MemberHooks, Members, Override, PackageVisibility, RUN_ACTIONS, RUN_FROM, RunAction, RunFrom,
-    Runs, Signals, SourceOptions, TAG_WINDOW, Transport, Values,
+    ALERT_ACTIONS, AlertAction, Alerts, Conclusion, Discovery, EDITS_DEPTH, FEED_PAGE, FEED_PAGES,
+    GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS,
+    MOST_MEMBERS_ALLOWED, MemberHooks, Members, Override, PackageVisibility, RUN_ACTIONS, RUN_FROM,
+    RunAction, RunFrom, Runs, Severity, Signals, SourceOptions, TAG_WINDOW, Tool, Transport,
+    Values,
 };
 pub use polled::tag_event_of;
 pub use runs::{ci_run, of_a_run};

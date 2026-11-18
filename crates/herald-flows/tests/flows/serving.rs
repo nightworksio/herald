@@ -59,12 +59,14 @@ sources = ["ci"]
 destination = "fedi"
 template = "t"
 actor = "deploys"
+private = false
 [[routes]]
 id = "elsewhere"
 sources = ["ci"]
 destination = "fedi"
 template = "t"
 actor = "deploys"
+private = false
 [apps.ci]
 tokens = ["sha256:TOKEN_HASH"]
 projects = ["herald", "night works"]

@@ -46,8 +46,8 @@ impl SourceConfig for Plain {
         self.token.as_ref()
     }
 
-    fn kinds(&self) -> &'static [Kind] {
-        &[Kind::RELEASE]
+    fn kinds(&self) -> Vec<Kind> {
+        vec![Kind::RELEASE]
     }
 
     fn backfill(&self) -> usize {
@@ -75,7 +75,7 @@ impl SourceConfig for Routing {
         self.0.token()
     }
 
-    fn kinds(&self) -> &'static [Kind] {
+    fn kinds(&self) -> Vec<Kind> {
         self.0.kinds()
     }
 

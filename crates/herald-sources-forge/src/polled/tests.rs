@@ -71,6 +71,7 @@ fn releases(
         list: crate::packages::PackageList::Own,
         visibility: None,
         runs: crate::options::RunChoice::default(),
+        alerts: crate::SourceOptions::default().alert_choice(crate::Forge::GitHub),
     }
 }
 
@@ -612,4 +613,56 @@ fn a_repository_s_runs_are_polled_with_their_own_validators_and_the_rest_unasked
     let quiet = ScriptedHttp::new(vec![unchanged(), unchanged()]);
     assert_eq!(polled(&source, &quiet, Some(&cursor)).unwrap(), None);
     assert_eq!(quiet.asked().len(), 2);
+}
+
+#[test]
+fn a_repository_s_alerts_are_polled_beside_its_runs_each_under_its_own_validators() {
+    let source = Releases {
+        alerts: SourceOptions {
+            alerts: Some(crate::Alerts {
+                tools: Some(vec![crate::Tool::CodeScanning]),
+                ..crate::Alerts::default()
+            }),
+            ..SourceOptions::default()
+        }
+        .alert_choice(Forge::GitHub),
+        ..releases(
+            Forge::GitHub,
+            &[Signal::Release, Signal::Run, Signal::Alert],
+            (PrereleaseRule::Either, 0),
+        )
+    };
+    let alert = json!({
+        "number": 3, "state": "open", "html_url": "https://forge.example/o/r/security/code-scanning/3",
+        "created_at": "2026-11-02T09:00:00Z"
+    });
+    let http = ScriptedHttp::new(vec![
+        unchanged(),
+        unchanged(),
+        answer(200, &json!([alert]), Some("\"alerts\"")),
+        repository(Forge::GitHub),
+    ]);
+    let cursor = Cursor {
+        etag: Some("\"releases\"".to_owned()),
+        ..Cursor::default()
+    };
+    let found = polled(&source, &http, Some(&cursor)).unwrap().unwrap();
+    assert_eq!(
+        identities(&found),
+        [(
+            "forge.example/7/alert/code-scanning/3/created",
+            Some(Signal::Alert)
+        )]
+    );
+    assert_eq!(
+        found.listings["alert/code-scanning"].etag.as_deref(),
+        Some("\"alerts\"")
+    );
+    assert_eq!(
+        http.asked()[2].0,
+        "https://forge.example/api/repos/o/r/code-scanning/alerts?sort=updated&direction=desc&per_page=30"
+    );
+    let quiet = ScriptedHttp::new(vec![unchanged(), unchanged(), unchanged()]);
+    assert_eq!(polled(&source, &quiet, Some(&cursor)).unwrap(), None);
+    assert_eq!(quiet.asked().len(), 3);
 }

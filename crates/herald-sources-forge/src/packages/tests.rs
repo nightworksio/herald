@@ -72,6 +72,7 @@ fn releases(forge: Forge, chosen: SourceOptions) -> Releases {
         list: super::PackageList::Own,
         visibility: None,
         runs: crate::options::RunChoice::default(),
+        alerts: crate::SourceOptions::default().alert_choice(crate::Forge::GitHub),
     }
 }
 

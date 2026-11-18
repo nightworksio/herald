@@ -188,9 +188,8 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
-          "type": "boolean",
-          "default": false
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
         },
         "sources": {
           "description": "The sources it takes events from.",
@@ -236,6 +235,64 @@
         "destination",
         "actor"
       ]
+    },
+    "AlertAction": {
+      "description": "What an alert did that is announced.",
+      "oneOf": [
+        {
+          "description": "It was raised.",
+          "type": "string",
+          "const": "created"
+        },
+        {
+          "description": "It was opened again after it closed.",
+          "type": "string",
+          "const": "reopened"
+        },
+        {
+          "description": "Someone confirmed it is real: GitLab's confirmed vulnerability.",
+          "type": "string",
+          "const": "confirmed"
+        },
+        {
+          "description": "What it found was fixed: a secret scanning alert's secret revoked,\na GitLab vulnerability resolved.",
+          "type": "string",
+          "const": "fixed"
+        },
+        {
+          "description": "It was dismissed, or a secret scanning alert resolved otherwise\nthan by revoking its secret.",
+          "type": "string",
+          "const": "dismissed"
+        }
+      ]
+    },
+    "Alerts": {
+      "description": "Which alerts a source announces, where its signals take \"alert\".",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What an alert did that is announced: `created`, `reopened`,\n`confirmed` (GitLab), `fixed`, `dismissed`; `[\"created\",\n\"reopened\"]` where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AlertAction"
+          }
+        },
+        "severities": {
+          "description": "How severe an alert is for it to be announced; every alert, those\nwith no severity too, where empty.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Severity"
+          }
+        },
+        "tools": {
+          "description": "What raised the alerts announced; every tool the forge raises\nalerts with where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Tool"
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "Announce": {
       "description": "`[announce]`: how a run holds and keeps an announcement.",
@@ -527,6 +584,11 @@
             "$ref": "#/$defs/DeclaredLink"
           },
           "maxItems": 24
+        },
+        "private": {
+          "description": "Whether its events belong in private places only, so a route taking\nthem must say whether its place is private (`[doctor] private_kinds`).",
+          "type": "boolean",
+          "default": false
         },
         "versioned": {
           "description": "Whether its events carry a version, as `attributes.version`, and may\nbe pre-releases, as `attributes.prerelease`.",
@@ -999,9 +1061,8 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
-          "type": "boolean",
-          "default": false
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
         },
         "sources": {
           "description": "The sources it takes events from.",
@@ -1100,6 +1161,10 @@
       "description": "`[doctor]`: how doctor judges the config.",
       "type": "object",
       "properties": {
+        "private_kinds": {
+          "description": "What becomes of a route that takes a private kind's events, such as\n`alert`'s, and says nothing of whether its place is private:\n\"refuse\" where absent, \"warn\" to load it and have doctor name it, or\n\"allow\".",
+          "$ref": "#/$defs/Guard"
+        },
         "private_to_public": {
           "description": "What becomes of a route that takes a private or internal\nrepository's events and is not `private`: \"refuse\" where absent, so\nthe config does not load and no such event reaches it; \"warn\" to load\nit and have doctor name it; or \"allow\".",
           "$ref": "#/$defs/Guard"
@@ -1463,9 +1528,8 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
-          "type": "boolean",
-          "default": false
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
         },
         "sources": {
           "description": "The sources it takes events from.",
@@ -1615,7 +1679,7 @@
       "additionalProperties": false
     },
     "Kind": {
-      "description": "What kind of thing an event announces: release, package-version, feed-entry, message, run, or a kind the config declares.",
+      "description": "What kind of thing an event announces: release, package-version, feed-entry, message, run, alert, or a kind the config declares.",
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
@@ -1765,9 +1829,8 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
-          "type": "boolean",
-          "default": false
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
         },
         "sources": {
           "description": "The sources it takes events from.",
@@ -2049,9 +2112,8 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
-          "type": "boolean",
-          "default": false
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
         },
         "room": {
           "description": "The room's id, such as `!abcdefg:matrix.org`, which the bot has\njoined.",
@@ -2787,6 +2849,56 @@
       },
       "additionalProperties": false
     },
+    "Severity": {
+      "description": "How severe an alert is, in lowercase on every forge.",
+      "oneOf": [
+        {
+          "description": "Critical.",
+          "type": "string",
+          "const": "critical"
+        },
+        {
+          "description": "High.",
+          "type": "string",
+          "const": "high"
+        },
+        {
+          "description": "Medium, GitHub's `moderate` for a Dependabot alert.",
+          "type": "string",
+          "const": "medium"
+        },
+        {
+          "description": "Low.",
+          "type": "string",
+          "const": "low"
+        },
+        {
+          "description": "GitLab's informational.",
+          "type": "string",
+          "const": "info"
+        },
+        {
+          "description": "GitLab's unknown.",
+          "type": "string",
+          "const": "unknown"
+        },
+        {
+          "description": "A code scanning rule's error, where its alert has no security\nseverity.",
+          "type": "string",
+          "const": "error"
+        },
+        {
+          "description": "A code scanning rule's warning.",
+          "type": "string",
+          "const": "warning"
+        },
+        {
+          "description": "A code scanning rule's note.",
+          "type": "string",
+          "const": "note"
+        }
+      ]
+    },
     "SharedList": {
       "description": "A shared block list, as `lists` writes it: a file of domains to block in\nthe CSV form Mastodon exports, pinned by the SHA-256 of its text.",
       "type": "object",
@@ -2831,6 +2943,11 @@
           "description": "A finished CI run: a workflow run, a pipeline, or a check suite or\ncommit status where the source reads checks.",
           "type": "string",
           "const": "run"
+        },
+        {
+          "description": "A security alert: code scanning's, Dependabot's or secret\nscanning's, or a GitLab vulnerability.",
+          "type": "string",
+          "const": "alert"
         }
       ]
     },
@@ -2968,9 +3085,8 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
-          "type": "boolean",
-          "default": false
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
         },
         "sources": {
           "description": "The sources it takes events from.",
@@ -3050,6 +3166,10 @@
           "description": "A GitHub repository's releases, tags and packages.",
           "type": "object",
           "properties": {
+            "alerts": {
+              "description": "Which security alerts are announced where the signals take\n\"alert\": what raised them, what they did and how severe they are;\nevery tool's raised and reopened alerts where absent.",
+              "$ref": "#/$defs/Alerts"
+            },
             "api": {
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
@@ -3350,6 +3470,10 @@
           "description": "A GitLab project's releases, tags and packages.",
           "type": "object",
           "properties": {
+            "alerts": {
+              "description": "Which security alerts are announced where the signals take\n\"alert\": what raised them, what they did and how severe they are;\nevery tool's raised and reopened alerts where absent.",
+              "$ref": "#/$defs/Alerts"
+            },
             "api": {
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
@@ -3650,6 +3774,10 @@
           "description": "A Forgejo or Gitea repository's releases, tags and packages.",
           "type": "object",
           "properties": {
+            "alerts": {
+              "description": "Which security alerts are announced where the signals take\n\"alert\": what raised them, what they did and how severe they are;\nevery tool's raised and reopened alerts where absent.",
+              "$ref": "#/$defs/Alerts"
+            },
             "api": {
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
@@ -5443,6 +5571,46 @@
     "TokenHash": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Tool": {
+      "description": "What raised an alert, in words every forge's alerts are read as.",
+      "oneOf": [
+        {
+          "description": "Code scanning: GitHub's code scanning, such as `CodeQL`, and\nGitLab's SAST.",
+          "type": "string",
+          "const": "code-scanning"
+        },
+        {
+          "description": "Dependency scanning: GitHub's Dependabot and GitLab's dependency\nscanning.",
+          "type": "string",
+          "const": "dependency-scanning"
+        },
+        {
+          "description": "Secret scanning: GitHub's secret scanning and GitLab's secret\ndetection.",
+          "type": "string",
+          "const": "secret-scanning"
+        },
+        {
+          "description": "GitLab's container and cluster image scanning.",
+          "type": "string",
+          "const": "container-scanning"
+        },
+        {
+          "description": "GitLab's dynamic application security testing.",
+          "type": "string",
+          "const": "dast"
+        },
+        {
+          "description": "GitLab's coverage-guided and API fuzzing.",
+          "type": "string",
+          "const": "fuzzing"
+        },
+        {
+          "description": "What GitLab reads from any other scanner's report.",
+          "type": "string",
+          "const": "other"
+        }
+      ]
     },
     "Transport": {
       "description": "How an owner's members are polled.",

@@ -694,6 +694,31 @@ fn exposed(config: &Config, notes: &mut Vec<String>) {
     }
 }
 
+/// The routes that take a private kind's events without saying whether
+/// their place is private, where `[doctor] private_kinds` warns of them;
+/// where it refuses, the config does not load.
+fn unstated(config: &Config, notes: &mut Vec<String>) {
+    if config.doctor.private_kinds != Guard::Warn {
+        return;
+    }
+    for route in config
+        .routes
+        .iter()
+        .filter(|route| !route.unstated.is_empty())
+    {
+        let kinds: Vec<&str> = route
+            .unstated
+            .iter()
+            .map(herald_core::Kind::as_str)
+            .collect();
+        notes.push(format!(
+            "The route {} takes {} events, which belong in private places, and says nothing of whether its place is private, as [doctor] private_kinds = \"warn\" lets it.",
+            route.route.id.as_str(),
+            kinds.join(", ")
+        ));
+    }
+}
+
 /// The sources whose bound on what their cursor remembers the store chose,
 /// as the most its records hold (ADR-0042).
 fn fitted(config: &Config, notes: &mut Vec<String>) {
@@ -779,6 +804,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     fitted(config, &mut findings.notes);
     crowded(config, &mut findings.notes);
     exposed(config, &mut findings.notes);
+    unstated(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
     revising(config, &mut findings.notes);
     undeleted(config, &mut findings.notes);

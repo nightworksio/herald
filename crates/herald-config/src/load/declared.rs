@@ -108,13 +108,14 @@ impl Loader<'_> {
                 }
             }
             if sound {
-                specs = specs.with(KindSpec::new(
+                let spec = KindSpec::new(
                     kind,
                     file.description,
                     file.versioned,
                     links,
                     file.attributes,
-                ));
+                );
+                specs = specs.with(if file.private { spec.private() } else { spec });
             }
         }
         specs

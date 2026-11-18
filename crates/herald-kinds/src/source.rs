@@ -48,7 +48,7 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     }
 
     /// The kinds of event it produces.
-    fn kinds(&self) -> &'static [Kind];
+    fn kinds(&self) -> Vec<Kind>;
 
     /// How many of its newest events the first poll announces (ADR-0003).
     fn backfill(&self) -> usize;

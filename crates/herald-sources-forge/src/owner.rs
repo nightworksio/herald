@@ -170,6 +170,7 @@ impl Owned {
             list,
             visibility: Some(repository.visibility),
             runs: self.options.run_choice(),
+            alerts: self.options.alert_choice(self.forge),
         }
     }
 
@@ -210,14 +211,9 @@ impl Owned {
         }
     }
 
-    /// What the member `repository`'s runs since `cursor` are, read through
-    /// `http` beside what GraphQL read of it.
-    async fn ran(
-        &self,
-        http: &Erased<'_, dyn DynHttp + '_>,
-        repository: &Listed,
-        cursor: Option<&Cursor>,
-    ) -> Result<(crate::runs::Asked, crate::runs::Runs), Unpolled> {
+    /// The member `repository` as its events name it, and where its API
+    /// is reached.
+    fn reached(&self, repository: &Listed) -> Result<(crate::forge::Repository, Origin), Unpolled> {
         let id = repository.id.parse::<u64>().map_err(|error| {
             Unpolled::Unreadable(format!(
                 "the repository {}'s id \"{}\" is not a number: {error}",
@@ -232,7 +228,21 @@ impl Owned {
             name: repository.name.clone(),
             page: Some(format!("{scheme}://{host}/{}", repository.path)),
         };
-        let origin = Origin::new(self.forge, &self.options, &repository.path);
+        Ok((
+            described,
+            Origin::new(self.forge, &self.options, &repository.path),
+        ))
+    }
+
+    /// What the member `repository`'s runs since `cursor` are, read through
+    /// `http` beside what GraphQL read of it, and whether they changed.
+    async fn ran(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        repository: &Listed,
+        cursor: Option<&Cursor>,
+    ) -> Result<(bool, crate::runs::Found), Unpolled> {
+        let (described, origin) = self.reached(repository)?;
         let choice = self.options.run_choice();
         let asking = crate::runs::Asking {
             origin: &origin,
@@ -241,7 +251,28 @@ impl Owned {
         };
         let asked = asking.asked(http, cursor).await?;
         let runs = asking.read(&asked, &described)?;
-        Ok((asked, runs))
+        Ok((asked.changed(), runs))
+    }
+
+    /// What the member `repository`'s alerts since `cursor` are, read
+    /// through `http` beside what GraphQL read of it, and whether they
+    /// changed.
+    async fn alerted(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        repository: &Listed,
+        cursor: Option<&Cursor>,
+    ) -> Result<(bool, crate::runs::Found), Unpolled> {
+        let (described, origin) = self.reached(repository)?;
+        let choice = self.options.alert_choice(self.forge);
+        let asking = crate::alerts::Asking {
+            origin: &origin,
+            token: self.token.as_ref(),
+            choice: &choice,
+        };
+        let asked = asking.asked(http, cursor).await?;
+        let alerts = asking.read(&asked, &described)?;
+        Ok((asked.changed(), alerts))
     }
 
     fn reading(&self) -> Reading {
@@ -507,10 +538,10 @@ impl Expand for Owned {
         Box::pin(crate::hooks::registered(
             http,
             (&self.api, self.token.as_ref()),
-            (
-                &repository.id,
-                self.options.signals_of(&repository.name).takes(Signal::Run),
-            ),
+            (&repository.id, {
+                let signals = self.options.signals_of(&repository.name);
+                (signals.takes(Signal::Run), signals.takes(Signal::Alert))
+            }),
             hook,
         ))
     }
@@ -548,7 +579,10 @@ impl Expand for Owned {
                 Forge::Forgejo => Some(Transport::Feed),
                 Forge::GitLab => None,
             };
-            if followed != Some(self.options.transport()) || self.options.may_take(Signal::Run) {
+            if followed != Some(self.options.transport())
+                || self.options.may_take(Signal::Run)
+                || self.options.may_take(Signal::Alert)
+            {
                 return None;
             }
             let paged = match self.forge {
@@ -669,9 +703,14 @@ impl Expand for Owned {
                     Ok(found) if signals.takes(Signal::Run) => self
                         .ran(&http, repository, *cursor)
                         .await
-                        .map(|(asked, runs)| {
-                            crate::runs::merged_into(found, (&asked, runs), *cursor)
-                        }),
+                        .map(|ran| crate::runs::merged_into(found, ran, *cursor)),
+                    answered => answered,
+                };
+                let answered = match answered {
+                    Ok(found) if signals.takes(Signal::Alert) => self
+                        .alerted(&http, repository, *cursor)
+                        .await
+                        .map(|alerted| crate::runs::merged_into(found, alerted, *cursor)),
                     answered => answered,
                 };
                 polled.push(answered.and_then(|found| {

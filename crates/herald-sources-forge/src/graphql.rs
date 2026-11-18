@@ -155,7 +155,7 @@ const GITLAB_PROJECT: &str = "gid://gitlab/Project/";
 const GITLAB_MOST: usize = crate::options::GRAPHQL_BATCH_ALLOWED;
 
 /// `body` posted as JSON to `endpoint`, reading at most `parse` bytes.
-fn posted(endpoint: &str, body: &Value, parse: usize) -> Request {
+pub(crate) fn posted(endpoint: &str, body: &Value, parse: usize) -> Request {
     Request::new(Method::Post, SecretText::plain(endpoint.to_owned()))
         .header("Content-Type", SecretText::plain(herald_core::media::JSON))
         .body(body.to_string())

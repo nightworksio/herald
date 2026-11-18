@@ -45,6 +45,7 @@ sources = ["ci"]
 destination = "discord"
 channel = "1566200000000000900"
 template = "t"
+private = false
 "#;
 
     fn nothing(_: &str) -> Result<String, String> {

@@ -289,6 +289,7 @@ pub fn load(
     let run = loader.run(sections.run);
     let doctor = loader.doctor(sections.doctor);
     loader.exposed(&sources, &routes, doctor);
+    loader.unstated(&routes, doctor);
     loader.unfed(&destinations, &routes, doctor);
     loader.routed((&sources, &source_spans), &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {

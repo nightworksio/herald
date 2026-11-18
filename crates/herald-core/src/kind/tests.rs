@@ -80,7 +80,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
     assert!(versioned.check(&super::versioned("1.0", false)).is_ok());
     assert_eq!(
         versioned.check(&BTreeMap::new()).unwrap_err(),
-        "attributes.version is missing; a release event carries it"
+        "attributes.version is missing; release events carry it"
     );
     let unversioned = spec(AttributeType::Text, false);
     assert!(!unversioned.versioned);
@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_five_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_six_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -103,7 +103,8 @@ fn herald_ships_five_kinds_and_only_releases_and_package_versions_are_versioned(
             ("package-version", true),
             ("feed-entry", false),
             ("message", false),
-            ("run", false)
+            ("run", false),
+            ("alert", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -126,6 +127,7 @@ fn herald_ships_five_kinds_and_only_releases_and_package_versions_are_versioned(
             Some(&signalled),
             None,
             None,
+            Some(&signalled),
             Some(&signalled)
         ]
     );
@@ -135,11 +137,15 @@ fn herald_ships_five_kinds_and_only_releases_and_package_versions_are_versioned(
             .map(|spec| spec.attributes.get(name))
             .collect();
         assert_eq!(
-            packaged,
+            packaged[..5],
             [None, Some(&signalled), None, None, None],
             "{name}"
         );
     }
+    assert_eq!(
+        [crate::PACKAGE, crate::PACKAGE_TYPE].map(|name| shipped[5].attributes.contains_key(name)),
+        [true, false]
+    );
     let mut tagged = crate::versioned("v1", false);
     tagged.insert(crate::SIGNAL.to_owned(), Attribute::Text("tag".to_owned()));
     assert_eq!(shipped[0].check(&tagged), Ok(()));
@@ -198,25 +204,60 @@ fn a_run_names_its_action_workflow_and_source_and_links_its_page() {
 }
 
 #[test]
+fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
+    let shipped = KindSpec::shipped();
+    let alert = &shipped[5];
+    assert_eq!(alert.kind, Kind::ALERT);
+    let private: Vec<bool> = shipped.iter().map(|spec| spec.private).collect();
+    assert_eq!(private, [false, false, false, false, false, true]);
+    assert_eq!(alert.links, [LinkSpec::named("alert")]);
+    let required: Vec<&str> = alert
+        .attributes
+        .iter()
+        .filter(|(_, spec)| spec.required)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert_eq!(required, ["action", "number", "tool"]);
+    let names: Vec<&str> = alert.attributes.keys().map(String::as_str).collect();
+    assert_eq!(
+        names,
+        [
+            "action",
+            "ecosystem",
+            "edited",
+            "number",
+            "package",
+            "path",
+            "resolution",
+            "rule",
+            "severity",
+            "signal",
+            "tool",
+            "withdrawn"
+        ]
+    );
+}
+
+#[test]
 fn each_type_holds_its_own_attributes_only() {
     let cases = [
         (AttributeType::Text, Attribute::Text("eu".to_owned()), None),
         (
             AttributeType::Text,
             Attribute::Flag(true),
-            Some("attributes.region is not text; a deploy event's region is"),
+            Some("attributes.region is not text; deploy events carry region as text"),
         ),
         (AttributeType::Flag, Attribute::Flag(false), None),
         (
             AttributeType::Flag,
             Attribute::Number(1.into()),
-            Some("attributes.region is not a flag; a deploy event's region is"),
+            Some("attributes.region is not a flag; deploy events carry region as a flag"),
         ),
         (AttributeType::Number, Attribute::Number(1.into()), None),
         (
             AttributeType::Number,
             Attribute::Text("1".to_owned()),
-            Some("attributes.region is not a number; a deploy event's region is"),
+            Some("attributes.region is not a number; deploy events carry region as a number"),
         ),
         (
             AttributeType::Url,
@@ -226,12 +267,16 @@ fn each_type_holds_its_own_attributes_only() {
         (
             AttributeType::Url,
             Attribute::Text("ftp://example.org".to_owned()),
-            Some("attributes.region is not an https or http address; a deploy event's region is"),
+            Some(
+                "attributes.region is not an https or http address; deploy events carry region as an https or http address",
+            ),
         ),
         (
             AttributeType::Url,
             Attribute::Flag(true),
-            Some("attributes.region is not an https or http address; a deploy event's region is"),
+            Some(
+                "attributes.region is not an https or http address; deploy events carry region as an https or http address",
+            ),
         ),
     ];
     for (ty, attribute, refused) in cases {
@@ -254,13 +299,13 @@ fn an_optional_attribute_may_be_missing_and_an_unknown_one_is_named() {
         optional
             .check(&one("colour", Attribute::Text("red".to_owned())))
             .unwrap_err(),
-        "attributes.colour is not an attribute of a deploy event"
+        "attributes.colour is not an attribute of deploy events"
     );
     assert_eq!(
         spec(AttributeType::Text, true)
             .check(&BTreeMap::new())
             .unwrap_err(),
-        "attributes.region is missing; a deploy event carries it"
+        "attributes.region is missing; deploy events carry it"
     );
 }
 
@@ -293,6 +338,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "feed-entry",
             "message",
             "run",
+            "alert",
             "deploy"
         ]
     );
