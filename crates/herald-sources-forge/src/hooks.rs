@@ -6,6 +6,7 @@ use herald_kinds::{Registered, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Method, Request, Secret, SecretText};
 use herald_wire::answered;
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::forge::authorized;
 use crate::wire::read;
@@ -91,31 +92,66 @@ pub(crate) async fn may_register(
     }
 }
 
+/// What a project's webhook may send beside its releases and tags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Sent {
+    /// Its pipelines.
+    Pipelines,
+    /// Its vulnerabilities.
+    Vulnerabilities,
+    /// Its merge requests.
+    MergeRequests,
+    /// Its issues.
+    Issues,
+    /// Its confidential issues.
+    ConfidentialIssues,
+}
+
+impl Sent {
+    /// Everything it may send.
+    pub(crate) const ALL: [Self; 5] = [
+        Self::Pipelines,
+        Self::Vulnerabilities,
+        Self::MergeRequests,
+        Self::Issues,
+        Self::ConfidentialIssues,
+    ];
+
+    /// The key GitLab's hook API turns it on by.
+    const fn key(self) -> &'static str {
+        match self {
+            Self::Pipelines => "pipeline_events",
+            Self::Vulnerabilities => "vulnerability_events",
+            Self::MergeRequests => "merge_requests_events",
+            Self::Issues => "issues_events",
+            Self::ConfidentialIssues => "confidential_issues_events",
+        }
+    }
+}
+
 /// A webhook on the project of id `id` at `api`, pointing at `url` and
-/// signed with `secret`, sending its pipelines too where `ran` says so, its
-/// vulnerabilities where `alerted` does and its merge requests where
-/// `pulled` does, registered through `http` with `token` where it has none
-/// pointing at `url`.
+/// signed with `secret`, sending what `sent` says beside its releases and
+/// tags, registered through `http` with `token` where it has none pointing
+/// at `url`.
 pub(crate) async fn registered(
     http: &dyn DynHttp,
     (api, token): (&str, Option<&Token>),
-    (id, (ran, alerted, pulled)): (&str, (bool, bool, bool)),
+    (id, sent): (&str, &[Sent]),
     (url, secret): (&str, &Secret),
 ) -> Result<Registered, Unpolled> {
     if found(http, (api, token), id, url).await? {
         return Ok(Registered::Found);
     }
     let hooks = format!("{api}/projects/{id}/hooks");
-    let body = serde_json::json!({
-        "url": url,
-        "token": secret.expose(),
-        "releases_events": true,
-        "tag_push_events": true,
-        "push_events": false,
-        "pipeline_events": ran,
-        "vulnerability_events": alerted,
-        "merge_requests_events": pulled,
-    });
+    let mut body = serde_json::Map::from_iter([
+        ("url".to_owned(), Value::from(url)),
+        ("token".to_owned(), Value::from(secret.expose())),
+        ("releases_events".to_owned(), Value::Bool(true)),
+        ("tag_push_events".to_owned(), Value::Bool(true)),
+        ("push_events".to_owned(), Value::Bool(false)),
+    ]);
+    body.extend(Sent::ALL.map(|each| (each.key().to_owned(), Value::Bool(sent.contains(&each)))));
+    let body = Value::Object(body);
     let registering = authorized(
         Forge::GitLab,
         Request::new(Method::Post, SecretText::plain(hooks))

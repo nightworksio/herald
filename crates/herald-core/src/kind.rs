@@ -26,6 +26,8 @@ impl Kind {
     pub const ALERT: Self = Self(Cow::Borrowed("alert"));
     /// A pull request, or a GitLab merge request, on a forge.
     pub const PULL_REQUEST: Self = Self(Cow::Borrowed("pull-request"));
+    /// An issue on a forge.
+    pub const ISSUE: Self = Self(Cow::Borrowed("issue"));
 
     /// The kind named `name`.
     ///
@@ -209,9 +211,9 @@ pub const PATH: &str = "path";
 pub const RESOLUTION: &str = "resolution";
 /// The link to a pull request's page.
 pub const PULL_LINK: &str = "pull";
-/// Who opened a pull request.
+/// Who opened a pull request or an issue.
 pub const AUTHOR: &str = "author";
-/// Whether a pull request's author is a bot or an app.
+/// Whether a pull request's or an issue's author is a bot or an app.
 pub const BOT: &str = "bot";
 /// The branch a pull request merges into.
 pub const BASE: &str = "base";
@@ -221,7 +223,11 @@ pub const HEAD: &str = "head";
 pub const DRAFT: &str = "draft";
 /// Who merged a pull request.
 pub const MERGED_BY: &str = "merged_by";
-/// A pull request's labels, joined by ", ".
+/// The link to an issue's page.
+pub const ISSUE_LINK: &str = "issue";
+/// Why an issue was closed: `completed`, `not_planned` or `duplicate`.
+pub const STATE_REASON: &str = "state_reason";
+/// A pull request's or an issue's labels, joined by ", ".
 pub const LABELS: &str = "labels";
 /// What a run is read from: `actions`, the forge's own CI, or `checks`, a
 /// check suite or a commit status.
@@ -341,6 +347,23 @@ fn pulled() -> BTreeMap<String, AttributeSpec> {
         (HEAD, AttributeType::Text, false),
         (DRAFT, AttributeType::Flag, false),
         (MERGED_BY, AttributeType::Text, false),
+        (LABELS, AttributeType::Text, false),
+    ];
+    for (name, ty, required) in typed {
+        attributes.insert(name.to_owned(), AttributeSpec { ty, required });
+    }
+    attributes
+}
+
+/// The attributes of an issue: a forge's signals', and what the issue is.
+fn issued() -> BTreeMap<String, AttributeSpec> {
+    let mut attributes = signalled();
+    let typed = [
+        (ACTION, AttributeType::Text, true),
+        (NUMBER, AttributeType::Number, true),
+        (AUTHOR, AttributeType::Text, false),
+        (BOT, AttributeType::Flag, false),
+        (STATE_REASON, AttributeType::Text, false),
         (LABELS, AttributeType::Text, false),
     ];
     for (name, ty, required) in typed {
@@ -515,6 +538,13 @@ impl KindSpec {
                 false,
                 buttons(&[PULL_LINK]),
                 pulled(),
+            ),
+            Self::new(
+                Kind::ISSUE,
+                "An issue on a forge.",
+                false,
+                buttons(&[ISSUE_LINK]),
+                issued(),
             ),
         ]
     }

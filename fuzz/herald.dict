@@ -114,3 +114,7 @@
 "merge_requests_events"
 "ready_for_review"
 "changes"
+"issues"
+"Issue Hook"
+"issues_events"
+"state_reason"

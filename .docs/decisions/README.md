@@ -70,3 +70,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0050](0050-a-forge-source-announces-its-ci-runs-and-a-route-matches-by-attributes.md) | A forge source announces its CI runs, and a route matches by attributes | Accepted |
 | [0051](0051-a-forge-source-announces-its-security-alerts-to-private-places.md) | A forge source announces its security alerts to private places | Accepted |
 | [0052](0052-a-forge-source-announces-its-pull-requests.md) | A forge source announces its pull requests | Accepted |
+| [0053](0053-a-forge-source-announces-its-issues.md) | A forge source announces its issues | Accepted |

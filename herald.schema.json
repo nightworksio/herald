@@ -1623,6 +1623,60 @@
       },
       "additionalProperties": false
     },
+    "IssueAction": {
+      "description": "What an issue did that is announced.",
+      "oneOf": [
+        {
+          "description": "It was opened.",
+          "type": "string",
+          "const": "opened"
+        },
+        {
+          "description": "It was closed.",
+          "type": "string",
+          "const": "closed"
+        },
+        {
+          "description": "It was opened again after it closed.",
+          "type": "string",
+          "const": "reopened"
+        }
+      ]
+    },
+    "Issues": {
+      "description": "Which issues a source announces, where its signals take \"issue\".",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What an issue did that is announced: `opened`, `closed`,\n`reopened`; every one where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IssueAction"
+          }
+        },
+        "authors": {
+          "description": "The authors, as globs, whose issues are announced; every author\nwhere empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidential": {
+          "description": "Whether GitLab's confidential issues are announced, each seen as\nprivate, so only a route declared private takes it; false where\nabsent.",
+          "type": "boolean"
+        },
+        "labels": {
+          "description": "The labels, as globs as `include` writes them, any one of which an\nissue announced carries; every issue where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "Keep": {
       "description": "A length of time, or \"forever\".",
       "anyOf": [
@@ -3017,6 +3071,11 @@
           "description": "A pull request, or a GitLab merge request, opened, readied for\nreview, merged or closed.",
           "type": "string",
           "const": "pull-request"
+        },
+        {
+          "description": "An issue opened, closed or reopened.",
+          "type": "string",
+          "const": "issue"
         }
       ]
     },
@@ -3322,6 +3381,10 @@
               "type": "integer",
               "format": "uint64",
               "minimum": 1
+            },
+            "issues": {
+              "description": "Which issues are announced where the signals take \"issue\": what\nthey did, and their labels and authors; every issue opened, closed\nor reopened where absent.",
+              "$ref": "#/$defs/Issues"
             },
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
@@ -3631,6 +3694,10 @@
               "format": "uint64",
               "minimum": 1
             },
+            "issues": {
+              "description": "Which issues are announced where the signals take \"issue\": what\nthey did, and their labels and authors; every issue opened, closed\nor reopened where absent.",
+              "$ref": "#/$defs/Issues"
+            },
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
@@ -3938,6 +4005,10 @@
               "type": "integer",
               "format": "uint64",
               "minimum": 1
+            },
+            "issues": {
+              "description": "Which issues are announced where the signals take \"issue\": what\nthey did, and their labels and authors; every issue opened, closed\nor reopened where absent.",
+              "$ref": "#/$defs/Issues"
             },
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",

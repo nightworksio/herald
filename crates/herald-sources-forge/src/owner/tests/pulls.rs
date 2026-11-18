@@ -5,43 +5,6 @@ use herald_core::{Identity, Signal};
 
 use super::*;
 
-const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
-
-fn member() -> Listed {
-    Listed {
-        id: "9".to_owned(),
-        name: "cli".to_owned(),
-        path: "lemonfiber/cli".to_owned(),
-        topics: Vec::new(),
-        properties: BTreeMap::new(),
-        visibility: Visibility::Public,
-        archived: false,
-        fork: false,
-        template: false,
-        language: None,
-        linked: None,
-    }
-}
-
-fn pulling(transport: Option<Transport>) -> Owned {
-    owned(
-        Forge::GitHub,
-        &SourceOptions {
-            token: Some(herald_core::SecretRef {
-                secret: "TOKEN".to_owned(),
-            }),
-            signals: Some(vec![Signal::Release, Signal::PullRequest]),
-            transport,
-            ..SourceOptions::default()
-        },
-    )
-}
-
-fn released() -> Response {
-    let releases = json!({ "databaseId": 9, "releases": { "nodes": [] } });
-    answer(200, &json!({ "data": { "m0": releases } }), "", false)
-}
-
 fn pulls() -> Response {
     let pull = json!({
         "number": 2, "title": "Bump", "state": "open",
@@ -54,7 +17,7 @@ fn pulls() -> Response {
 
 #[test]
 fn a_member_polled_through_graphql_reads_its_pull_requests_beside_and_keeps_their_validators() {
-    let source = pulling(None);
+    let source = signalling(Signal::PullRequest, None);
     let cli = member();
     let cursor = Cursor {
         seen: vec![Identity::new("github.com/9/v0")],
@@ -96,7 +59,7 @@ fn a_member_polled_through_graphql_reads_its_pull_requests_beside_and_keeps_thei
 
 #[test]
 fn an_owner_announcing_pull_requests_polls_every_member_whatever_its_events_say() {
-    let source = pulling(Some(Transport::Events));
+    let source = signalling(Signal::PullRequest, Some(Transport::Events));
     let nothing = ScriptedHttp::new(Vec::new());
     assert!(pollster::block_on(source.changed(&nothing, Owner::Organization, None)).is_none());
     assert_eq!(nothing.asked(), Vec::new());

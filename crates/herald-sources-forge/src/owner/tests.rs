@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+
+use herald_core::Visibility;
 use herald_ports::Secret;
 use serde_json::{Value, json};
 
@@ -57,6 +60,44 @@ fn listed(
     known: Option<&Listing>,
 ) -> Result<Expanded, Unlisted> {
     pollster::block_on(owned.listed(http, known))
+}
+
+/// The member every signal test polls.
+fn member() -> Listed {
+    Listed {
+        id: "9".to_owned(),
+        name: "cli".to_owned(),
+        path: "lemonfiber/cli".to_owned(),
+        topics: Vec::new(),
+        properties: BTreeMap::new(),
+        visibility: Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    }
+}
+
+/// A GitHub owner source with a token announcing releases and `signal`.
+fn signalling(signal: Signal, transport: Option<Transport>) -> Owned {
+    owned(
+        Forge::GitHub,
+        &SourceOptions {
+            token: Some(herald_core::SecretRef {
+                secret: "TOKEN".to_owned(),
+            }),
+            signals: Some(vec![Signal::Release, signal]),
+            transport,
+            ..SourceOptions::default()
+        },
+    )
+}
+
+/// GraphQL's answer naming the member with no release.
+fn released() -> Response {
+    let releases = json!({ "databaseId": 9, "releases": { "nodes": [] } });
+    answer(200, &json!({ "data": { "m0": releases } }), "", false)
 }
 
 fn names(expanded: &Expanded) -> Vec<&str> {
@@ -692,6 +733,7 @@ fn a_member_s_events_come_from_its_listing_on_the_owner_s_host_and_reach_its_ove
 }
 
 mod alerts;
+mod issues;
 mod members;
 mod packages;
 mod pulls;

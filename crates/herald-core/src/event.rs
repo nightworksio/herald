@@ -181,12 +181,16 @@ impl Event {
         })
     }
 
-    /// The event, seen only by those its own `visibility` lets see it,
-    /// whatever the repository it is of: a package's own visibility
-    /// (ADR-0035).
+    /// The event, seen only by those `visibility` lets see it, whatever the
+    /// repository it is of: a package's own visibility (ADR-0035). Where it
+    /// already names who may see it, the stricter of the two holds, so a
+    /// later bound never loosens an earlier one.
     #[must_use]
     pub const fn seen_as(mut self, visibility: Visibility) -> Self {
-        self.visibility = Some(visibility);
+        self.visibility = Some(match self.visibility {
+            Some(own) => own.stricter(visibility),
+            None => visibility,
+        });
         self
     }
 
@@ -627,6 +631,22 @@ pub(crate) mod tests {
         let json = serde_json::to_string(&private).unwrap();
         assert!(json.contains("\"visibility\":\"private\""), "{json}");
         assert_eq!(serde_json::from_str::<Event>(&json).unwrap(), private);
+    }
+
+    #[test]
+    fn a_later_bound_only_ever_tightens_who_may_see_an_event() {
+        let all = [
+            Visibility::Public,
+            Visibility::Internal,
+            Visibility::Private,
+        ];
+        for first in all {
+            for then in all {
+                let seen = event().seen_as(first).seen_as(then).visibility();
+                assert_eq!(seen, Some(first.max(then)), "{first:?} then {then:?}");
+                assert_eq!(first.stricter(then), first.max(then));
+            }
+        }
     }
 
     #[test]

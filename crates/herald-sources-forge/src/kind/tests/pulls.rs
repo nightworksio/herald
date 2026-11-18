@@ -2,20 +2,6 @@ use serde_json::{Value, json};
 
 use super::*;
 
-fn pulling(forge: Forge, repository: &str, webhook: bool) -> ForgeSource {
-    ForgeSource {
-        forge,
-        options: SourceOptions {
-            signals: Some(vec![Signal::PullRequest]),
-            webhook: webhook.then(|| SecretRef {
-                secret: "HERALD_WEBHOOK".to_owned(),
-            }),
-            ..options(repository)
-        },
-        names: None,
-    }
-}
-
 fn opened(path: &str) -> Value {
     let name = path.rsplit_once('/').map_or(path, |(_, name)| name);
     json!({
@@ -32,15 +18,11 @@ fn opened(path: &str) -> Value {
     })
 }
 
-fn hooked(source: &ForgeSource, header: (&str, &str), payload: &Value) -> Result<Hooked, String> {
-    source.hooked(&[header], payload.to_string().as_bytes())
-}
-
 const PULL: (&str, &str) = ("X-GitHub-Event", "pull_request");
 
 #[test]
 fn a_pull_request_delivered_to_a_source_announcing_them_is_its_event() {
-    let source = pulling(Forge::GitHub, "o/r", true);
+    let source = signalled(Forge::GitHub, "o/r", true, Signal::PullRequest);
     let Ok(Hooked::Event(event)) = hooked(&source, PULL, &opened("o/r")) else {
         panic!("not an event");
     };
@@ -59,7 +41,7 @@ fn a_pull_request_delivered_to_a_source_announcing_them_is_its_event() {
         hooked(&released, PULL, &opened("o/r")),
         Ok(Hooked::Nothing(UNPULLED))
     );
-    let gitlab = pulling(Forge::GitLab, "group/web", true);
+    let gitlab = signalled(Forge::GitLab, "group/web", true, Signal::PullRequest);
     let merge = json!({
         "user": { "username": "ann" },
         "project": { "id": 50, "path_with_namespace": "group/web", "web_url": "https://gitlab.com/group/web" },
@@ -90,27 +72,33 @@ fn doctor_says_what_a_source_announcing_pull_requests_cannot_hear() {
         source
             .notes()
             .into_iter()
-            .filter(|note| [PULLS_UNFOLLOWED, PULLS_POLLED, GITLAB_PULL_AUTHORS].contains(note))
+            .filter(|note| [PULLS_UNFOLLOWED, PULLS_POLLED, GITLAB_AUTHORS].contains(note))
             .collect()
     };
     assert_eq!(
-        noted(&pulling(Forge::GitHub, "o/r", true)),
+        noted(&signalled(Forge::GitHub, "o/r", true, Signal::PullRequest)),
         Vec::<&str>::new()
     );
-    assert_eq!(noted(&pulling(Forge::GitHub, "o/r", false)), [PULLS_POLLED]);
     assert_eq!(
-        noted(&pulling(Forge::GitLab, "g/r", true)),
-        [GITLAB_PULL_AUTHORS]
+        noted(&signalled(Forge::GitHub, "o/r", false, Signal::PullRequest)),
+        [PULLS_POLLED]
     );
-    assert_eq!(noted(&pulling(Forge::GitLab, "g/r", false)), [PULLS_POLLED]);
+    assert_eq!(
+        noted(&signalled(Forge::GitLab, "g/r", true, Signal::PullRequest)),
+        [GITLAB_AUTHORS]
+    );
+    assert_eq!(
+        noted(&signalled(Forge::GitLab, "g/r", false, Signal::PullRequest)),
+        [PULLS_POLLED]
+    );
     let followed = ForgeSource {
         options: SourceOptions {
             repository: None,
             owner: Some("o".to_owned()),
             transport: Some(Transport::Events),
-            ..pulling(Forge::GitHub, "o/r", true).options
+            ..signalled(Forge::GitHub, "o/r", true, Signal::PullRequest).options
         },
-        ..pulling(Forge::GitHub, "o/r", true)
+        ..signalled(Forge::GitHub, "o/r", true, Signal::PullRequest)
     };
     assert_eq!(noted(&followed), [PULLS_UNFOLLOWED]);
 }

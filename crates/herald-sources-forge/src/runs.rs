@@ -264,6 +264,13 @@ impl Forge {
             .is_some_and(|name| crate::pulls::hooked(self, name))
     }
 
+    /// The name of the issue event the webhook `headers` deliver, where
+    /// they deliver one.
+    pub(crate) fn issue_event<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
+        self.event_named(headers)
+            .filter(|name| crate::issues::hooked(self, name))
+    }
+
     /// The name of the event a webhook's `headers` deliver.
     fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
         let names: &[&str] = match self {

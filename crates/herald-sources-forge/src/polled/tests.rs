@@ -73,6 +73,7 @@ fn releases(
         runs: crate::options::RunChoice::default(),
         alerts: crate::SourceOptions::default().alert_choice(crate::Forge::GitHub),
         pulls: crate::SourceOptions::default().pull_choice(),
+        issues: crate::SourceOptions::default().issue_choice(),
     }
 }
 
@@ -697,6 +698,36 @@ fn a_repository_s_pull_requests_are_polled_under_their_own_validators() {
         found.listings["pull-request"].etag.as_deref(),
         Some("\"pulls\"")
     );
+    let quiet = ScriptedHttp::new(vec![unchanged(), unchanged()]);
+    assert_eq!(polled(&source, &quiet, Some(&cursor)).unwrap(), None);
+}
+
+#[test]
+fn a_repository_s_issues_are_polled_under_their_own_validators() {
+    let source = releases(
+        Forge::GitHub,
+        &[Signal::Release, Signal::Issue],
+        (PrereleaseRule::Either, 0),
+    );
+    let issue = json!({
+        "number": 6, "title": "Crash", "state": "open", "html_url": "https://forge.example/o/r/issues/6",
+        "user": { "login": "ann" }, "created_at": "2026-11-02T09:00:00Z"
+    });
+    let http = ScriptedHttp::new(vec![
+        unchanged(),
+        answer(200, &json!([issue]), Some("\"issues\"")),
+        repository(Forge::GitHub),
+    ]);
+    let cursor = Cursor {
+        etag: Some("\"releases\"".to_owned()),
+        ..Cursor::default()
+    };
+    let found = polled(&source, &http, Some(&cursor)).unwrap().unwrap();
+    assert_eq!(
+        identities(&found),
+        [("forge.example/7/issue/6/opened", Some(Signal::Issue))]
+    );
+    assert_eq!(found.listings["issue"].etag.as_deref(), Some("\"issues\""));
     let quiet = ScriptedHttp::new(vec![unchanged(), unchanged()]);
     assert_eq!(polled(&source, &quiet, Some(&cursor)).unwrap(), None);
 }

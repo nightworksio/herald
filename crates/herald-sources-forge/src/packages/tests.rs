@@ -74,6 +74,7 @@ fn releases(forge: Forge, chosen: SourceOptions) -> Releases {
         runs: crate::options::RunChoice::default(),
         alerts: crate::SourceOptions::default().alert_choice(crate::Forge::GitHub),
         pulls: crate::SourceOptions::default().pull_choice(),
+        issues: crate::SourceOptions::default().issue_choice(),
     }
 }
 

@@ -91,6 +91,42 @@ fn delivered(world: &World) -> Job {
 }
 
 #[test]
+fn a_private_delivery_of_a_public_member_stays_private_whether_or_not_its_source_expands() {
+    let world = owned_world();
+    let Job::Announce {
+        source,
+        event,
+        member,
+        scheme,
+        verified,
+    } = delivered(&world)
+    else {
+        panic!("a webhook's release is announced");
+    };
+    let private = Job::Announce {
+        source,
+        event: event.seen_as(Visibility::Private),
+        member,
+        scheme,
+        verified,
+    };
+    let unexpanded = World::with(
+        load(
+            "herald.toml",
+            &config_text(),
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap(),
+        Script::default(),
+    );
+    for world in [&world, &unexpanded] {
+        kept(world, Visibility::Public, false);
+        assert_eq!(world.work(private.clone()), Did::Announced(Vec::new()));
+    }
+}
+
+#[test]
 fn an_owner_s_webhook_is_announced_only_where_its_last_membership_record_holds_the_member() {
     let world = owned_world();
     let job = delivered(&world);

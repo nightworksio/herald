@@ -693,6 +693,11 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `sources.<name>.issues` | table | Which issues are announced where the signals take "issue": what they did, and their labels and authors; every issue opened, closed or reopened where absent. |
+| `sources.<name>.issues.actions` | array of [IssueAction](#issueaction) | What an issue did that is announced: `opened`, `closed`, `reopened`; every one where absent. |
+| `sources.<name>.issues.authors` | array of string | The authors, as globs, whose issues are announced; every author where empty. |
+| `sources.<name>.issues.confidential` | boolean | Whether GitLab's confidential issues are announced, each seen as private, so only a route declared private takes it; false where absent. |
+| `sources.<name>.issues.labels` | array of string | The labels, as globs as `include` writes them, any one of which an issue announced carries; every issue where empty. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
@@ -790,6 +795,11 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `sources.<name>.issues` | table | Which issues are announced where the signals take "issue": what they did, and their labels and authors; every issue opened, closed or reopened where absent. |
+| `sources.<name>.issues.actions` | array of [IssueAction](#issueaction) | What an issue did that is announced: `opened`, `closed`, `reopened`; every one where absent. |
+| `sources.<name>.issues.authors` | array of string | The authors, as globs, whose issues are announced; every author where empty. |
+| `sources.<name>.issues.confidential` | boolean | Whether GitLab's confidential issues are announced, each seen as private, so only a route declared private takes it; false where absent. |
+| `sources.<name>.issues.labels` | array of string | The labels, as globs as `include` writes them, any one of which an issue announced carries; every issue where empty. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
@@ -887,6 +897,11 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `sources.<name>.issues` | table | Which issues are announced where the signals take "issue": what they did, and their labels and authors; every issue opened, closed or reopened where absent. |
+| `sources.<name>.issues.actions` | array of [IssueAction](#issueaction) | What an issue did that is announced: `opened`, `closed`, `reopened`; every one where absent. |
+| `sources.<name>.issues.authors` | array of string | The authors, as globs, whose issues are announced; every author where empty. |
+| `sources.<name>.issues.confidential` | boolean | Whether GitLab's confidential issues are announced, each seen as private, so only a route declared private takes it; false where absent. |
+| `sources.<name>.issues.labels` | array of string | The labels, as globs as `include` writes them, any one of which an issue announced carries; every issue where empty. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
@@ -1465,6 +1480,10 @@ When a held group is announced.
 ### Guard
 
 What doctor does with a config that takes something private to a public place.
+
+### IssueAction
+
+What an issue did that is announced.
 
 ### Keep
 

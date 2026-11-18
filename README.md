@@ -628,34 +628,21 @@ them. GitLab's image tags carry no time in their listing, so a new source
 remembers the tags it first finds without announcing any. GitHub's `registry_package` and `package` webhooks
 and Forgejo's `package` webhook poll the source at once.
 
-### Runs
+### CI runs, alerts, pull requests and issues
 
-`signals = ["run"]` announces the repository's CI runs as `run` events:
-GitHub Actions' workflow runs, GitLab's pipelines and Forgejo Actions'
-runs, and on GitHub the check suites and commit statuses other CI services
-report, with `runs.from = ["actions", "checks"]`. Every finished run is
-announced where `runs` is absent; `runs` narrows by what a run did, how it
-ended, and its branches, triggers and workflows, and a route's
-`match.attributes` sends each where it belongs. [`.docs/runs.md`](.docs/runs.md)
-covers the keys, the attributes, each forge's webhooks and what a poll
-reads.
+A forge source's `signals` also take `run`, `alert`, `pull-request` and
+`issue`, each announced by webhook and poll with one vocabulary on every
+forge, narrowed per source and matched by a route's `match.attributes`:
 
-### Alerts
-
-`signals = ["alert"]` announces the repository's security alerts as
-`alert` events: GitHub's code scanning, Dependabot and secret scanning
-alerts, and GitLab Ultimate's vulnerabilities, each with one `tool`,
-`severity` and `action` vocabulary on every forge. `alert` is a private
-kind, so a route taking it says `private = true` or, on purpose,
-`private = false`. [`.docs/alerts.md`](.docs/alerts.md) covers the keys,
-the attributes, each forge's webhooks and what a poll reads.
-
-### Pull requests
-
-`signals = ["pull-request"]` announces pull requests, and GitLab's merge
-requests, as `pull-request` events opened, readied for review and merged;
-`pulls` chooses actions, drafts, labels and authors, and a `bot` attribute
-marks a bot's. [`.docs/pulls.md`](.docs/pulls.md) covers the rest.
+- `run`: CI runs, from GitHub Actions, GitLab pipelines, Forgejo Actions,
+  and GitHub's check suites and statuses. [`.docs/runs.md`](.docs/runs.md)
+- `alert`: security alerts, from GitHub's code scanning, Dependabot and
+  secret scanning, and GitLab Ultimate's vulnerabilities. It is a private
+  kind, so a route taking it says `private = true` or, on purpose,
+  `private = false`. [`.docs/alerts.md`](.docs/alerts.md)
+- `pull-request`: pull requests and merge requests opened, readied for
+  review and merged, with a `bot` attribute. [`.docs/pulls.md`](.docs/pulls.md)
+- `issue`: issues opened, closed and reopened. [`.docs/issues.md`](.docs/issues.md)
 
 ### Every package of a namespace
 
