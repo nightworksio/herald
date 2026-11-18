@@ -342,9 +342,10 @@ mod postgres {
         let Err(SqlError::Unavailable { reason }) = after_closing(&sql).await else {
             panic!("a role that may not log in cannot connect again");
         };
-        assert!(reason.starts_with("the connection closed ("), "{reason}");
-        assert!(reason.contains("could not be made again"), "{reason}");
-        assert!(reason.contains("not permitted to log in"), "{reason}");
+        assert_eq!(
+            reason,
+            "the connection closed (db error: FATAL: terminating connection due to administrator command) and could not be made again: role \"herald_reconnecting\" is not permitted to log in"
+        );
         ran(&admin, "ALTER ROLE herald_reconnecting LOGIN")
             .await
             .unwrap();

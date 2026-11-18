@@ -1,7 +1,15 @@
 use herald_core::{Cursor, Listing, Membership, SourceName};
 use herald_ports::{Cursors, StoreError, Version, Versioned, Written};
 
-use super::{Fault, Faulty};
+use super::{Fault, Faulty, refused};
+
+fn part(cursor: &Cursor) -> Cursor {
+    Cursor {
+        seen: cursor.seen.clone(),
+        etag: cursor.etag.clone(),
+        ..Cursor::default()
+    }
+}
 
 impl Cursors for Faulty {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
@@ -24,7 +32,12 @@ impl Cursors for Faulty {
                 .map(|record| record.version),
             _ => expected,
         };
-        let written = self.inner.put_cursor(source, cursor, expected).await?;
+        let kept = if self.fault == Fault::KeepsPartOfCursors {
+            part(cursor)
+        } else {
+            cursor.clone()
+        };
+        let written = self.inner.put_cursor(source, &kept, expected).await?;
         Ok(self.raced(Fault::RacesCursors, source.as_str() == "raced", written))
     }
 
@@ -89,7 +102,11 @@ impl Cursors for Faulty {
         } else {
             expected
         };
-        self.inner.put_member(source, membership, expected).await
+        let mut kept = membership.clone();
+        if self.fault == Fault::KeepsPartOfMembersCursors {
+            kept.cursor = membership.cursor.as_ref().map(part);
+        }
+        self.inner.put_member(source, &kept, expected).await
     }
 
     async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
@@ -115,4 +132,18 @@ impl Cursors for Faulty {
             _ => self.inner.forget_member(source, id).await,
         }
     }
+}
+
+#[test]
+fn a_store_that_keeps_part_of_a_cursor_is_refused() {
+    refused(&[
+        (
+            Fault::KeepsPartOfCursors,
+            "a cursor written was not read back as written",
+        ),
+        (
+            Fault::KeepsPartOfMembersCursors,
+            "a member was not read back alone as last written, at its version",
+        ),
+    ]);
 }

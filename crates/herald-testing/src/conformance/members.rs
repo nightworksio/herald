@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
-use herald_core::{
-    Cursor, EventsRead, Identity, Listed, Listing, Membership, Owner, SourceName, Visibility,
-};
+use herald_core::{EventsRead, Listed, Listing, Membership, Owner, SourceName, Visibility};
 use herald_ports::{Cursors, StoreError, Written};
 
 use super::{Checks, NOON};
@@ -90,13 +88,7 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
         repository: first.repository.clone(),
         discovered: NOON,
         left: None,
-        cursor: Some(Cursor {
-            seen: vec![Identity::new("a")],
-            etag: None,
-            last_modified: None,
-            project: None,
-            ..Cursor::default()
-        }),
+        cursor: Some(super::cursor_at(&["a"], "m1")),
         collides: Some("its project is another's".to_owned()),
         hooked: false,
     };
