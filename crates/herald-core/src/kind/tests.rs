@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_six_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_seven_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -104,7 +104,8 @@ fn herald_ships_six_kinds_and_only_releases_and_package_versions_are_versioned()
             ("feed-entry", false),
             ("message", false),
             ("run", false),
-            ("alert", false)
+            ("alert", false),
+            ("pull-request", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -127,6 +128,7 @@ fn herald_ships_six_kinds_and_only_releases_and_package_versions_are_versioned()
             Some(&signalled),
             None,
             None,
+            Some(&signalled),
             Some(&signalled),
             Some(&signalled)
         ]
@@ -209,7 +211,7 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     let alert = &shipped[5];
     assert_eq!(alert.kind, Kind::ALERT);
     let private: Vec<bool> = shipped.iter().map(|spec| spec.private).collect();
-    assert_eq!(private, [false, false, false, false, false, true]);
+    assert_eq!(private, [false, false, false, false, false, true, false]);
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
     let required: Vec<&str> = alert
         .attributes
@@ -339,6 +341,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "message",
             "run",
             "alert",
+            "pull-request",
             "deploy"
         ]
     );
@@ -352,4 +355,49 @@ fn a_kind_s_links_are_known_by_its_kind_and_none_for_an_unknown_one() {
         [LinkSpec::named("release"), LinkSpec::named("changelog")]
     );
     assert_eq!(kinds.links(&Kind::new("deploy").unwrap()), []);
+}
+
+#[test]
+fn a_pull_request_names_its_number_and_what_it_did() {
+    let shipped = KindSpec::shipped();
+    let pull = &shipped[6];
+    assert_eq!(pull.kind, Kind::PULL_REQUEST);
+    assert!(!pull.private);
+    assert_eq!(pull.links, [LinkSpec::named("pull")]);
+    let mut attributes = BTreeMap::from([
+        (
+            crate::SIGNAL.to_owned(),
+            Attribute::Text("pull-request".to_owned()),
+        ),
+        (
+            crate::ACTION.to_owned(),
+            Attribute::Text("opened".to_owned()),
+        ),
+        (crate::NUMBER.to_owned(), Attribute::Number(12.into())),
+        (
+            crate::AUTHOR.to_owned(),
+            Attribute::Text("dependabot[bot]".to_owned()),
+        ),
+        (crate::BOT.to_owned(), Attribute::Flag(true)),
+        (crate::BASE.to_owned(), Attribute::Text("main".to_owned())),
+        (crate::HEAD.to_owned(), Attribute::Text("bump".to_owned())),
+        (crate::DRAFT.to_owned(), Attribute::Flag(false)),
+        (
+            crate::MERGED_BY.to_owned(),
+            Attribute::Text("octocat".to_owned()),
+        ),
+        (
+            crate::LABELS.to_owned(),
+            Attribute::Text("deps, ci".to_owned()),
+        ),
+    ]);
+    assert!(pull.check(&attributes).is_ok());
+    attributes.insert(crate::BOT.to_owned(), Attribute::Text("yes".to_owned()));
+    assert!(pull.check(&attributes).is_err());
+    attributes.remove(crate::BOT);
+    for required in [crate::ACTION, crate::NUMBER] {
+        let mut missing = attributes.clone();
+        missing.remove(required);
+        assert!(pull.check(&missing).is_err(), "{required}");
+    }
 }

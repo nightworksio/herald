@@ -732,6 +732,11 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
+| `sources.<name>.pulls` | table | Which pull requests are announced where the signals take "pull-request": what they did, whether drafts are, and their labels and authors; every pull request opened, ready for review or merged where absent. |
+| `sources.<name>.pulls.actions` | array of [PullAction](#pullaction) | What a pull request did that is announced: `opened`, `ready_for_review`, `reopened`, `merged`, `closed`; `["opened", "ready_for_review", "merged"]` where absent. |
+| `sources.<name>.pulls.authors` | array of string | The authors, as globs, whose pull requests are announced, such as `dependabot[bot]`; every author where empty. |
+| `sources.<name>.pulls.drafts` | boolean | Whether a draft's opening is announced; false where absent, so a draft is announced once it is ready for review. |
+| `sources.<name>.pulls.labels` | array of string | The labels, as globs as `include` writes them, any one of which a pull request announced carries; every pull request where empty. |
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
@@ -824,6 +829,11 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
+| `sources.<name>.pulls` | table | Which pull requests are announced where the signals take "pull-request": what they did, whether drafts are, and their labels and authors; every pull request opened, ready for review or merged where absent. |
+| `sources.<name>.pulls.actions` | array of [PullAction](#pullaction) | What a pull request did that is announced: `opened`, `ready_for_review`, `reopened`, `merged`, `closed`; `["opened", "ready_for_review", "merged"]` where absent. |
+| `sources.<name>.pulls.authors` | array of string | The authors, as globs, whose pull requests are announced, such as `dependabot[bot]`; every author where empty. |
+| `sources.<name>.pulls.drafts` | boolean | Whether a draft's opening is announced; false where absent, so a draft is announced once it is ready for review. |
+| `sources.<name>.pulls.labels` | array of string | The labels, as globs as `include` writes them, any one of which a pull request announced carries; every pull request where empty. |
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
@@ -916,6 +926,11 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
+| `sources.<name>.pulls` | table | Which pull requests are announced where the signals take "pull-request": what they did, whether drafts are, and their labels and authors; every pull request opened, ready for review or merged where absent. |
+| `sources.<name>.pulls.actions` | array of [PullAction](#pullaction) | What a pull request did that is announced: `opened`, `ready_for_review`, `reopened`, `merged`, `closed`; `["opened", "ready_for_review", "merged"]` where absent. |
+| `sources.<name>.pulls.authors` | array of string | The authors, as globs, whose pull requests are announced, such as `dependabot[bot]`; every author where empty. |
+| `sources.<name>.pulls.drafts` | boolean | Whether a draft's opening is announced; false where absent, so a draft is announced once it is ready for review. |
+| `sources.<name>.pulls.labels` | array of string | The labels, as globs as `include` writes them, any one of which a pull request announced carries; every pull request where empty. |
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
@@ -1511,6 +1526,10 @@ How a source tells a pre-release.
 ### Prereleases
 
 Which pre-releases a route takes.
+
+### PullAction
+
+What a pull request did that is announced.
 
 ### Rate
 

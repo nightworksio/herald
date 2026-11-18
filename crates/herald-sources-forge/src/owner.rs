@@ -171,6 +171,7 @@ impl Owned {
             visibility: Some(repository.visibility),
             runs: self.options.run_choice(),
             alerts: self.options.alert_choice(self.forge),
+            pulls: self.options.pull_choice(),
         }
     }
 
@@ -252,6 +253,27 @@ impl Owned {
         let asked = asking.asked(http, cursor).await?;
         let runs = asking.read(&asked, &described)?;
         Ok((asked.changed(), runs))
+    }
+
+    /// What the member `repository`'s pull requests since `cursor` are,
+    /// read through `http` beside what GraphQL read of it, and whether they
+    /// changed.
+    async fn pulled(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        repository: &Listed,
+        cursor: Option<&Cursor>,
+    ) -> Result<(bool, crate::runs::Found), Unpolled> {
+        let (described, origin) = self.reached(repository)?;
+        let choice = self.options.pull_choice();
+        let asking = crate::pulls::Asking {
+            origin: &origin,
+            token: self.token.as_ref(),
+            choice: &choice,
+        };
+        let asked = asking.asked(http, cursor).await?;
+        let pulls = asking.read(&asked, &described)?;
+        Ok((asked.changed(), pulls))
     }
 
     /// What the member `repository`'s alerts since `cursor` are, read
@@ -540,7 +562,11 @@ impl Expand for Owned {
             (&self.api, self.token.as_ref()),
             (&repository.id, {
                 let signals = self.options.signals_of(&repository.name);
-                (signals.takes(Signal::Run), signals.takes(Signal::Alert))
+                (
+                    signals.takes(Signal::Run),
+                    signals.takes(Signal::Alert),
+                    signals.takes(Signal::PullRequest),
+                )
             }),
             hook,
         ))
@@ -582,6 +608,7 @@ impl Expand for Owned {
             if followed != Some(self.options.transport())
                 || self.options.may_take(Signal::Run)
                 || self.options.may_take(Signal::Alert)
+                || self.options.may_take(Signal::PullRequest)
             {
                 return None;
             }
@@ -711,6 +738,13 @@ impl Expand for Owned {
                         .alerted(&http, repository, *cursor)
                         .await
                         .map(|alerted| crate::runs::merged_into(found, alerted, *cursor)),
+                    answered => answered,
+                };
+                let answered = match answered {
+                    Ok(found) if signals.takes(Signal::PullRequest) => self
+                        .pulled(&http, repository, *cursor)
+                        .await
+                        .map(|pulled| crate::runs::merged_into(found, pulled, *cursor)),
                     answered => answered,
                 };
                 polled.push(answered.and_then(|found| {

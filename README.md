@@ -650,6 +650,13 @@ kind, so a route taking it says `private = true` or, on purpose,
 `private = false`. [`.docs/alerts.md`](.docs/alerts.md) covers the keys,
 the attributes, each forge's webhooks and what a poll reads.
 
+### Pull requests
+
+`signals = ["pull-request"]` announces pull requests, and GitLab's merge
+requests, as `pull-request` events opened, readied for review and merged;
+`pulls` chooses actions, drafts, labels and authors, and a `bot` attribute
+marks a bot's. [`.docs/pulls.md`](.docs/pulls.md) covers the rest.
+
 ### Every package of a namespace
 
 A registry source gives its registry's namespace key in place of

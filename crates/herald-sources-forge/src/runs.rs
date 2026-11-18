@@ -258,6 +258,12 @@ impl Forge {
             .and_then(|name| alerts::Delivery::named(self, name))
     }
 
+    /// Whether the webhook `headers` name a pull request's event.
+    pub(crate) fn pull_delivery(self, headers: &[(&str, &str)]) -> bool {
+        self.event_named(headers)
+            .is_some_and(|name| crate::pulls::hooked(self, name))
+    }
+
     /// The name of the event a webhook's `headers` deliver.
     fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
         let names: &[&str] = match self {

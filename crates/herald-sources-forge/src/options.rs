@@ -20,6 +20,8 @@ pub use packages::PackageVisibility;
 pub(crate) use packages::{
     GITHUB_PACKAGE_TYPES, MOST_PACKAGES, MOST_PACKAGES_ALLOWED, MOVING, registry_host,
 };
+pub(crate) use pulls::PullChoice;
+pub use pulls::{PULL_ACTIONS, PullAction, Pulls};
 pub(crate) use runs::RunChoice;
 pub use runs::{Conclusion, RUN_ACTIONS, RUN_FROM, RunAction, RunFrom, Runs};
 pub use signals::{EDITS_DEPTH, Signals, TAG_WINDOW};
@@ -272,6 +274,11 @@ pub struct SourceOptions {
     /// "alert": what raised them, what they did and how severe they are;
     /// every tool's raised and reopened alerts where absent.
     pub alerts: Option<Alerts>,
+    /// Which pull requests are announced where the signals take
+    /// "pull-request": what they did, whether drafts are, and their labels
+    /// and authors; every pull request opened, ready for review or merged
+    /// where absent.
+    pub pulls: Option<Pulls>,
 }
 
 /// Whether an override sets one of its keys.
@@ -365,6 +372,7 @@ impl SourceOptions {
         self.packages_check(forge)?;
         self.runs_check(forge)?;
         self.alerts_check(forge)?;
+        self.pulls_check()?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -402,6 +410,7 @@ mod hooks;
 mod overrides;
 mod owner;
 mod packages;
+mod pulls;
 mod runs;
 mod signals;
 #[cfg(test)]

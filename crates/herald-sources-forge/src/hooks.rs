@@ -92,13 +92,14 @@ pub(crate) async fn may_register(
 }
 
 /// A webhook on the project of id `id` at `api`, pointing at `url` and
-/// signed with `secret`, sending its pipelines too where `ran` says so and
-/// its vulnerabilities where `alerted` does, registered through `http`
-/// with `token` where it has none pointing at `url`.
+/// signed with `secret`, sending its pipelines too where `ran` says so, its
+/// vulnerabilities where `alerted` does and its merge requests where
+/// `pulled` does, registered through `http` with `token` where it has none
+/// pointing at `url`.
 pub(crate) async fn registered(
     http: &dyn DynHttp,
     (api, token): (&str, Option<&Token>),
-    (id, (ran, alerted)): (&str, (bool, bool)),
+    (id, (ran, alerted, pulled)): (&str, (bool, bool, bool)),
     (url, secret): (&str, &Secret),
 ) -> Result<Registered, Unpolled> {
     if found(http, (api, token), id, url).await? {
@@ -113,6 +114,7 @@ pub(crate) async fn registered(
         "push_events": false,
         "pipeline_events": ran,
         "vulnerability_events": alerted,
+        "merge_requests_events": pulled,
     });
     let registering = authorized(
         Forge::GitLab,
