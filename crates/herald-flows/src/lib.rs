@@ -29,6 +29,7 @@ mod follows;
 mod grouping;
 mod housekeep;
 mod installations;
+mod kept;
 pub mod peering;
 mod poll;
 mod prepare;

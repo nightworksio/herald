@@ -18,3 +18,7 @@ extend-exclude = [
 # A commit's abbreviated or full hash is hex, and an opaque token is a run of
 # 32 or more standard Base64 characters; neither is a word.
 extend-ignore-re = ["\\b[0-9a-f]{7,40}\\b", "[A-Za-z0-9+/]{32,}={0,2}"]
+
+[default.extend-words]
+# GitLab's note events name what a note is on `noteable_type`.
+noteable = "noteable"

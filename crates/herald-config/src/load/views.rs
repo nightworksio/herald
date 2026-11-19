@@ -21,7 +21,7 @@ use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
     BUILT_IN_VIEW, BotsFile, DecidingFile, DecidingName, GroupByFile, RULE_KEYS, Report,
-    ReportFile, Rule, RuleFile, RulesFile, ViewConfig, ViewFile,
+    ReportFile, Rule, RuleFile, RulesFile, ViewConfig, ViewFile, ViewMode,
 };
 
 /// The names of `sources` that list their repository's open pull requests.
@@ -223,6 +223,8 @@ impl Loader<'_> {
                     .map_or(shipped.open, std::num::NonZeroUsize::get),
                 pulls: file.most_pulls.unwrap_or(shipped.pulls),
             },
+            mode: file.mode.unwrap_or_default(),
+            reconcile: file.reconcile.map(|every| every.0),
         }
     }
 
@@ -242,6 +244,8 @@ impl Loader<'_> {
                 sources: queued(sources),
                 most: Most::default(),
                 decide: BTreeMap::new(),
+                mode: ViewMode::default(),
+                reconcile: None,
             },
         )]);
         for (name, value) in self.named(value, "views") {

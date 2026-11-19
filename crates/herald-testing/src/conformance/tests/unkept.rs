@@ -16,6 +16,7 @@ fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
         crate::conformance::unkept::notes(&unkept, &mut checks).await;
         crate::conformance::unkept::announcements(&unkept, &mut checks).await;
         crate::conformance::unkept::inboxes(&unkept, &mut checks).await;
+        crate::conformance::unkept::pulls(&unkept, &mut checks).await;
     });
     assert_eq!(checks.done(), Ok(()));
     let mut checks = Checks::default();
@@ -83,4 +84,7 @@ fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
     let mut checks = Checks::default();
     pollster::block_on(crate::conformance::unkept::inboxes(&store, &mut checks));
     probed(checks, "delivery");
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::pulls(&store, &mut checks));
+    probed(checks, "pull");
 }

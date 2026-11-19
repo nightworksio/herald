@@ -9,6 +9,7 @@
 mod alerts;
 mod delivered;
 mod events;
+mod folding;
 mod forge;
 mod forgejo;
 mod ghcr;

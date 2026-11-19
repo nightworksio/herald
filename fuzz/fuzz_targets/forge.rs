@@ -388,6 +388,47 @@ fn pulls(bytes: &[u8]) {
     }
 }
 
+/// What each forge's deliveries kept mode folds make of `bytes`, folded
+/// in turn into one record (ADR-0061).
+fn folded(bytes: &[u8]) {
+    let headers = [
+        ("X-GitHub-Event", "pull_request"),
+        ("X-GitHub-Event", "pull_request_review"),
+        ("X-GitHub-Event", "issue_comment"),
+        ("X-GitHub-Event", "check_run"),
+        ("X-GitHub-Event", "status"),
+        ("X-Gitlab-Event", "Merge Request Hook"),
+        ("X-Gitlab-Event", "Pipeline Hook"),
+        ("X-Gitlab-Event", "Note Hook"),
+        ("X-Forgejo-Event", "pull_request_approved"),
+    ];
+    for forge in FORGES {
+        let source = ForgeSource {
+            forge,
+            options: SourceOptions {
+                repository: Some("fuzzer/fuzzed".to_owned()),
+                ..SourceOptions::default()
+            },
+            names: None,
+        };
+        for header in headers {
+            let Ok(Some(folding)) = source.folded(&[header], bytes) else {
+                continue;
+            };
+            let mut kept: Option<herald_core::KeptPull> = None;
+            for folded in &folding.folded {
+                let key = herald_core::PullKey {
+                    repository: folding.repository.clone(),
+                    number: folded.number().unwrap_or_default(),
+                };
+                if let Some(record) = herald_core::KeptPull::fold(kept.clone(), key, folded) {
+                    kept = Some(record);
+                }
+            }
+        }
+    }
+}
+
 /// What a source announcing every issue of every forge makes of
 /// `bytes` as a issue's delivery and its listing.
 fn issues(bytes: &[u8]) {
@@ -485,6 +526,7 @@ fuzz_target!(|bytes: &[u8]| {
     runs(bytes);
     alerts(bytes);
     pulls(bytes);
+    folded(bytes);
     issues(bytes);
     let response = Response {
         status: 200,

@@ -40,10 +40,11 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     Ok(pulls)
 }
 
-/// The open pull requests of every source `view` reads, the first that
-/// could not be read stopping it.
+/// The open pull requests of every source `view` reads, live or kept as
+/// the view and the store say (ADR-0061), the first that could not be
+/// read stopping it.
 async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
-    (_, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
 ) -> Result<Vec<Pull>, Stop> {
     let mut pulls = Vec::new();
@@ -54,8 +55,18 @@ async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
             .find(|(source, _)| source.name == *name)
             .and_then(|(source, http)| source.queue.as_ref().map(|queue| (queue, http)))
             .ok_or_else(|| Stop::Source(UNREAD_SOURCE.to_owned()))?;
-        ports.budget.allows(ports.clock.now(), 1)?;
-        let read = queue.opened(http, view.most).await.map_err(halted)?;
+        let keeps = ports.store.pulls().is_some();
+        let read = if crate::kept::reads_kept((config, keeps), view, name) {
+            let detailed = config
+                .sources
+                .get(name)
+                .and_then(|source| source.queue_cost(view.most))
+                .is_some_and(|cost| cost.detailed);
+            crate::kept::kept_pulls(ports, (name, queue.as_ref(), http), (view, detailed)).await?
+        } else {
+            ports.budget.allows(ports.clock.now(), 1)?;
+            queue.opened(http, view.most).await.map_err(halted)?
+        };
         pulls.extend(read);
     }
     Ok(pulls)

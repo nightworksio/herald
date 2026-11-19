@@ -1696,6 +1696,7 @@ A SQLite file, on a volume or a persistent disk.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1713,6 +1714,7 @@ A Postgres database.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1732,6 +1734,7 @@ Cloudflare D1, through the Worker's binding.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1748,6 +1751,7 @@ The storage of herald's Cloudflare Durable Object, through the Worker's binding.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1764,6 +1768,7 @@ Deno KV, on Deno Deploy or wherever a database is opened.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1781,6 +1786,7 @@ A Fastly KV Store, on Fastly Compute.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1802,6 +1808,7 @@ An AWS DynamoDB table.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding a key to seal every record with, such as `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt (ADR-0005); records are not sealed where absent. |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1825,6 +1832,7 @@ One file per record on a `herald-state` branch.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding the key every record is sealed with, such as `HERALD_STORE_KEY`: whoever can write the repository could otherwise forge records herald trusts (ADR-0005). |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1851,6 +1859,7 @@ Generations of the GitHub Actions cache.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.keeps` | array of [RecordKind](#recordkind) | What it keeps besides the ledger, cursors, schedules and deliveries: any of "subscriptions", "pins", "notes", "latest" and "keys". Each is rewritten with every other record on every write, and counts against the cache's quota; none where absent. |
 | `store.key` | table | The secret holding the key every record is sealed with, such as `HERALD_STORE_KEY`: whoever can write the repository could otherwise forge records herald trusts (ADR-0005). |
 | `store.key.secret` | string | The secret's name. |
@@ -1869,6 +1878,7 @@ The repository's variables.
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
 | `store.key` | table | The secret holding the key every record is sealed with, such as `HERALD_STORE_KEY`: whoever can write the repository could otherwise forge records herald trusts (ADR-0005). |
 | `store.key.secret` | string | The secret's name. |
 | `store.kind` | string |  |
@@ -1937,8 +1947,10 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 |---------|------|--------------|
 | `views.<name>.group_by` | [GroupBy](#groupby) | What it groups its rows by: "turn" where absent. |
 | `views.<name>.labels` | array of string | The labels, any one of which a pull request it shows carries, each a glob ignoring case; every pull request where empty. |
+| `views.<name>.mode` | [ViewMode](#viewmode) | Where it reads its pull requests: "auto" where absent, kept of each source that takes webhooks where the store keeps pull requests and live otherwise; "live" from the forge each time; or "kept" from the records the store keeps, folded from webhooks and reconciled with a listing. |
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
 | `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
+| `views.<name>.reconcile` | [Duration](#duration) | How long kept mode waits at least before listing a source's open pull requests again, each page conditional on its last answer; every round where absent. |
 | `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
 | `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
 | `views.<name>.rules.approval` | boolean | One waits on review until it is approved. |
@@ -2202,6 +2214,10 @@ How a Packagist vendor's packages are listed.
 Which envelopes a pull takes.
 
 ### Version
+
+### ViewMode
+
+Where a view reads its open pull requests (ADR-0061).
 
 ### Visibility
 

@@ -2,12 +2,12 @@
 //! records where the store keeps the kind, and [`Unkept`]'s refusal where it
 //! does not.
 
-use crate::Decisions;
-use herald_core::Decided;
+use crate::{Decisions, Pulls};
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
     Schedule, SourceName, State, Subscription,
 };
+use herald_core::{Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
 use jiff::Timestamp;
 
 use super::{
@@ -189,6 +189,65 @@ impl<T: Decisions> Decisions for Option<&T> {
         match self {
             Some(kept) => kept.expire_decisions(before).await,
             None => Unkept.expire_decisions(before).await,
+        }
+    }
+}
+
+impl<T: Pulls> Pulls for Option<&T> {
+    async fn pull(&self, key: &PullKey) -> Result<Option<Versioned<KeptPull>>, StoreError> {
+        match self {
+            Some(kept) => kept.pull(key).await,
+            None => Unkept.pull(key).await,
+        }
+    }
+
+    async fn pulls_of(
+        &self,
+        repository: &RepositoryKey,
+    ) -> Result<Vec<Versioned<KeptPull>>, StoreError> {
+        match self {
+            Some(kept) => kept.pulls_of(repository).await,
+            None => Unkept.pulls_of(repository).await,
+        }
+    }
+
+    async fn put_pull(
+        &self,
+        pull: &KeptPull,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_pull(pull, expected).await,
+            None => Unkept.put_pull(pull, expected).await,
+        }
+    }
+
+    async fn expire_pulls(&self, before: Timestamp) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.expire_pulls(before).await,
+            None => Unkept.expire_pulls(before).await,
+        }
+    }
+
+    async fn reconciled(
+        &self,
+        source: &SourceName,
+    ) -> Result<Option<Versioned<Reconciled>>, StoreError> {
+        match self {
+            Some(kept) => kept.reconciled(source).await,
+            None => Unkept.reconciled(source).await,
+        }
+    }
+
+    async fn put_reconciled(
+        &self,
+        source: &SourceName,
+        reconciled: &Reconciled,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_reconciled(source, reconciled, expected).await,
+            None => Unkept.put_reconciled(source, reconciled, expected).await,
         }
     }
 }

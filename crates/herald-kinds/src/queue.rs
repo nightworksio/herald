@@ -1,5 +1,6 @@
 use std::fmt;
 
+use herald_core::{Pull, Validators, Visibility};
 use herald_ports::{Boxed, DynHttp};
 
 use crate::Unpolled;
@@ -46,6 +47,26 @@ pub struct QueueCost {
     pub mergeability: bool,
 }
 
+/// What a reconcile's listing of a repository's open pull requests found
+/// (ADR-0061).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Relisted {
+    /// Nothing changed since the validators it was asked under.
+    Unchanged,
+    /// The open pull requests, each read as far as the listing reads it.
+    Listed {
+        /// The pull requests.
+        pulls: Vec<Pull>,
+        /// The forge's id of their repository, where the listing names one.
+        repository: Option<String>,
+        /// Who may see their repository, where the listing names it: what
+        /// narrows kept records alone, never widening one (ADR-0061).
+        visibility: Option<Visibility>,
+        /// The validators each page was answered with, in order.
+        validators: Vec<Validators>,
+    },
+}
+
 /// A source's repository's open pull requests, read for a view.
 pub trait Queue: fmt::Debug + Send + Sync {
     /// Its open pull requests, at most `most`, asked through `http`.
@@ -53,5 +74,22 @@ pub trait Queue: fmt::Debug + Send + Sync {
         &'a self,
         http: &'a dyn DynHttp,
         most: Most,
-    ) -> Boxed<'a, Result<Vec<herald_core::Pull>, Unpolled>>;
+    ) -> Boxed<'a, Result<Vec<Pull>, Unpolled>>;
+
+    /// Its open pull requests, at most `most.open`, each read as far as a
+    /// listing reads it, asked through `http` conditional on `validators`,
+    /// the last answer of each page (ADR-0061).
+    fn listed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        most: Most,
+        validators: &'a [Validators],
+    ) -> Boxed<'a, Result<Relisted, Unpolled>>;
+
+    /// `pulls`, as [`Queue::listed`] found them, each read in full.
+    fn completed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        pulls: Vec<Pull>,
+    ) -> Boxed<'a, Result<Vec<Pull>, Unpolled>>;
 }

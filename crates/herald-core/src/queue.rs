@@ -7,8 +7,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::members::Visibility;
 
+mod kept;
 mod view;
 
+pub use kept::{
+    Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
+    Reconciled, RepositoryKey, Reviewed, Since, Verdict,
+};
 pub use view::{
     Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped, rows,
 };
@@ -70,7 +75,8 @@ impl Turn {
 }
 
 /// What a pull request's reviews say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Review {
     /// Nobody reviewed it or was asked to.
     #[default]
@@ -86,7 +92,8 @@ pub enum Review {
 }
 
 /// What a pull request's head commit's checks say.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Checks {
     /// It has none.
     #[default]
@@ -100,7 +107,8 @@ pub enum Checks {
 }
 
 /// Whether a pull request can merge into its base as it stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Mergeable {
     /// The forge has not said.
     #[default]
@@ -112,7 +120,7 @@ pub enum Mergeable {
 }
 
 /// An open pull request, as a view reads it from any forge.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Pull {
     /// The project it is announced as.

@@ -284,6 +284,10 @@ fn lines(did: &Did) -> Vec<String> {
         Did::Withheld(withheld) => vec![withheld_line(withheld)],
         Did::Polled(swept) => swept.iter().flat_map(polled).collect(),
         Did::Fanned(each) => each.iter().flat_map(lines).collect(),
+        Did::Folded(Ok(moved)) => vec![format!(
+            "a webhook's change moved {moved} kept pull requests"
+        )],
+        Did::Folded(Err(reason)) => vec![format!("a webhook's change could not be kept: {reason}")],
     }
 }
 
@@ -316,7 +320,10 @@ pub fn unworked(job: &Job, released: &Result<(), String>) -> String {
         Job::Interact { destination, .. } => {
             format!("the commands given on {}", destination.as_str())
         }
-        Job::Fanned { jobs, .. } => format!("a GitHub App's delivery to {} sources", jobs.len()),
+        Job::Fanned { jobs, .. } => format!("the {} jobs of one delivery", jobs.len()),
+        Job::Fold { source, .. } => {
+            format!("the change to {}'s kept pull requests", source.as_str())
+        }
         Job::Pushed { source, .. } => format!("what a peer pushed into {}", source.as_str()),
     };
     match released {

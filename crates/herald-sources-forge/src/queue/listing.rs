@@ -33,6 +33,32 @@ struct Head {
 }
 
 #[derive(Deserialize)]
+struct Repository {
+    id: u64,
+    visibility: Option<String>,
+    private: Option<bool>,
+    internal: Option<bool>,
+}
+
+impl Repository {
+    /// Who may see it, where the listing says.
+    fn visibility(&self) -> Option<Visibility> {
+        self.visibility
+            .as_deref()
+            .map(crate::owner::named)
+            .or_else(|| {
+                self.private
+                    .map(|private| crate::owner::flagged(Some(private), self.internal))
+            })
+    }
+}
+
+#[derive(Deserialize)]
+struct Base {
+    repo: Option<Repository>,
+}
+
+#[derive(Deserialize)]
 struct Listed {
     number: u64,
     title: String,
@@ -48,6 +74,7 @@ struct Listed {
     requested_reviewers: Vec<Account>,
     mergeable: Option<bool>,
     head: Option<Head>,
+    base: Option<Base>,
 }
 
 impl Listed {
@@ -93,8 +120,9 @@ impl Listed {
 }
 
 /// The page of open pull requests `body` holds, read as `what`, parsing no
-/// more than `parse` bytes, named by `named`: a repository it does not
-/// know the visibility of is taken as private.
+/// more than `parse` bytes, named by `named`: a repository its source does
+/// not know the visibility of is taken as private, and what the listing
+/// names of it is kept apart, to narrow kept records with alone.
 pub(super) fn page(
     what: &'static str,
     body: &[u8],
@@ -103,13 +131,20 @@ pub(super) fn page(
 ) -> Result<Page, SourceError> {
     let (project, repository, known) = named;
     let listed: Vec<Listed> = herald_wire::read(what, parse, body)?;
+    let listed_repository = listed
+        .iter()
+        .find_map(|pull| pull.base.as_ref()?.repo.as_ref());
     let seen = known.unwrap_or(Visibility::Private);
+    let id = listed_repository.map(|repository| repository.id.to_string());
+    let named = listed_repository.and_then(Repository::visibility);
     Ok(Page {
         pulls: listed
             .into_iter()
             .map(|pull| pull.read((project, repository), seen))
             .collect(),
         next: None,
+        repository: id,
+        visibility: named,
     })
 }
 

@@ -195,6 +195,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     type Inboxes = Unkept;
     type Positions = Unkept;
     type Decisions = Unkept;
+    type Pulls = Unkept;
     type Waiting = Unkept;
     type Tokens = Unkept;
     type Published = Unkept;
@@ -240,6 +241,10 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     }
 
     fn decisions(&self) -> Option<&Unkept> {
+        None
+    }
+
+    fn pulls(&self) -> Option<&Unkept> {
         None
     }
 

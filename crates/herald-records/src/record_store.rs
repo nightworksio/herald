@@ -798,6 +798,7 @@ impl<R: RecordBackend> Keeper for RecordStore<R> {
             | Held::Deliveries
             | Held::Positions
             | Held::Decisions
+            | Held::Pulls
             | Held::Pending
             | Held::Tokens
             | Held::Published => true,
@@ -850,6 +851,8 @@ impl<R: RecordBackend> Keyring for RecordStore<R> {
         Ok(())
     }
 }
+
+mod pulls;
 
 #[cfg(test)]
 mod tests {

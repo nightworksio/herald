@@ -134,8 +134,10 @@ pub use profile::{
 };
 pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
-    Batch, Board, Bots, Checks, Deciding, GroupBy, Grouped, Mergeable, Pull, Reason, Review, Row,
-    Rules, Showing, Turn, View, board, grouped, rows,
+    Batch, Board, Bots, Checks, Closed, Deciding, Described, Folded, Folding, GroupBy, Grouped,
+    KeptPull, Lifecycle, Mergeable, Outcome, Pull, PullKey, Ran, Read, Reason, Reconciled,
+    RepositoryKey, Review, Reviewed, Row, Rules, Showing, Since, Turn, Verdict, View, board,
+    grouped, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{

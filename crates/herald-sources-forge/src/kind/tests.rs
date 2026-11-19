@@ -672,3 +672,32 @@ fn a_source_of_one_repository_reads_its_queue_and_an_owner_s_does_not() {
     assert_eq!(owner.queue_cost(most), None);
     assert!(owner.queue(None).is_none());
 }
+
+#[test]
+fn a_forge_source_folds_its_own_repository_s_pull_request_changes_alone() {
+    let source = GitHubKind::checked(options("cli/cli")).unwrap();
+    let comment = br#"{"issue":{"number":3,"pull_request":{}},"comment":{"created_at":"2026-11-18T12:00:00Z"},"repository":{"id":1,"full_name":"cli/cli","html_url":"https://github.com/cli/cli"}}"#;
+    let folding = source
+        .folded(&[("X-GitHub-Event", "issue_comment")], comment)
+        .unwrap()
+        .unwrap();
+    assert_eq!(folding.repository.to_string(), "github.com/1");
+    assert_eq!(folding.folded.len(), 1);
+    assert_eq!(source.folded(&[], comment), Ok(None));
+    let other = GitHubKind::checked(options("cli/other")).unwrap();
+    assert!(
+        other
+            .folded(&[("X-GitHub-Event", "issue_comment")], comment)
+            .is_err()
+    );
+    let owner = GitHubKind::checked(SourceOptions {
+        repository: None,
+        owner: Some("cli".to_owned()),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    assert_eq!(
+        owner.folded(&[("X-GitHub-Event", "issue_comment")], comment),
+        Ok(None)
+    );
+}

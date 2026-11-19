@@ -14,6 +14,7 @@ mod forgets;
 mod latest;
 mod pending;
 mod published;
+mod pulls;
 mod tokens;
 mod unkept;
 
@@ -120,6 +121,17 @@ enum Fault {
     ForgetsOtherPins,
     HidesForgottenNotes,
     ForgetsEveryLatest,
+    HoldsAnUnwrittenPull,
+    OverwritesAnyPullVersion,
+    OverwritesAStalePullVersion,
+    KeepsTheFirstPull,
+    ListsOtherRepositoriesPulls,
+    ExpiresNoPull,
+    ExpiresEveryClosedPull,
+    HoldsAnUnwrittenReconcile,
+    OverwritesAnyReconcileVersion,
+    KeepsTheFirstReconcile,
+    SharesReconciles,
 }
 
 struct Faulty {

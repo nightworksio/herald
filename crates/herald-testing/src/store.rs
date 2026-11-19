@@ -1,5 +1,5 @@
-use herald_core::Decided;
-use herald_ports::Decisions;
+use herald_core::{Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
+use herald_ports::{Decisions, Pulls};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
@@ -28,6 +28,8 @@ struct FakeState {
     pins: BTreeMap<RouteId, String>,
     positions: BTreeMap<DestinationName, String>,
     decisions: BTreeMap<Key, Decided>,
+    pulls: BTreeMap<PullKey, Versioned<KeptPull>>,
+    reconciled: BTreeMap<SourceName, Versioned<Reconciled>>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
     notes: BTreeMap<Key, (String, String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
@@ -624,6 +626,67 @@ impl Published for FakeStore {
     }
 }
 
+impl Pulls for FakeStore {
+    async fn pull(&self, key: &PullKey) -> Result<Option<Versioned<KeptPull>>, StoreError> {
+        Ok(lock(&self.state).pulls.get(key).cloned())
+    }
+
+    async fn pulls_of(
+        &self,
+        repository: &RepositoryKey,
+    ) -> Result<Vec<Versioned<KeptPull>>, StoreError> {
+        Ok(lock(&self.state)
+            .pulls
+            .iter()
+            .filter(|(key, _)| key.repository == *repository)
+            .map(|(_, kept)| kept.clone())
+            .collect())
+    }
+
+    async fn put_pull(
+        &self,
+        kept: &KeptPull,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.pulls,
+            kept.key.clone(),
+            kept,
+            expected,
+        ))
+    }
+
+    async fn expire_pulls(&self, before: Timestamp) -> Result<(), StoreError> {
+        lock(&self.state)
+            .pulls
+            .retain(|_, kept| kept.value.closed.is_none_or(|closed| closed.at >= before));
+        Ok(())
+    }
+
+    async fn reconciled(
+        &self,
+        source: &SourceName,
+    ) -> Result<Option<Versioned<Reconciled>>, StoreError> {
+        Ok(lock(&self.state).reconciled.get(source).cloned())
+    }
+
+    async fn put_reconciled(
+        &self,
+        source: &SourceName,
+        reconciled: &Reconciled,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.reconciled,
+            source.clone(),
+            reconciled,
+            expected,
+        ))
+    }
+}
+
 impl Keeper for FakeStore {
     fn holds(&self, _: Held) -> bool {
         true
@@ -656,6 +719,7 @@ mod tests {
         assert!(itself(store.inboxes()));
         assert!(itself(store.positions()));
         assert!(itself(store.decisions()));
+        assert!(itself(store.pulls()));
         assert!(itself(store.waiting()));
     }
 }

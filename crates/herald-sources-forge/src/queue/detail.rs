@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::github::Account;
 
-use super::{FAILED, PAGE};
+use super::{PAGE, TRUSTED, failed};
 use crate::Forge;
 
 /// What a pull request's reviews are read as.
@@ -45,10 +45,6 @@ struct Given {
     author_association: Option<String>,
     official: Option<bool>,
 }
-
-/// The associations GitHub names a reviewer by whose review decides, as
-/// its review decision counts them.
-const TRUSTED: [&str; 3] = ["OWNER", "MEMBER", "COLLABORATOR"];
 
 /// What one review leaves its reviewer's verdict as.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -145,11 +141,6 @@ struct Combined {
 struct Status {
     context: String,
     status: String,
-}
-
-/// Whether `state` is one a failed check ends in.
-fn failed(state: &str) -> bool {
-    FAILED.iter().any(|named| named.eq_ignore_ascii_case(state))
 }
 
 /// What checks say, each a name, whether it ran, and whether it failed.

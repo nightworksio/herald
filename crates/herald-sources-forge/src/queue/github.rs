@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use herald_core::{Checks, Mergeable, Pull, Review, Turn, Visibility};
 use herald_ports::Request;
 use herald_wire::SourceError;
@@ -16,11 +18,35 @@ pub(super) const WHAT: &str = "GitHub's open pull requests";
 /// The most labels and check contexts a pull request is read with.
 const MOST_NAMED: usize = 50;
 
+/// What the query reads of each pull request.
+fn fields() -> String {
+    format!(
+        "number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
+    )
+}
+
 /// The query for one page of a repository's open pull requests, the most
 /// recently updated first.
 fn query() -> String {
     format!(
-        "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }} }} }} }} }}"
+        "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ {} }} }} }} }}",
+        fields()
+    )
+}
+
+/// The query reading each of a repository's pull requests `numbers` in
+/// full, under an alias holding its place.
+fn numbered_query(numbers: &[u64]) -> String {
+    let fields = fields();
+    let mut pulls = String::new();
+    for (place, number) in numbers.iter().enumerate() {
+        let _ = write!(
+            pulls,
+            " p{place}: pullRequest(number: {number}) {{ {fields} }}"
+        );
+    }
+    format!(
+        "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ visibility{pulls} }} }}"
     )
 }
 
@@ -31,6 +57,23 @@ pub(super) fn request(endpoint: &str, path: &str, after: Option<&str>, parse: us
     let body = json!({
         "query": query(),
         "variables": { "owner": owner, "name": name, "after": after },
+    });
+    posted(endpoint, &body, parse)
+}
+
+/// The request reading each of the pull requests `numbers` of the
+/// repository at `path` in full, posted to `endpoint`, reading at most
+/// `parse` bytes.
+pub(super) fn numbered_request(
+    endpoint: &str,
+    path: &str,
+    numbers: &[u64],
+    parse: usize,
+) -> Request {
+    let (owner, name) = path.split_once('/').unwrap_or((path, ""));
+    let body = json!({
+        "query": numbered_query(numbers),
+        "variables": { "owner": owner, "name": name },
     });
     posted(endpoint, &body, parse)
 }
@@ -50,6 +93,23 @@ struct Data {
 struct Repository {
     visibility: Option<String>,
     pull_requests: Connection<Node>,
+}
+
+#[derive(Deserialize)]
+struct NumberedAnswer {
+    data: Option<NumberedData>,
+}
+
+#[derive(Deserialize)]
+struct NumberedData {
+    repository: Option<Numbered>,
+}
+
+#[derive(Deserialize)]
+struct Numbered {
+    visibility: Option<String>,
+    #[serde(flatten)]
+    pulls: std::collections::BTreeMap<String, Option<Node>>,
 }
 
 #[derive(Deserialize)]
@@ -276,10 +336,7 @@ pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, 
     let (project, repository, known) = named;
     let answer: Answer = herald_wire::read(WHAT, parse, body)?;
     let Some(found) = answer.data.and_then(|data| data.repository) else {
-        return Err(SourceError::Unreadable {
-            what: WHAT,
-            reason: "it names no repository the token may read".to_owned(),
-        });
+        return Err(unnamed());
     };
     let seen = known.unwrap_or_else(|| visibility(found.visibility.as_deref()));
     let next = found
@@ -293,7 +350,42 @@ pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, 
         .into_iter()
         .map(|node| node.read((project, repository), seen))
         .collect();
-    Ok(Page { pulls, next })
+    Ok(Page {
+        pulls,
+        next,
+        repository: None,
+        visibility: None,
+    })
+}
+
+/// The pull requests `body` reads in full, parsing no more than `parse`
+/// bytes, named by `named`; one the answer holds no pull request for is
+/// left out.
+pub(super) fn numbered(
+    body: &[u8],
+    parse: usize,
+    named: Named<'_>,
+) -> Result<Vec<Pull>, SourceError> {
+    let (project, repository, known) = named;
+    let answer: NumberedAnswer = herald_wire::read(WHAT, parse, body)?;
+    let Some(found) = answer.data.and_then(|data| data.repository) else {
+        return Err(unnamed());
+    };
+    let seen = known.unwrap_or_else(|| visibility(found.visibility.as_deref()));
+    Ok(found
+        .pulls
+        .into_values()
+        .flatten()
+        .map(|node| node.read((project, repository), seen))
+        .collect())
+}
+
+/// Why an answer naming no repository cannot be read.
+fn unnamed() -> SourceError {
+    SourceError::Unreadable {
+        what: WHAT,
+        reason: "it names no repository the token may read".to_owned(),
+    }
 }
 
 #[cfg(test)]

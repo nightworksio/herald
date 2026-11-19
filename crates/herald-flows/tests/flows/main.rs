@@ -42,6 +42,8 @@ mod inbound;
 #[cfg(test)]
 mod interact;
 #[cfg(test)]
+mod kept;
+#[cfg(test)]
 mod marked;
 #[cfg(test)]
 mod mastodon;
