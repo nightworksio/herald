@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::HeraldKind;
 
+mod logged;
 mod proofs;
 mod pushes;
 use crate::options::HeraldFile;
@@ -408,6 +409,20 @@ fn a_pull_reads_at_most_its_pages_and_with_no_cursor_enough_for_its_backfill() {
         )],
         None,
     );
+    assert_eq!(http.asked().len(), 1);
+    let mut tagged = bare("a/8");
+    tagged["kind"] = json!("tag");
+    let (read, http) = pulled(
+        &exact,
+        vec![page(
+            FEED,
+            &[(9, envelope("a/9")), (8, proved(&tagged, DOMAIN, &KEY))],
+            true,
+        )],
+        None,
+    );
+    let read = read.unwrap().unwrap();
+    assert_eq!((read.events.len(), read.passed.len()), (1, 1));
     assert_eq!(http.asked().len(), 1);
 }
 

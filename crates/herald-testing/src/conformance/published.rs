@@ -1,5 +1,9 @@
 use herald_core::Action;
-use herald_core::{AuditDay, Audited, DestinationName, Feed, PeerKeys, PublishedKeys, Window};
+use std::collections::BTreeMap;
+
+use herald_core::{
+    AuditDay, Audited, DestinationName, Feed, PeerKeys, Publication, PublishedKeys, Window,
+};
 use herald_ports::{Published, StoreError, Version, Written};
 use jiff::Timestamp;
 use serde_json::json;
@@ -38,6 +42,48 @@ pub(super) async fn published<S: Published>(
             .await?
             .is_some_and(|kept| kept.value == next),
         "a published key set read back was not the one written last",
+    );
+    Ok(())
+}
+
+/// Whether the static signed log's record is kept, written with
+/// compare-and-set, and read back as written last, every field whole.
+pub(super) async fn publication<S: Published>(
+    store: &S,
+    checks: &mut Checks,
+) -> Result<(), StoreError> {
+    checks.ensure(
+        store.publication().await?.is_none(),
+        "a new store keeps a static log's record",
+    );
+    let begun = Publication {
+        sequence: 1,
+        published: None,
+        files: BTreeMap::new(),
+        commit: None,
+    };
+    let at = checks.written(store.put_publication(&begun, None).await?);
+    checks.ensure(
+        store.put_publication(&begun, None).await? == Written::Conflict
+            && store.put_publication(&begun, Some(Version(0))).await? == Written::Conflict,
+        "a static log's record was written over a version it did not expect",
+    );
+    let written = Publication {
+        sequence: 2,
+        published: Some(Timestamp::constant(1_800_000_000, 0)),
+        files: BTreeMap::from([(
+            "herald/v1/feeds/releases".to_owned(),
+            "sha-256=:AAAA:".to_owned(),
+        )]),
+        commit: Some("0123abcd".to_owned()),
+    };
+    checks.written(store.put_publication(&written, Some(at)).await?);
+    checks.ensure(
+        store
+            .publication()
+            .await?
+            .is_some_and(|kept| kept.value == written),
+        "a static log's record read back was not the one written last",
     );
     Ok(())
 }

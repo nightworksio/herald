@@ -599,6 +599,15 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.lists[].file` | string | The file, as a path beside `herald.toml`. |
 | `federation.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
 | `federation.mode` | [Mode](#mode) | Whom herald's actors federate with, for an ActivityPub destination that names no `mode`: `open` or `allowlist`. |
+| `federation.pages` | table | Where herald writes its feeds as a static signed log for any static host to serve, such as GitHub Pages, at the end of each run that changed one (ADR-0060). None where absent. |
+| `federation.pages.api` | string | The API's base URL, for a GitHub Enterprise Server; GitHub's own API where absent. |
+| `federation.pages.artifact` | string | A directory each writing of the log fills with every file of it, such as for actions/upload-pages-artifact to deploy. None where absent. |
+| `federation.pages.branch` | string | The branch each writing of the log is committed to, one commit each, for GitHub Pages or any static host to serve; `herald-pages` where absent, unless `artifact` is named, which then takes its place. |
+| `federation.pages.refresh` | [Duration](#duration) | How long a log no feed changed is left before it is written again under its next sequence, so its readers see it is current: "1d" where absent, at most "7d". |
+| `federation.pages.repository` | string | The repository holding the branch, as `owner/name`; the run's own where absent. |
+| `federation.pages.token` | table | The secret holding a token that may push to the branch; `GITHUB_TOKEN` where absent. |
+| `federation.pages.token.secret` | string | The secret's name. |
+| `federation.pages.url` | string | Where a static host serves the log, such as `https://owner.github.io/repository`: https://, `[federation] domain` as its host, and a path where the log is not served at the root. |
 | `federation.refresh` | [Duration](#duration) | How long a peer may keep the instance's key set before it reads it again; "1d" where absent, at most "7d". |
 | `federation.refused_nonces` | integer | How many requests of one peer refused past its rate have their nonces kept, counted afresh every 20 minutes, the longest a request lives, so none is taken later: 2400 where absent, its rate's default over that time, at most 9600. Past it the peer is held, and nothing of it is taken until every request it made unkept has expired (ADR-0054). |
 | `federation.replay_rate` | [Rate](#rate) | How many requests replaying a nonce one peer already used are kept in its audit, counted apart from its own rate so a replay spends none of it: "120/m" where absent, at most "480/m"; past it herald answers 429 (ADR-0054). |
@@ -1665,6 +1674,8 @@ Another herald's feed, each answer and envelope checked against the keys trusted
 | `sources.<name>.peers.<name>.actions` | array of [Action](#action) | What the peer may do, such as `["push"]`. |
 | `sources.<name>.peers.<name>.namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/', such as "github.com/123456"; every other is taken as herald/<peer>/<identity>. None where absent. |
 | `sources.<name>.peers.<name>.until` | string | When the grant ends, in RFC 3339 such as "2027-01-01T00:00:00Z" or as a TOML datetime with its offset; never where absent. |
+| `sources.<name>.stale_after` | [Duration](#duration) | How long after a static log was written it is still taken: "3d" where absent, at most "30d". An older one is refused, as its host may be withholding newer pages; give more than the publisher's `refresh`. Only with `static = true`. |
+| `sources.<name>.static` | boolean | Whether the feed is read from a static signed log, as a static host such as GitHub Pages serves it, rather than from a herald server: each page checked against the digest the log's signed discovery document lists. false where absent (ADR-0060). |
 | `sources.<name>.tombstones` | integer | How many tombstones of identities it never took it keeps the proof of in all, so no older envelope of them is taken again, apart from those of identities it took, which it never forgets: 1000 where absent, and at most 4000. It forgets those taken first. |
 | `sources.<name>.url` | string | The full URL of a feed of an instance that is no peer, whose keys `keys` pins; in place of `peer` and `feed`. |
 | `sources.<name>.verify` | [Verify](#verify) | Which envelopes it takes: "origin" (where absent), those the peer proved itself, or "hop", also those it passes on from another peer. |

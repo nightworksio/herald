@@ -13,6 +13,7 @@ fn bare() -> Federation {
         sources: Vec::new(),
         grants: Vec::new(),
         keep_audit: SignedDuration::ZERO,
+        pages: None,
         routes: Vec::new(),
         gaps: Vec::new(),
     }
@@ -34,7 +35,7 @@ fn peer(name: &str) -> PeerShown {
 #[test]
 fn a_config_takes_part_among_heralds_by_any_one_of_its_parts() {
     assert!(!bare().any());
-    let parts: [fn(&mut Federation); 6] = [
+    let parts: [fn(&mut Federation); 7] = [
         |shown| shown.domain = Some("herald.example".to_owned()),
         |shown| {
             shown.keys.push(OwnKey {
@@ -63,6 +64,19 @@ fn a_config_takes_part_among_heralds_by_any_one_of_its_parts() {
                 name: "up".to_owned(),
                 pulls: None,
                 pushed: true,
+                stale_after: None,
+            });
+        },
+        |shown| {
+            shown.pages = Some(herald_config::Pages {
+                url: "https://owner.example".to_owned(),
+                base: String::new(),
+                branch: None,
+                repository: None,
+                token: None,
+                api: None,
+                artifact: Some("_site".to_owned()),
+                refresh: SignedDuration::ZERO,
             });
         },
     ];
@@ -92,6 +106,7 @@ fn a_gap_is_federation_s_where_its_key_is_of_one_of_its_parts_on_a_boundary() {
         name: "up".to_owned(),
         pulls: None,
         pushed: true,
+        stale_after: None,
     });
     shown.routes.push(2);
     for owned in [

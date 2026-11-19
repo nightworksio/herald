@@ -77,3 +77,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0057](0057-a-view-asks-a-model-only-what-its-rules-cannot-tell-and-keeps-every-answer.md) | A view asks a model only what its rules cannot tell, and keeps every answer | Accepted |
 | [0058](0058-doctor-shows-the-instance-among-other-heralds.md) | doctor shows the instance among other heralds | Accepted |
 | [0059](0059-a-model-is-asked-through-its-provider-s-own-api-or-the-binding-of-the-host-that-runs-it.md) | A model is asked through its provider's own API, or the binding of the host that runs it | Accepted |
+| [0060](0060-a-static-host-serves-the-feeds-as-a-signed-log.md) | A static host serves the feeds as a signed log | Accepted |

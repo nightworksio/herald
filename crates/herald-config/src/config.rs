@@ -162,7 +162,17 @@ impl Config {
             let webhook = app.webhook.as_ref().filter(|_| uses == Uses::Serves);
             key.into_iter().chain(webhook)
         });
-        let instance = self.federation.keys.iter().filter(|_| uses == Uses::Serves);
+        let instance = self
+            .federation
+            .keys
+            .iter()
+            .filter(|_| uses == Uses::Serves || self.federation.pages.is_some());
+        let pages = self
+            .federation
+            .pages
+            .iter()
+            .filter(|pages| uses != Uses::Serves && pages.branch.is_some())
+            .map(Pages::token_name);
         let models = self
             .models
             .values()
@@ -175,6 +185,7 @@ impl Config {
             .chain(instance)
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
+            .chain(pages)
             .collect()
     }
 
@@ -188,6 +199,16 @@ impl Config {
                 .then(|| self.federation.keys.first())
                 .flatten()
         })
+    }
+
+    /// The path every document of the instance is found under: its static
+    /// log's where it writes one, else the server's.
+    #[must_use]
+    pub fn instance_base(&self) -> &str {
+        self.federation
+            .pages
+            .as_ref()
+            .map_or(&self.server.base, |pages| &pages.base)
     }
 
     /// The keys that name the secret `name`, such as
@@ -397,6 +418,53 @@ pub struct Federation {
     /// How many requests of one peer refused past its rate have their
     /// nonces kept in each span of `SIGNED_FOR_ALLOWED`.
     pub refused_nonces: u32,
+    /// Where its feeds are written as a static signed log, where they are.
+    pub pages: Option<Pages>,
+}
+
+/// Where herald writes its feeds as a static signed log for a static host
+/// to serve (ADR-0060).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pages {
+    /// Where the host serves it, with no trailing `/`.
+    pub url: String,
+    /// The path under `[federation] domain` it is served at; empty at the
+    /// root.
+    pub base: String,
+    /// The branch each writing is committed to, where it is committed to
+    /// one.
+    pub branch: Option<String>,
+    /// The repository holding the branch, where the config names one.
+    pub repository: Option<String>,
+    /// The secret holding a token that may push to the branch, where the
+    /// config names one.
+    pub token: Option<SecretRef>,
+    /// The API's base URL, where the config names one.
+    pub api: Option<String>,
+    /// The directory each writing fills with every file, where the config
+    /// names one.
+    pub artifact: Option<String>,
+    /// How long a log no feed changed is left before it is written again.
+    pub refresh: SignedDuration,
+}
+
+impl Pages {
+    /// The branch the log is committed to where `branch` and `artifact`
+    /// are absent.
+    pub const BRANCH: &str = "herald-pages";
+    /// How long an unchanged log is left where `refresh` is absent.
+    pub const REFRESH: SignedDuration = SignedDuration::from_hours(24);
+    /// The longest `refresh` may be.
+    pub const REFRESH_ALLOWED: SignedDuration = SignedDuration::from_hours(7 * 24);
+
+    /// The name of the secret holding the token that pushes to the branch:
+    /// the one the config names, else `GITHUB_TOKEN`.
+    #[must_use]
+    pub fn token_name(&self) -> &str {
+        self.token
+            .as_ref()
+            .map_or(herald_kinds::GITHUB_TOKEN, |token| token.secret.as_str())
+    }
 }
 
 impl Federation {
@@ -446,6 +514,7 @@ impl Default for Federation {
             stranger_rate: crate::Peer::RATE,
             replay_rate: crate::Peer::RATE,
             refused_nonces: Self::REFUSED_NONCES,
+            pages: None,
         }
     }
 }

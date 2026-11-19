@@ -1,11 +1,12 @@
 //! What the instance last published to its peers: its key set and the
-//! sequence it published it under (ADR-0044), and each feed's envelopes;
+//! sequence it published it under (ADR-0044), each feed's envelopes and
+//! the static signed log it last wrote (ADR-0060);
 //! the key set each peer last handed over to (ADR-0049); and what each
 //! peer asked of it, by day, and in its rate's window (ADR-0054).
 
 use std::future::Future;
 
-use herald_core::{AuditDay, DestinationName, Feed, PeerKeys, PublishedKeys, Window};
+use herald_core::{AuditDay, DestinationName, Feed, PeerKeys, Publication, PublishedKeys, Window};
 
 use super::{StoreError, Version, Versioned, Written};
 
@@ -21,6 +22,19 @@ pub trait Published: Sync {
     fn put_published_keys(
         &self,
         keys: &PublishedKeys,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// The static signed log last written, where one was (ADR-0060).
+    fn publication(
+        &self,
+    ) -> impl Future<Output = Result<Option<Versioned<Publication>>, StoreError>> + Send;
+
+    /// Writes `publication` if the stored one is at `expected`, or absent
+    /// when `expected` is `None`.
+    fn put_publication(
+        &self,
+        publication: &Publication,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 
@@ -101,6 +115,20 @@ impl Published for super::Unkept {
     fn put_published_keys(
         &self,
         _: &PublishedKeys,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn publication(
+        &self,
+    ) -> impl Future<Output = Result<Option<Versioned<Publication>>, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn put_publication(
+        &self,
+        _: &Publication,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         std::future::ready(Err(super::Held::Published.unsupported()))
@@ -195,6 +223,24 @@ impl<T: Published> Published for Option<&T> {
         match self {
             Some(kept) => kept.put_published_keys(keys, expected).await,
             None => super::Unkept.put_published_keys(keys, expected).await,
+        }
+    }
+
+    async fn publication(&self) -> Result<Option<Versioned<Publication>>, StoreError> {
+        match self {
+            Some(kept) => kept.publication().await,
+            None => super::Unkept.publication().await,
+        }
+    }
+
+    async fn put_publication(
+        &self,
+        publication: &Publication,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_publication(publication, expected).await,
+            None => super::Unkept.put_publication(publication, expected).await,
         }
     }
 

@@ -128,6 +128,27 @@ pub(super) struct SourceJson<'a> {
     pinned: Option<&'a str>,
     /// Whether a peer may push into it.
     pushed: bool,
+    /// How many seconds after the static log it reads was written it is
+    /// still taken; null where it reads no static log.
+    #[schemars(required)]
+    stale_after: Option<i64>,
+}
+
+/// Where the instance's feeds are written as a static signed log.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(super) struct PagesJson<'a> {
+    /// Where a static host serves it.
+    url: &'a str,
+    /// The branch each writing is committed to; null where it is committed
+    /// to none.
+    #[schemars(required)]
+    branch: Option<&'a str>,
+    /// The directory each writing fills; null where it fills none.
+    #[schemars(required)]
+    artifact: Option<&'a str>,
+    /// How many seconds a log no feed changed is left before it is written
+    /// again.
+    refresh: i64,
 }
 
 /// What a peer may do with a source.
@@ -166,6 +187,10 @@ pub(super) struct FederationJson<'a> {
     grants: Vec<GrantJson<'a>>,
     /// How many seconds what each peer asked is kept.
     keep_audit: i64,
+    /// Where its feeds are written as a static signed log; null where they
+    /// are not.
+    #[schemars(required)]
+    pages: Option<PagesJson<'a>>,
     /// What of it the layer cannot serve.
     gaps: Vec<Gapped<'a>>,
 }
@@ -182,6 +207,12 @@ impl<'a> From<&'a Federation> for FederationJson<'a> {
             sources: federation.sources.iter().map(source_json).collect(),
             grants: federation.grants.iter().map(grant_json).collect(),
             keep_audit: federation.keep_audit.as_secs(),
+            pages: federation.pages.as_ref().map(|pages| PagesJson {
+                url: &pages.url,
+                branch: pages.branch.as_deref(),
+                artifact: pages.artifact.as_deref(),
+                refresh: pages.refresh.as_secs(),
+            }),
             gaps: federation.gaps.iter().map(gapped_json).collect(),
         }
     }
@@ -249,6 +280,7 @@ fn source_json(source: &SourceShown) -> SourceJson<'_> {
         peer,
         pinned,
         pushed: source.pushed,
+        stale_after: source.stale_after.map(|stale_after| stale_after.as_secs()),
     }
 }
 
@@ -304,6 +336,25 @@ pub(super) fn lines(federation: &Federation) -> Vec<String> {
         "federation.keep_audit: what each peer asks is kept {}.",
         herald_core::Duration(federation.keep_audit).written()
     ));
+    if let Some(pages) = &federation.pages {
+        let written: Vec<String> = pages
+            .branch
+            .iter()
+            .map(|branch| format!("committed to the branch {branch}"))
+            .chain(
+                pages
+                    .artifact
+                    .iter()
+                    .map(|artifact| format!("written to {artifact}")),
+            )
+            .collect();
+        lines.push(format!(
+            "federation.pages: the static signed log at {}, {}, written again unchanged after {}.",
+            pages.url,
+            written.join(" and "),
+            herald_core::Duration(pages.refresh).written()
+        ));
+    }
     lines
 }
 
@@ -343,5 +394,14 @@ fn source_line(source: &SourceShown) -> String {
     } else {
         "takes no push"
     };
-    format!("sources.{}: {pulls}, and {pushed}.", source.name)
+    let fixed = source
+        .stale_after
+        .map(|stale_after| {
+            format!(
+                " from its static log, taken up to {} after it was written",
+                herald_core::Duration(stale_after).written()
+            )
+        })
+        .unwrap_or_default();
+    format!("sources.{}: {pulls}{fixed}, and {pushed}.", source.name)
 }

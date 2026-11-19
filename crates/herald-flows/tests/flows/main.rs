@@ -58,6 +58,8 @@ mod private_kinds;
 #[cfg(test)]
 mod projects;
 #[cfg(test)]
+mod publishing;
+#[cfg(test)]
 mod pulls;
 #[cfg(test)]
 mod pushing;

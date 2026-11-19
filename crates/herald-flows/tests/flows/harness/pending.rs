@@ -125,6 +125,27 @@ impl herald_ports::Published for Failing {
         self.inner.put_published_keys(keys, expected).await
     }
 
+    async fn publication(&self) -> Result<Option<Versioned<herald_core::Publication>>, StoreError> {
+        if self.fault == Fault::ReadsPublication {
+            return Err(broken());
+        }
+        self.inner.publication().await
+    }
+
+    async fn put_publication(
+        &self,
+        publication: &herald_core::Publication,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesPublication {
+            return Err(broken());
+        }
+        if self.fault == Fault::ConflictsPublication {
+            return Ok(Written::Conflict);
+        }
+        self.inner.put_publication(publication, expected).await
+    }
+
     async fn feed(
         &self,
         destination: &herald_core::DestinationName,
@@ -246,6 +267,18 @@ impl herald_ports::Published for Refusing {
     async fn put_published_keys(
         &self,
         _: &herald_core::PublishedKeys,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn publication(&self) -> Result<Option<Versioned<herald_core::Publication>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_publication(
+        &self,
+        _: &herald_core::Publication,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(self.0.clone())

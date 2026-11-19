@@ -5,8 +5,8 @@ use std::sync::Mutex;
 
 use herald_core::{
     AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
-    Membership, PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State,
-    Subscription, Window,
+    Membership, PeerKeys, Pending, Publication, PublishedKeys, RouteId, Schedule, SourceName,
+    State, Subscription, Window,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
@@ -35,6 +35,7 @@ struct FakeState {
     pending: BTreeMap<Hold, Versioned<Pending>>,
     tokens: BTreeMap<String, Versioned<KeptToken>>,
     published: BTreeMap<(), Versioned<PublishedKeys>>,
+    publication: BTreeMap<(), Versioned<Publication>>,
     feeds: BTreeMap<DestinationName, Versioned<Feed>>,
     peer_keys: BTreeMap<String, Versioned<PeerKeys>>,
     audits: BTreeMap<(String, String), Versioned<AuditDay>>,
@@ -501,6 +502,24 @@ impl Published for FakeStore {
     ) -> Result<Written, StoreError> {
         let mut state = lock(&self.state);
         Ok(compare_and_set(&mut state.published, (), keys, expected))
+    }
+
+    async fn publication(&self) -> Result<Option<Versioned<Publication>>, StoreError> {
+        Ok(lock(&self.state).publication.get(&()).cloned())
+    }
+
+    async fn put_publication(
+        &self,
+        publication: &Publication,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.publication,
+            (),
+            publication,
+            expected,
+        ))
     }
 
     async fn feed(

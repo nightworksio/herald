@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 mod compose {
+    mod pages;
     mod reports;
     mod work;
 

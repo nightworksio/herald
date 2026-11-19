@@ -87,6 +87,7 @@ approve = "manual"
                 stranger_rate: herald_config::Peer::RATE,
                 replay_rate: herald_config::Peer::RATE,
                 refused_nonces: Federation::REFUSED_NONCES,
+                pages: None,
             }
         );
         assert_eq!(Federation::FIELDS, 8192);

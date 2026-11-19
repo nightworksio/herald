@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
     Attempts, AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest,
-    Listing, Membership, PeerKeys, Pending, PublishedKeys, RecordKind, RouteId, Schedule,
-    SourceName, State, Subscription, Window,
+    Listing, Membership, PeerKeys, Pending, Publication, PublishedKeys, RecordKind, RouteId,
+    Schedule, SourceName, State, Subscription, Window,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
@@ -686,6 +686,19 @@ impl<R: RecordBackend> herald_ports::Published for RecordStore<R> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.compare_and_set(paths::PUBLISHED_KEYS, keys, expected)
+            .await
+    }
+
+    async fn publication(&self) -> Result<Option<Versioned<Publication>>, StoreError> {
+        self.listed(paths::PUBLICATION).await
+    }
+
+    async fn put_publication(
+        &self,
+        publication: &Publication,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(paths::PUBLICATION, publication, expected)
             .await
     }
 

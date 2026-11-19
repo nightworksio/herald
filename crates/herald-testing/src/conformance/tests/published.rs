@@ -23,6 +23,34 @@ impl herald_ports::Published for Faulty {
         self.inner.put_published_keys(keys, expected).await
     }
 
+    async fn publication(
+        &self,
+    ) -> Result<Option<herald_ports::Versioned<herald_core::Publication>>, StoreError> {
+        let kept = self.inner.publication().await?;
+        Ok(match self.fault {
+            Fault::ForgetsPublication => kept.filter(|kept| kept.value.sequence == 1),
+            Fault::DropsPublishedFiles => kept.map(|mut kept| {
+                kept.value.files.clear();
+                kept
+            }),
+            _ => kept,
+        })
+    }
+
+    async fn put_publication(
+        &self,
+        publication: &herald_core::Publication,
+        expected: Option<herald_ports::Version>,
+    ) -> Result<herald_ports::Written, StoreError> {
+        let expected = match expected {
+            Some(_) if self.fault == Fault::OverwritesAnyPublicationVersion => {
+                self.inner.publication().await?.map(|kept| kept.version)
+            }
+            expected => expected,
+        };
+        self.inner.put_publication(publication, expected).await
+    }
+
     async fn feed(
         &self,
         destination: &herald_core::DestinationName,
@@ -150,6 +178,24 @@ fn a_store_that_forgets_its_published_key_set_or_writes_over_any_version_is_refu
         (
             Fault::OverwritesAnyPublishedVersion,
             "a published key set was written over a version it did not expect",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_forgets_or_cuts_its_static_log_s_record_or_writes_over_any_version_is_refused() {
+    refused(&[
+        (
+            Fault::ForgetsPublication,
+            "a static log's record read back was not the one written last",
+        ),
+        (
+            Fault::DropsPublishedFiles,
+            "a static log's record read back was not the one written last",
+        ),
+        (
+            Fault::OverwritesAnyPublicationVersion,
+            "a static log's record was written over a version it did not expect",
         ),
     ]);
 }

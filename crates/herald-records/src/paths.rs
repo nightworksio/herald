@@ -62,6 +62,9 @@ pub(crate) fn token(name: &str) -> String {
 /// Where the key set the instance last published is kept.
 pub(crate) const PUBLISHED_KEYS: &str = "published/keys.json";
 
+/// Where the static signed log the instance last wrote is kept.
+pub(crate) const PUBLICATION: &str = "published/log.json";
+
 /// Where the envelopes the feed of `destination` lists are kept.
 pub(crate) fn feed(destination: &DestinationName) -> String {
     format!("published/feeds/{}.json", segment(destination.as_str()))

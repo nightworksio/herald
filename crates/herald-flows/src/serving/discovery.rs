@@ -5,10 +5,12 @@
 use herald_core::{PublishedKeys, itself, media, status};
 use herald_keys::{ED25519_LENGTH, ed25519_of};
 use herald_peers::discovery::{Instance, NODEINFO_JSON};
+use herald_peers::feed::Envelope;
 use herald_peers::keys::{KeySet, method};
 use herald_peers::multibase::ed25519_public;
 use herald_peers::proof;
-use herald_ports::{Algorithm, Clock, Published, Signer, Store, StoreError, Written};
+use herald_ports::{Algorithm, Clock, Published, Secret, Signer, Store, StoreError, Written};
+use jiff::Timestamp;
 
 use super::replies::{Answered, missing, refusal, replied};
 use super::{Inbound, Serving};
@@ -24,7 +26,7 @@ pub(super) fn instance<'a, S, C, G, V, H, P, K>(
     let domain = serving.config.federation.domain.as_deref()?;
     (domain == host).then(|| Instance {
         domain,
-        base: &serving.config.server.base,
+        base: serving.config.instance_base(),
         software: itself::NAME,
         version: itself::VERSION,
         repository: herald_core::repository!(),
@@ -71,22 +73,34 @@ async fn handed_over<S, C: Clock, G: Signer, V, H, P, K>(
     set: &KeySet,
 ) -> String {
     let feeds = feeds(serving);
-    let mut keys = set.document(instance.domain);
-    if let Some((oldest, secret)) = set.keys.last().zip(serving.connected.instance.last())
-        && let Ok(unproved) = proof::unproved(
-            &keys,
-            &method(instance.domain, oldest),
-            serving.ports.clock.now(),
-        )
-        && let Ok(signature) = serving
-            .ports
-            .signer
+    let keys = proved_set(
+        serving.ports.signer,
+        (instance.domain, serving.ports.clock.now()),
+        set,
+        serving.connected.instance.last(),
+    )
+    .await;
+    instance.document(&keys, &feeds)
+}
+
+/// `set` as a discovery document on `domain` lists it, proved at `now` by
+/// its oldest key, `oldest`, where it can be.
+pub(crate) async fn proved_set<G: Signer>(
+    signer: &G,
+    (domain, now): (&str, Timestamp),
+    set: &KeySet,
+    oldest: Option<&Secret>,
+) -> Envelope {
+    let mut keys = set.document(domain);
+    if let Some((public, secret)) = set.keys.last().zip(oldest)
+        && let Ok(unproved) = proof::unproved(&keys, &method(domain, public), now)
+        && let Ok(signature) = signer
             .sign(Algorithm::Ed25519, secret, unproved.message())
             .await
     {
         keys = unproved.proved(&signature);
     }
-    instance.document(&keys, &feeds)
+    keys
 }
 
 /// The name of each feed of herald's own a route publishes to, once each.
@@ -109,11 +123,17 @@ pub(super) fn feeds<'a, S, C, G, V, H, P, K>(
 pub(super) async fn public_keys<S, C, G: Signer, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
 ) -> Result<Vec<[u8; ED25519_LENGTH]>, String> {
+    publics(serving.ports.signer, &serving.connected.instance).await
+}
+
+/// The Ed25519 public keys of the secrets `instance` holds, in order.
+pub(crate) async fn publics<G: Signer>(
+    signer: &G,
+    instance: &[Secret],
+) -> Result<Vec<[u8; ED25519_LENGTH]>, String> {
     let mut keys = Vec::new();
-    for key in &serving.connected.instance {
-        let spki = serving
-            .ports
-            .signer
+    for key in instance {
+        let spki = signer
             .public(Algorithm::Ed25519, key)
             .await
             .map_err(|error| format!("the federation key cannot be read: {error}"))?;
@@ -129,7 +149,7 @@ pub(super) async fn public_keys<S, C, G: Signer, V, H, P, K>(
 /// The sequence `keys` are published under: the kept one where the store
 /// keeps the same keys, else the next, written with compare-and-set within
 /// `attempts`; 0 where the store keeps no published key sets.
-async fn published<S: Store>(
+pub(crate) async fn published<S: Store>(
     store: &S,
     keys: Vec<String>,
     attempts: usize,

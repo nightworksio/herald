@@ -10,7 +10,7 @@ use crate::verification::{Admission, Keys};
 
 mod actors;
 mod apps;
-mod discovery;
+pub(crate) mod discovery;
 mod feeds;
 mod inbox;
 mod jobs;

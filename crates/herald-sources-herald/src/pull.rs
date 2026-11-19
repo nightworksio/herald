@@ -78,6 +78,9 @@ impl Pulled {
         trust: &Trust,
         cursor: Option<&Cursor>,
     ) -> Result<Option<Polled>, Unpulled> {
+        if self.0.fixed {
+            return self.logged(pulling, trust, cursor).await;
+        }
         let since = cursor.and_then(|cursor| cursor.sequence);
         let mut polled = Polled {
             relisted: true,
@@ -115,11 +118,24 @@ impl Pulled {
                 .await?;
                 before = Some(*sequence);
             }
-            let found = polled.events.len() + polled.passed.len();
-            if reached || (cursor.is_none() && found >= self.0.backfill) {
+            if self.ends(reached, cursor, &polled) {
                 break;
             }
         }
+        Ok(Some(self.finished(polled, shares, trust)))
+    }
+
+    /// Whether a pull reads no further page: it `reached` what `cursor`
+    /// read, or with no cursor `polled` holds enough for `backfill`.
+    fn ends(&self, reached: bool, cursor: Option<&Cursor>, polled: &Polled) -> bool {
+        reached
+            || (cursor.is_none() && polled.events.len() + polled.passed.len() >= self.0.backfill)
+    }
+
+    /// `polled`, its proofs bounded, its place in the feed held just
+    /// before the first envelope `shares` took no more of, and naming each
+    /// instance it took no more of.
+    fn finished(&self, mut polled: Polled, shares: Shares, trust: &Trust) -> Polled {
         self.budgeted(&mut polled, trust);
         if let Some(capped) = shares.capped {
             polled.sequence = polled.sequence.map(|sequence| sequence.min(capped));
@@ -127,7 +143,7 @@ impl Pulled {
         }
         polled.refused = shares.refused;
         polled.watched = polled.events.len();
-        Ok(Some(polled))
+        polled
     }
 
     /// `polled` with the proofs its cursor keeps bounded: live ones shared
@@ -586,6 +602,8 @@ fn refused(why: Unanswered) -> Unpulled {
 fn unreadable(why: impl fmt::Display) -> Unpulled {
     Unpulled::Unreadable(why.to_string())
 }
+
+mod logged;
 
 #[cfg(test)]
 mod tests;

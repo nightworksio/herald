@@ -132,7 +132,7 @@ pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
-pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
+pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
     Batch, Board, Bots, Checks, Deciding, GroupBy, Grouped, Mergeable, Pull, Reason, Review, Row,
     Rules, Showing, Turn, View, board, grouped, rows,

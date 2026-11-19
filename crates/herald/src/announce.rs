@@ -231,8 +231,10 @@ pub(super) async fn announcing(
     let announced = composed.run(Announcing(routed)).await;
     if dry_run {
         dry.print(out);
+        return Ok(reported(announced, out));
     }
-    Ok(reported(announced, out))
+    let code = reported(announced, out);
+    Ok(code.max(crate::pages::logged(&composed, out).await))
 }
 
 /// The code `announced` ends a run with, each announcement reported.

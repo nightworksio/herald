@@ -92,6 +92,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     if let Some(kept) = store.published() {
         let mut checks = Checks::default();
         published::published(kept, &mut checks).await?;
+        published::publication(kept, &mut checks).await?;
         published::feeds(kept, &mut checks).await?;
         published::peers(kept, &mut checks).await?;
         published::audits(kept, &mut checks).await?;
@@ -226,6 +227,7 @@ fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
         listings: BTreeMap::from([("check-suite".to_owned(), validators)]),
         newest: Some(NOON),
         sequence: Some(7),
+        log: Some(3),
         ahead: vec!["conformance".to_owned()],
         projects: identities
             .iter()

@@ -4,7 +4,7 @@
 use std::net::Ipv4Addr;
 
 use herald_core::{Address, domain};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::keys::{KeySet, Rotation, Unkeyed, Unrotated, WELL_KNOWN, rotation};
 
@@ -128,20 +128,31 @@ impl Instance<'_> {
     /// feeds named `feeds` it serves.
     #[must_use]
     pub fn document(&self, keys: &Value, feeds: &[&str]) -> String {
-        let features: Vec<&str> = (!feeds.is_empty()).then_some(FEEDS).into_iter().collect();
-        let feeds: Vec<Value> = feeds
+        let feeds = feeds
             .iter()
             .map(|name| json!({ "name": name, "url": self.feed(name) }))
             .collect();
-        json!({
-            "version": API_VERSION,
-            "api": format!("https://{}{}{API}", self.domain, self.base),
-            "software": { "name": self.software, "version": self.version },
-            "keys": keys,
-            "features": features,
-            "feeds": feeds,
-        })
-        .to_string()
+        Value::Object(self.described(keys, feeds)).to_string()
+    }
+
+    /// Its discovery document listing `keys` and the feeds `feeds`
+    /// describes, as JSON.
+    pub(crate) fn described(&self, keys: &Value, feeds: Vec<Value>) -> Map<String, Value> {
+        let features: Vec<&str> = (!feeds.is_empty()).then_some(FEEDS).into_iter().collect();
+        Map::from_iter([
+            ("version".to_owned(), json!(API_VERSION)),
+            (
+                "api".to_owned(),
+                json!(format!("https://{}{}{API}", self.domain, self.base)),
+            ),
+            (
+                "software".to_owned(),
+                json!({ "name": self.software, "version": self.version }),
+            ),
+            ("keys".to_owned(), keys.clone()),
+            ("features".to_owned(), json!(features)),
+            ("feeds".to_owned(), Value::Array(feeds)),
+        ])
     }
 
     /// Whether WebFinger's `resource` names the instance: its account or

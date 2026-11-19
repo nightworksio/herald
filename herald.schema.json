@@ -2360,6 +2360,10 @@
           "description": "Whom herald's actors federate with, for an ActivityPub destination\nthat names no `mode`: `open` or `allowlist`.",
           "$ref": "#/$defs/Mode"
         },
+        "pages": {
+          "description": "Where herald writes its feeds as a static signed log for any static\nhost to serve, such as GitHub Pages, at the end of each run that\nchanged one (ADR-0060). None where absent.",
+          "$ref": "#/$defs/Pages"
+        },
         "refresh": {
           "description": "How long a peer may keep the instance's key set before it reads it\nagain; \"1d\" where absent, at most \"7d\".",
           "$ref": "#/$defs/Duration"
@@ -3774,6 +3778,53 @@
           "type": "string",
           "const": "package"
         }
+      ]
+    },
+    "Pages": {
+      "description": "`[federation.pages]`: where herald writes its feeds as a static signed\nlog (ADR-0060).",
+      "type": "object",
+      "properties": {
+        "api": {
+          "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+          "type": "string"
+        },
+        "artifact": {
+          "description": "A directory each writing of the log fills with every file of it,\nsuch as for actions/upload-pages-artifact to deploy. None where\nabsent.",
+          "type": "string",
+          "examples": [
+            "_site"
+          ]
+        },
+        "branch": {
+          "description": "The branch each writing of the log is committed to, one commit\neach, for GitHub Pages or any static host to serve; `herald-pages`\nwhere absent, unless `artifact` is named, which then takes its\nplace.",
+          "type": "string",
+          "examples": [
+            "herald-pages"
+          ]
+        },
+        "refresh": {
+          "description": "How long a log no feed changed is left before it is written again\nunder its next sequence, so its readers see it is current: \"1d\"\nwhere absent, at most \"7d\".",
+          "$ref": "#/$defs/Duration"
+        },
+        "repository": {
+          "description": "The repository holding the branch, as `owner/name`; the run's own\nwhere absent.",
+          "type": "string"
+        },
+        "token": {
+          "description": "The secret holding a token that may push to the branch;\n`GITHUB_TOKEN` where absent.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "url": {
+          "description": "Where a static host serves the log, such as\n`https://owner.github.io/repository`: https://, `[federation]\ndomain` as its host, and a path where the log is not served at the\nroot.",
+          "type": "string",
+          "examples": [
+            "https://herald.example/log"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "url"
       ]
     },
     "Peer": {
@@ -6715,6 +6766,18 @@
               "additionalProperties": {
                 "$ref": "#/$defs/Grant"
               }
+            },
+            "stale_after": {
+              "description": "How long after a static log was written it is still taken: \"3d\"\nwhere absent, at most \"30d\". An older one is refused, as its host\nmay be withholding newer pages; give more than the publisher's\n`refresh`. Only with `static = true`.",
+              "$ref": "#/$defs/Duration",
+              "examples": [
+                "3d"
+              ]
+            },
+            "static": {
+              "description": "Whether the feed is read from a static signed log, as a static host\nsuch as GitHub Pages serves it, rather than from a herald server:\neach page checked against the digest the log's signed discovery\ndocument lists. false where absent (ADR-0060).",
+              "type": "boolean",
+              "default": false
             },
             "tombstones": {
               "description": "How many tombstones of identities it never took it keeps the proof\nof in all, so no older envelope of them is taken again, apart from\nthose of identities it took, which it never forgets: 1000 where\nabsent, and at most 4000. It forgets those taken first.",

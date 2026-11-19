@@ -100,7 +100,10 @@ pub(crate) async fn withdrawing(
     let identity = asked.identity.clone();
     let done = composed.run(asked).await;
     Ok(match done {
-        Done::Withdrawn(withdrawn) => reported(&identity, &withdrawn, out),
+        Done::Withdrawn(withdrawn) => {
+            let code = reported(&identity, &withdrawn, out);
+            code.max(crate::pages::logged(&composed, out).await)
+        }
         Done::Planned(Ok(planned)) => {
             for line in planned.iter().flat_map(|route| plan(&identity, route)) {
                 say(out, &line);

@@ -276,7 +276,7 @@ pub fn load(
     let (store, kept) = loader.store(sections.store).unzip();
     let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
-    let (federation, inherited) = loader.federation(sections.federation);
+    let (federation, inherited) = loader.federation(sections.federation, store.as_ref());
     let peers = loader.peers(sections.peers, &federation.revoked);
     let mut destinations = loader.destinations(sections.destinations, &inherited, read);
     loader.feeds(store.as_ref(), &federation, &mut destinations);
@@ -366,6 +366,7 @@ mod feeds;
 mod github_apps;
 mod group;
 mod models;
+mod pages;
 mod peers;
 mod pushes;
 mod route;

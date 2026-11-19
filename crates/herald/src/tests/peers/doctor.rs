@@ -44,6 +44,7 @@ feed = "releases"
 kind = "herald"
 url = "https://pinned.example/herald/v1/feeds/releases"
 keys = ["{pinned}"]
+static = true
 [[routes]]
 id = "fed"
 sources = ["cli"]
@@ -124,9 +125,9 @@ fn doctor_shows_the_instance_among_its_peers_as_json() {
     assert_eq!(
         federation["sources"],
         json!([
-            { "name": "inbox", "peer": null, "pinned": null, "pushed": true },
-            { "name": "pinned", "peer": null, "pinned": "https://pinned.example", "pushed": false },
-            { "name": "pulled", "peer": "org", "pinned": null, "pushed": false },
+            { "name": "inbox", "peer": null, "pinned": null, "pushed": true, "stale_after": null },
+            { "name": "pinned", "peer": null, "pinned": "https://pinned.example", "pushed": false, "stale_after": 259_200 },
+            { "name": "pulled", "peer": "org", "pinned": null, "pushed": false, "stale_after": null },
         ])
     );
     assert_eq!(
@@ -134,6 +135,7 @@ fn doctor_shows_the_instance_among_its_peers_as_json() {
         json!([{ "peer": "org", "source": "inbox", "actions": ["push"], "until": "2027-01-01T00:00:00Z" }])
     );
     assert_eq!(federation["keep_audit"], 90 * 86_400);
+    assert_eq!(federation["pages"], Value::Null);
     let keys: Vec<&str> = federation["gaps"]
         .as_array()
         .unwrap()
@@ -202,7 +204,7 @@ fn doctor_shows_the_instance_among_its_peers_as_lines_and_reads_each_peer_online
             "destinations.mirror: pushes to peers.org at https://herald.peer.example/herald/v1/inbox/up.stream, private events too.".to_owned(),
             "destinations.quietly: pushes to peers.quiet at https://quiet.peer.example/herald/v1/inbox/up, public events alone.".to_owned(),
             "sources.inbox: pulls no feed, and takes pushes.".to_owned(),
-            "sources.pinned: pulls the feed of https://pinned.example, and takes no push.".to_owned(),
+            "sources.pinned: pulls the feed of https://pinned.example from its static log, taken up to 3d after it was written, and takes no push.".to_owned(),
             "sources.pulled: pulls the feed of peers.org, and takes no push.".to_owned(),
             "federation.keep_audit: what each peer asks is kept 90d.".to_owned(),
         ]
@@ -248,5 +250,28 @@ fn doctor_shows_the_instance_among_its_peers_as_lines_and_reads_each_peer_online
         served.out.contains("/feeds/feed, served on this layer."),
         "{}",
         served.out
+    );
+}
+
+#[test]
+fn doctor_shows_where_the_static_log_is_written() {
+    let mut setup = setup_of(&format!(
+        "{CONFIG}\n[federation]\ndomain = \"herald.example\"\nkeys = [{{ secret = \"HERALD_FED_KEY\" }}]\n\n[federation.pages]\nurl = \"https://herald.example/log\"\nbranch = \"pages\"\nartifact = \"_site\"\n"
+    ));
+    setup.vars.insert(
+        "HERALD_FED_KEY".to_owned(),
+        seeded(NEWER).expose().to_owned(),
+    );
+    let json = herald(&setup, &World::default(), &["doctor", "--format", "json"]);
+    let report: Value = serde_json::from_str(json.out.trim_end()).unwrap();
+    assert_eq!(
+        report["federation"]["pages"],
+        json!({ "url": "https://herald.example/log", "branch": "pages", "artifact": "_site", "refresh": 86_400 })
+    );
+    let text = herald(&setup, &World::default(), &["doctor"]);
+    assert!(
+        text.out.contains("federation.pages: the static signed log at https://herald.example/log, committed to the branch pages and written to _site, written again unchanged after 1d."),
+        "{}",
+        text.out
     );
 }

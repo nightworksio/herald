@@ -1,5 +1,6 @@
 //! What a layer with no endpoint names: the instance's discovery document,
-//! each herald feed, and an owner discovering by push.
+//! each herald feed, unless a static signed log serves them, and an owner
+//! discovering by push.
 
 use super::*;
 
@@ -51,6 +52,35 @@ fn a_layer_with_no_endpoint_names_each_herald_feed() {
             .gaps
             .iter()
             .all(|gap| gap.key != "destinations.releases")
+    );
+}
+
+#[test]
+fn a_static_signed_log_serves_the_discovery_document_and_each_feed_with_no_endpoint() {
+    let mut logged = served();
+    logged.federation.domain = Some("herald.example".to_owned());
+    logged.destinations.insert(
+        herald_core::DestinationName::new("releases"),
+        herald_kinds::Destination::new(herald_dest_herald::FeedOptions::default()),
+    );
+    logged.federation.pages = Some(herald_config::Pages {
+        url: "https://herald.example".to_owned(),
+        base: String::new(),
+        branch: Some(herald_config::Pages::BRANCH.to_owned()),
+        repository: None,
+        token: None,
+        api: None,
+        artifact: None,
+        refresh: herald_config::Pages::REFRESH,
+    });
+    let findings = on(&logged, &actions(), &Here::default());
+    assert!(
+        findings
+            .gaps
+            .iter()
+            .all(|gap| gap.key != "federation.domain" && gap.key != "destinations.releases"),
+        "{:?}",
+        findings.gaps
     );
 }
 

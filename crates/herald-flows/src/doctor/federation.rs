@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use herald_config::{Config, Peer};
+use herald_config::{Config, Pages, Peer};
 use herald_core::{Size, itself};
 use herald_keys::ed25519_of;
 use herald_kinds::Peering;
@@ -127,6 +127,9 @@ pub struct SourceShown {
     pub pulls: Option<Pulls>,
     /// Whether a peer may push into it.
     pub pushed: bool,
+    /// How long after the static log it reads was written it is still
+    /// taken, where it reads one (ADR-0060).
+    pub stale_after: Option<SignedDuration>,
 }
 
 /// What a peer may do with a source.
@@ -163,6 +166,9 @@ pub struct Federation {
     pub grants: Vec<GrantShown>,
     /// How long what each peer asked is kept.
     pub keep_audit: SignedDuration,
+    /// Where its feeds are written as a static signed log, where they are
+    /// (ADR-0060).
+    pub pages: Option<Pages>,
     /// The index of each route to a feed or a push.
     pub routes: Vec<usize>,
     /// What of it the layer cannot serve.
@@ -210,6 +216,7 @@ impl Federation {
             || !self.feeds.is_empty()
             || !self.pushes.is_empty()
             || !self.sources.is_empty()
+            || self.pages.is_some()
     }
 }
 
@@ -239,6 +246,7 @@ pub async fn federation<S: Secrets, G: Signer>(
         sources: sources(config),
         grants: grants(config),
         keep_audit: config.federation.keep_audit,
+        pages: config.federation.pages.clone(),
         routes: Vec::new(),
         gaps: Vec::new(),
     };
@@ -294,7 +302,7 @@ fn peers(config: &Config) -> Vec<PeerShown> {
 fn feeds(config: &Config, layer: &Layer) -> Vec<FeedShown> {
     let instance = Instance {
         domain: config.federation.domain.as_deref().unwrap_or_default(),
-        base: &config.server.base,
+        base: config.instance_base(),
         software: itself::NAME,
         version: itself::VERSION,
         repository: herald_core::repository!(),
@@ -343,6 +351,7 @@ fn sources(config: &Config) -> Vec<SourceShown> {
                 Peering::Pinned(instance) => Pulls::Pinned(instance.url.to_owned()),
             }),
             pushed: source.receiver().is_some(),
+            stale_after: source.stale_after(),
         })
         .collect()
 }

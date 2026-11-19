@@ -70,6 +70,24 @@ fn an_advanced_cursor_takes_the_sequence_its_pull_read_and_else_keeps_its_own() 
 }
 
 #[test]
+fn an_advanced_cursor_takes_the_static_log_its_pull_read_and_else_keeps_its_own() {
+    let cursor = Cursor {
+        log: Some(3),
+        ..Cursor::default()
+    };
+    let read = Polled {
+        log: Some(5),
+        ..Polled::default()
+    };
+    assert_eq!(cursor.advanced(&read, 500).log, Some(5));
+    assert_eq!(cursor.advanced(&Polled::default(), 500).log, Some(3));
+    let written = serde_json::to_string(&Cursor::default()).unwrap();
+    assert!(!written.contains("log"), "{written}");
+    let back: Cursor = serde_json::from_str(&serde_json::to_string(&cursor).unwrap()).unwrap();
+    assert_eq!(back.log, Some(3));
+}
+
+#[test]
 fn a_known_source_announces_what_its_cursor_has_not_seen() {
     let cursor = Cursor {
         seen: vec![Identity::new("b"), Identity::new("a")],
@@ -104,6 +122,7 @@ fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators()
             listings: BTreeMap::from([("status".to_owned(), tags.clone())]),
             newest: None,
             sequence: None,
+            log: None,
             withdrawn: Vec::new(),
             proved: Vec::new(),
             unheld: Unheld::default(),
@@ -134,6 +153,7 @@ fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators()
             listings: BTreeMap::from([("status".to_owned(), tags.clone())]),
             newest: None,
             sequence: None,
+            log: None,
             ahead: Vec::new(),
             proved: Vec::new(),
             projects: BTreeMap::new(),
@@ -702,6 +722,7 @@ fn what_a_peer_pushed_leaves_the_place_a_poll_keeps_as_it_was() {
         listings: BTreeMap::from([("l".to_owned(), validators)]),
         newest: Some(Timestamp::UNIX_EPOCH),
         sequence: Some(7),
+        log: Some(2),
         ahead: vec!["far".to_owned()],
         ..Cursor::default()
     };
@@ -716,6 +737,7 @@ fn what_a_peer_pushed_leaves_the_place_a_poll_keeps_as_it_was() {
         }],
         relisted: true,
         sequence: Some(9),
+        log: Some(4),
         newest: Some(Timestamp::MAX),
         ..Polled::default()
     };

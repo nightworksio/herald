@@ -32,6 +32,7 @@ mod followers;
 mod health;
 mod lambda;
 mod output;
+mod pages;
 mod peers;
 mod preview;
 mod queueing;
@@ -426,7 +427,7 @@ async fn polling(
             say(out, &line);
         }
     }
-    Ok(code)
+    Ok(code.max(pages::logged(&composed, out).await))
 }
 
 async fn housekeeping(

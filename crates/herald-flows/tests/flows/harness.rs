@@ -201,6 +201,12 @@ pub(crate) enum Fault {
     ReadsPublished,
     WritesPublished,
     ConflictsPublished,
+    /// Reading the static signed log's record fails.
+    ReadsPublication,
+    /// Writing the static signed log's record fails.
+    WritesPublication,
+    /// Writing the static signed log's record conflicts.
+    ConflictsPublication,
     ReadsFeeds,
     WritesFeeds,
     ConflictsFeeds,

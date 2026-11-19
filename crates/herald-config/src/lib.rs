@@ -21,7 +21,7 @@ mod schema;
 mod views;
 
 pub use config::{
-    Announce, App, Config, Doctor, Federation, GithubApp, Guard, HeldSessions, KeyCache,
+    Announce, App, Config, Doctor, Federation, GithubApp, Guard, HeldSessions, KeyCache, Pages,
     RouteConfig, Run, Schedule, Server, Uses, Work,
 };
 pub use error::{ConfigError, Errors};

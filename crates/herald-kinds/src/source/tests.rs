@@ -119,6 +119,7 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.grants(), None);
     assert!(source.receiver().is_none());
     assert_eq!(source.share(), None);
+    assert_eq!(source.stale_after(), None);
     assert!(!source.origins());
     assert!(!source.pushed());
     assert_eq!(source.registering(), Registering::Never);
