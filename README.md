@@ -659,8 +659,8 @@ a route with `living = true`, keeps one pinned post of a report, edited
 each window. A `[rules.<name>]` table nudges each pull request that waited
 past one of its `stages`, once a stage and spell of waiting. `herald
 queue` prints a view now; [`.docs/queue.md`](.docs/queue.md) covers the
-rest. A view's `decide` asks models only what its rules cannot tell
-([`.docs/deciders.md`](.docs/deciders.md)).
+rest. A view's `decide` asks models only what its rules cannot tell, by
+their own APIs or a host's binding ([`.docs/deciders.md`](.docs/deciders.md)).
 
 ### Every package of a namespace
 

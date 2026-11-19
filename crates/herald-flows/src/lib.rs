@@ -58,7 +58,7 @@ pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
 pub use installations::AHEAD as MINTED_AHEAD;
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
-pub use prepare::{Connected, PrepareError, Prepared, UnreadSecret, prepare};
+pub use prepare::{Asking, Connected, PrepareError, Prepared, UnreadSecret, prepare};
 pub use preview::{Previewed, preview, preview_group};
 pub use report::{queue, report};
 pub use room::{Place, Room, Running};

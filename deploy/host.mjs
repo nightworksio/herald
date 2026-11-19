@@ -20,7 +20,7 @@ export function configPath(env) {
 }
 
 export function envHost(env, offered) {
-  const { by, fetch, sql, kv, secret = (name) => (typeof env[name] === "string" ? env[name] : undefined) } = offered;
+  const { by, fetch, sql, kv, ai, secret = (name) => (typeof env[name] === "string" ? env[name] : undefined) } = offered;
   const host = {
     vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
     secret,
@@ -28,6 +28,7 @@ export function envHost(env, offered) {
   };
   if (sql) host.sql = offering(by, "database", sql);
   if (kv) host.kv = offering(by, "store", kv);
+  if (ai) host.ai = ai;
   return host;
 }
 

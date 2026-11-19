@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use herald_compose::{Host, KvAt, Reaching, SqlAt, plain};
-use herald_ports::{Base, Outbound};
+use herald_compose::{Host, KvAt, Reaching, SqlAt, plain, unbound};
+use herald_ports::{Base, Binding, DynInfer, Outbound};
 use jiff::SignedDuration;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast as _, JsValue};
 
 use super::bindings::HostObject;
 use super::crypto::{WebSigner, WebVerifier};
-use super::ports::{JsClock, JsHttp, JsKv, JsSecrets, JsSql};
-use super::{entries, object, settled};
+use super::ports::{JsAi, JsClock, JsHttp, JsKv, JsSecrets, JsSql};
+use super::{entries, error_message, object, settled};
 use crate::numbers::millis;
 
 /// A JavaScript host, as herald composes over it.
@@ -133,5 +134,13 @@ impl Host for JsHost {
     async fn kv(&self, at: KvAt<'_>) -> Result<JsKv, String> {
         let opened = settled(self.host.kv(&kv_at(at))).await?;
         Ok(JsKv(SendWrapper::new(opened.unchecked_into())))
+    }
+
+    fn inference(&self, binding: Binding<'_>) -> Result<Arc<dyn DynInfer>, String> {
+        let Binding::WorkersAi(name) = binding else {
+            return Err(unbound(binding));
+        };
+        let ai = self.host.ai(name).map_err(|error| error_message(&error))?;
+        Ok(Arc::new(JsAi(SendWrapper::new(ai))))
     }
 }

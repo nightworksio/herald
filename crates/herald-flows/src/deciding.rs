@@ -5,14 +5,19 @@
 //! model may see a private repository's data, or where the store keeps no
 //! decisions (ADR-0057).
 
+use std::collections::BTreeMap;
+
+use herald_aws::{Endpoint, Signing, signed};
 use herald_config::{Config, Task, ViewConfig};
 use herald_core::{
     Answer, Decided, Key, Pull, Question, Row, Visibility, decided, pull_identity, rows, state,
 };
-use herald_ports::{Clock, Decisions, Http, Signer, Store};
+use herald_models::{Asked, Model, bedrock};
+use herald_ports::{Clock, Decisions, Http, Request, Signer, Store};
+use jiff::Timestamp;
 
 use crate::announce::Ports;
-use crate::prepare::Connected;
+use crate::prepare::{Asking, Connected, PreparedModel};
 
 /// The rows `view` shows of `pulls` now, each slot its tasks decide
 /// settled where an answer may be taken.
@@ -77,15 +82,10 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
                 .filter(|(model, _)| public || model.private)
         })
         .take_while(|_| ports.budget.allows(ports.clock.now(), 1).is_ok());
-    for (model, http) in models {
+    for (model, asking) in models {
         let questions = [*question];
-        let Ok(response) = http.send(model.model.request(&input, &questions)).await else {
-            continue;
-        };
-        let Some(answer) = model
-            .model
-            .answers(&response, &questions)
-            .ok()
+        let Some(answer) = asked((model, asking), &input, &questions, ports.clock.now())
+            .await
             .and_then(|mut answers| answers.remove(name))
         else {
             continue;
@@ -101,4 +101,51 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
         return Some(decision.answer);
     }
     None
+}
+
+/// What `model`, reached as `asking` says, answers `questions` of `input`
+/// at `now`; nothing where it is not reached or gives no answer.
+async fn asked<H: Http>(
+    (model, asking): (&PreparedModel, &Asking<H>),
+    input: &str,
+    questions: &[Question<'_>],
+    now: Timestamp,
+) -> Option<BTreeMap<String, Answer>> {
+    match (model.model.asked(input, questions), asking) {
+        (Asked::Sent(request), Asking::Http(http)) => {
+            let response = http.send(sign(&model.model, request, now)).await.ok()?;
+            model.model.answers(&response, questions).ok()
+        }
+        (Asked::Bound(inference), Asking::Bound(infer)) => {
+            let answered = infer.infer_boxed(inference).await.ok()?;
+            model.model.answered(&answered, questions).ok()
+        }
+        (Asked::Sent(_) | Asked::Bound(_), _) => None,
+    }
+}
+
+/// `request` to `model`, signed at `now` with AWS Signature Version 4
+/// where it is reached through Amazon Bedrock with no API key (ADR-0059).
+fn sign(model: &Model, request: Request, now: Timestamp) -> Request {
+    let Some(keys) = model.signed_by() else {
+        return request;
+    };
+    let endpoint = Endpoint::new(bedrock::ENDPOINT, &keys.region, Some(&model.base));
+    let signing = Signing {
+        access_key_id: &keys.access_key_id,
+        secret_access_key: &keys.secret_access_key,
+        session_token: keys.session_token.as_ref(),
+        region: &keys.region,
+        service: bedrock::SERVICE,
+        host: endpoint.host(),
+    };
+    let canonical = endpoint.canonical(&bedrock::canonical(&model.model));
+    signed(
+        request,
+        &canonical,
+        herald_core::media::JSON,
+        &[],
+        &signing,
+        now,
+    )
 }

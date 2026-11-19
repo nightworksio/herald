@@ -677,15 +677,24 @@ The models tasks ask, by name: each a decision model or a server speaking OpenAI
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `models.<name>.base` | string | Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's where absent, and required where it has none. |
+| `models.<name>.access_key_id` | table | The secret holding the access key's id a "bedrock" model's requests are signed with where it names no key; `AWS_ACCESS_KEY_ID` where absent, as a Lambda's role provides it. |
+| `models.<name>.access_key_id.secret` | string | The secret's name. |
+| `models.<name>.base` | string | Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's where absent, and required where it has none. A "bedrock" model's is its region's endpoint where absent. |
+| `models.<name>.binding` | string | The Worker's binding a "workers-ai" model is reached through, such as "AI", in place of Workers AI's REST API; it takes neither a base nor a key. |
 | `models.<name>.header` | string | The header its key goes in, such as "api-key"; `Authorization: Bearer` where absent and the preset names none. |
 | `models.<name>.insecure` | boolean | Whether it may be reached over plain HTTP at an address that is not this machine's, which doctor names. |
-| `models.<name>.key` | table | Its key, where it takes one. |
+| `models.<name>.key` | table | Its key, where it takes one; a "bedrock" model's is a Bedrock API key, sent in place of a signature. |
 | `models.<name>.key.secret` | string | The secret's name. |
-| `models.<name>.kind` | string | How it is spoken to: "typesafe" for TypeSafe's Jev, "openai-compatible" for any server speaking OpenAI's chat completions, or a preset of it, such as "ollama" or "mistral". |
+| `models.<name>.kind` | string | How it is spoken to: "typesafe" for TypeSafe's Jev, "openai-compatible" for any server speaking OpenAI's chat completions, or a preset of it, such as "ollama" or "mistral", "anthropic" for Anthropic's Messages API, "gemini" for Gemini's, "bedrock" for Amazon Bedrock's Converse API, or "spin" for a model Spin runs; "workers-ai" with a binding is a model Workers AI runs. |
 | `models.<name>.model` | string | The model's id, pinned rather than an alias such as `jev-latest`. |
 | `models.<name>.most` | integer | The most bytes of its answer read: 65536 where absent. |
 | `models.<name>.private` | boolean | Whether it may be given a private or internal repository's data, which no model is, on this machine or elsewhere, unless it says `private = true`. |
+| `models.<name>.region` | string | The region a "bedrock" model is reached in, such as "eu-west-1", in any partition, such as "us-gov-west-1" or "cn-north-1". |
+| `models.<name>.secret_access_key` | table | The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY` where absent. |
+| `models.<name>.secret_access_key.secret` | string | The secret's name. |
+| `models.<name>.session_token` | table | The secret holding a session token, sent where it is set; `AWS_SESSION_TOKEN` where absent. |
+| `models.<name>.session_token.secret` | string | The secret's name. |
+| `models.<name>.tokens` | integer | The most tokens it answers within, where its kind takes a cap, as every kind but "typesafe" and "openai-compatible" does: 4096 where absent. |
 
 ## `peers`
 

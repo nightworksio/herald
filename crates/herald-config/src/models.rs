@@ -2,7 +2,7 @@
 //! holds them (ADR-0057).
 
 use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 
 use herald_core::{Options, SecretRef};
 use herald_models::Speaks;
@@ -15,7 +15,7 @@ use toml::Spanned;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelConfig {
     /// Its kind, as the config names it: `typesafe`, `openai-compatible`,
-    /// or a preset's name.
+    /// `anthropic`, `gemini`, `bedrock`, `spin`, or a preset's name.
     pub kind: String,
     /// How it is spoken to.
     pub speaks: Speaks,
@@ -34,6 +34,42 @@ pub struct ModelConfig {
     pub insecure: bool,
     /// The most bytes of its answer read.
     pub most: usize,
+    /// The most tokens it answers within, where its API takes a cap.
+    pub tokens: u32,
+    /// Where it is reached through Amazon Bedrock, its region and what its
+    /// requests are signed with.
+    pub bedrock: Option<BedrockConfig>,
+    /// The Worker's binding it is reached through, where Workers AI runs
+    /// it beside herald.
+    pub binding: Option<String>,
+}
+
+/// A model reached through Amazon Bedrock: its region, and the secrets its
+/// requests are signed with where it names no key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BedrockConfig {
+    /// The region.
+    pub region: String,
+    /// The secret holding the access key's id.
+    pub access_key_id: SecretRef,
+    /// The secret holding the secret access key.
+    pub secret_access_key: SecretRef,
+    /// The secret holding a session token, sent where it is set.
+    pub session_token: SecretRef,
+}
+
+impl ModelConfig {
+    /// Every secret a run asking it cannot ask it without: its key, or else
+    /// the access key a request to Amazon Bedrock is signed with; a
+    /// session token is read where it is set.
+    #[must_use]
+    pub fn secret_refs(&self) -> Vec<&SecretRef> {
+        match (&self.key, &self.bedrock) {
+            (Some(key), _) => vec![key],
+            (None, Some(bedrock)) => vec![&bedrock.access_key_id, &bedrock.secret_access_key],
+            (None, None) => Vec::new(),
+        }
+    }
 }
 
 /// A task: one closed-set question, the models asked it in turn, and how
@@ -64,17 +100,22 @@ pub const MOST_ASKED: usize = 50;
 pub(crate) struct ModelFile {
     /// How it is spoken to: "typesafe" for TypeSafe's Jev,
     /// "openai-compatible" for any server speaking OpenAI's chat
-    /// completions, or a preset of it, such as "ollama" or "mistral".
+    /// completions, or a preset of it, such as "ollama" or "mistral",
+    /// "anthropic" for Anthropic's Messages API, "gemini" for Gemini's,
+    /// "bedrock" for Amazon Bedrock's Converse API, or "spin" for a model
+    /// Spin runs; "workers-ai" with a binding is a model Workers AI runs.
     #[schemars(with = "String", example = &"ollama")]
     pub(crate) kind: Spanned<String>,
     /// The model's id, pinned rather than an alias such as `jev-latest`.
     #[schemars(with = "String", example = &"jev-1.14.0")]
     pub(crate) model: Spanned<String>,
     /// Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's
-    /// where absent, and required where it has none.
+    /// where absent, and required where it has none. A "bedrock" model's
+    /// is its region's endpoint where absent.
     #[schemars(with = "Option<String>")]
     pub(crate) base: Option<Spanned<String>>,
-    /// Its key, where it takes one.
+    /// Its key, where it takes one; a "bedrock" model's is a Bedrock API
+    /// key, sent in place of a signature.
     pub(crate) key: Option<SecretRef>,
     /// The header its key goes in, such as "api-key"; `Authorization:
     /// Bearer` where absent and the preset names none.
@@ -90,6 +131,29 @@ pub(crate) struct ModelFile {
     pub(crate) insecure: bool,
     /// The most bytes of its answer read: 65536 where absent.
     pub(crate) most: Option<NonZeroUsize>,
+    /// The most tokens it answers within, where its kind takes a cap, as
+    /// every kind but "typesafe" and "openai-compatible" does: 4096 where
+    /// absent.
+    pub(crate) tokens: Option<NonZeroU32>,
+    /// The region a "bedrock" model is reached in, such as "eu-west-1", in
+    /// any partition, such as "us-gov-west-1" or "cn-north-1".
+    #[schemars(example = &"eu-west-1")]
+    pub(crate) region: Option<String>,
+    /// The secret holding the access key's id a "bedrock" model's requests
+    /// are signed with where it names no key; `AWS_ACCESS_KEY_ID` where
+    /// absent, as a Lambda's role provides it.
+    pub(crate) access_key_id: Option<SecretRef>,
+    /// The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY`
+    /// where absent.
+    pub(crate) secret_access_key: Option<SecretRef>,
+    /// The secret holding a session token, sent where it is set;
+    /// `AWS_SESSION_TOKEN` where absent.
+    pub(crate) session_token: Option<SecretRef>,
+    /// The Worker's binding a "workers-ai" model is reached through, such
+    /// as "AI", in place of Workers AI's REST API; it takes neither a base
+    /// nor a key.
+    #[schemars(example = &"AI")]
+    pub(crate) binding: Option<String>,
 }
 
 /// `[tasks.<name>]`: one closed-set question, asked of its models in

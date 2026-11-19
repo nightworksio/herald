@@ -1,4 +1,4 @@
-//! Bindings to Spin's `sqlite` and `postgres` interfaces. They are generated,
+//! Bindings to Spin's `sqlite`, `postgres` and `llm` interfaces. They are generated,
 //! and generated bindings call the component ABI through `unsafe`, so they sit
 //! apart from the rest of herald, which forbids it. They carry no logic.
 
@@ -12,6 +12,8 @@ mod bindings {
     });
 }
 
+#[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
+pub use bindings::fermyon::spin::llm;
 #[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
 pub use bindings::spin::postgres::postgres;
 #[cfg(all(target_arch = "wasm32", target_os = "wasi"))]

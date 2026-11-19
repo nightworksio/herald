@@ -2,15 +2,15 @@ use std::future::Future;
 
 use herald_compose::{Reaching, received};
 use herald_ports::{
-    Changed, Clock, Http, HttpError, Kv, KvError, Pair, Request, Response, Secret, SecretError,
-    Secrets, Sql, SqlError, Stamped, Statement, Value, Versionstamp,
+    Changed, Clock, Http, HttpError, Infer, InferError, Inference, Kv, KvError, Pair, Request,
+    Response, Secret, SecretError, Secrets, Sql, SqlError, Stamped, Statement, Value, Versionstamp,
 };
 use jiff::Timestamp;
 use js_sys::{Array, BigInt, Uint8Array};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast as _, JsValue};
 
-use super::bindings::{HostObject, KvObject, SqlObject};
+use super::bindings::{AiObject, HostObject, KvObject, SqlObject};
 use super::{bytes, member, object, pairs, resolved, settled, strings, strings_of};
 use crate::numbers::{count, integer, number};
 
@@ -65,6 +65,41 @@ impl Http for JsHttp {
                 body: bytes(&member(&answered, "body")),
             };
             received(&request, response)
+        })
+    }
+}
+
+/// The models a Worker's Workers AI binding runs (ADR-0059).
+pub(crate) struct JsAi(pub(crate) SendWrapper<AiObject>);
+
+impl std::fmt::Debug for JsAi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("JsAi")
+    }
+}
+
+impl Infer for JsAi {
+    fn infer(
+        &self,
+        inference: Inference,
+    ) -> impl Future<Output = Result<Vec<u8>, InferError>> + Send {
+        let ai = self.0.clone();
+        SendWrapper::new(async move {
+            let text = String::from_utf8_lossy(&inference.inputs);
+            let inputs = js_sys::JSON::parse(&text)
+                .map_err(|error| InferError::failed(super::error_message(&error)))?;
+            let ran = settled(ai.run(&inference.model, &inputs))
+                .await
+                .map_err(InferError::failed)?;
+            let answered = js_sys::JSON::stringify(&ran)
+                .map(String::from)
+                .map_err(|error| InferError::failed(super::error_message(&error)))?;
+            if answered.len() > inference.most {
+                return Err(InferError::TooLarge {
+                    most: inference.most,
+                });
+            }
+            Ok(answered.into_bytes())
         })
     }
 }

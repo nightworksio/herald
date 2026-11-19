@@ -6,8 +6,8 @@
 use std::collections::BTreeMap;
 
 use herald_core::{Options, Question};
-use herald_models::{KeyHeader, Model, Speaks};
-use herald_ports::Response;
+use herald_models::{Asked, KeyHeader, Model, Speaks, bedrock};
+use herald_ports::{Response, Secret};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|bytes: &[u8]| {
@@ -22,7 +22,15 @@ fuzz_target!(|bytes: &[u8]| {
         options: &options,
     }];
     let state = String::from_utf8_lossy(bytes);
-    for speaks in [Speaks::TypeSafe, Speaks::OpenAi] {
+    for speaks in [
+        Speaks::TypeSafe,
+        Speaks::OpenAi,
+        Speaks::Anthropic,
+        Speaks::Gemini,
+        Speaks::Bedrock,
+        Speaks::WorkersAi,
+        Speaks::Spin,
+    ] {
         let model = Model {
             speaks,
             base: "https://models.example/v1".to_owned(),
@@ -30,9 +38,20 @@ fuzz_target!(|bytes: &[u8]| {
             key: None,
             header: KeyHeader::Bearer,
             most: 4_096,
+            tokens: 512,
+            aws: Some(bedrock::Keys {
+                region: "eu-west-1".to_owned(),
+                access_key_id: Secret::new("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE"),
+                secret_access_key: Secret::new("AWS_SECRET_ACCESS_KEY", "fuzzed"),
+                session_token: None,
+            }),
+            binding: Some("AI".to_owned()),
         };
-        let request = model.request(&state, &questions);
-        assert!(request.body.len() > state.len());
+        let asked = match model.asked(&state, &questions) {
+            Asked::Sent(request) => request.body,
+            Asked::Bound(inference) => inference.inputs,
+        };
+        assert!(asked.len() > state.len());
         let response = Response {
             status: 200,
             headers: Vec::new(),

@@ -9,10 +9,12 @@ use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex, itself};
 use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Registering};
 use herald_peers::discovery::Instance;
-use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
+use herald_ports::{
+    Algorithm, Base, Binding, CryptoError, DynInfer, Http, Secret, SecretError, Secrets, Signer,
+};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
-use herald_models::{KeyHeader, Model};
+use herald_models::{KeyHeader, Model, bedrock};
 
 use crate::acting::Projects;
 use crate::installations::{Minting, Mintings};
@@ -268,10 +270,21 @@ pub struct PreparedModel {
     pub(crate) private: bool,
 }
 
+/// How a run reaches a model a task may ask (ADR-0059).
+#[derive(Debug)]
+pub enum Asking<H> {
+    /// Through its API, over this `Http`.
+    Http(H),
+    /// Through its host's binding.
+    Bound(Arc<dyn DynInfer>),
+    /// Through a binding the run was given nothing for, so it is not asked.
+    Unbound,
+}
+
 /// The prepared routes and sources, each with the `Http` that reaches it.
 #[derive(Debug)]
 pub struct Connected<H> {
-    pub(crate) models: Vec<(PreparedModel, H)>,
+    pub(crate) models: Vec<(PreparedModel, Asking<H>)>,
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
     pub(crate) mintings: Vec<(Minting, H)>,
@@ -281,6 +294,26 @@ pub struct Connected<H> {
 }
 
 impl<H> Connected<H> {
+    /// It with each model its host runs reached through the binding `bind`
+    /// gives for the model's name and binding (ADR-0059).
+    ///
+    /// # Errors
+    ///
+    /// The first error `bind` gives.
+    pub fn bind<E>(
+        mut self,
+        mut bind: impl FnMut(&str, Binding<'_>) -> Result<Arc<dyn DynInfer>, E>,
+    ) -> Result<Self, E> {
+        for (prepared, asking) in &mut self.models {
+            if matches!(asking, Asking::Unbound)
+                && let Some(binding) = prepared.model.binding()
+            {
+                *asking = Asking::Bound(bind(&prepared.name, binding)?);
+            }
+        }
+        Ok(self)
+    }
+
     /// The secret each source's webhooks are signed with, where the run
     /// serves them.
     #[must_use]
@@ -396,7 +429,12 @@ impl Prepared {
         let models = self
             .models
             .into_iter()
-            .map(|model| reach(Base::At(&model.model.base)).map(|reaching| (model, reaching)))
+            .map(|model| {
+                if model.model.binding().is_some() {
+                    return Ok((model, Asking::Unbound));
+                }
+                reach(Base::At(&model.model.base)).map(|reaching| (model, Asking::Http(reaching)))
+            })
             .collect::<Result<Vec<_>, E>>()?;
         Ok(Connected {
             models,
@@ -493,16 +531,26 @@ async fn destination_secrets<'c, G: Signer>(
     Ok(resolved)
 }
 
-/// Each model of `config` a run that `uses` it asks, its key read from
-/// `read` (ADR-0057).
-async fn prepared_models(
+/// Each model of `config` a run that `uses` it asks, its key or the access
+/// key a request to Amazon Bedrock is signed with read from `read`, and a
+/// session token from `secrets` where it is set (ADR-0057, ADR-0059).
+async fn prepared_models<S: Secrets>(
     config: &Config,
-    read: &ReadSecrets,
+    (read, secrets): (&ReadSecrets, &S),
     uses: Uses,
 ) -> Result<Vec<PreparedModel>, PrepareError> {
     let mut models = Vec::new();
     for (name, model) in config.models.iter().filter(|_| uses >= Uses::Polls) {
         let key = herald_kinds::optional(read, model.key.as_ref()).await?;
+        let aws = match (&model.bedrock, &key) {
+            (Some(reached), None) => Some(bedrock::Keys {
+                region: reached.region.clone(),
+                access_key_id: read.secret(&reached.access_key_id.secret).await?,
+                secret_access_key: read.secret(&reached.secret_access_key.secret).await?,
+                session_token: secrets.secret(&reached.session_token.secret).await.ok(),
+            }),
+            _ => None,
+        };
         models.push(PreparedModel {
             name: name.clone(),
             model: Model {
@@ -515,6 +563,9 @@ async fn prepared_models(
                     .clone()
                     .map_or(KeyHeader::Bearer, KeyHeader::Named),
                 most: model.most,
+                tokens: model.tokens,
+                aws,
+                binding: model.binding.clone(),
             },
             private: model.private,
         });
@@ -644,7 +695,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         }
     }
     Ok(Prepared {
-        models: prepared_models(config, &read, uses).await?,
+        models: prepared_models(config, (&read, secrets), uses).await?,
         routes,
         sources,
         mintings: mintings.0,

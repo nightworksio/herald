@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 
+use herald_models::Speaks;
 use jiff::SignedDuration;
 
 /// A layer of support, in ADR-0002's order: each serves everything the one
@@ -82,6 +83,9 @@ pub struct Layer {
     pub tier: Tier,
     /// The store kinds it keeps records in.
     pub stores: Vec<&'static str>,
+    /// The models it runs beside herald, each asked through its binding
+    /// (ADR-0059).
+    pub runs: Vec<Speaks>,
     /// Whether it serves herald's endpoint, where commands are posted.
     pub endpoint: bool,
     /// Whether it holds sessions open, which carry commands to it.

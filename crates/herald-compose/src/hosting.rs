@@ -1,5 +1,6 @@
 use herald_flows::{Cadence, Egress, Layer, Memory, ROUND_SECRET, Rounds, Tier};
 use herald_kinds::Offer;
+use herald_models::Speaks;
 use std::num::NonZeroUsize;
 
 use jiff::SignedDuration;
@@ -205,6 +206,26 @@ impl Hosting {
         kinds().store_kinds_offered(|offer| self.offers(offer))
     }
 
+    /// The models it runs beside herald, each asked through its binding
+    /// (ADR-0059).
+    #[must_use]
+    pub fn runs(self) -> Vec<Speaks> {
+        match self {
+            Self::Worker => vec![Speaks::WorkersAi],
+            Self::Spin => vec![Speaks::Spin],
+            Self::Actions
+            | Self::Deno
+            | Self::Vercel
+            | Self::Netlify
+            | Self::Lambda
+            | Self::Azure
+            | Self::Wasi
+            | Self::Fastly
+            | Self::Node
+            | Self::Server => Vec::new(),
+        }
+    }
+
     /// The layer of ADR-0002 it serves.
     #[must_use]
     pub const fn tier(self) -> Tier {
@@ -355,6 +376,7 @@ impl Hosting {
             name: self.name(),
             tier: self.tier(),
             stores: self.stores(),
+            runs: self.runs(),
             endpoint: self.endpoint(),
             sessions: self.sessions(),
             egress: self.egress(),
@@ -384,6 +406,18 @@ mod tests {
     }
 
     #[test]
+    fn only_a_worker_and_spin_run_models_beside_herald() {
+        for hosting in Hosting::ALL {
+            let runs = match hosting {
+                Hosting::Worker => vec![Speaks::WorkersAi],
+                Hosting::Spin => vec![Speaks::Spin],
+                _ => Vec::new(),
+            };
+            assert_eq!(hosting.runs(), runs, "{}", hosting.name());
+        }
+    }
+
+    #[test]
     fn each_host_is_found_by_its_name_and_serves_what_it_describes() {
         for hosting in Hosting::ALL {
             assert_eq!(
@@ -398,6 +432,7 @@ mod tests {
                     name: hosting.name(),
                     tier: hosting.tier(),
                     stores: hosting.stores(),
+                    runs: hosting.runs(),
                     endpoint: hosting.endpoint(),
                     sessions: hosting.sessions(),
                     egress: hosting.egress(),

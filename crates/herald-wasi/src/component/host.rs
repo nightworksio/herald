@@ -106,4 +106,15 @@ impl Host for WasiHost {
     fn kv(&self, _: KvAt<'_>) -> impl Future<Output = Result<Unoffered, String>> {
         ready(Err(UNOFFERED.to_owned()))
     }
+
+    #[cfg(feature = "spin")]
+    fn inference(
+        &self,
+        binding: herald_ports::Binding<'_>,
+    ) -> Result<std::sync::Arc<dyn herald_ports::DynInfer>, String> {
+        match binding {
+            herald_ports::Binding::SpinLlm => Ok(std::sync::Arc::new(super::spin::SpinLlm)),
+            herald_ports::Binding::WorkersAi(_) => Err(herald_compose::unbound(binding)),
+        }
+    }
 }

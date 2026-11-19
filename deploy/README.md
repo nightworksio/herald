@@ -143,6 +143,10 @@ names in `worker/files.mjs`, and run `wrangler deploy` from `worker/`.
   Matrix sync. `HERALD_SESSIONS_BINDING` names its binding, `HERALD` where
   unset, and `HERALD_SESSIONS_OBJECT` the object's name, `herald` where unset.
   Without the binding, no session is held.
+- A model with `kind = "workers-ai"` and `binding = "AI"` is asked through
+  the Workers AI binding `wrangler.toml` names as `[ai] binding = "AI"`, in a
+  build with the `models` feature
+  ([`.docs/deciders.md`](../.docs/deciders.md)).
 
 ## Deno
 
@@ -243,6 +247,11 @@ Build with `--features spin` as well, and run `spin up` from `spin/`. `sqlite`
 keeps records in Spin's database `default`, or the one `HERALD_SPIN_DATABASE`
 names, and `postgres` connects to the store's URL. A component built with this
 feature runs on Spin alone.
+
+A model with `kind = "spin"` is asked through Spin's `llm` interface, in a
+build with the `models` feature as well; list it in the component's
+`ai_models` in `spin.toml`, such as `ai_models = ["llama2-chat"]`
+([`.docs/deciders.md`](../.docs/deciders.md)).
 
 `allowed_outbound_hosts` in `spin.toml` admits any HTTPS origin, as the origins
 a config names are not known here. List yours in its place where nothing fetches

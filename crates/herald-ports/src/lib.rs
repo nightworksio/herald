@@ -11,6 +11,7 @@ mod crypto;
 mod dyn_store;
 mod erased;
 mod http;
+mod infer;
 mod keyring;
 mod kv;
 mod learned;
@@ -32,6 +33,7 @@ pub use erased::{
 };
 pub use herald_core::Algorithm;
 pub use http::{Base, Http, HttpError, Method, Request, Response, USER_AGENT, WithBody};
+pub use infer::{Binding, DynInfer, Infer, InferError, Inference};
 pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use learned::Learned;
