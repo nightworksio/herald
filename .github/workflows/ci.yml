@@ -7,9 +7,10 @@ on:
   pull_request:
   push:
     branches: [main]
-  # The weekly run mutates the whole workspace.
+  # The nightly run, and a run started by hand, mutate the whole workspace.
   schedule:
-    - cron: "0 3 * * 1"
+    - cron: "17 2 * * *"
+  workflow_dispatch:
   # The release runs the whole gate on the commit its tag was verified at,
   # before it publishes (ADR-0012).
   workflow_call:
@@ -18,8 +19,9 @@ permissions:
   contents: read
 
 # A pull request pushed again cancels the run on its old head, and a push to
-# main cancels the run of the push before it. A scheduled run is grouped by
-# its own run, so it is never cancelled and never cancels.
+# main cancels the run of the push before it. A scheduled run and a run
+# started by hand are grouped by their own run, so they are never cancelled
+# and never cancel.
 concurrency:
   group: ${{ github.workflow }}-${{ contains(fromJSON('["pull_request","push"]'), github.event_name) && github.ref || github.run_id }}
   cancel-in-progress: true
@@ -390,10 +392,13 @@ jobs:
           fi
           tail -n 1 "${RUNNER_TEMP}/fixtures.log"
 
-  # A pull request mutates what its diff touches; main and the weekly run
-  # mutate the whole workspace. Any missed mutant fails its shard (ADR-0008).
+  # A pull request mutates what its diff touches; the nightly run, a run
+  # started by hand and a release's gate mutate the whole workspace; a push
+  # to main mutates nothing, its pull request having mutated its diff. Any
+  # missed mutant fails its shard (ADR-0008).
   mutants-shard:
     name: mutants shard ${{ matrix.shard }}
+    if: &mutates ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -428,7 +433,7 @@ jobs:
             git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
             scope=(--in-diff "${RUNNER_TEMP}/change.diff")
           fi
-          cargo mutants --workspace --no-shuffle --shard "${SHARD}/${SHARDS}" --sharding round-robin --exclude 'crates/herald-wasm/src/js/**' --exclude 'crates/herald-wasi/**' --exclude 'crates/herald-fastly/**' --exclude 'crates/herald-spin/**' "${scope[@]}"
+          cargo mutants --workspace --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin --exclude 'crates/herald-wasm/src/js/**' --exclude 'crates/herald-wasi/**' --exclude 'crates/herald-fastly/**' --exclude 'crates/herald-spin/**' "${scope[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -439,6 +444,7 @@ jobs:
   # The wasm module's JavaScript glue builds for wasm32 alone, so its
   # mutants are judged by its tests under Node.
   mutants-wasm:
+    if: *mutates
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -479,6 +485,7 @@ jobs:
   # The component's and service's ports are judged by their tests under wasmtime
   # and Viceroy, as the wasm glue's are under Node.
   mutants-compute:
+    if: *mutates
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -545,7 +552,13 @@ jobs:
           SHARDS: ${{ needs.mutants-shard.result }}
           WASM: ${{ needs.mutants-wasm.result }}
           COMPUTE: ${{ needs.mutants-compute.result }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
+          if [ "$EVENT/$REF" = "push/refs/heads/main" ] && [ "$SHARDS/$WASM/$COMPUTE" = "skipped/skipped/skipped" ]; then
+            echo "A push to main is mutated by its pull request, in its diff, and by the nightly run, in the whole workspace."
+            exit 0
+          fi
           if [ "$SHARDS" != "success" ] || [ "$WASM" != "success" ] || [ "$COMPUTE" != "success" ]; then
             echo "::error::A mutants job ended ${SHARDS}/${WASM}/${COMPUTE}; its mutants.out artifact names each mutant that survived."
             exit 1
