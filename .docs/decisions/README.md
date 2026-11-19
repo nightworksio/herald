@@ -75,3 +75,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0055](0055-a-report-announces-a-view-of-open-pull-requests-once-a-window.md) | A report announces a view of open pull requests once a window | Accepted |
 | [0056](0056-a-board-keeps-one-post-of-a-report-and-a-rule-nudges-each-pull-request-past-its-stages.md) | A board keeps one post of a report, and a rule nudges each pull request past its stages | Accepted |
 | [0057](0057-a-view-asks-a-model-only-what-its-rules-cannot-tell-and-keeps-every-answer.md) | A view asks a model only what its rules cannot tell, and keeps every answer | Accepted |
+| [0058](0058-doctor-shows-the-instance-among-other-heralds.md) | doctor shows the instance among other heralds | Accepted |

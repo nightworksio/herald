@@ -4,6 +4,89 @@
   "description": "What `herald doctor --format json` prints.",
   "type": "object",
   "properties": {
+    "federation": {
+      "description": "The instance among other heralds; null where the config takes no\npart among them.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "description": "The domain; null where `[federation]` names none.",
+          "type": "string"
+        },
+        "feeds": {
+          "description": "Each feed of herald's own.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FeedJson"
+          }
+        },
+        "gaps": {
+          "description": "What of it the layer cannot serve.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Gapped"
+          }
+        },
+        "grants": {
+          "description": "What each peer may do with each source.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GrantJson"
+          }
+        },
+        "keep_audit": {
+          "description": "How many seconds what each peer asked is kept.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "keys": {
+          "description": "Its own keys, newest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OwnKeyJson"
+          }
+        },
+        "peers": {
+          "description": "Each peer.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PeerJson"
+          }
+        },
+        "pushes": {
+          "description": "Each push to a peer.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PushJson"
+          }
+        },
+        "revoked": {
+          "description": "The peer keys never trusted again.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KeyJson"
+          }
+        },
+        "sources": {
+          "description": "Each `herald` source.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceJson"
+          }
+        }
+      },
+      "required": [
+        "domain",
+        "keys",
+        "revoked",
+        "peers",
+        "feeds",
+        "pushes",
+        "sources",
+        "grants",
+        "keep_audit",
+        "gaps"
+      ]
+    },
     "gaps": {
       "description": "The features that cannot be served.",
       "type": "array",
@@ -39,9 +122,33 @@
     "online",
     "gaps",
     "notes",
-    "mistakes"
+    "mistakes",
+    "federation"
   ],
   "$defs": {
+    "FeedJson": {
+      "description": "A feed of herald's own.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The destination's name, which is the feed's.",
+          "type": "string"
+        },
+        "served": {
+          "description": "Whether the layer serves it.",
+          "type": "boolean"
+        },
+        "url": {
+          "description": "Its URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url",
+        "served"
+      ]
+    },
     "Gapped": {
       "description": "A feature the config asks for that the layer cannot serve.",
       "type": "object",
@@ -84,6 +191,208 @@
         "key",
         "why",
         "first_layer"
+      ]
+    },
+    "GrantJson": {
+      "description": "What a peer may do with a source.",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What it may do, such as `push`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "peer": {
+          "description": "The peer's name.",
+          "type": "string"
+        },
+        "source": {
+          "description": "The source's name.",
+          "type": "string"
+        },
+        "until": {
+          "description": "When it ends, in RFC 3339; null where it never does.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "peer",
+        "source",
+        "actions",
+        "until"
+      ]
+    },
+    "KeyJson": {
+      "description": "An Ed25519 public key as an operator compares it.",
+      "type": "object",
+      "properties": {
+        "fingerprint": {
+          "description": "Its fingerprint: `sha256:` and the hex of its SHA-256.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Its Multikey, such as `z6Mk…`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "fingerprint"
+      ]
+    },
+    "OwnKeyJson": {
+      "description": "One of the instance's own keys.",
+      "type": "object",
+      "properties": {
+        "public": {
+          "description": "The public key; null where the secret is not set here or holds no\nEd25519 key.",
+          "type": "object",
+          "properties": {
+            "fingerprint": {
+              "description": "Its fingerprint: `sha256:` and the hex of its SHA-256.",
+              "type": "string"
+            },
+            "key": {
+              "description": "Its Multikey, such as `z6Mk…`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "fingerprint"
+          ]
+        },
+        "secret": {
+          "description": "The secret holding it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "secret",
+        "public"
+      ]
+    },
+    "PeerJson": {
+      "description": "A peer of `[peers]`.",
+      "type": "object",
+      "properties": {
+        "discovery": {
+          "description": "Whether its discovery document was read; null unless `--online`.",
+          "type": "object",
+          "properties": {
+            "read": {
+              "description": "Whether it was read, signed by a key pinned for the peer.",
+              "type": "boolean"
+            },
+            "why": {
+              "description": "Why it was not; null where it was.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "read",
+            "why"
+          ]
+        },
+        "keys": {
+          "description": "The keys pinned for it.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KeyJson"
+          }
+        },
+        "most": {
+          "description": "The most bytes of a body it sends that are read, as `most` writes it.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "private": {
+          "description": "Whether private events may go to it.",
+          "type": "boolean"
+        },
+        "rate": {
+          "description": "How many requests it may make, as `rate` writes it.",
+          "type": "string"
+        },
+        "rotation": {
+          "description": "How its keys rotate: `manual` or `signed`.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Where it is served.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url",
+        "keys",
+        "rotation",
+        "rate",
+        "most",
+        "private",
+        "discovery"
+      ]
+    },
+    "PushJson": {
+      "description": "A `herald-push` destination.",
+      "type": "object",
+      "properties": {
+        "inbox": {
+          "description": "The URL of the inbox it pushes into.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The destination's name.",
+          "type": "string"
+        },
+        "peer": {
+          "description": "The peer it pushes to.",
+          "type": "string"
+        },
+        "private": {
+          "description": "Whether private events go to the peer.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "peer",
+        "inbox",
+        "private"
+      ]
+    },
+    "SourceJson": {
+      "description": "A `herald` source.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The source's name.",
+          "type": "string"
+        },
+        "peer": {
+          "description": "The peer whose feed it pulls; null where it pulls none of `[peers]`.",
+          "type": "string"
+        },
+        "pinned": {
+          "description": "Where the instance it pins itself is served; null where it pins\nnone.",
+          "type": "string"
+        },
+        "pushed": {
+          "description": "Whether a peer may push into it.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "peer",
+        "pinned",
+        "pushed"
       ]
     }
   }

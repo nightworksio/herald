@@ -32,6 +32,17 @@ them. `herald doctor` checks that each key is an Ed25519 key, and names
 the markers store, which keeps no key set, and a layer that serves no
 endpoint.
 
+`herald doctor` shows the instance among other heralds after its
+findings: the domain, its keys newest first with their fingerprints, the
+revoked keys, each peer with its URL, pinned keys, `rotation`, `rate`,
+`most` and whether private events go to it, each feed and whether the
+layer serves it, each `herald-push` with its inbox, and each `herald`
+source with the feed it pulls and whether it takes pushes, and how long
+the audit is kept. `--format json` carries the same as `federation`,
+with each grant and every gap of it; `--online` also reads each peer's
+discovery document and says whether its answer holds for the keys pinned
+for it.
+
 ## A feed of herald's own
 
 A `herald` destination is a feed herald serves rather than posts to. Each

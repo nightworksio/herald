@@ -12,12 +12,17 @@ use herald_kinds::{Bound, Carried, Registering};
 
 use crate::acting::{Claimed, Projects};
 
+mod federation;
 mod layer;
 mod online;
 mod peers;
 mod tasks;
 mod views;
 
+pub use federation::{
+    Federation, FeedShown, GrantShown, OwnKey, PeerShown, Pulls, PushShown, Reached, Shown,
+    SourceShown, federation,
+};
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
 pub use online::{kept_tokens, keys, online, secrets};
 pub use peers::{granted, handed_over, shared};
