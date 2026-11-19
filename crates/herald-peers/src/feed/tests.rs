@@ -43,7 +43,7 @@ fn size(envelope: &Value) -> usize {
 fn an_envelope_is_what_of_the_event_is_public_its_type_its_path_and_its_evidence() {
     let released = event("gate v1", "the gate", true);
     let envelope = INSTANCE
-        .envelope(&released, Some(&release()), 8192)
+        .envelope((&released, Visibility::Public), Some(&release()), 8192)
         .unwrap();
     assert_eq!(
         envelope,
@@ -63,7 +63,11 @@ fn an_envelope_is_what_of_the_event_is_public_its_type_its_path_and_its_evidence
         })
     );
     let unreleased = INSTANCE
-        .envelope(&event("gate v1", "the gate", false), Some(&release()), 8192)
+        .envelope(
+            (&event("gate v1", "the gate", false), Visibility::Public),
+            Some(&release()),
+            8192,
+        )
         .unwrap();
     assert_eq!(unreleased.get("evidence"), None);
     assert_eq!(unreleased.get("cut"), None);
@@ -85,7 +89,9 @@ fn an_envelope_carries_no_field_the_event_keeps_to_itself() {
         "visibility": "public",
     });
     let carried: Event = serde_json::from_value(written).unwrap();
-    let envelope = INSTANCE.envelope(&carried, Some(&release()), 8192).unwrap();
+    let envelope = INSTANCE
+        .envelope((&carried, Visibility::Public), Some(&release()), 8192)
+        .unwrap();
     let keys: Vec<&str> = envelope
         .as_object()
         .unwrap()
@@ -118,7 +124,9 @@ fn an_envelope_carries_no_field_the_event_keeps_to_itself() {
         envelope["attributes"],
         json!({ "signal": "release", "version": "v1" })
     );
-    let undeclared = INSTANCE.envelope(&carried, None, 8192).unwrap();
+    let undeclared = INSTANCE
+        .envelope((&carried, Visibility::Public), None, 8192)
+        .unwrap();
     assert_eq!(undeclared["attributes"], json!({}));
 }
 
@@ -127,16 +135,28 @@ fn an_envelope_that_fits_exactly_keeps_its_body() {
     let released = event("gate v1", "the whole body", true);
     let whole = size(
         &INSTANCE
-            .envelope(&released, Some(&release()), usize::MAX)
+            .envelope(
+                (&released, Visibility::Public),
+                Some(&release()),
+                usize::MAX,
+            )
             .unwrap(),
     );
     let fitting = INSTANCE
-        .envelope(&released, Some(&release()), whole + PROOF_ROOM)
+        .envelope(
+            (&released, Visibility::Public),
+            Some(&release()),
+            whole + PROOF_ROOM,
+        )
         .unwrap();
     assert_eq!(fitting["body"], json!("the whole body"));
     assert_eq!(fitting.get("cut"), None);
     let cut = INSTANCE
-        .envelope(&released, Some(&release()), whole + PROOF_ROOM - 1)
+        .envelope(
+            (&released, Visibility::Public),
+            Some(&release()),
+            whole + PROOF_ROOM - 1,
+        )
         .unwrap();
     assert_eq!(cut["cut"], json!(true));
 }
@@ -145,7 +165,11 @@ fn an_envelope_that_fits_exactly_keeps_its_body() {
 fn a_long_body_is_cut_to_fill_the_room_left_for_the_proof() {
     let body = "a".repeat(4000);
     let envelope = INSTANCE
-        .envelope(&event("gate v1", &body, true), Some(&release()), 2048)
+        .envelope(
+            (&event("gate v1", &body, true), Visibility::Public),
+            Some(&release()),
+            2048,
+        )
         .unwrap();
     assert_eq!(envelope["cut"], json!(true));
     assert_eq!(size(&envelope), 2048 - PROOF_ROOM);
@@ -157,7 +181,11 @@ fn a_long_body_is_cut_to_fill_the_room_left_for_the_proof() {
 fn a_body_is_cut_between_characters() {
     let body = "é".repeat(2000);
     let envelope = INSTANCE
-        .envelope(&event("gate v1", &body, true), Some(&release()), 2048)
+        .envelope(
+            (&event("gate v1", &body, true), Visibility::Public),
+            Some(&release()),
+            2048,
+        )
         .unwrap();
     let kept = envelope["body"].as_str().unwrap();
     assert!(body.starts_with(kept) && !kept.is_empty(), "{kept}");
@@ -168,7 +196,11 @@ fn a_body_is_cut_between_characters() {
 #[test]
 fn an_envelope_too_long_without_its_body_is_refused() {
     let title = "t".repeat(3000);
-    let refused = INSTANCE.envelope(&event(&title, "body", true), Some(&release()), 2048);
+    let refused = INSTANCE.envelope(
+        (&event(&title, "body", true), Visibility::Public),
+        Some(&release()),
+        2048,
+    );
     let Err(Unenveloped::Oversized { bytes, most }) = refused else {
         panic!("{refused:?}");
     };
@@ -194,7 +226,7 @@ fn an_event_whose_identity_or_project_is_too_long_has_no_envelope() {
         let mut long = serde_json::to_value(event("gate v1", "body", true)).unwrap();
         long[field] = json!("i".repeat(bytes));
         let long: Event = serde_json::from_value(long).unwrap();
-        INSTANCE.envelope(&long, Some(&release()), ENVELOPE_MOST)
+        INSTANCE.envelope((&long, Visibility::Public), Some(&release()), ENVELOPE_MOST)
     };
     for (field, most) in [("identity", IDENTITY_MOST), ("project", PROJECT_MOST)] {
         assert!(at(field, most).is_ok(), "{field}");
@@ -305,7 +337,11 @@ fn a_tombstone_withdraws_an_event_s_envelope_by_its_identity() {
     );
     assert!(withdrawn(&tombstone));
     let envelope = INSTANCE
-        .envelope(&event("gate v1", "b", true), None, 8192)
+        .envelope(
+            (&event("gate v1", "b", true), Visibility::Public),
+            None,
+            8192,
+        )
         .unwrap();
     assert!(!withdrawn(&envelope));
     assert!(!withdrawn(&json!({ "type": 1 })));

@@ -162,13 +162,15 @@ impl Config {
     }
 
     /// The secret `destination` is reached with: its own credential, or for
-    /// a feed of herald's own, the instance's newest key, which proves its
-    /// envelopes.
+    /// a feed of herald's own or a push to a peer, the instance's newest
+    /// key, which proves its envelopes.
     #[must_use]
     pub fn credential<'a>(&'a self, destination: &'a Destination) -> Option<&'a SecretRef> {
-        destination
-            .credential()
-            .or_else(|| destination.feeding().and(self.federation.keys.first()))
+        destination.credential().or_else(|| {
+            (destination.feeding().is_some() || destination.pushing().is_some())
+                .then(|| self.federation.keys.first())
+                .flatten()
+        })
     }
 
     /// The keys that name the secret `name`, such as
@@ -360,7 +362,8 @@ pub struct Federation {
     pub keys: Vec<SecretRef>,
     /// How long a peer may keep its key set before reading it again.
     pub refresh: SignedDuration,
-    /// How long each response of herald's API stays signed.
+    /// How long each response of herald's API, and each push it makes to a
+    /// peer, stays signed.
     pub signed_for: SignedDuration,
     /// The most bytes a peer's signature field may hold and still be read.
     pub fields: usize,

@@ -6,6 +6,7 @@
 
 #![no_main]
 
+use herald_core::Visibility;
 use herald_peers::answer::{Answer, Bounds, CONTENT_TYPE, checked};
 use herald_peers::digest::CONTENT_DIGEST;
 use herald_peers::discovery::{handed_over, key_set};
@@ -66,7 +67,7 @@ fuzz_target!(|bytes: &[u8]| {
     let _ = handed_over(bytes, &held, DOMAIN);
     if let Ok(read) = page(bytes, "https://herald.example/herald/v1/feeds/releases") {
         for (_, envelope) in &read.items {
-            let _ = carried(envelope);
+            let _ = carried(envelope, Visibility::Public);
         }
     }
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
@@ -77,7 +78,7 @@ fuzz_target!(|bytes: &[u8]| {
         assert_eq!(canonical(&read).as_deref(), Ok(written.as_str()));
     }
     let _ = shown(&value);
-    let _ = carried(&value);
+    let _ = carried(&value, Visibility::Private);
     if let Ok(set) = KeySet::read(&value, DOMAIN) {
         assert_eq!(KeySet::read(&set.document(DOMAIN), DOMAIN), Ok(set.clone()));
         let _ = rotation(&value, &set, DOMAIN);

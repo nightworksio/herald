@@ -184,6 +184,8 @@ pub struct PreparedRoute {
     /// How many times a record is written before another run's writes
     /// stop it.
     pub(crate) attempts: usize,
+    /// How long a request the instance signs stays signed.
+    pub(crate) signed_for: jiff::SignedDuration,
 }
 
 impl PreparedRoute {
@@ -460,25 +462,16 @@ async fn destination_secrets<'c, G: Signer>(
     Ok(resolved)
 }
 
-/// `config`'s routes with every credential and marker key resolved through
-/// `secrets` and `signer`, with what else a run that `uses` it needs: each
-/// source's token where it polls, and where it serves, each destination's
-/// commands and each source's webhook secret. Every secret the run needs
-/// beside its store's is read first, and every one that cannot be is named
-/// at once.
+/// Each route of `config`, its destination reached as `resolved` reaches
+/// it.
 ///
 /// # Errors
 ///
-/// Every secret that cannot be read, or the first marker key that cannot
-/// be derived.
-pub async fn prepare<S: Secrets, G: Signer>(
+/// A route whose destination is not among them.
+fn prepared_routes(
     config: &Config,
-    secrets: &S,
-    signer: &G,
-    uses: Uses,
-) -> Result<Prepared, PrepareError> {
-    let read = read(config, secrets, uses).await?;
-    let resolved = destination_secrets(config, &read, signer).await?;
+    resolved: &BTreeMap<&DestinationName, Resolved<'_>>,
+) -> Result<Vec<PreparedRoute>, PrepareError> {
     let mut routes = Vec::new();
     for route in &config.routes {
         let found = resolved.get(&route.route.destination);
@@ -499,8 +492,32 @@ pub async fn prepare<S: Secrets, G: Signer>(
             domain: config.federation.domain.clone().unwrap_or_default(),
             base: config.server.base.clone(),
             attempts: config.attempts.get(),
+            signed_for: config.federation.signed_for,
         });
     }
+    Ok(routes)
+}
+
+/// `config`'s routes with every credential and marker key resolved through
+/// `secrets` and `signer`, with what else a run that `uses` it needs: each
+/// source's token where it polls, and where it serves, each destination's
+/// commands and each source's webhook secret. Every secret the run needs
+/// beside its store's is read first, and every one that cannot be is named
+/// at once.
+///
+/// # Errors
+///
+/// Every secret that cannot be read, or the first marker key that cannot
+/// be derived.
+pub async fn prepare<S: Secrets, G: Signer>(
+    config: &Config,
+    secrets: &S,
+    signer: &G,
+    uses: Uses,
+) -> Result<Prepared, PrepareError> {
+    let read = read(config, secrets, uses).await?;
+    let resolved = destination_secrets(config, &read, signer).await?;
+    let routes = prepared_routes(config, &resolved)?;
     let mut sources = Vec::new();
     let mut mintings = Mintings::default();
     for (name, source) in config.sources.iter().filter(|_| uses >= Uses::Polls) {

@@ -38,7 +38,8 @@ pub enum Unread {
     Oversized(usize),
     /// An envelope has no canonical form.
     Uncanonical(Uncanonical),
-    /// An envelope's event is not public.
+    /// An envelope's event is seen by fewer than the reader takes events
+    /// for.
     Unpublic,
     /// An envelope's identity or project takes more bytes than any may.
     Long(Long),
@@ -65,7 +66,10 @@ impl fmt::Display for Unread {
                 "an envelope takes {bytes} bytes, more than the {ENVELOPE_MOST} any may"
             ),
             Self::Uncanonical(why) => why.fmt(f),
-            Self::Unpublic => write!(f, "an envelope carries an event that is not public"),
+            Self::Unpublic => write!(
+                f,
+                "an envelope carries an event of no visibility its reader takes"
+            ),
             Self::Long(Long { what, bytes, most }) => write!(
                 f,
                 "an envelope's {what} takes {bytes} bytes, more than the {most} any may"
@@ -158,14 +162,18 @@ pub struct Enveloped {
     pub origin: Option<[String; 3]>,
     /// The instances it passed through, the origin first.
     pub path: Vec<String>,
+    /// Who may see it.
+    pub visibility: Visibility,
 }
 
-/// What `envelope` carries: an event, public, or a tombstone.
+/// What `envelope` carries: an event seen by no fewer than `strictest`
+/// lets see one, or a tombstone.
 ///
 /// # Errors
 ///
-/// It is neither of the shape herald writes, or its event is not public.
-pub fn carried(envelope: &Value) -> Result<Carried, Unread> {
+/// It is neither of the shape herald writes, or its event is seen by
+/// fewer.
+pub fn carried(envelope: &Value, strictest: Visibility) -> Result<Carried, Unread> {
     let text = |name: &str| envelope.get(name).and_then(Value::as_str);
     let path: Vec<String> = envelope
         .get("path")
@@ -188,9 +196,15 @@ pub fn carried(envelope: &Value) -> Result<Carried, Unread> {
         Some(EVENT) => {}
         _ => return Err(Unread::Shape("it is neither an event nor a tombstone")),
     }
-    if text("visibility") != Some(Visibility::Public.name()) {
-        return Err(Unread::Unpublic);
-    }
+    let visibility = [
+        Visibility::Public,
+        Visibility::Internal,
+        Visibility::Private,
+    ]
+    .into_iter()
+    .find(|visibility| text("visibility") == Some(visibility.name()))
+    .filter(|visibility| strictest.stricter(*visibility) == strictest)
+    .ok_or(Unread::Unpublic)?;
     let field = |name: &str, wrong| text(name).map(str::to_owned).ok_or(Unread::Shape(wrong));
     let links = envelope
         .get("links")
@@ -225,6 +239,7 @@ pub fn carried(envelope: &Value) -> Result<Carried, Unread> {
         occurred,
         origin,
         path,
+        visibility,
     })))
 }
 

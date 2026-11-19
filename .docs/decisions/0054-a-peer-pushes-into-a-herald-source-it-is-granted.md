@@ -95,13 +95,31 @@ record of every request to read back.
    and doctor names it. Each identity's project is kept, so a route
    announcing each project as an actor of its own withdraws as that
    project's actor.
+8. **herald pushes through a destination of its own kind.** A
+   `herald-push` destination names a peer of `[peers]` and the source of
+   the peer's whose inbox takes its pushes; the `herald` destination stays
+   the public feed. Each event a route takes is pushed as an envelope
+   proved by the instance's newest key, in a request that key signs over
+   what the inbox demands, with a nonce no other request takes, lasting
+   `[federation] signed_for`. The route's ledger records each push as its
+   post, so an event is pushed once for each revision, and a stopped push
+   is tried again as any destination's step is: a wait the peer asks for,
+   or the destination's `waits`, is kept, and a refusal stops the route.
+   An event the routing sees as other than public goes only to a peer
+   with `private = true`, its envelope naming who may see it, and a
+   receiving source keeps it seen by no more; a pulled feed's envelopes
+   are public, and one naming any other is refused. An event that is no
+   longer to be pushed, or a release withdrawn, is withdrawn from the peer
+   by a pushed tombstone. A route declared private does not load to a
+   peer taking no private events, where `[doctor] private_to_public`
+   refuses.
 
 ## Consequences
 
 - A peer's announcements arrive as they are made, and an instance its
   peers cannot reach still takes them, each push held to the same checks
   as a pull.
-- The `herald-push` destination, which sends herald's own announcements
-  to a peer's inbox, builds on this inbox.
+- Two heralds peer both ways with no feed served: each pushes to the
+  other's inbox what its routes take.
 - A push lost after its `202` is not pushed again by a well-behaved peer,
   as its proof is kept; the routes' own ledgers retry what they took.

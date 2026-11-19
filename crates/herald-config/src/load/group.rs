@@ -9,7 +9,7 @@ use super::Loader;
 use crate::file::GroupFile;
 
 /// Why a route to a herald feed groups no events.
-const FED: &str = "a herald feed publishes each event as an envelope of its own, so it gathers no group; remove group, or give it to a route to another destination";
+const FED: &str = "a herald feed or push carries each event as an envelope of its own, so it gathers no group; remove group, or give it to a route to another destination";
 
 /// Why a route announcing each project as an actor of its own groups no
 /// events.

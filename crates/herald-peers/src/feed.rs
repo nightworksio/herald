@@ -109,7 +109,7 @@ impl Instance<'_> {
     /// `event`'s envelope, before its proof: what of the event is public
     /// (its identity, kind, project, title, body, links, the attributes its
     /// kind `spec` declares, when it happened, and its forge, host and
-    /// repository), that it is public, its type, the instances it passed
+    /// repository), who may see it, `seen`, its type, the instances it passed
     /// through, starting with this one, and its evidence, within `most`
     /// bytes once proved, its body cut where it would take more.
     ///
@@ -120,7 +120,7 @@ impl Instance<'_> {
     /// form, or takes more than `most` bytes with no body.
     pub fn envelope(
         &self,
-        event: &Event,
+        (event, seen): (&Event, Visibility),
         spec: Option<&KindSpec>,
         most: usize,
     ) -> Result<Value, Unenveloped> {
@@ -130,6 +130,7 @@ impl Instance<'_> {
             return Err(Unenveloped::Long(long));
         }
         let mut envelope = public(event, spec);
+        envelope.insert("visibility".to_owned(), json!(seen.name()));
         envelope.insert(TYPE.to_owned(), Value::String(EVENT.to_owned()));
         envelope.insert("path".to_owned(), json!([self.discovery()]));
         if let Some(release) = event.link(RELEASE_LINK) {
@@ -246,7 +247,6 @@ fn public(event: &Event, spec: Option<&KindSpec>) -> Map<String, Value> {
     fields.insert("links".to_owned(), json!(event.links()));
     fields.insert("attributes".to_owned(), Value::Object(attributes));
     fields.insert("occurred".to_owned(), json!(event.occurred()));
-    fields.insert("visibility".to_owned(), json!(Visibility::Public.name()));
     if let Some(origin) = event.origin() {
         fields.insert(
             "origin".to_owned(),

@@ -29,11 +29,19 @@ pub const CLAIMED_REPOSITORY: &str = "claimed_repository";
 
 /// A peer's feed, pulled.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Pulled(HeraldOptions);
+pub(crate) struct Pulled(HeraldOptions, Visibility);
 
 impl Pulled {
+    /// What a pull of `options` takes: public events alone, as a feed
+    /// lists.
     pub(crate) fn new(options: &HeraldOptions) -> Self {
-        Self(options.clone())
+        Self(options.clone(), Visibility::Public)
+    }
+
+    /// What a push into `options` takes: an event seen by any, kept seen
+    /// by those its envelope names alone.
+    pub(crate) fn pushed(options: &HeraldOptions) -> Self {
+        Self(options.clone(), Visibility::Private)
     }
 }
 
@@ -154,7 +162,7 @@ impl Pulled {
         (sequence, envelope): (u64, &Value),
         (polled, shares): (&mut Polled, &mut Shares),
     ) -> Result<(), Unpulled> {
-        let carried = reading::carried(envelope).map_err(unreadable)?;
+        let carried = reading::carried(envelope, self.1).map_err(unreadable)?;
         let (identity, path) = match &carried {
             Carried::Event(event) => (&event.identity, &event.path),
             Carried::Withdrawn { identity, path } => (identity, path),
@@ -336,9 +344,14 @@ impl Pulled {
             attributes,
             occurred: enveloped.occurred,
         };
+        let seen = enveloped.visibility;
         Event::normalise(draft)
             .ok()
             .map(|event| event.from_origin(origin))
+            .map(|event| match seen {
+                Visibility::Public => event,
+                stricter => event.seen_as(stricter),
+            })
     }
 
     /// The origin an event whose identity the source grants names: its

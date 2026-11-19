@@ -27,6 +27,7 @@ use crate::budget::Budget;
 use crate::grouping::Grouped;
 
 mod latest;
+mod pushing;
 mod withdrawing;
 
 use crate::prepare::{Connected, PreparedRoute};
@@ -403,6 +404,9 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
     pub(crate) async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
         if let Some(fed) = self.route.reached.feeds() {
             return self.fed(fed, event).await;
+        }
+        if let Some(pushed) = self.route.reached.pushes() {
+            return self.pushed(pushed, event).await;
         }
         let route = &self.route.config.route.id;
         let key = Key::derive(route, event.identity());

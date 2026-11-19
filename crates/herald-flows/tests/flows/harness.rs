@@ -701,6 +701,7 @@ pub fn kinds() -> herald_config::Kinds {
         .destination::<herald_dest_slack::SlackKind>()
         .destination::<herald_dest_fediverse::ActorKind>()
         .destination::<herald_dest_herald::HeraldKind>()
+        .destination::<herald_dest_herald::PushKind>()
         .source::<herald_sources_forge::GitHubKind>()
         .source::<herald_sources_forge::GitLabKind>()
         .source::<herald_sources_forge::ForgejoKind>()

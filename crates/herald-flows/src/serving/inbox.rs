@@ -13,6 +13,7 @@ use herald_core::{
     Action, AuditDay, Audited, Cursor, Identity, Polled, Rate, Refusing, SourceName, Window, status,
 };
 use herald_kinds::Pulling;
+pub(super) use herald_peers::discovery::INBOX;
 use herald_peers::request::{Request, checked};
 use herald_ports::{
     Admitted, Algorithm, Cursors, Deliveries, DynVerifier, Erased, Http, Published, Store,
@@ -29,8 +30,6 @@ use crate::peering::bounds;
 use crate::poll::pulled::{pushing, signer};
 use crate::verification::Admission;
 
-/// Where each source's inbox is, under herald's API, before its name.
-pub(super) const INBOX: &str = "/inbox/";
 /// What a host that is not the instance's domain has none of.
 const NO_INBOX: &str = "herald inbox on this host";
 /// What follows a peer's name in the window of the nonces replayed in its
