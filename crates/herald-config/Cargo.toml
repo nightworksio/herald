@@ -10,6 +10,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+herald-aws.workspace = true
 herald-core.workspace = true
 herald-ports.workspace = true
 herald-kinds.workspace = true

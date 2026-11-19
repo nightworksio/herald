@@ -8,6 +8,7 @@ fn layer(stores: &[&'static str]) -> Layer {
         name: "actions",
         tier: Tier::Actions,
         stores: stores.to_vec(),
+        runs: Vec::new(),
         endpoint: false,
         sessions: false,
         egress: Egress::Checked,

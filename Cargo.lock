@@ -984,6 +984,7 @@ dependencies = [
  "herald-dest-slack",
  "herald-flows",
  "herald-kinds",
+ "herald-models",
  "herald-ports",
  "herald-records",
  "herald-sources-feed",
@@ -1011,6 +1012,7 @@ dependencies = [
 name = "herald-config"
 version = "0.0.0"
 dependencies = [
+ "herald-aws",
  "herald-core",
  "herald-dest-discord",
  "herald-dest-fediverse",
@@ -1190,6 +1192,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
+ "herald-aws",
  "herald-config",
  "herald-core",
  "herald-dest-discord",

@@ -238,3 +238,27 @@ fn a_host_holding_its_secret_at_another_value_is_refused() {
         ))
     );
 }
+
+#[test]
+fn a_host_that_runs_no_model_refuses_every_binding() {
+    let host = hosted(Fault::Conforming);
+    for binding in [
+        herald_ports::Binding::SpinLlm,
+        herald_ports::Binding::WorkersAi("AI"),
+    ] {
+        assert_eq!(host.inference(binding).err(), Some(crate::unbound(binding)));
+    }
+    assert_eq!(
+        crate::unbound(herald_ports::Binding::SpinLlm),
+        "this host runs no model through Spin's llm interface; herald doctor names the hosts that do"
+    );
+    let made = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut bind = crate::counted::binding(&host, &made);
+    assert_eq!(
+        bind("ai", herald_ports::Binding::SpinLlm).err(),
+        Some(format!(
+            "the model ai is not run here: {}",
+            crate::unbound(herald_ports::Binding::SpinLlm)
+        ))
+    );
+}

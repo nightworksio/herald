@@ -1,9 +1,10 @@
 use std::future::{Future, ready};
+use std::sync::Arc;
 
 use herald_kinds::{KvAt, SqlAt};
 use herald_ports::{
-    Base, Changed, Clock, Http, Kv, KvError, Outbound, Pair, Proxy, Secrets, Signer, Sql, SqlError,
-    Stamped, Statement, Verifier, Versionstamp,
+    Base, Binding, Changed, Clock, DynInfer, Http, Kv, KvError, Outbound, Pair, Proxy, Secrets,
+    Signer, Sql, SqlError, Stamped, Statement, Verifier, Versionstamp,
 };
 
 /// What a platform gives herald: its ports, its variables, and the
@@ -67,6 +68,21 @@ pub trait Host: Sync {
     /// A nonce no other run or job takes, which keeps each job's name for
     /// its leases its own (ADR-0005).
     fn nonce(&self) -> String;
+
+    /// The model it runs beside herald through `binding` (ADR-0059).
+    ///
+    /// # Errors
+    ///
+    /// Where it runs no model through such a binding, saying why.
+    fn inference(&self, binding: Binding<'_>) -> Result<Arc<dyn DynInfer>, String> {
+        Err(unbound(binding))
+    }
+}
+
+/// Why a host refuses a model it runs nothing through `binding` for.
+#[must_use]
+pub fn unbound(binding: Binding<'_>) -> String {
+    format!("this host runs no model through {binding}; herald doctor names the hosts that do")
 }
 
 /// The database, or key-value store, of a host that offers none: every

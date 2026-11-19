@@ -119,6 +119,12 @@ impl Config {
     pub fn secrets(&self) -> BTreeSet<&str> {
         let mut secrets = self.secrets_used(Uses::Serves);
         secrets.extend(self.store.secrets());
+        secrets.extend(
+            self.models
+                .values()
+                .filter_map(|model| model.bedrock.as_ref())
+                .map(|bedrock| bedrock.session_token.secret.as_str()),
+        );
         secrets
     }
 
@@ -161,7 +167,7 @@ impl Config {
             .models
             .values()
             .filter(|_| uses >= Uses::Polls)
-            .filter_map(|model| model.key.as_ref());
+            .flat_map(crate::ModelConfig::secret_refs);
         destinations
             .chain(models)
             .chain(sources)

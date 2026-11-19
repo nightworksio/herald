@@ -814,6 +814,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     }
     loosened(config, &mut findings.notes);
     stored(config, layer, &mut findings);
+    tasks::ran(config, layer, &mut findings.gaps);
     moving(config, &mut findings.notes);
     fitted(config, &mut findings.notes);
     crowded(config, &mut findings.notes);

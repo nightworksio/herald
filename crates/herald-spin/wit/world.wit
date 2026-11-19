@@ -3,4 +3,5 @@ package herald:spin;
 world stores {
   import spin:sqlite/sqlite@3.0.0;
   import spin:postgres/postgres@3.0.0;
+  import fermyon:spin/llm@2.0.0;
 }

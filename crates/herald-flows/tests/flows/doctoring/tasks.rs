@@ -2,9 +2,9 @@
 //! which may see private repositories, and what cannot be asked or kept
 //! (ADR-0057).
 
-use herald_flows::Here;
+use herald_flows::{Here, Tier};
 
-use super::{loaded, on, server};
+use super::{loaded, on, server, worker};
 
 fn tasks(store: &str) -> herald_config::Config {
     loaded(&format!(
@@ -78,5 +78,85 @@ fn each_task_names_its_models_and_what_they_see_and_each_model_what_it_may_see()
     assert_eq!(
         task_notes(&untasked, &Here::default()),
         Vec::<String>::new()
+    );
+}
+
+fn bound() -> herald_config::Config {
+    loaded(
+        r#"version = 1
+[store]
+kind = "sqlite"
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+[models.ai]
+kind = "workers-ai"
+binding = "AI"
+model = "@cf/meta/llama-x"
+[models.spin]
+kind = "spin"
+model = "llama2-chat"
+[tasks.urgency]
+models = ["ai", "spin"]
+instructions = "How urgent is it?"
+options = { high = "it blocks a release", low = "it can wait" }
+[views.queue]
+decide = { priority = "urgency" }
+"#,
+    )
+}
+
+#[test]
+fn a_model_its_host_runs_is_named_by_its_binding_and_asked_only_where_it_runs() {
+    let built = Here {
+        models: true,
+        ..Here::default()
+    };
+    assert_eq!(
+        task_notes(&bound(), &built)[1..],
+        [
+            "The model ai (workers-ai, through the Workers AI binding AI) is shown public repositories' pull requests alone.",
+            "The model spin (spin, through Spin's llm interface) is shown public repositories' pull requests alone.",
+        ]
+    );
+    let gaps = |layer| {
+        on(&bound(), &layer, &built)
+            .gaps
+            .into_iter()
+            .filter(|gap| gap.key.starts_with("models."))
+            .map(|gap| (gap.feature, gap.key, gap.why, gap.first_layer))
+            .collect::<Vec<_>>()
+    };
+    let spin = (
+        "asking the model spin".to_owned(),
+        "models.spin.kind".to_owned(),
+        None,
+    );
+    assert_eq!(
+        gaps(server()),
+        [
+            (
+                "asking the model ai".to_owned(),
+                "models.ai.kind".to_owned(),
+                "the server layer runs no workers-ai model beside herald, through a binding"
+                    .to_owned(),
+                Some(Tier::Serverless)
+            ),
+            (
+                spin.0.clone(),
+                spin.1.clone(),
+                "the server layer runs no spin model beside herald, through a binding".to_owned(),
+                spin.2
+            ),
+        ]
+    );
+    assert_eq!(
+        gaps(worker()),
+        [(
+            spin.0,
+            spin.1,
+            "the worker layer runs no spin model beside herald, through a binding".to_owned(),
+            spin.2
+        )]
     );
 }

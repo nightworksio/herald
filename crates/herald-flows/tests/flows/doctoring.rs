@@ -28,6 +28,7 @@ pub(crate) fn actions() -> Layer {
         name: "actions",
         tier: Tier::Actions,
         stores: STORES.to_vec(),
+        runs: Vec::new(),
         endpoint: false,
         sessions: false,
         egress: Egress::Checked,
@@ -53,6 +54,7 @@ fn worker() -> Layer {
     Layer {
         name: "worker",
         tier: Tier::Serverless,
+        runs: vec![herald_models::Speaks::WorkersAi],
         endpoint: true,
         sessions: true,
         rounds: Rounds::Platform(Cadence {

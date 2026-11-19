@@ -2,9 +2,10 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
-    Algorithm, Base, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method,
-    Outbound, Request, Sealing, Secret, SecretError, SecretText, Secrets as _, Signer as _,
-    Socket as _, Sockets as _, Sql as _, Statement, Timer as _, Value, Verifier as _, Versionstamp,
+    Algorithm, Base, Binding, Clock as _, CryptoError, Frame, Http as _, HttpError, InferError,
+    Inference, Kv as _, Method, Outbound, Request, Sealing, Secret, SecretError, SecretText,
+    Secrets as _, Signer as _, Socket as _, Sockets as _, Sql as _, Statement, Timer as _, Value,
+    Verifier as _, Versionstamp,
 };
 use herald_records::KvRecords;
 use herald_testing::{kv_conformance, store_conformance};
@@ -50,6 +51,20 @@ export function host(vars) {
             rows: [[...statement.params, 1.5]],
             changed: index,
           }));
+        },
+      };
+    },
+    ai(binding) {
+      if (binding !== "AI") throw new Error(`the Worker has no binding ${binding}`);
+      return {
+        async run(model, inputs) {
+          if (model === "down") throw new Error("down");
+          if (model === "cyclic") {
+            const cyclic = {};
+            cyclic.self = cyclic;
+            return cyclic;
+          }
+          return { response: { model, asked: inputs.messages.length } };
         },
       };
     },
@@ -416,6 +431,52 @@ async fn a_database_the_host_offers_runs_statements_and_one_it_does_not_is_refus
             .await
             .is_err()
     );
+}
+
+#[wasm_bindgen_test]
+async fn a_binding_the_host_has_runs_its_models_and_one_it_lacks_is_refused() {
+    let hosted = hosted();
+    let ai = hosted.inference(Binding::WorkersAi("AI")).unwrap();
+    assert_eq!(format!("{ai:?}"), "JsAi");
+    let asked = |model: &str, most| Inference {
+        model: model.to_owned(),
+        inputs: br#"{"messages":[1,2]}"#.to_vec(),
+        tokens: 8,
+        most,
+    };
+    assert_eq!(
+        ai.infer_boxed(asked("m", 100)).await,
+        Ok(br#"{"response":{"model":"m","asked":2}}"#.to_vec())
+    );
+    assert_eq!(
+        ai.infer_boxed(asked("m", 36)).await,
+        Ok(br#"{"response":{"model":"m","asked":2}}"#.to_vec())
+    );
+    assert_eq!(
+        ai.infer_boxed(asked("m", 35)).await,
+        Err(InferError::TooLarge { most: 35 })
+    );
+    for failing in [
+        asked("down", 100),
+        asked("cyclic", 100),
+        Inference {
+            inputs: b"{".to_vec(),
+            ..asked("m", 100)
+        },
+    ] {
+        assert!(matches!(
+            ai.infer_boxed(failing).await,
+            Err(InferError::Failed { .. })
+        ));
+    }
+    assert_eq!(
+        hosted
+            .inference(Binding::WorkersAi("NONE"))
+            .err()
+            .as_deref(),
+        Some("the Worker has no binding NONE")
+    );
+    assert!(hosted.inference(Binding::SpinLlm).is_err());
 }
 
 #[wasm_bindgen_test]

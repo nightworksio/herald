@@ -10,6 +10,8 @@ use serde_json::json;
 
 use crate::harness::{Failing, Fault, NOON, Script, healthy};
 
+mod bound;
+
 const GRAPHQL: &str = "https://api.github.com/graphql";
 const JEV: &str = "https://api.typesafe.ai/v1/systemone";
 const LOCAL: &str = "http://127.0.0.1:11434/v1/chat/completions";

@@ -1,10 +1,14 @@
-//! The databases Spin offers, through its own stable interfaces.
+//! The databases Spin offers and the models it runs, through its own
+//! stable interfaces.
 
 use std::future::{Future, ready};
 
-use herald_ports::{Answers, Changed, Secret, Sql, SqlError, Statement, Value};
+use herald_ports::{
+    Answers, Changed, Infer, InferError, Inference, Secret, Sql, SqlError, Statement, Value,
+};
 use jiff::SignedDuration;
 
+use herald_spin::llm;
 use herald_spin::postgres as pg;
 use herald_spin::sqlite;
 
@@ -187,5 +191,41 @@ impl Sql for SpinSql {
         statements: Vec<Statement>,
     ) -> impl Future<Output = Result<Vec<Changed>, SqlError>> + Send {
         ready(self.ran(statements))
+    }
+}
+
+/// What Spin's `llm` interface is asked with but the most tokens: Spin's
+/// own defaults.
+const PARAMS: llm::InferencingParams = llm::InferencingParams {
+    max_tokens: 100,
+    repeat_penalty: 1.1,
+    repeat_penalty_last_n_token_count: 64,
+    temperature: 0.8,
+    top_k: 40,
+    top_p: 0.9,
+};
+
+/// The models Spin runs beside herald, through its `llm` interface
+/// (ADR-0059).
+#[derive(Debug)]
+pub(super) struct SpinLlm;
+
+impl Infer for SpinLlm {
+    fn infer(
+        &self,
+        inference: Inference,
+    ) -> impl Future<Output = Result<Vec<u8>, InferError>> + Send {
+        let prompt = String::from_utf8_lossy(&inference.inputs);
+        let params = llm::InferencingParams {
+            max_tokens: inference.tokens,
+            ..PARAMS
+        };
+        ready(match llm::infer(&inference.model, &prompt, Some(params)) {
+            Ok(inferred) if inferred.text.len() > inference.most => Err(InferError::TooLarge {
+                most: inference.most,
+            }),
+            Ok(inferred) => Ok(inferred.text.into_bytes()),
+            Err(error) => Err(InferError::failed(format!("{error:?}"))),
+        })
     }
 }

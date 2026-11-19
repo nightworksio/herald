@@ -1,6 +1,6 @@
 [package]
 name = "herald-models"
-description = "The decision models herald may ask a closed-set question: TypeSafe's Jev and every OpenAI-compatible server, each request built and each answer read within its cap"
+description = "The decision models herald may ask a closed-set question: TypeSafe's Jev, every OpenAI-compatible server, Anthropic, Gemini and Amazon Bedrock, each request built and each answer read within its cap"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

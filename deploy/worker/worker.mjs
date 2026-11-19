@@ -41,6 +41,7 @@ function host(env, storage) {
   return envHost(env, {
     by: "a Worker",
     fetch: fetching(),
+    ai: (binding) => bound(env, { binding }),
     sql: {
       d1: (at) => d1(bound(env, at)),
       "durable-object": (at) => {

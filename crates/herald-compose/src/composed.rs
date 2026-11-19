@@ -18,7 +18,7 @@ use jiff::{SignedDuration, Timestamp};
 use crate::ASKS_MODELS;
 use crate::answer::{Answer, Left};
 use crate::capped::Capped;
-use crate::counted::Counted;
+use crate::counted::{Counted, binding};
 use crate::host::Host;
 use crate::hosting::Hosting;
 use crate::records::{OpenedRecords, Opener, Served, reached};
@@ -149,7 +149,9 @@ where
             }
         };
         let counted = |http| Counted::new(http, Arc::clone(&made));
-        let connected = prepared.connect(|base| host.connect(base, &outbound).map(counted))?;
+        let connected = prepared
+            .connect(|base| host.connect(base, &outbound).map(counted))?
+            .bind(binding(&*host, &made))?;
         let public = Capped::new(
             counted(host.connect(Base::Public, &outbound.public())?),
             config.server.fetches,

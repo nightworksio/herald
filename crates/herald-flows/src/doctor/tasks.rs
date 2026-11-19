@@ -3,8 +3,10 @@
 //! be kept or asked, and which model ids float (ADR-0057).
 
 use herald_config::Config;
+use herald_models::Speaks;
+use herald_ports::Binding;
 
-use super::Here;
+use super::{Gap, Here, Layer, gap};
 
 /// What every model is shown of a pull request.
 const SHOWN: &str = "each pull request's repository, number, title, author, labels, reviewers, whether it is a draft or a bot's, and the state and reason herald's rules gave it";
@@ -47,10 +49,12 @@ pub(super) fn decided(config: &Config, here: &Here, notes: &mut Vec<String>) {
         } else {
             "is shown public repositories' pull requests alone"
         };
-        notes.push(format!(
-            "The model {name} ({}, {}) {reach}.",
-            model.kind, model.base
-        ));
+        let at = match (&model.binding, model.speaks) {
+            (Some(binding), _) => format!("through {}", Binding::WorkersAi(binding)),
+            (None, Speaks::Spin) => format!("through {}", Binding::SpinLlm),
+            (None, _) => model.base.clone(),
+        };
+        notes.push(format!("The model {name} ({}, {at}) {reach}.", model.kind));
         if model.insecure {
             notes.push(format!(
                 "The model {name} is reached over plain HTTP at {}, as insecure = true lets it.",
@@ -64,6 +68,23 @@ pub(super) fn decided(config: &Config, here: &Here, notes: &mut Vec<String>) {
             notes.push(format!(
                 "The model {name} names {}, which moves; pin a version so a decision is made by the model it names.",
                 model.model
+            ));
+        }
+    }
+}
+
+/// Each model of `config` its host runs through a binding that `layer`
+/// does not run (ADR-0059).
+pub(super) fn ran(config: &Config, layer: &Layer, gaps: &mut Vec<Gap>) {
+    for (name, model) in &config.models {
+        if model.speaks.bound() && !layer.runs.contains(&model.speaks) {
+            gaps.push(gap(
+                &format!("asking the model {name}"),
+                format!("models.{name}.kind"),
+                format!(
+                    "the {} layer runs no {} model beside herald, through a binding",
+                    layer.name, model.kind
+                ),
             ));
         }
     }

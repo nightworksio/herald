@@ -3641,9 +3641,20 @@
       "description": "`[models.<name>]`: a model a task may ask.",
       "type": "object",
       "properties": {
+        "access_key_id": {
+          "description": "The secret holding the access key's id a \"bedrock\" model's requests\nare signed with where it names no key; `AWS_ACCESS_KEY_ID` where\nabsent, as a Lambda's role provides it.",
+          "$ref": "#/$defs/SecretRef"
+        },
         "base": {
-          "description": "Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's\nwhere absent, and required where it has none.",
+          "description": "Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's\nwhere absent, and required where it has none. A \"bedrock\" model's\nis its region's endpoint where absent.",
           "type": "string"
+        },
+        "binding": {
+          "description": "The Worker's binding a \"workers-ai\" model is reached through, such\nas \"AI\", in place of Workers AI's REST API; it takes neither a base\nnor a key.",
+          "type": "string",
+          "examples": [
+            "AI"
+          ]
         },
         "header": {
           "description": "The header its key goes in, such as \"api-key\"; `Authorization:\nBearer` where absent and the preset names none.",
@@ -3655,11 +3666,11 @@
           "default": false
         },
         "key": {
-          "description": "Its key, where it takes one.",
+          "description": "Its key, where it takes one; a \"bedrock\" model's is a Bedrock API\nkey, sent in place of a signature.",
           "$ref": "#/$defs/SecretRef"
         },
         "kind": {
-          "description": "How it is spoken to: \"typesafe\" for TypeSafe's Jev,\n\"openai-compatible\" for any server speaking OpenAI's chat\ncompletions, or a preset of it, such as \"ollama\" or \"mistral\".",
+          "description": "How it is spoken to: \"typesafe\" for TypeSafe's Jev,\n\"openai-compatible\" for any server speaking OpenAI's chat\ncompletions, or a preset of it, such as \"ollama\" or \"mistral\",\n\"anthropic\" for Anthropic's Messages API, \"gemini\" for Gemini's,\n\"bedrock\" for Amazon Bedrock's Converse API, or \"spin\" for a model\nSpin runs; \"workers-ai\" with a binding is a model Workers AI runs.",
           "type": "string",
           "examples": [
             "ollama"
@@ -3682,6 +3693,27 @@
           "description": "Whether it may be given a private or internal repository's data,\nwhich no model is, on this machine or elsewhere, unless it says\n`private = true`.",
           "type": "boolean",
           "default": false
+        },
+        "region": {
+          "description": "The region a \"bedrock\" model is reached in, such as \"eu-west-1\", in\nany partition, such as \"us-gov-west-1\" or \"cn-north-1\".",
+          "type": "string",
+          "examples": [
+            "eu-west-1"
+          ]
+        },
+        "secret_access_key": {
+          "description": "The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY`\nwhere absent.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "session_token": {
+          "description": "The secret holding a session token, sent where it is set;\n`AWS_SESSION_TOKEN` where absent.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "tokens": {
+          "description": "The most tokens it answers within, where its kind takes a cap, as\nevery kind but \"typesafe\" and \"openai-compatible\" does: 4096 where\nabsent.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
         }
       },
       "additionalProperties": false,

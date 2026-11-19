@@ -59,6 +59,12 @@ export interface HeraldSockets {
   open(url: string): Promise<HeraldSocket>;
 }
 
+/** A model a host runs beside herald, such as a Worker's Workers AI binding. */
+export interface HeraldAi {
+  /** What `model` answers `inputs`. */
+  run(model: string, inputs: unknown): Promise<unknown>;
+}
+
 /** What a JavaScript host gives herald. */
 export interface HeraldHost {
   /** The variables the host sets, by name. */
@@ -71,6 +77,8 @@ export interface HeraldHost {
   sql?(at: SqlAt): Promise<HeraldSql>;
   /** The key-value store at `at`; rejects where the host offers none. */
   kv?(at: KvAt): Promise<HeraldKv>;
+  /** The models the binding `binding` runs; throws where the host has no such binding. */
+  ai?(binding: string): HeraldAi;
 }
 "#;
 
@@ -95,6 +103,15 @@ extern "C" {
 
     #[wasm_bindgen(method, catch)]
     pub(crate) fn kv(this: &HostObject, at: &JsValue) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn ai(this: &HostObject, binding: &str) -> Result<AiObject, JsValue>;
+
+    #[derive(Clone)]
+    pub(crate) type AiObject;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn run(this: &AiObject, model: &str, inputs: &JsValue) -> Result<Promise, JsValue>;
 
     #[derive(Clone)]
     pub(crate) type SqlObject;

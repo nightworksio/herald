@@ -35,7 +35,7 @@ pub use counted::Counted;
 /// then every task answers unknown (ADR-0057).
 pub const ASKS_MODELS: bool = cfg!(feature = "models");
 pub use herald_kinds::{KvAt, SqlAt};
-pub use host::{Host, UNOFFERED, Unoffered, plain};
+pub use host::{Host, UNOFFERED, Unoffered, plain, unbound};
 pub use host_request::HostRequest;
 pub use hosting::{Artefact, CRON_SECRET, HOUSEKEPT, Hosting, POLLED};
 pub use kinds::kinds;

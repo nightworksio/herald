@@ -34,17 +34,58 @@ decide = { priority = "urgency" }
 
 | Key | What it sets | Where absent |
 |-----|--------------|--------------|
-| `kind` | `typesafe`, `openai-compatible`, or a preset: `ollama`, `llama-cpp`, `lm-studio`, `vllm`, `localai`, `jan`, `koboldcpp`, `gpt4all`, `openai`, `mistral`, `openrouter`, `groq`, `together`, `deepseek`, `cohere`, `azure`, `scaleway`, `huggingface`, `workers-ai` | required |
+| `kind` | `typesafe`, `openai-compatible`, `anthropic` (Anthropic's Messages API), `gemini` (Gemini's API), `bedrock` (Amazon Bedrock's Converse API), `spin` (a model Spin runs), or a preset of `openai-compatible`: `ollama`, `llama-cpp`, `lm-studio`, `vllm`, `localai`, `jan`, `koboldcpp`, `gpt4all`, `openai`, `mistral`, `openrouter`, `groq`, `together`, `deepseek`, `cohere`, `azure`, `scaleway`, `huggingface`, `workers-ai` | required |
 | `model` | the model's id, pinned | required |
-| `base` | the API's base | the kind's; required for `openai-compatible`, `azure` and `workers-ai` |
-| `key` | its key, as a secret | none |
-| `header` | the header the key goes in | `Authorization: Bearer`, `api-key` for `azure` |
+| `base` | the API's base | the kind's; the region's endpoint for `bedrock`; required for `openai-compatible`, `azure` and `workers-ai` over REST |
+| `key` | its key, as a secret; a Bedrock API key for `bedrock`, sent in place of a signature | none |
+| `header` | the header the key goes in | `Authorization: Bearer`; `api-key` for `azure`, `x-api-key` for `anthropic`, `x-goog-api-key` for `gemini` |
 | `private` | whether it may be shown private and internal repositories' pull requests | `false` |
 | `insecure` | whether it may be reached over plain HTTP away from this machine | `false` |
 | `most` | the most bytes of its answer read | `65536` |
+| `tokens` | the most tokens `anthropic`, `gemini`, `bedrock`, `workers-ai` through a binding and `spin` answer within | `4096` |
+| `region` | the AWS region a `bedrock` model is reached in, in any partition | required for `bedrock` |
+| `access_key_id`, `secret_access_key`, `session_token` | the secrets a `bedrock` request is signed with where it names no `key`; a session token is sent where it is set | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` |
+| `binding` | the Worker's binding a `workers-ai` model is reached through, in place of Workers AI's REST API | none |
 
 A base is HTTPS, or plain HTTP on this machine (`localhost`, `127.0.0.1`,
 `[::1]`), or plain HTTP elsewhere with `insecure = true`.
+
+### Amazon Bedrock
+
+A `bedrock` model is asked through the Converse API with a JSON schema in
+`outputConfig`, at `bedrock-runtime` in its `region`'s partition
+(GovCloud, China and the ISO regions too); `base` reaches a FIPS or VPC
+endpoint instead. Each request is signed with AWS Signature Version 4,
+with the access key a Lambda's role provides where the secrets are not
+named, and the role needs `bedrock:InvokeModel`. A `key` sends a Bedrock
+API key instead. Where a prompt router chose the model, the answer is
+kept as that model's.
+
+```toml
+[models.claude]
+kind = "bedrock"
+region = "eu-west-1"
+model = "eu.anthropic.claude-sonnet-x-v1:0"
+private = true
+```
+
+### Models a host runs beside herald
+
+A model the host runs is reached through its binding, never through a
+URL, and takes neither `base` nor `key`; only the host that runs it asks
+it, and doctor names the gap on every other.
+
+- On a Cloudflare Worker, `kind = "workers-ai"` with `binding` asks
+  Workers AI through the Worker's binding, named in `wrangler.toml` as
+  `[ai] binding = "AI"`; without `binding` it is Workers AI's REST API.
+- On Spin, `kind = "spin"` asks a model Spin runs through its `llm`
+  interface, which the component lists in `spin.toml` as
+  `ai_models = ["llama2-chat"]`. Spin takes one prompt, so the questions,
+  the JSON schema and the state go in it in that order, the state last as
+  one JSON string, and the answer is the JSON object its text holds.
+
+A bound model is counted as one outbound request a time it is asked, and
+its answer is read within `most`, as every other model's is.
 
 ## Tasks
 
