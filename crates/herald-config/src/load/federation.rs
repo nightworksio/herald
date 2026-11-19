@@ -3,6 +3,7 @@
 
 use herald_core::follows::followed_by;
 use herald_core::{Duration, Size};
+use herald_kinds::ConfiguredStore;
 use herald_peers::multibase::ed25519_key;
 use jiff::SignedDuration;
 use toml::de::{DeTable, DeValue};
@@ -15,7 +16,11 @@ use crate::file::FederationFile;
 impl Loader<'_> {
     /// `[federation]` read, and its table as written, which destinations
     /// take keys from.
-    pub(super) fn federation<'i>(&mut self, value: Option<Value<'i>>) -> (Federation, DeTable<'i>) {
+    pub(super) fn federation<'i>(
+        &mut self,
+        value: Option<Value<'i>>,
+        store: Option<&ConfiguredStore>,
+    ) -> (Federation, DeTable<'i>) {
         let Some(value) = value else {
             return (Federation::default(), DeTable::default());
         };
@@ -71,6 +76,14 @@ impl Loader<'_> {
                 ),
             }
         }
+        let pages = file.pages.as_ref().and_then(|pages| {
+            self.pages(
+                &span,
+                pages,
+                (file.domain.as_deref(), !file.keys.is_empty()),
+                store,
+            )
+        });
         let block = file.block.unwrap_or_default();
         let allow = file.allow.unwrap_or_default();
         if let Err(refused) = followed_by(&block, &allow, file.followers) {
@@ -89,6 +102,7 @@ impl Loader<'_> {
                 stranger_rate,
                 replay_rate,
                 refused_nonces,
+                pages,
             },
             written,
         )
@@ -175,7 +189,7 @@ impl Loader<'_> {
 
     /// How long `[federation]`'s `key` lasts, as `written` or else its
     /// default, refused past its longest, written as `most`.
-    fn lasting(
+    pub(super) fn lasting(
         &mut self,
         (span, key): (std::ops::Range<usize>, String),
         written: Option<Duration>,

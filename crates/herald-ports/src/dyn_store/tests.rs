@@ -8,7 +8,7 @@ use std::future::Future;
 
 use herald_core::{
     AuditDay, DestinationName, Feed, Hold, Identity, KeptToken, Kind, PeerKeys, Pending,
-    PublishedKeys, Shown, Window,
+    Publication, PublishedKeys, Shown, Window,
 };
 
 use super::*;
@@ -189,6 +189,18 @@ impl Published for Refusing {
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(refused("put_published_keys"))
+    }
+
+    async fn publication(&self) -> Result<Option<Versioned<Publication>>, StoreError> {
+        Err(refused("publication"))
+    }
+
+    async fn put_publication(
+        &self,
+        _: &Publication,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_publication"))
     }
 
     async fn feed(&self, _: &DestinationName) -> Result<Option<Versioned<Feed>>, StoreError> {
@@ -459,6 +471,8 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
         [
             answered(erased.published_keys()),
             answered(erased.put_published_keys(&keys, None)),
+            answered(erased.publication()),
+            answered(erased.put_publication(&Publication::default(), None)),
             answered(erased.feed(&releases)),
             answered(erased.put_feed(&releases, &feed, None)),
             answered(erased.peer_keys("upstream")),
@@ -473,6 +487,8 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
         [
             Some(refused("published_keys")),
             Some(refused("put_published_keys")),
+            Some(refused("publication")),
+            Some(refused("put_publication")),
             Some(refused("feed")),
             Some(refused("put_feed")),
             Some(refused("peer_keys")),
@@ -492,6 +508,11 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
     });
     assert_eq!(answered(erased.published_keys()), unkept);
     assert_eq!(answered(erased.put_published_keys(&keys, None)), unkept);
+    assert_eq!(answered(erased.publication()), unkept);
+    assert_eq!(
+        answered(erased.put_publication(&Publication::default(), None)),
+        unkept
+    );
     assert_eq!(answered(erased.feed(&releases)), unkept);
     assert_eq!(answered(erased.put_feed(&releases, &feed, None)), unkept);
     assert_eq!(answered(erased.peer_keys("upstream")), unkept);

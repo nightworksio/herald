@@ -1,8 +1,8 @@
 //! Whatever arrives from another instance, reading it never panics: a
 //! structured field's items write back to what they read as, canonical
 //! JSON is its own canonical form, a key set reads back as it writes, and
-//! an answer, a discovery document, a feed's page or an envelope is checked
-//! or read without panicking.
+//! an answer, a discovery document, a feed's page, a static log's listing
+//! or signature, or an envelope is checked or read without panicking.
 
 #![no_main]
 
@@ -14,6 +14,7 @@ use herald_peers::reading::{carried, page};
 use herald_peers::jcs::canonical;
 use herald_peers::keys::{KeySet, rotation};
 use herald_peers::message::{FIELD_MOST, Message, SIGNATURE, SIGNATURE_INPUT, presented};
+use herald_peers::pages::{Log, listing, signed};
 use herald_peers::proof::shown;
 use herald_peers::structured::{Item, Member, dictionary, written};
 use libfuzzer_sys::fuzz_target;
@@ -65,6 +66,12 @@ fuzz_target!(|bytes: &[u8]| {
     let _ = key_set(bytes, DOMAIN);
     let held = KeySet { sequence: 0, refresh: 0, keys: vec![[0; 32]] };
     let _ = handed_over(bytes, &held, DOMAIN);
+    let feed = "https://herald.example/herald/v1/feeds/releases";
+    let _ = signed(bytes, "https://herald.example/.well-known/herald", b"{}");
+    if let Ok(log) = signed(bytes, "https://herald.example/.well-known/herald", bytes).map(|read| read.log) {
+        let _ = listing(bytes, log, feed);
+    }
+    let _ = listing(bytes, Log { sequence: 1, published: jiff::Timestamp::UNIX_EPOCH }, feed);
     if let Ok(read) = page(bytes, "https://herald.example/herald/v1/feeds/releases") {
         for (_, envelope) in &read.items {
             let _ = carried(envelope, Visibility::Public);

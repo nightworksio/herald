@@ -365,7 +365,8 @@ fn unhosted(config: &Config, gaps: &mut Vec<Gap>) {
             ));
         }
     }
-    if config.federation.domain.is_some() {
+    let logged = config.federation.pages.is_some();
+    if config.federation.domain.is_some() && !logged {
         gaps.push(gap(
             "the instance's discovery document",
             "federation.domain".to_owned(),
@@ -375,7 +376,7 @@ fn unhosted(config: &Config, gaps: &mut Vec<Gap>) {
     for (name, _) in config
         .destinations
         .iter()
-        .filter(|(_, destination)| destination.feeding().is_some())
+        .filter(|(_, destination)| !logged && destination.feeding().is_some())
     {
         gaps.push(gap(
             "a herald feed",

@@ -174,6 +174,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// How long after a static signed log it reads was written it is still
+    /// taken, where it reads one (ADR-0060).
+    fn stale_after(&self) -> Option<jiff::SignedDuration> {
+        None
+    }
+
     /// How much its cursor holds where it remembers every identity it
     /// lists rather than the newest few, where `[peers]` names `peers`
     /// instances (ADR-0042).

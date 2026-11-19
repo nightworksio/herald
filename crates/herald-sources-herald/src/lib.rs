@@ -103,6 +103,10 @@ impl SourceConfig for HeraldOptions {
         Some(self.peer_share)
     }
 
+    fn stale_after(&self) -> Option<jiff::SignedDuration> {
+        self.fixed.then_some(self.stale_after)
+    }
+
     fn receiver(&self) -> Option<Arc<dyn Receive>> {
         (!self.grants.is_empty()).then(|| Arc::new(Inbox(self.clone())) as Arc<dyn Receive>)
     }

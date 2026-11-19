@@ -21,7 +21,7 @@ pub(super) const OLDER: &str =
 const DOMAIN: &str = "herald.peer.example";
 const DISCOVERY: &str = "https://herald.peer.example/.well-known/herald";
 
-fn seeded(seed: &str) -> Secret {
+pub(super) fn seeded(seed: &str) -> Secret {
     let der = [
         &PKCS8_ED25519[..],
         &herald_core::unhex(seed.trim()).unwrap(),

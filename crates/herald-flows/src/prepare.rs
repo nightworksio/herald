@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
+use herald_config::{Config, Destination, Pages, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex, itself};
 use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Registering};
 use herald_peers::discovery::Instance;
@@ -247,9 +247,33 @@ pub struct Prepared {
     interacting: Vec<(DestinationName, Interacted)>,
     webhooks: Webhooks,
     instance: Vec<Secret>,
+    pages: Option<PreparedPages>,
+}
+
+/// Where the static signed log is written, with the token that pushes to
+/// its branch read, where it is committed to one (ADR-0060).
+#[derive(Debug, Clone)]
+pub struct PreparedPages {
+    pub(crate) pages: Pages,
+    pub(crate) token: Option<Secret>,
+    pub(crate) repository: Option<String>,
+    pub(crate) api: String,
 }
 
 impl Prepared {
+    /// It with the static signed log's branch in `repository`, the run's
+    /// own, where `[federation.pages]` names none.
+    #[must_use]
+    pub fn in_repository(mut self, repository: Option<&str>) -> Self {
+        if let Some(pages) = &mut self.pages {
+            pages.repository = pages
+                .repository
+                .take()
+                .or_else(|| repository.map(str::to_owned));
+        }
+        self
+    }
+
     /// It as a build that asks models where `asks` says so, and else with
     /// no model, so every task answers unknown (ADR-0057).
     #[must_use]
@@ -291,6 +315,7 @@ pub struct Connected<H> {
     pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
     webhooks: Webhooks,
     pub(crate) instance: Vec<Secret>,
+    pub(crate) pages: Option<(PreparedPages, H)>,
 }
 
 impl<H> Connected<H> {
@@ -436,7 +461,12 @@ impl Prepared {
                 reach(Base::At(&model.model.base)).map(|reaching| (model, Asking::Http(reaching)))
             })
             .collect::<Result<Vec<_>, E>>()?;
+        let pages = self
+            .pages
+            .map(|pages| reach(Base::At(&pages.api)).map(|reaching| (pages, reaching)))
+            .transpose()?;
         Ok(Connected {
+            pages,
             models,
             routes,
             sources,
@@ -573,6 +603,40 @@ async fn prepared_models<S: Secrets>(
     Ok(models)
 }
 
+/// The `[federation]` keys a run that `uses` `config` signs with, and where
+/// it writes the static signed log, each secret read from `read`
+/// (ADR-0060).
+async fn prepared_instance(
+    config: &Config,
+    read: &ReadSecrets,
+    uses: Uses,
+) -> Result<(Vec<Secret>, Option<PreparedPages>), PrepareError> {
+    let mut instance = Vec::new();
+    if uses == Uses::Serves || config.federation.pages.is_some() {
+        for key in &config.federation.keys {
+            instance.push(read.secret(&key.secret).await?);
+        }
+    }
+    let pages = match config
+        .federation
+        .pages
+        .as_ref()
+        .filter(|_| uses != Uses::Serves)
+    {
+        Some(pages) => Some(PreparedPages {
+            token: match pages.branch {
+                Some(_) => Some(read.secret(pages.token_name()).await?),
+                None => None,
+            },
+            repository: pages.repository.clone(),
+            api: herald_wire::github::api(pages.api.as_deref()),
+            pages: pages.clone(),
+        }),
+        None => None,
+    };
+    Ok((instance, pages))
+}
+
 /// Each route of `config`, its destination reached as `resolved` reaches
 /// it.
 ///
@@ -600,7 +664,7 @@ fn prepared_routes(
             derived: destination.derived,
             projects: Projects::of(config, route),
             domain: config.federation.domain.clone().unwrap_or_default(),
-            base: config.server.base.clone(),
+            base: config.instance_base().to_owned(),
             attempts: config.attempts.get(),
             signed_for: config.federation.signed_for,
         });
@@ -665,11 +729,8 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut interacting = Vec::new();
     let mut webhooks = Webhooks::default();
-    let mut instance = Vec::new();
+    let (instance, pages) = prepared_instance(config, &read, uses).await?;
     if uses == Uses::Serves {
-        for key in &config.federation.keys {
-            instance.push(read.secret(&key.secret).await?);
-        }
         for (name, resolved) in &resolved {
             if let Some(found) = resolved
                 .destination
@@ -702,6 +763,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         interacting,
         webhooks,
         instance,
+        pages,
     })
 }
 

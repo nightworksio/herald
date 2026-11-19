@@ -14,7 +14,7 @@ use herald_peers::multibase::{ed25519_key, ed25519_public};
 
 use super::{Loader, Value};
 use crate::file::PeerFile;
-use crate::peers::Peer;
+use crate::peers::{Peer, Rotation};
 
 impl Loader<'_> {
     /// Each source pulling another herald's feed joined to the peer it
@@ -36,6 +36,13 @@ impl Loader<'_> {
             match source.peering() {
                 Some(Peering::Peer(peer)) => match peers.get(peer) {
                     Some(found) => {
+                        if source.stale_after().is_some() && found.rotation == Rotation::Signed {
+                            self.error(
+                                &span,
+                                &format!("{path}.static"),
+                                format!("a static log is served with no signed answer, which a signed rotation is read from; set rotation = \"manual\" in [peers.{peer}], or read the peer's herald server"),
+                            );
+                        }
                         if let Some(joined) = source.joined(&found.url) {
                             *source = joined;
                         }

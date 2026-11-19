@@ -124,6 +124,25 @@ template = "release"
 
 With `rotation = "signed"` on the peer, a key set its discovery document lists, proved by a key that stands for the peer under a later sequence and naming no revoked key, replaces the pinned keys while those stay pinned. A kept set naming a key `[federation] revoked` lists stands for nothing from the next pull on, and no revoked key ever verifies a page or an envelope. herald reads it again after the set's `refresh` (at most 7 days), and at once when an answer is signed by a key it does not trust, and keeps it in the store. `herald doctor` names every peer whose rotation is signed and, with `--online`, each set it took that herald.toml does not pin; `herald peer add --update` pins it. herald proves its own key set by its oldest key, so a peer pinning that key takes the newer ones.
 
+## A static signed log
+
+A publisher that runs herald only in CI serves its feeds from a static
+host, such as GitHub Pages, as a signed log (ADR-0060):
+
+```toml
+[federation]
+domain = "owner.github.io"
+keys = [{ secret = "HERALD_FEDERATION_KEY" }]
+
+[federation.pages]
+url = "https://owner.github.io/repository"
+```
+
+- `herald poll`, `herald announce` and `herald withdraw` end by writing the log where a feed or the key set changed, or it was last written `refresh` ago (`"1d"`, at most `"7d"`), under the next sequence of a record the store keeps by compare-and-set; the markers store keeps none.
+- `url`'s host must be `[federation] domain`, and its path is the instance's path: envelopes name `<url>/.well-known/herald`. Each feed's pages are fixed buckets of its page size in sequences, the newest at `herald/v1/feeds/<name>` and older ones at `herald/v1/pages/<name>/<bucket>`. `.well-known/herald` lists each page's URL and SHA-256 digest under the log's sequence and time, and `.well-known/herald.sig` holds the statement of its URL, digest, sequence and time, proved by the newest key. `.nojekyll` lets GitHub Pages serve `.well-known`.
+- Each writing is one commit to `branch` (`herald-pages`) of `repository` (the run's own) with `token` (`GITHUB_TOKEN`), through `api` for a GitHub Enterprise Server, holding only the files that changed; the branch moves only where its head is still the commit's parent. Serve the branch with GitHub Pages, or any static host. `artifact` names a directory each writing fills with every file, for actions/upload-pages-artifact; named alone, no branch is written.
+- A `herald` source reads it with `static = true`, by `url` and `keys` or by a peer whose `rotation` is `"manual"`. It takes the log only where the statement's proof holds for a key trusted for the instance, it names the document read and its digest, its sequence is no lower than the one read before, and it was written within `stale_after` (`"3d"`, at most `"30d"`; give more than the publisher's `refresh`); and each page only where its digest is the one listed. A withheld, replayed or rolled-back page, or a log no longer written, stops the pull and says so.
+
 ## Pushes into a source
 
 A peer may push what it announces into a `herald` source rather than

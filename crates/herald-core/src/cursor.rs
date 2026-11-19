@@ -51,6 +51,10 @@ pub struct Cursor {
     /// (ADR-0049).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence: Option<u64>,
+    /// The sequence of the newest static signed log of another herald it
+    /// has read, so it takes no older one again (ADR-0060).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log: Option<u64>,
     /// When the proof of the newest envelope it took of each identity from
     /// another herald's feed was made, the latest taken first (ADR-0049).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -136,6 +140,9 @@ pub struct Polled {
     /// The newest sequence of another herald's feed it read, where it read
     /// one; the cursor's own stays where it is not given.
     pub sequence: Option<u64>,
+    /// The sequence of the static signed log it read, where it read one;
+    /// the cursor's own stays where it is not given.
+    pub log: Option<u64>,
     /// The identities another herald's feed withdrew by a tombstone, newest
     /// first, which are no longer seen.
     pub withdrawn: Vec<Identity>,
@@ -243,6 +250,7 @@ impl Cursor {
             listings: polled.listings.clone(),
             newest: polled.newest.or(self.newest),
             sequence: polled.sequence.or(self.sequence),
+            log: polled.log.or(self.log),
             ahead: polled.ahead.clone(),
             proved: self.proofs(polled, remembered),
             projects,
@@ -264,6 +272,7 @@ impl Cursor {
             listings: self.listings.clone(),
             newest: self.newest,
             sequence: self.sequence,
+            log: self.log,
             ahead: self.ahead.clone(),
             ..advanced
         }

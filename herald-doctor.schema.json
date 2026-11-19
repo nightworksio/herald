@@ -45,6 +45,35 @@
             "$ref": "#/$defs/OwnKeyJson"
           }
         },
+        "pages": {
+          "description": "Where its feeds are written as a static signed log; null where they\nare not.",
+          "type": "object",
+          "properties": {
+            "artifact": {
+              "description": "The directory each writing fills; null where it fills none.",
+              "type": "string"
+            },
+            "branch": {
+              "description": "The branch each writing is committed to; null where it is committed\nto none.",
+              "type": "string"
+            },
+            "refresh": {
+              "description": "How many seconds a log no feed changed is left before it is written\nagain.",
+              "type": "integer",
+              "format": "int64"
+            },
+            "url": {
+              "description": "Where a static host serves it.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "branch",
+            "artifact",
+            "refresh"
+          ]
+        },
         "peers": {
           "description": "Each peer.",
           "type": "array",
@@ -84,6 +113,7 @@
         "sources",
         "grants",
         "keep_audit",
+        "pages",
         "gaps"
       ]
     },
@@ -386,13 +416,19 @@
         "pushed": {
           "description": "Whether a peer may push into it.",
           "type": "boolean"
+        },
+        "stale_after": {
+          "description": "How many seconds after the static log it reads was written it is\nstill taken; null where it reads no static log.",
+          "type": "integer",
+          "format": "int64"
         }
       },
       "required": [
         "name",
         "peer",
         "pinned",
-        "pushed"
+        "pushed",
+        "stale_after"
       ]
     }
   }

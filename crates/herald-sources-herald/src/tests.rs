@@ -499,3 +499,60 @@ fn a_grant_names_a_peer_grants_an_action_and_only_namespaces_a_peer_may_be_grant
         )
     );
 }
+
+#[test]
+fn a_static_log_is_taken_up_to_three_days_after_it_was_written_and_at_most_thirty() {
+    let fixed = HeraldKind::checked(HeraldFile {
+        fixed: true,
+        ..pinned()
+    })
+    .unwrap();
+    assert_eq!(fixed.stale_after(), Some(HeraldOptions::STALE_AFTER));
+    assert_eq!(
+        HeraldOptions::STALE_AFTER,
+        jiff::SignedDuration::from_hours(72)
+    );
+    let longest = HeraldKind::checked(HeraldFile {
+        fixed: true,
+        stale_after: Some(herald_core::Duration(HeraldOptions::STALE_AFTER_ALLOWED)),
+        ..file()
+    })
+    .unwrap();
+    assert_eq!(
+        longest.stale_after(),
+        Some(HeraldOptions::STALE_AFTER_ALLOWED)
+    );
+    assert_eq!(HeraldKind::checked(pinned()).unwrap().stale_after(), None);
+    assert_eq!(
+        refused(HeraldFile {
+            fixed: true,
+            stale_after: Some(herald_core::Duration(
+                HeraldOptions::STALE_AFTER_ALLOWED + jiff::SignedDuration::from_secs(1)
+            )),
+            ..file()
+        }),
+        "stale_after: stale_after is at most \"30d\"; shorten it"
+    );
+    assert_eq!(
+        refused(HeraldFile {
+            stale_after: Some(herald_core::Duration(HeraldOptions::STALE_AFTER)),
+            ..file()
+        }),
+        "stale_after: only a static log is ever stale; set static = true, or leave stale_after out"
+    );
+    assert_eq!(
+        refused(HeraldFile {
+            fixed: true,
+            peers: BTreeMap::from([(
+                "upstream".to_owned(),
+                herald_core::Grant {
+                    actions: BTreeSet::from([herald_core::Action::Push]),
+                    until: None,
+                    namespaces: BTreeSet::new(),
+                },
+            )]),
+            ..HeraldFile::default()
+        }),
+        "static: a source that only takes what peers push reads no static log; name the log's feed and its keys, or a peer and its feed"
+    );
+}

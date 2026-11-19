@@ -145,11 +145,13 @@ fn doctor_shows_the_instance_s_feeds_pushes_and_herald_sources() {
                 name: "inbox".to_owned(),
                 pulls: None,
                 pushed: true,
+                stale_after: None,
             },
             SourceShown {
                 name: "pulled".to_owned(),
                 pulls: Some(Pulls::Peer("org".to_owned())),
                 pushed: false,
+                stale_after: None,
             },
         ]
     );

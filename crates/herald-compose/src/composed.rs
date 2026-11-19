@@ -6,11 +6,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use herald_config::{Config, Uses};
 use herald_core::{Board, status};
 use herald_flows::{
-    Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Requests, Room,
-    Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep_announcing,
-    poll, prepare, queue, refusal, report, unplaced, work,
+    Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Publishing,
+    Requests, Room, Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer,
+    housekeep_announcing, poll, prepare, publish, queue, refusal, report, unplaced, work,
 };
-use herald_kinds::Opened;
+use herald_kinds::{GITHUB_REPOSITORY, Opened};
 use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
 use herald_records::{Memory, MemoryKeyring, RecordStore};
 use jiff::{SignedDuration, Timestamp};
@@ -132,7 +132,8 @@ where
         let prepared = prepare(&config, host.secrets(), host.signer(), uses)
             .await
             .map_err(|error| error.to_string())?
-            .asking(ASKS_MODELS);
+            .asking(ASKS_MODELS)
+            .in_repository(host.var(GITHUB_REPOSITORY));
         let records = match keeping {
             Keeping::Stored(hosting) => {
                 let opener = Opener::new(Arc::clone(&host), outbound.clone(), Arc::clone(&made));
@@ -281,6 +282,17 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
             return Vec::new();
         };
         self.through(Admission::Once, self.started(), Polling).await
+    }
+
+    /// The static signed log `[federation.pages]` names written where it
+    /// is due, once the run's feeds changed (ADR-0060); nothing where the
+    /// config names none.
+    ///
+    /// # Errors
+    ///
+    /// Where the writing stopped, saying why.
+    pub async fn publish(&self) -> Result<Option<Publishing>, Stop> {
+        self.through(Admission::Once, self.started(), Logging).await
     }
 
     /// The store's housekeeping done, and the keys read longest ago
@@ -497,6 +509,20 @@ impl<H: Host> Through<H> for Polling {
             run,
         )
         .await
+    }
+}
+
+struct Logging;
+
+impl<H: Host> Through<H> for Logging {
+    type Done = Result<Option<Publishing>, Stop>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Result<Option<Publishing>, Stop> {
+        publish(serving.config, serving.connected, serving.ports).await
     }
 }
 

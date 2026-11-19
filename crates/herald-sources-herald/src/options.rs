@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use herald_core::{Grant, kind_name};
+use herald_core::{Duration, Grant, kind_name};
 use herald_kinds::{Bound, Fault, Instance, Peering, PublicKey};
 use herald_peers::feed::{FeedAt, PAGE_MOST, feed_at, feed_of};
 use herald_peers::multibase::ed25519_key;
+use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -85,6 +86,18 @@ pub struct HeraldFile {
     /// own `grants` must name the same. None where absent.
     #[serde(default)]
     pub peers: BTreeMap<String, Grant>,
+    /// Whether the feed is read from a static signed log, as a static host
+    /// such as GitHub Pages serves it, rather than from a herald server:
+    /// each page checked against the digest the log's signed discovery
+    /// document lists. false where absent (ADR-0060).
+    #[serde(default, rename = "static")]
+    pub fixed: bool,
+    /// How long after a static log was written it is still taken: "3d"
+    /// where absent, at most "30d". An older one is refused, as its host
+    /// may be withholding newer pages; give more than the publisher's
+    /// `refresh`. Only with `static = true`.
+    #[schemars(example = "3d")]
+    pub stale_after: Option<Duration>,
 }
 
 /// A `herald` source, checked: whose feed it pulls, where, and what it
@@ -120,6 +133,10 @@ pub struct HeraldOptions {
     /// Whether it pulls a feed, rather than only taking what its peers
     /// push to it.
     pub(crate) pulls: bool,
+    /// Whether it reads a static signed log.
+    pub(crate) fixed: bool,
+    /// How long after a static log was written it is still taken.
+    pub(crate) stale_after: SignedDuration,
 }
 
 impl HeraldOptions {
@@ -141,6 +158,12 @@ impl HeraldOptions {
     pub const PEER_SHARE: usize = 1000;
     /// The most `peer_share` may be: four times the default.
     pub const PEER_SHARE_ALLOWED: usize = 4 * Self::PEER_SHARE;
+    /// How long after a static log was written it is still taken where
+    /// `stale_after` is unset: three times the time its publisher leaves an
+    /// unchanged log by default.
+    pub const STALE_AFTER: SignedDuration = SignedDuration::from_hours(3 * 24);
+    /// The longest `stale_after` may be.
+    pub const STALE_AFTER_ALLOWED: SignedDuration = SignedDuration::from_hours(30 * 24);
 
     /// The options `file` writes, where they are sound.
     ///
@@ -169,6 +192,7 @@ impl HeraldOptions {
         }
         Self::granting(&file)?;
         let pulls = file.peer.is_some() || file.feed.is_some() || file.url.is_some();
+        let stale_after = Self::logged(&file, pulls)?;
         if !pulls && !file.peers.is_empty() {
             Self::pushed_only(&file)?;
         }
@@ -224,7 +248,36 @@ impl HeraldOptions {
             },
             grants: file.peers,
             pulls,
+            fixed: file.fixed,
+            stale_after,
         })
+    }
+
+    /// How long a static log `file` reads is still taken, where it reads
+    /// one from a feed it pulls, `pulls`, within its bound.
+    fn logged(file: &HeraldFile, pulls: bool) -> Result<SignedDuration, Fault> {
+        if file.fixed && !pulls {
+            return Err(Fault::at(
+                "static",
+                "a source that only takes what peers push reads no static log; name the log's feed and its keys, or a peer and its feed",
+            ));
+        }
+        if file.stale_after.is_some() && !file.fixed {
+            return Err(Fault::at(
+                "stale_after",
+                "only a static log is ever stale; set static = true, or leave stale_after out",
+            ));
+        }
+        let stale_after = file
+            .stale_after
+            .map_or(Self::STALE_AFTER, |stale_after| stale_after.0);
+        if stale_after > Self::STALE_AFTER_ALLOWED {
+            return Err(Fault::at(
+                "stale_after",
+                "stale_after is at most \"30d\"; shorten it",
+            ));
+        }
+        Ok(stale_after)
     }
 
     /// Whether what `file` grants each peer is sound: a peer's name, at

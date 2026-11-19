@@ -51,6 +51,17 @@ mod pulls {
     }
 
     #[test]
+    fn a_static_log_is_read_from_a_peer_whose_keys_rotate_by_hand_only() {
+        let source = "[sources.up]\nkind = \"herald\"\npeer = \"upstream\"\nfeed = \"releases\"\nstatic = true\n";
+        assert!(loaded(source).is_ok());
+        let refused = loaded(&format!("rotation = \"signed\"\n{source}")).unwrap_err();
+        assert!(
+            refused.contains("sources.up.static: a static log is served with no signed answer, which a signed rotation is read from; set rotation = \"manual\" in [peers.upstream], or read the peer's herald server"),
+            "{refused}"
+        );
+    }
+
+    #[test]
     fn a_source_pinning_its_own_keys_pins_none_a_peer_pins_or_revoked() {
         let url = "url = \"https://other.example/herald/v1/feeds/releases\"";
         let config = loaded(&format!(

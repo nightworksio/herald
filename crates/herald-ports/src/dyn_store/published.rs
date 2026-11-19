@@ -1,7 +1,7 @@
 //! What the instance published, and what its peers handed over to, read
 //! through an erased store.
 
-use herald_core::{AuditDay, DestinationName, Feed, PeerKeys, PublishedKeys, Window};
+use herald_core::{AuditDay, DestinationName, Feed, PeerKeys, Publication, PublishedKeys, Window};
 
 use super::DynStore;
 use crate::erased::Erased;
@@ -18,6 +18,18 @@ impl Published for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_published_keys_boxed(keys, expected).await
+    }
+
+    async fn publication(&self) -> Result<Option<Versioned<Publication>>, StoreError> {
+        self.0.publication_boxed().await
+    }
+
+    async fn put_publication(
+        &self,
+        publication: &Publication,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_publication_boxed(publication, expected).await
     }
 
     async fn feed(

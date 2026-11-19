@@ -2,8 +2,8 @@ use crate::Decisions;
 use herald_core::Decided;
 use herald_core::{
     AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
-    Membership, PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State,
-    Subscription, Window,
+    Membership, PeerKeys, Pending, Publication, PublishedKeys, RouteId, Schedule, SourceName,
+    State, Subscription, Window,
 };
 use jiff::Timestamp;
 
@@ -219,6 +219,16 @@ pub trait DynStore: Sync {
     fn put_published_keys_boxed<'a>(
         &'a self,
         keys: &'a PublishedKeys,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Published::publication`].
+    fn publication_boxed(&self) -> Boxed<'_, Result<Option<Versioned<Publication>>, StoreError>>;
+
+    /// [`Published::put_publication`].
+    fn put_publication_boxed<'a>(
+        &'a self,
+        publication: &'a Publication,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 
@@ -646,6 +656,22 @@ impl<S: Store + Keyring> DynStore for S {
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>> {
         Box::pin(async move { self.published().put_published_keys(keys, expected).await })
+    }
+
+    fn publication_boxed(&self) -> Boxed<'_, Result<Option<Versioned<Publication>>, StoreError>> {
+        Box::pin(async move { self.published().publication().await })
+    }
+
+    fn put_publication_boxed<'a>(
+        &'a self,
+        publication: &'a Publication,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move {
+            self.published()
+                .put_publication(publication, expected)
+                .await
+        })
     }
 
     fn feed_boxed<'a>(

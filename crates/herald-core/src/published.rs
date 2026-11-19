@@ -1,6 +1,9 @@
 //! The key set an instance last published, kept so its sequence rises by
 //! one with each new set (ADR-0044), the envelopes each of its feeds
-//! lists, and the key set each peer last handed over to (ADR-0049).
+//! lists, the key set each peer last handed over to (ADR-0049), and the
+//! static signed log it last wrote (ADR-0060).
+
+use std::collections::BTreeMap;
 
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
@@ -64,6 +67,50 @@ impl PeerKeys {
     pub fn due(&self, now: Timestamp) -> bool {
         let refresh = SignedDuration::from_secs(i64::try_from(self.refresh).unwrap_or(i64::MAX));
         self.read.checked_add(refresh).is_ok_and(|next| now >= next)
+    }
+}
+
+/// The static signed log an instance last wrote (ADR-0060): the sequence
+/// it took, which no other writing takes again, when it was written, the
+/// digest of each file it holds by path, and the commit of the branch
+/// holding them, where it was written to one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Publication {
+    /// Raised by one each time the log is written, or a writing begins.
+    pub sequence: u64,
+    /// When the log was last written; absent before the first.
+    pub published: Option<Timestamp>,
+    /// The digest of each file the log holds, by its path.
+    pub files: BTreeMap<String, String>,
+    /// The commit of the branch holding the files, where they were
+    /// written to one.
+    pub commit: Option<String>,
+}
+
+impl Publication {
+    /// Whether a log holding `files` is to be written at `now`: where its
+    /// files changed, or it was last written `refresh` or longer ago.
+    #[must_use]
+    pub fn due(
+        &self,
+        files: &BTreeMap<String, String>,
+        now: Timestamp,
+        refresh: SignedDuration,
+    ) -> bool {
+        self.files != *files
+            || self.published.is_none_or(|published| {
+                published.checked_add(refresh).is_ok_and(|next| now >= next)
+            })
+    }
+
+    /// The record taking the next sequence for a writing about to begin,
+    /// its files and commit still those last written.
+    #[must_use]
+    pub fn begun(&self) -> Self {
+        Self {
+            sequence: self.sequence.saturating_add(1),
+            ..self.clone()
+        }
     }
 }
 
@@ -204,6 +251,35 @@ mod tests {
             ..held
         };
         assert!(!forever.due(Timestamp::MAX));
+    }
+
+    #[test]
+    fn a_log_is_due_where_its_files_changed_or_once_refresh_passed() {
+        let files = BTreeMap::from([("a".to_owned(), "1".to_owned())]);
+        let at = Timestamp::constant(1_800_000_000, 0);
+        let refresh = SignedDuration::from_secs(60);
+        assert!(Publication::default().due(&BTreeMap::new(), at, refresh));
+        let written = Publication {
+            sequence: 3,
+            published: Some(at),
+            files: files.clone(),
+            commit: Some("c".to_owned()),
+        };
+        assert!(!written.due(&files, Timestamp::constant(1_800_000_059, 0), refresh));
+        assert!(written.due(&files, Timestamp::constant(1_800_000_060, 0), refresh));
+        assert!(written.due(&BTreeMap::new(), at, refresh));
+        let never = Publication {
+            published: Some(Timestamp::MAX),
+            ..written.clone()
+        };
+        assert!(!never.due(&files, Timestamp::MAX, refresh));
+        assert_eq!(
+            written.begun(),
+            Publication {
+                sequence: 4,
+                ..written
+            }
+        );
     }
 
     fn feed(identities: &[&str]) -> Feed {
