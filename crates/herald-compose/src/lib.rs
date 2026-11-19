@@ -29,6 +29,11 @@ pub use conformance::{
     CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
 };
 pub use counted::Counted;
+
+/// Whether this build asks the models a config's tasks name, as its
+/// `models` feature says; release artefacts are built without it, and
+/// then every task answers unknown (ADR-0057).
+pub const ASKS_MODELS: bool = cfg!(feature = "models");
 pub use herald_kinds::{KvAt, SqlAt};
 pub use host::{Host, UNOFFERED, Unoffered, plain};
 pub use host_request::HostRequest;

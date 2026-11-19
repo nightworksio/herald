@@ -144,6 +144,20 @@ impl Pins for Refusing {
     }
 }
 
+impl crate::Decisions for Refusing {
+    async fn decision(&self, _: &Key) -> Result<Option<herald_core::Decided>, StoreError> {
+        Err(refused("decision"))
+    }
+
+    async fn put_decision(&self, _: &herald_core::Decided) -> Result<(), StoreError> {
+        Err(refused("put_decision"))
+    }
+
+    async fn expire_decisions(&self, _: Timestamp) -> Result<(), StoreError> {
+        Err(refused("expire_decisions"))
+    }
+}
+
 impl Positions for Refusing {
     async fn position(&self, _: &DestinationName) -> Result<Option<String>, StoreError> {
         Err(refused("position"))
@@ -362,7 +376,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 13]
+            [holding; 14]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -548,6 +562,21 @@ fn announced(at: Timestamp) -> Latest {
     }
 }
 
+/// A decision keyed `key`, made at `at`.
+fn decided(key: Key, at: Timestamp) -> herald_core::Decided {
+    herald_core::Decided {
+        key,
+        task: "t".to_owned(),
+        subject: "s".to_owned(),
+        answer: herald_core::Answer {
+            model: "m".to_owned(),
+            choice: None,
+            probabilities: std::collections::BTreeMap::new(),
+        },
+        at,
+    }
+}
+
 #[test]
 fn every_answer_of_an_erased_store_is_the_store_s_own() {
     let store = Refusing { holding: true };
@@ -587,6 +616,9 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.forget_pinned(&route, "post")),
         answered(erased.position(&subscription.destination)),
         answered(erased.put_position(&subscription.destination, "s1")),
+        answered(erased.decision(&key)),
+        answered(erased.put_decision(&decided(key, at))),
+        answered(erased.expire_decisions(at)),
         answered(erased.admit(NAMESPACE, "1", at)),
         answered(erased.seen(NAMESPACE, "1")),
         answered(erased.release(NAMESPACE, "1")),
@@ -623,6 +655,9 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "forget_pinned",
         "position",
         "put_position",
+        "decision",
+        "put_decision",
+        "expire_decisions",
         "admit",
         "seen",
         "release",

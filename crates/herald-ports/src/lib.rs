@@ -42,8 +42,8 @@ pub use secret::{REDACTED, Secret, SecretError, SecretText, Secrets, Segment};
 pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, EXACT_INTEGER, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{
-    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Outboxed, Pins, Positions, Published, Schedules, Store, StoreError, Subscriptions, Tokens,
-    Unkept, Version, Versioned, Waiting, Written,
+    Admitted, Announcements, Cursors, Decisions, Deliveries, Held, Inboxes, Keeper, Keeping,
+    Ledger, Notes, Outboxed, Pins, Positions, Published, Schedules, Store, StoreError,
+    Subscriptions, Tokens, Unkept, Version, Versioned, Waiting, Written,
 };
 pub use timer::Timer;

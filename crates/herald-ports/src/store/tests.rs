@@ -84,7 +84,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(held(holding.pins()) && held(holding.deliveries()));
     assert!(held(holding.notes()) && held(holding.announcements()));
     assert!(held(holding.inboxes()) && held(holding.positions()));
-    assert!(held(holding.waiting()));
+    assert!(held(holding.waiting()) && held(holding.decisions()));
     assert_eq!(Store::skipped(&holding), ["corrupt.json"]);
     assert!(!Store::writes_one_at_a_time(&holding));
     let none = None::<&Unkept>;
@@ -93,7 +93,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(none.pins().is_none() && none.deliveries().is_none());
     assert!(none.notes().is_none() && none.announcements().is_none());
     assert!(none.inboxes().is_none() && none.positions().is_none());
-    assert!(none.waiting().is_none());
+    assert!(none.waiting().is_none() && none.decisions().is_none());
 }
 
 #[test]
@@ -173,6 +173,26 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
         assert_eq!(
             unsupported(unkept.put_position(&destination, "s1")),
             naming("session positions")
+        );
+        let decided = herald_core::Decided {
+            key,
+            task: "t".to_owned(),
+            subject: "s".to_owned(),
+            answer: herald_core::Answer {
+                model: "m".to_owned(),
+                choice: None,
+                probabilities: std::collections::BTreeMap::new(),
+            },
+            at: Timestamp::UNIX_EPOCH,
+        };
+        assert_eq!(unsupported(unkept.decision(&key)), naming("decisions"));
+        assert_eq!(
+            unsupported(unkept.put_decision(&decided)),
+            naming("decisions")
+        );
+        assert_eq!(
+            unsupported(unkept.expire_decisions(Timestamp::UNIX_EPOCH)),
+            naming("decisions")
         );
         let hold = herald_core::Hold::Tag {
             source: SourceName::new("s"),

@@ -9,6 +9,7 @@ use super::*;
 use crate::FakeStore;
 
 mod cursors;
+mod decisions;
 mod forgets;
 mod latest;
 mod pending;
@@ -61,6 +62,10 @@ enum Fault {
     KeepsTheFirstPin,
     SharesPins,
     KeepsTheFirstPosition,
+    HoldsAnUnwrittenDecision,
+    KeepsTheFirstDecision,
+    ExpiresNoDecision,
+    ExpiresEveryDecision,
     SharesPositions,
     HoldsAnUnwrittenDelivery,
     KeepsTheFirstDeliveryState,
@@ -934,49 +939,6 @@ fn a_store_whose_check_and_write_are_apart_is_refused() {
             "of runs admitting one delivery at once, other than one admitted it fresh",
         ),
     ]);
-}
-
-#[test]
-fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
-    let store = FakeStore::default();
-    let probed = |checks: Checks, method: &str| {
-        assert_eq!(
-            checks.done(),
-            Err(Failure(format!(
-                "{method} was not refused as unsupported by a store keeping none of its kind"
-            )))
-        );
-    };
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::ledger(&store, &mut checks));
-    probed(checks, "entry");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::cursors(&store, &mut checks));
-    probed(checks, "cursor");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::schedules(&store, &mut checks));
-    probed(checks, "every_schedule");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::subscriptions(&store, &mut checks));
-    probed(checks, "subscribers");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::pins(&store, &mut checks));
-    probed(checks, "pinned");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::positions(&store, &mut checks));
-    probed(checks, "position");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::deliveries(&store, &mut checks));
-    probed(checks, "admit");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::notes(&store, &mut checks));
-    probed(checks, "note");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::announcements(&store, &mut checks));
-    probed(checks, "latest");
-    let mut checks = Checks::default();
-    pollster::block_on(super::unkept::inboxes(&store, &mut checks));
-    probed(checks, "delivery");
 }
 
 #[test]

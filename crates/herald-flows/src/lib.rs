@@ -23,6 +23,7 @@ mod budget;
 mod command_answers;
 mod command_endpoints;
 mod command_requests;
+mod deciding;
 mod doctor;
 mod follows;
 mod grouping;

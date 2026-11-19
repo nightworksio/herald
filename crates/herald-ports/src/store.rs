@@ -142,11 +142,13 @@ pub enum Held {
     Tokens,
     /// What the instance published to its peers.
     Published,
+    /// What models answered the tasks views asked (ADR-0057).
+    Decisions,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -160,6 +162,7 @@ impl Held {
         Self::Pending,
         Self::Tokens,
         Self::Published,
+        Self::Decisions,
     ];
 
     /// The kind as an error names it.
@@ -178,6 +181,7 @@ impl Held {
             Self::Pending => "held events",
             Self::Tokens => "minted tokens",
             Self::Published => "published key sets, feeds, and peers' key sets and audits",
+            Self::Decisions => "decisions",
         }
     }
 
@@ -921,6 +925,8 @@ pub trait Store: Sync {
     type Tokens: Tokens;
     /// What the instance published to its peers.
     type Published: Published;
+    /// What models answered the tasks views asked.
+    type Decisions: Decisions;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -948,6 +954,8 @@ pub trait Store: Sync {
     fn tokens(&self) -> Option<&Self::Tokens>;
     /// What the instance published to its peers, where it keeps that.
     fn published(&self) -> Option<&Self::Published>;
+    /// What models answered the tasks views asked, where it keeps that.
+    fn decisions(&self) -> Option<&Self::Decisions>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
@@ -960,11 +968,13 @@ pub trait Store: Sync {
     fn writes_one_at_a_time(&self) -> bool;
 }
 
+mod decisions;
 mod keeper;
 mod optional;
 mod published;
 mod tokens;
 
+pub use decisions::Decisions;
 pub use keeper::Keeper;
 pub use published::Published;
 pub use tokens::Tokens;

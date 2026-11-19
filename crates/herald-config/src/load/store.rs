@@ -64,6 +64,7 @@ impl Loader<'_> {
             deliveries,
             ledger: file.ledger.map_or(defaults.ledger, Keep::kept),
             notes: file.notes.map_or(defaults.notes, Keep::kept),
+            decisions: file.decisions.map_or(defaults.decisions, Keep::kept),
         };
         Some((retention, file.attempts.unwrap_or_default()))
     }

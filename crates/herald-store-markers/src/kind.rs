@@ -40,6 +40,10 @@ impl StoreConfig for MarkersOptions {
         true
     }
 
+    fn keeps_decisions(&self) -> bool {
+        false
+    }
+
     fn keeps_tokens(&self) -> bool {
         false
     }
@@ -74,5 +78,6 @@ mod tests {
         assert!(options.reads_posts());
         assert!(!options.keeps_deliveries());
         assert!(!options.keeps_tokens());
+        assert!(!options.keeps_decisions());
     }
 }

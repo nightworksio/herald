@@ -445,6 +445,41 @@ fn housekeeping_forgets_notes_published_longer_ago_than_the_store_keeps_them() {
 }
 
 #[test]
+fn housekeeping_forgets_decisions_made_longer_ago_than_the_store_keeps_them() {
+    let store = healthy();
+    let made = |task: &str, days_ago: i64| herald_core::Decided {
+        key: herald_core::Key::decided(task, "github.com/o/r/pull/1", "{}"),
+        task: task.to_owned(),
+        subject: "github.com/o/r/pull/1".to_owned(),
+        answer: herald_core::Answer {
+            model: "m".to_owned(),
+            choice: None,
+            probabilities: std::collections::BTreeMap::new(),
+        },
+        at: ago(days_ago),
+    };
+    let (old, recent) = (made("old", 31), made("recent", 29));
+    for decided in [&old, &recent] {
+        pollster::block_on(herald_ports::Decisions::put_decision(&store, decided)).unwrap();
+    }
+    assert_eq!(
+        kept_for(&store, &Script::default(), &Retention::default()).unwrap(),
+        []
+    );
+    let kept = |key| pollster::block_on(herald_ports::Decisions::decision(&store, key)).unwrap();
+    assert_eq!(kept(&old.key), None);
+    assert_eq!(kept(&recent.key), Some(recent.clone()));
+    let forever = Retention {
+        decisions: None,
+        ..Retention::default()
+    };
+    let older = made("older", 400);
+    pollster::block_on(herald_ports::Decisions::put_decision(&store, &older)).unwrap();
+    assert_eq!(kept_for(&store, &Script::default(), &forever).unwrap(), []);
+    assert_eq!(kept(&older.key), Some(older.clone()));
+}
+
+#[test]
 fn what_cannot_be_expired_stops_housekeeping() {
     let retention = Retention {
         notes: Some(days(7)),
@@ -455,6 +490,7 @@ fn what_cannot_be_expired_stops_housekeeping() {
         Fault::ForgetsDeliveries,
         Fault::ExpiresNotes,
         Fault::ExpiresAudits,
+        Fault::ExpiresDecisions,
     ] {
         let store = Failing { fault, ..healthy() };
         pollster::block_on(store.put_entry(&claimed("old", 91), None)).unwrap();

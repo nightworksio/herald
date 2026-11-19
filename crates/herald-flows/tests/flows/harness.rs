@@ -255,6 +255,10 @@ pub(crate) enum Fault {
     ReadsPositions,
     KeepsPositions,
     KeepsNoPositions,
+    KeepsNoDecisions,
+    ReadsDecisions,
+    WritesDecisions,
+    ExpiresDecisions,
     OneAtATime,
 }
 
@@ -505,6 +509,29 @@ impl Pins for Failing {
     }
 }
 
+impl herald_ports::Decisions for Failing {
+    async fn decision(&self, key: &Key) -> Result<Option<herald_core::Decided>, StoreError> {
+        if self.fault == Fault::ReadsDecisions {
+            return Err(broken());
+        }
+        self.inner.decision(key).await
+    }
+
+    async fn put_decision(&self, decided: &herald_core::Decided) -> Result<(), StoreError> {
+        if self.fault == Fault::WritesDecisions {
+            return Err(broken());
+        }
+        self.inner.put_decision(decided).await
+    }
+
+    async fn expire_decisions(&self, before: Timestamp) -> Result<(), StoreError> {
+        if self.fault == Fault::ExpiresDecisions {
+            return Err(broken());
+        }
+        self.inner.expire_decisions(before).await
+    }
+}
+
 impl Positions for Failing {
     async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
         if self.fault == Fault::ReadsPositions {
@@ -654,6 +681,7 @@ impl Keeper for Failing {
             Held::Inboxes => self.fault != Fault::KeepsNoInboxes,
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             Held::Positions => self.fault != Fault::KeepsNoPositions,
+            Held::Decisions => self.fault != Fault::KeepsNoDecisions,
             Held::Pending => self.fault != Fault::KeepsNoPending,
             Held::Published => self.fault != Fault::KeepsNoPublished,
             _ => true,

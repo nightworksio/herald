@@ -671,6 +671,22 @@ The installation's marker key.
 | `markers.key` | table | The secret holding the marker key, such as `HERALD_MARKER_SECRET`. |
 | `markers.key.secret` | string | The secret's name. |
 
+## `models`
+
+The models tasks ask, by name: each a decision model or a server speaking OpenAI's chat completions.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `models.<name>.base` | string | Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's where absent, and required where it has none. |
+| `models.<name>.header` | string | The header its key goes in, such as "api-key"; `Authorization: Bearer` where absent and the preset names none. |
+| `models.<name>.insecure` | boolean | Whether it may be reached over plain HTTP at an address that is not this machine's, which doctor names. |
+| `models.<name>.key` | table | Its key, where it takes one. |
+| `models.<name>.key.secret` | string | The secret's name. |
+| `models.<name>.kind` | string | How it is spoken to: "typesafe" for TypeSafe's Jev, "openai-compatible" for any server speaking OpenAI's chat completions, or a preset of it, such as "ollama" or "mistral". |
+| `models.<name>.model` | string | The model's id, pinned rather than an alias such as `jev-latest`. |
+| `models.<name>.most` | integer | The most bytes of its answer read: 65536 where absent. |
+| `models.<name>.private` | boolean | Whether it may be given a private or internal repository's data, which no model is, on this machine or elsewhere, unless it says `private = true`. |
+
 ## `peers`
 
 The other heralds this one trusts, by name.
@@ -1656,6 +1672,7 @@ A SQLite file, on a volume or a persistent disk.
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
 | `store.busy` | [Duration](#duration) | How long a transaction waits for another process to let go of the file; 5s where absent. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1672,6 +1689,7 @@ A Postgres database.
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
 | `store.connect_timeout` | [Duration](#duration) | How long making a connection may take; 10s where absent. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1690,6 +1708,7 @@ Cloudflare D1, through the Worker's binding.
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
 | `store.binding` | string | The Worker's binding to the database, as `wrangler.toml` names it; `HERALD_DB` where absent. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1705,6 +1724,7 @@ The storage of herald's Cloudflare Durable Object, through the Worker's binding.
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
 | `store.binding` | string | The Worker's binding to herald's Durable Object namespace, as `wrangler.toml` names it; `HERALD` where absent. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1720,6 +1740,7 @@ Deno KV, on Deno Deploy or wherever a database is opened.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1736,6 +1757,7 @@ A Fastly KV Store, on Fastly Compute.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1756,6 +1778,7 @@ An AWS DynamoDB table.
 | `store.access_key_id.secret` | string | The secret's name. |
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
 | `store.endpoint` | string | The endpoint's base URL, for DynamoDB Local or another endpoint; the region's own where absent. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1778,6 +1801,7 @@ One file per record on a `herald-state` branch.
 | `store.api` | string | The API's base URL, for a GitHub Enterprise Server; GitHub's own API where absent. |
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
 | `store.branch` | string | The branch the records are kept on; `herald-state` where absent. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1803,6 +1827,7 @@ Generations of the GitHub Actions cache.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1820,6 +1845,7 @@ The repository's variables.
 |---------|------|--------------|
 | `store.api` | string | The API's base URL, for a GitHub Enterprise Server; GitHub's own API where absent. |
 | `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
 | `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
 | `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
 | `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
@@ -1831,6 +1857,18 @@ The repository's variables.
 | `store.repository` | string | The repository, as `owner/name`; the run's own where absent. |
 | `store.token` | table | The secret holding a token with the repository's Variables permission; the job's own token cannot write variables. |
 | `store.token.secret` | string | The secret's name. |
+
+## `tasks`
+
+The closed-set questions views ask of models where their rules cannot tell, by name.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `tasks.<name>.instructions` | string | What to decide, in a sentence. |
+| `tasks.<name>.least` | number | The least probability an answer is taken at, from 0 to 1, where a model gives one; where a model gives none, no answer is taken. |
+| `tasks.<name>.models` | array of string | The models asked, in turn, until one answers, such as `["jev", "local"]`. |
+| `tasks.<name>.most` | integer | The most pull requests it is asked of a round: 50 where absent; the rest read as unknown. |
+| `tasks.<name>.options.<name>` | string |  |
 
 ## `templates`
 
@@ -1859,6 +1897,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.authors` | array of string | The authors it shows, by login, each a glob ignoring case; every one where empty. |
 | `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
+| `views.<name>.decide.<name>` | string |  |
 
 ### `views.<name>.deciding`: herald's own rules, or the forge's own status
 

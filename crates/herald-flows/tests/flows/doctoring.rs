@@ -172,6 +172,7 @@ fn an_actor_on_a_host_that_cannot_check_addresses_needs_its_egress_guarded() {
         online: true,
         guarded: true,
         round_secrets: BTreeSet::from(["HERALD_ROUND_SECRET".to_owned()]),
+        models: false,
     };
     let set = on(&served(), &fastly(), &guarded);
     assert_eq!(keyed(&set), []);
@@ -944,4 +945,5 @@ fn an_owner_registering_member_webhooks_is_checked_online_for_its_token_and_each
 }
 
 mod reports;
+mod tasks;
 mod unhosted;

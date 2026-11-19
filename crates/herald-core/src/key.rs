@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 const DOMAIN: &[u8] = b"herald/key/v1\0";
 /// What a revision's key is derived under, apart from every announcement's.
 const REVISED: &[u8] = b"herald/revised/v1\0";
+/// What a decision's key is derived under, apart from every announcement's.
+const DECIDED: &[u8] = b"herald/decided/v1\0";
 /// How many hex digits a SHA-256 digest is written in.
 pub const SHA256_HEX_DIGITS: usize = 64;
 
@@ -59,6 +61,20 @@ impl Key {
         let mut hasher = Sha256::new();
         hasher.update(DOMAIN);
         for part in [route.as_str(), identity.as_str()] {
+            hasher.update((part.len() as u64).to_be_bytes());
+            hasher.update(part.as_bytes());
+        }
+        Self(hasher.finalize().into())
+    }
+
+    /// The key of the decision `task` made of `subject` shown as `input`
+    /// (ADR-0057): another input, as a changed pull request gives, is
+    /// another decision.
+    #[must_use]
+    pub fn decided(task: &str, subject: &str, input: &str) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(DECIDED);
+        for part in [task, subject, input] {
             hasher.update((part.len() as u64).to_be_bytes());
             hasher.update(part.as_bytes());
         }

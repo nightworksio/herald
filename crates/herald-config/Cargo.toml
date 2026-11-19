@@ -13,6 +13,7 @@ publish.workspace = true
 herald-core.workspace = true
 herald-ports.workspace = true
 herald-kinds.workspace = true
+herald-models.workspace = true
 herald-peers.workspace = true
 herald-store-git-branch.workspace = true
 jiff.workspace = true

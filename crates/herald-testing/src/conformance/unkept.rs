@@ -1,6 +1,7 @@
 use herald_core::{
     Cursor, DestinationName, Entry, RouteId, Schedule, SourceName, State, Subscription,
 };
+use herald_ports::Decisions;
 use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
     Store, StoreError, Subscriptions, Waiting,
@@ -47,6 +48,9 @@ pub(super) async fn unkept<S: Store>(store: &S, checks: &mut Checks) {
     }
     if store.positions().is_none() {
         positions(&store.positions(), checks).await;
+    }
+    if store.decisions().is_none() {
+        decisions(&store.decisions(), checks).await;
     }
     if store.waiting().is_none() {
         waiting(&store.waiting(), checks).await;
@@ -194,6 +198,39 @@ pub(super) async fn subscriptions(store: &impl Subscriptions, checks: &mut Check
         store.unsubscribe(&subscription).await,
         Held::Subscriptions,
         "unsubscribe",
+    );
+}
+
+pub(super) async fn decisions(store: &impl Decisions, checks: &mut Checks) {
+    let key = herald_core::Key::decided("unkept", "unkept", "{}");
+    refused(
+        checks,
+        store.decision(&key).await,
+        Held::Decisions,
+        "decision",
+    );
+    let decided = herald_core::Decided {
+        key,
+        task: "unkept".to_owned(),
+        subject: "unkept".to_owned(),
+        answer: herald_core::Answer {
+            model: "m".to_owned(),
+            choice: None,
+            probabilities: std::collections::BTreeMap::new(),
+        },
+        at: super::NOON,
+    };
+    refused(
+        checks,
+        store.put_decision(&decided).await,
+        Held::Decisions,
+        "put_decision",
+    );
+    refused(
+        checks,
+        store.expire_decisions(super::NOON).await,
+        Held::Decisions,
+        "expire_decisions",
     );
 }
 

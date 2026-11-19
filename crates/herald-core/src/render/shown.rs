@@ -39,6 +39,11 @@ fn row_value(row: &Row) -> Value {
         waited => waited(row.waited),
         waited_seconds => row.waited.as_secs(),
         stale => row.stale,
+        decided => row
+            .decided
+            .iter()
+            .map(|(slot, choice)| (slot.name(), choice.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>(),
     }
 }
 

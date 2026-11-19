@@ -59,6 +59,13 @@
       "description": "The installation's marker key.",
       "$ref": "#/$defs/Markers"
     },
+    "models": {
+      "description": "The models tasks ask, by name: each a decision model or a server\nspeaking OpenAI's chat completions.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Model"
+      }
+    },
     "peers": {
       "description": "The other heralds this one trusts, by name.",
       "type": "object",
@@ -113,6 +120,13 @@
     "store": {
       "description": "The store herald keeps its records in.",
       "$ref": "#/$defs/Store"
+    },
+    "tasks": {
+      "description": "The closed-set questions views ask of models where their rules\ncannot tell, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Task"
+      }
     },
     "templates": {
       "description": "The templates routes render with, by name.",
@@ -3623,6 +3637,59 @@
         }
       ]
     },
+    "Model": {
+      "description": "`[models.<name>]`: a model a task may ask.",
+      "type": "object",
+      "properties": {
+        "base": {
+          "description": "Its API's base, such as `http://127.0.0.1:11434/v1`; the preset's\nwhere absent, and required where it has none.",
+          "type": "string"
+        },
+        "header": {
+          "description": "The header its key goes in, such as \"api-key\"; `Authorization:\nBearer` where absent and the preset names none.",
+          "type": "string"
+        },
+        "insecure": {
+          "description": "Whether it may be reached over plain HTTP at an address that is not\nthis machine's, which doctor names.",
+          "type": "boolean",
+          "default": false
+        },
+        "key": {
+          "description": "Its key, where it takes one.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "kind": {
+          "description": "How it is spoken to: \"typesafe\" for TypeSafe's Jev,\n\"openai-compatible\" for any server speaking OpenAI's chat\ncompletions, or a preset of it, such as \"ollama\" or \"mistral\".",
+          "type": "string",
+          "examples": [
+            "ollama"
+          ]
+        },
+        "model": {
+          "description": "The model's id, pinned rather than an alias such as `jev-latest`.",
+          "type": "string",
+          "examples": [
+            "jev-1.14.0"
+          ]
+        },
+        "most": {
+          "description": "The most bytes of its answer read: 65536 where absent.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "private": {
+          "description": "Whether it may be given a private or internal repository's data,\nwhich no model is, on this machine or elsewhere, unless it says\n`private = true`.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "model"
+      ]
+    },
     "OneCharacter": {
       "description": "One character, as a config writes it.",
       "type": "string",
@@ -6657,6 +6724,10 @@
               "description": "How long a transaction waits for another process to let go of the\nfile; 5s where absent.",
               "$ref": "#/$defs/Duration"
             },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -6698,6 +6769,10 @@
             "connect_timeout": {
               "description": "How long making a connection may take; 10s where absent.",
               "$ref": "#/$defs/Duration"
+            },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
@@ -6746,6 +6821,10 @@
               "description": "The Worker's binding to the database, as `wrangler.toml` names it;\n`HERALD_DB` where absent.",
               "type": "string"
             },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -6784,6 +6863,10 @@
               "description": "The Worker's binding to herald's Durable Object namespace, as\n`wrangler.toml` names it; `HERALD` where absent.",
               "type": "string"
             },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -6821,6 +6904,10 @@
             "attempts": {
               "description": "How many times a write that lost a race to an unrelated write is\ntried.",
               "$ref": "#/$defs/Attempts"
+            },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
@@ -6863,6 +6950,10 @@
             "attempts": {
               "description": "How many times a write that lost a race to an unrelated write is\ntried.",
               "$ref": "#/$defs/Attempts"
+            },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
@@ -6917,6 +7008,10 @@
             "endpoint": {
               "description": "The endpoint's base URL, for DynamoDB Local or another endpoint;\nthe region's own where absent.",
               "type": "string"
+            },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
@@ -6976,6 +7071,10 @@
               "description": "The branch the records are kept on; `herald-state` where absent.",
               "type": "string"
             },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -7033,6 +7132,10 @@
               "description": "How many times a write that lost a race to an unrelated write is\ntried.",
               "$ref": "#/$defs/Attempts"
             },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -7082,6 +7185,10 @@
             "attempts": {
               "description": "How many times a write that lost a race to an unrelated write is\ntried.",
               "$ref": "#/$defs/Attempts"
+            },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
@@ -7168,6 +7275,50 @@
           "type": "string",
           "const": "name"
         }
+      ]
+    },
+    "Task": {
+      "description": "`[tasks.<name>]`: one closed-set question, asked of its models in\nturn where a view's rules cannot tell.",
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "description": "What to decide, in a sentence.",
+          "type": "string"
+        },
+        "least": {
+          "description": "The least probability an answer is taken at, from 0 to 1, where a\nmodel gives one; where a model gives none, no answer is taken.",
+          "type": "number",
+          "format": "double",
+          "maximum": 1.0,
+          "minimum": 0.0
+        },
+        "models": {
+          "description": "The models asked, in turn, until one answers, such as\n`[\"jev\", \"local\"]`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "most": {
+          "description": "The most pull requests it is asked of a round: 50 where absent;\nthe rest read as unknown.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "options": {
+          "description": "The options it may be answered with, each a key and what it means.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "models",
+        "instructions",
+        "options"
       ]
     },
     "Template": {
@@ -7419,6 +7570,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "decide": {
+          "description": "The task that decides each slot its rules leave untold, such as\n`{ turn = \"whose\", priority = \"urgency\" }`; nothing is asked of a\nmodel where absent.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
         },
         "deciding": {
           "description": "What tells whose turn each is: \"herald\" where absent, \"forge\", or\n`{ labels = [{ label = \"...\", state = \"...\" }] }`.",

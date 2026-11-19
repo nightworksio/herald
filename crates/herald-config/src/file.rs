@@ -33,6 +33,10 @@ pub(crate) struct RecordsFile {
     /// served by its id; "forever" where absent.
     #[serde(rename = "keep_notes")]
     pub(crate) notes: Option<Keep>,
+    /// How long what a model answered a task is kept, and reused while
+    /// the pull request it decided of is unchanged; "30d" where absent.
+    #[serde(rename = "keep_decisions")]
+    pub(crate) decisions: Option<Keep>,
     /// How many times a write that lost a race to an unrelated write is
     /// tried.
     pub(crate) attempts: Option<Attempts>,
@@ -40,7 +44,13 @@ pub(crate) struct RecordsFile {
 
 impl RecordsFile {
     /// Its keys, as the config spells them.
-    pub(crate) const KEYS: [&str; 4] = ["keep_deliveries", "keep_ledger", "keep_notes", "attempts"];
+    pub(crate) const KEYS: [&str; 5] = [
+        "keep_deliveries",
+        "keep_ledger",
+        "keep_notes",
+        "keep_decisions",
+        "attempts",
+    ];
 }
 
 /// How long a store keeps a kind of record: a length of time, or for ever.

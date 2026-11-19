@@ -12,6 +12,8 @@ use herald_peers::discovery::Instance;
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
+use herald_models::{KeyHeader, Model};
+
 use crate::acting::Projects;
 use crate::installations::{Minting, Mintings};
 use crate::serving::{HOOKS, Webhooks};
@@ -236,6 +238,7 @@ pub(crate) fn expanded<'a, H>(
 /// its sources, each with its token.
 #[derive(Debug, Clone)]
 pub struct Prepared {
+    models: Vec<PreparedModel>,
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
     mintings: Vec<Minting>,
@@ -244,9 +247,31 @@ pub struct Prepared {
     instance: Vec<Secret>,
 }
 
+impl Prepared {
+    /// It as a build that asks models where `asks` says so, and else with
+    /// no model, so every task answers unknown (ADR-0057).
+    #[must_use]
+    pub fn asking(self, asks: bool) -> Self {
+        Self {
+            models: if asks { self.models } else { Vec::new() },
+            ..self
+        }
+    }
+}
+
+/// A model a task may ask, its key read, and whether it may be given a
+/// private repository's data (ADR-0057).
+#[derive(Debug, Clone)]
+pub struct PreparedModel {
+    pub(crate) name: String,
+    pub(crate) model: Model,
+    pub(crate) private: bool,
+}
+
 /// The prepared routes and sources, each with the `Http` that reaches it.
 #[derive(Debug)]
 pub struct Connected<H> {
+    pub(crate) models: Vec<(PreparedModel, H)>,
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
     pub(crate) mintings: Vec<(Minting, H)>,
@@ -368,7 +393,13 @@ impl Prepared {
             .into_iter()
             .map(|minting| reach(Base::At(&minting.api)).map(|reaching| (minting, reaching)))
             .collect::<Result<Vec<_>, E>>()?;
+        let models = self
+            .models
+            .into_iter()
+            .map(|model| reach(Base::At(&model.model.base)).map(|reaching| (model, reaching)))
+            .collect::<Result<Vec<_>, E>>()?;
         Ok(Connected {
+            models,
             routes,
             sources,
             mintings,
@@ -462,6 +493,35 @@ async fn destination_secrets<'c, G: Signer>(
     Ok(resolved)
 }
 
+/// Each model of `config` a run that `uses` it asks, its key read from
+/// `read` (ADR-0057).
+async fn prepared_models(
+    config: &Config,
+    read: &ReadSecrets,
+    uses: Uses,
+) -> Result<Vec<PreparedModel>, PrepareError> {
+    let mut models = Vec::new();
+    for (name, model) in config.models.iter().filter(|_| uses >= Uses::Polls) {
+        let key = herald_kinds::optional(read, model.key.as_ref()).await?;
+        models.push(PreparedModel {
+            name: name.clone(),
+            model: Model {
+                speaks: model.speaks,
+                base: model.base.clone(),
+                model: model.model.clone(),
+                key,
+                header: model
+                    .header
+                    .clone()
+                    .map_or(KeyHeader::Bearer, KeyHeader::Named),
+                most: model.most,
+            },
+            private: model.private,
+        });
+    }
+    Ok(models)
+}
+
 /// Each route of `config`, its destination reached as `resolved` reaches
 /// it.
 ///
@@ -482,13 +542,12 @@ fn prepared_routes(
                 route: route.route.id.as_str().to_owned(),
             });
         };
-        let projects = Projects::of(config, route);
         routes.push(PreparedRoute {
             config: route.clone(),
             reached,
             marker_key: destination.marker_key.clone(),
             derived: destination.derived,
-            projects,
+            projects: Projects::of(config, route),
             domain: config.federation.domain.clone().unwrap_or_default(),
             base: config.server.base.clone(),
             attempts: config.attempts.get(),
@@ -585,6 +644,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         }
     }
     Ok(Prepared {
+        models: prepared_models(config, &read, uses).await?,
         routes,
         sources,
         mintings: mintings.0,

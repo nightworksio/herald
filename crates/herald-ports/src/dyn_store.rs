@@ -1,3 +1,5 @@
+use crate::Decisions;
+use herald_core::Decided;
 use herald_core::{
     AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
     Membership, PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State,
@@ -152,6 +154,16 @@ pub trait DynStore: Sync {
         route: &'a RouteId,
         post: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>>;
+
+    /// [`Decisions::decision`].
+    fn decision_boxed<'a>(&'a self, key: &'a Key)
+    -> Boxed<'a, Result<Option<Decided>, StoreError>>;
+
+    /// [`Decisions::put_decision`].
+    fn put_decision_boxed<'a>(&'a self, decided: &'a Decided) -> Boxed<'a, Result<(), StoreError>>;
+
+    /// [`Decisions::expire_decisions`].
+    fn expire_decisions_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>>;
 
     /// [`Positions::position`].
     fn position_boxed<'a>(
@@ -390,6 +402,7 @@ impl<S: Store + Keyring> DynStore for S {
             Held::Pending => self.waiting().is_some(),
             Held::Tokens => self.tokens().is_some(),
             Held::Published => self.published().is_some(),
+            Held::Decisions => self.decisions().is_some(),
         }
     }
 
@@ -551,6 +564,21 @@ impl<S: Store + Keyring> DynStore for S {
         post: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>> {
         Box::pin(async move { self.pins().forget_pinned(route, post).await })
+    }
+
+    fn decision_boxed<'a>(
+        &'a self,
+        key: &'a Key,
+    ) -> Boxed<'a, Result<Option<Decided>, StoreError>> {
+        Box::pin(async move { self.decisions().decision(key).await })
+    }
+
+    fn put_decision_boxed<'a>(&'a self, decided: &'a Decided) -> Boxed<'a, Result<(), StoreError>> {
+        Box::pin(async move { self.decisions().put_decision(decided).await })
+    }
+
+    fn expire_decisions_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>> {
+        Box::pin(async move { self.decisions().expire_decisions(before).await })
     }
 
     fn position_boxed<'a>(

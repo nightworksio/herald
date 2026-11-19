@@ -4,6 +4,7 @@ use jiff::{SignedDuration, Timestamp};
 
 use super::{Pull, Reason, Rules, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
+use crate::decide::Slot;
 use crate::glob::Glob;
 
 /// What a view does with a bot's pull requests.
@@ -106,6 +107,8 @@ pub struct Row {
     pub waited: SignedDuration,
     /// Whether it waited past the view's `stale`.
     pub stale: bool,
+    /// What a decider settled for it, by slot (ADR-0057).
+    pub decided: BTreeMap<Slot, String>,
 }
 
 impl Row {
@@ -221,6 +224,7 @@ impl View {
             reason,
             waited,
             stale: past,
+            decided: BTreeMap::new(),
         })
     }
 
@@ -251,14 +255,27 @@ fn oldest_first(rows: &mut [Row]) {
     });
 }
 
+/// The rows `view` shows of `pulls` at `now`, each decided by the view's
+/// own rules alone.
+#[must_use]
+pub fn rows(view: &View, pulls: &[Pull], now: Timestamp) -> Vec<Row> {
+    pulls
+        .iter()
+        .filter_map(|pull| view.row(pull, now))
+        .collect()
+}
+
 /// The rows `view` shows of `pulls` at `now`: grouped, the bots' batched
 /// where it batches them, each oldest first.
 #[must_use]
 pub fn board(view: &View, pulls: &[Pull], now: Timestamp) -> Board {
-    let rows: Vec<Row> = pulls
-        .iter()
-        .filter_map(|pull| view.row(pull, now))
-        .collect();
+    grouped(view, rows(view, pulls, now))
+}
+
+/// `rows` as `view` shows them: grouped, the bots' batched where it
+/// batches them, each oldest first.
+#[must_use]
+pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
     let counts = Turn::ALL
         .into_iter()
         .map(|state| (state, rows.iter().filter(|row| row.state == state).count()))

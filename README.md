@@ -658,9 +658,9 @@ shipped `herald:queue` template renders it. A `[boards.<name>]` table, or
 a route with `living = true`, keeps one pinned post of a report, edited
 each window. A `[rules.<name>]` table nudges each pull request that waited
 past one of its `stages`, once a stage and spell of waiting. `herald
-queue` prints a view now. [`.docs/queue.md`](.docs/queue.md) covers
-views, reports, boards, rules, what each forge's read costs, and private
-repositories.
+queue` prints a view now; [`.docs/queue.md`](.docs/queue.md) covers the
+rest. A view's `decide` asks models only what its rules cannot tell
+([`.docs/deciders.md`](.docs/deciders.md)).
 
 ### Every package of a namespace
 

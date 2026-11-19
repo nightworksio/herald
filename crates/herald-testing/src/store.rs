@@ -1,3 +1,5 @@
+use herald_core::Decided;
+use herald_ports::Decisions;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
@@ -25,6 +27,7 @@ struct FakeState {
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
     positions: BTreeMap<DestinationName, String>,
+    decisions: BTreeMap<Key, Decided>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
     notes: BTreeMap<Key, (String, String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
@@ -280,6 +283,26 @@ impl Pins for FakeStore {
         if state.pins.get(route).is_some_and(|pinned| pinned == post) {
             state.pins.remove(route);
         }
+        Ok(())
+    }
+}
+
+impl Decisions for FakeStore {
+    async fn decision(&self, key: &Key) -> Result<Option<Decided>, StoreError> {
+        Ok(lock(&self.state).decisions.get(key).cloned())
+    }
+
+    async fn put_decision(&self, decided: &Decided) -> Result<(), StoreError> {
+        lock(&self.state)
+            .decisions
+            .insert(decided.key, decided.clone());
+        Ok(())
+    }
+
+    async fn expire_decisions(&self, before: Timestamp) -> Result<(), StoreError> {
+        lock(&self.state)
+            .decisions
+            .retain(|_, decided| decided.at >= before);
         Ok(())
     }
 }
@@ -613,6 +636,7 @@ mod tests {
         assert!(itself(store.announcements()));
         assert!(itself(store.inboxes()));
         assert!(itself(store.positions()));
+        assert!(itself(store.decisions()));
         assert!(itself(store.waiting()));
     }
 }

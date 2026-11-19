@@ -1,0 +1,19 @@
+[package]
+name = "herald-models"
+description = "The decision models herald may ask a closed-set question: TypeSafe's Jev and every OpenAI-compatible server, each request built and each answer read within its cap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-core.workspace = true
+herald-ports.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

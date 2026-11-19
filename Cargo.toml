@@ -30,6 +30,7 @@ herald-crypto = { path = "crates/herald-crypto" }
 herald-environment = { path = "crates/herald-environment" }
 herald-keys = { path = "crates/herald-keys" }
 herald-kinds = { path = "crates/herald-kinds" }
+herald-models = { path = "crates/herald-models" }
 herald-spin = { path = "crates/herald-spin" }
 herald-native = { path = "crates/herald-native" }
 herald-peers = { path = "crates/herald-peers" }

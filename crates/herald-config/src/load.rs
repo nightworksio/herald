@@ -287,7 +287,9 @@ pub fn load(
     loader.remembering((store.as_ref(), peers.len()), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
-    let views = loader.views(sections.views, &sources);
+    let models = loader.models(sections.models);
+    let tasks = loader.tasks(sections.tasks, &models);
+    let views = loader.views(sections.views, &sources, &tasks);
     let (boarded, boards) = loader.boards(sections.boards);
     let named = listed.keys().map(String::as_str).collect();
     let reports = loader.reports(sections.reports, boarded, &views, (&sources, &named));
@@ -298,14 +300,7 @@ pub fn load(
         sections.routes,
         &destinations,
         &sources,
-        (
-            route::Others {
-                apps: &listed,
-                reports: &reports,
-                rules: &rules,
-            },
-            boards,
-        ),
+        (route::Others::of(&listed, &reports, &rules), boards),
         &templates,
     );
     loader.followed(store.as_ref(), &destinations, &routes);
@@ -347,6 +342,8 @@ pub fn load(
         views,
         reports,
         rules,
+        models,
+        tasks,
         schedule,
         server,
         federation,
@@ -368,6 +365,7 @@ mod federation;
 mod feeds;
 mod github_apps;
 mod group;
+mod models;
 mod peers;
 mod pushes;
 mod route;

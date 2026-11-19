@@ -12,6 +12,8 @@ publish.workspace = true
 [features]
 # The host suite every host passes, for a driver's tests (ADR-0001).
 conformance = ["dep:herald-testing"]
+# Asks the models a config's tasks name; release artefacts leave it off (ADR-0057).
+models = []
 
 [dependencies]
 async-lock.workspace = true

@@ -3,7 +3,9 @@
 
 use std::num::NonZeroUsize;
 
-use herald_core::{Duration, ReportSchedule, SourceName, Stages, Turn, View};
+use std::collections::BTreeMap;
+
+use herald_core::{Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View};
 use herald_kinds::Most;
 use jiff::civil::Weekday;
 use schemars::JsonSchema;
@@ -46,6 +48,8 @@ pub struct ViewConfig {
     pub sources: Vec<SourceName>,
     /// How many it reads of each.
     pub most: Most,
+    /// The task that decides each slot its rules leave untold (ADR-0057).
+    pub decide: BTreeMap<Slot, String>,
 }
 
 /// A report: the view it shows, and when.
@@ -217,6 +221,12 @@ pub(crate) struct ViewFile {
     /// on Forgejo and on GitHub without a token: 100 where absent; those
     /// past it read as unknown.
     pub(crate) most_pulls: Option<usize>,
+    /// The task that decides each slot its rules leave untold, such as
+    /// `{ turn = "whose", priority = "urgency" }`; nothing is asked of a
+    /// model where absent.
+    #[serde(default)]
+    #[schemars(with = "BTreeMap<Slot, String>")]
+    pub(crate) decide: BTreeMap<Slot, Spanned<String>>,
 }
 
 /// A day of the week, by its first three letters.

@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use herald_config::Config;
 use herald_core::{DestinationName, Retention, Schedule, Sent, due};
 use herald_ports::{
-    Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Schedules, Signer, Store,
+    Clock, Decisions, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Schedules,
+    Signer, Store,
 };
 use jiff::{SignedDuration, Timestamp};
 
@@ -186,6 +187,9 @@ async fn expire<S: Store>(
         published
             .expire_audits(&herald_core::utc_day(before(keep_audit)))
             .await?;
+    }
+    if let (Some(decisions), Some(kept)) = (store.decisions(), retention.decisions) {
+        decisions.expire_decisions(before(kept)).await?;
     }
     Ok(())
 }

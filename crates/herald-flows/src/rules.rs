@@ -3,10 +3,11 @@
 //! of its stages, once a stage and spell of waiting (ADR-0056).
 
 use herald_config::{Config, Rule};
-use herald_core::{SourceName, board, nudge_event, nudges};
+use herald_core::{SourceName, grouped, nudge_event, nudges};
 use herald_ports::{Clock, Http, Signer, Store};
 
 use crate::announce::{Ports, Stop, announce};
+use crate::deciding::decided_rows;
 use crate::poll::{Fresh, Sweep};
 use crate::prepare::Connected;
 use crate::report::{Reads, due, settled, view_pulls};
@@ -31,7 +32,7 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
         Ok(pulls) => pulls,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
-    let shown = board(&view.view, &pulls, ports.clock.now());
+    let shown = grouped(&view.view, decided_rows(flow, view, &pulls).await);
     let source = SourceName::new(name);
     let mut announced = Vec::new();
     for nudge in nudges(&shown, &rule.stages, rule.most) {
