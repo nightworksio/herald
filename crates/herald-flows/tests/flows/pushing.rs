@@ -375,3 +375,26 @@ fn a_test_message_is_pushed_to_no_peer() {
     assert_eq!(sender.tried(), Vec::new());
     assert_eq!(sender.script.seen(), Vec::<String>::new());
 }
+
+#[test]
+fn doctor_counts_a_route_to_a_push_as_federation_s() {
+    let sender = Sender::new(true, &[]);
+    let secrets = FakeSecrets::default().with("PUSH_KEY", str::from_utf8(&OLD).unwrap());
+    let layer = crate::doctoring::actions();
+    let shown = pollster::block_on(herald_flows::federation(
+        &sender.config,
+        &layer,
+        (&secrets, &FakeSigner),
+        &[],
+    ))
+    .unwrap();
+    assert_eq!(shown.routes, [0]);
+    assert!(shown.owns("routes[0].withdraw"));
+    assert_eq!(
+        shown.keys,
+        [herald_flows::OwnKey {
+            secret: "PUSH_KEY".to_owned(),
+            shown: Some(herald_flows::Shown::of(&OLD)),
+        }]
+    );
+}

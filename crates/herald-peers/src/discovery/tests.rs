@@ -194,3 +194,11 @@ fn a_discovery_document_s_key_set_reads_as_a_rotation_statement() {
         Err(Unrotated::Unkeyed(Unkeyed::Shape("it is no JSON")))
     );
 }
+
+#[test]
+fn an_inbox_is_the_source_s_name_under_the_instance_s_api() {
+    assert_eq!(
+        inbox_of("https://org.example", "mirror"),
+        "https://org.example/herald/v1/inbox/mirror"
+    );
+}

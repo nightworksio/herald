@@ -8,7 +8,7 @@ use herald_kinds::{
     Destination, DestinationConfig, DestinationKind, Fault, Peered, Placed, Placement, Placing,
     Pushed, Pushing, Reach, Reached, Signing, UnreadPosts,
 };
-use herald_peers::discovery::{API, INBOX};
+use herald_peers::discovery::inbox_of;
 use herald_peers::feed;
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, HttpError, Secret};
 use schemars::JsonSchema;
@@ -198,7 +198,7 @@ impl DestinationConfig for PushOptions {
         let peered = self.peered.as_ref()?;
         Some(Reached::new(Push {
             peer: self.peer.clone(),
-            inbox: format!("{}{API}{INBOX}{}", peered.url, self.inbox),
+            inbox: inbox_of(&peered.url, &self.inbox),
             origin: peered.url.clone(),
             envelope: self.envelope(),
             private: peered.private,

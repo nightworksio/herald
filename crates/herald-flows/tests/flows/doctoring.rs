@@ -23,7 +23,7 @@ fn loaded(text: &str) -> Config {
 
 const STORES: [&str; 3] = ["sqlite", "markers", "repo-variables"];
 
-fn actions() -> Layer {
+pub(crate) fn actions() -> Layer {
     Layer {
         name: "actions",
         tier: Tier::Actions,
@@ -944,6 +944,7 @@ fn an_owner_registering_member_webhooks_is_checked_online_for_its_token_and_each
     );
 }
 
+mod federation;
 mod reports;
 mod tasks;
 mod unhosted;

@@ -11,8 +11,8 @@ use herald_config::{Config, Rotation, Uses};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
-    Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded,
-    handed_over, kept_tokens, keys, online, shared, trial,
+    Announced, EGRESS_GUARDED, Federation, Findings, Gap, Here, Outcome, Tier, doctor,
+    egress_guarded, handed_over, kept_tokens, keys, online, shared, trial,
 };
 use herald_ports::{Clock as _, Keyring, Secrets as _, Store};
 use schemars::JsonSchema;
@@ -23,6 +23,8 @@ use super::output::say;
 use super::serving::hosting;
 use super::stores::{Native, composed};
 use super::{Connect, DONE, MISTAKEN, STOPPED, place};
+
+mod federation;
 
 /// How doctor prints its findings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -188,6 +190,20 @@ struct Report<'a> {
     notes: &'a [String],
     /// What no run could get past.
     mistakes: &'a [String],
+    /// The instance among other heralds; null where the config takes no
+    /// part among them.
+    #[schemars(required)]
+    federation: Option<federation::FederationJson<'a>>,
+}
+
+/// `gap` as the JSON names it.
+fn gapped_json(gap: &Gap) -> Gapped<'_> {
+    Gapped {
+        feature: &gap.feature,
+        key: &gap.key,
+        why: &gap.why,
+        first_layer: gap.first_layer.map(FirstLayer::from),
+    }
 }
 
 /// The JSON Schema of what `herald doctor --format json` prints, as
@@ -354,24 +370,21 @@ pub(crate) fn gapped(gap: &Gap) -> String {
 }
 
 /// `findings` for `asked`, printed as `asked` says to `out`.
-fn printed(path: &str, asked: DoctorArgs, findings: &Findings, out: &mut dyn Write) -> u8 {
+fn printed(
+    path: &str,
+    asked: DoctorArgs,
+    (findings, shown): (&Findings, Option<&Federation>),
+    out: &mut dyn Write,
+) -> u8 {
     match asked.format {
         Format::Json => {
             let report = Report {
                 layer: asked.layer.0.name(),
                 online: asked.online,
-                gaps: findings
-                    .gaps
-                    .iter()
-                    .map(|gap| Gapped {
-                        feature: &gap.feature,
-                        key: &gap.key,
-                        why: &gap.why,
-                        first_layer: gap.first_layer.map(FirstLayer::from),
-                    })
-                    .collect(),
+                gaps: findings.gaps.iter().map(gapped_json).collect(),
                 notes: &findings.notes,
                 mistakes: &findings.mistakes,
+                federation: shown.map(federation::FederationJson::from),
             };
             say(out, &serde_json::to_string(&report).unwrap_or_default());
         }
@@ -386,6 +399,7 @@ fn printed(path: &str, asked: DoctorArgs, findings: &Findings, out: &mut dyn Wri
                 .cloned()
                 .chain(findings.gaps.iter().map(gapped))
                 .chain(findings.mistakes.iter().cloned())
+                .chain(shown.into_iter().flat_map(federation::lines))
             {
                 say(out, &line);
             }
@@ -404,7 +418,20 @@ pub(crate) async fn doctoring(
     out: &mut dyn Write,
 ) -> u8 {
     let findings = findings(config, asked, vars, connect).await;
-    printed(path, asked, &findings, out)
+    let secrets = EnvSecrets::from_vars(vars.clone());
+    let mut shown = herald_flows::federation(
+        config,
+        &asked.layer.0.layer(),
+        (&secrets, &RingSigner::default()),
+        &findings.gaps,
+    )
+    .await;
+    if asked.online
+        && let Some(shown) = &mut shown
+    {
+        federation::reached(config, connect, shown).await;
+    }
+    printed(path, asked, (&findings, shown.as_ref()), out)
 }
 
 /// `herald doctor` on a config that could not be read, as `message` says,
@@ -416,7 +443,7 @@ pub(crate) fn unread(asked: DoctorArgs, message: &str, out: &mut dyn Write) -> O
             mistakes,
             ..Findings::default()
         };
-        printed("", asked, &findings, out)
+        printed("", asked, (&findings, None), out)
     })
 }
 

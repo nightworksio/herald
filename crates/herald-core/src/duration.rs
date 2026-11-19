@@ -57,6 +57,22 @@ impl Duration {
             .filter(|seconds| *seconds > 0)
             .map(|seconds| Self(SignedDuration::from_secs(seconds)))
     }
+
+    /// The length of time as a config writes it, in its largest whole
+    /// unit, such as "90d"; `parse` reads it back.
+    #[must_use]
+    pub fn written(self) -> String {
+        let millis = self.0.as_millis();
+        let seconds = self.0.as_secs();
+        if millis % 1000 != 0 {
+            return format!("{millis}ms");
+        }
+        let (count, unit) = [(WEEK, 'w'), (DAY, 'd'), (HOUR, 'h'), (MINUTE, 'm')]
+            .into_iter()
+            .find(|(unit, _)| seconds % unit == 0)
+            .map_or((seconds, 's'), |(length, unit)| (seconds / length, unit));
+        format!("{count}{unit}")
+    }
 }
 
 /// The number `text` writes in decimal digits alone, with no sign.
@@ -93,6 +109,16 @@ impl<'de> Deserialize<'de> for Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_duration_is_written_in_its_largest_whole_unit_and_read_back() {
+        for text in ["250ms", "45s", "30m", "12h", "90d", "2w", "1500ms", "61s"] {
+            let duration = Duration::parse(text).unwrap();
+            assert_eq!(duration.written(), text);
+            assert_eq!(Duration::parse(&duration.written()), Some(duration));
+        }
+        assert_eq!(Duration(SignedDuration::from_hours(48)).written(), "2d");
+    }
 
     #[test]
     fn a_duration_is_a_number_and_a_unit() {

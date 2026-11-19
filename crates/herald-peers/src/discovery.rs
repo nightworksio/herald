@@ -33,6 +33,13 @@ const ACTIVITYPUB: &str = "activitypub";
 /// feeds.
 const FEEDS: &str = "feeds";
 
+/// The URL of the inbox of the source `name` of the instance served at
+/// `url`.
+#[must_use]
+pub fn inbox_of(url: &str, name: &str) -> String {
+    format!("{url}{API}{INBOX}{name}")
+}
+
 /// The scheme an instance is reached by.
 pub const SCHEME: &str = "https";
 

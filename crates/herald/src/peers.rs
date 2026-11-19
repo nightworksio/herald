@@ -92,13 +92,13 @@ pub(crate) async fn peering(
 
 /// `key` as a line of a list: its Multikey and its fingerprint.
 fn shown(key: &Key) -> String {
-    format!("  {} {}", ed25519_public(key), fingerprint(key))
+    format!("  {}", herald_flows::Shown::of(key))
 }
 
 /// The discovery document at `url` of the instance on `domain`, read
 /// within `most` bytes and checked against `pinned`, or where none are, the
 /// keys it lists.
-async fn read(
+pub(crate) async fn read(
     config: &Config,
     connect: Connect<'_>,
     (url, domain, most): (&str, &str, usize),
