@@ -4,7 +4,9 @@
 //! words.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::io::Write;
+use std::ops::RangeInclusive;
 
 use herald_config::Config;
 use herald_flows::{Gap, ROUND_SECRET};
@@ -138,11 +140,78 @@ pub(crate) fn warned(gaps: &[Gap], vars: &BTreeMap<String, String>, out: &mut dy
     }
 }
 
-/// Writes `line` as one line: a line break inside it, from a name or an
-/// answer herald was handed, would otherwise start a line of its own, which
-/// GitHub Actions could read as a workflow command.
+/// The Unicode format characters (general category Cf, Unicode 16) a line
+/// drops: each can make a line read otherwise than it is, as a bidi
+/// override, an isolate, a zero-width character, a tag or a soft hyphen
+/// does.
+const FORMATTING: [RangeInclusive<char>; 20] = [
+    '\u{ad}'..='\u{ad}',
+    '\u{600}'..='\u{605}',
+    '\u{61c}'..='\u{61c}',
+    '\u{6dd}'..='\u{6dd}',
+    '\u{70f}'..='\u{70f}',
+    '\u{890}'..='\u{891}',
+    '\u{8e2}'..='\u{8e2}',
+    '\u{180e}'..='\u{180e}',
+    '\u{200b}'..='\u{200f}',
+    '\u{202a}'..='\u{202e}',
+    '\u{2060}'..='\u{2064}',
+    '\u{2066}'..='\u{206f}',
+    '\u{feff}'..='\u{feff}',
+    '\u{fff9}'..='\u{fffb}',
+    '\u{110bd}'..='\u{110bd}',
+    '\u{110cd}'..='\u{110cd}',
+    '\u{13430}'..='\u{1343f}',
+    '\u{1bca0}'..='\u{1bca3}',
+    '\u{1d173}'..='\u{1d17a}',
+    '\u{e0000}'..='\u{e007f}',
+];
+
+/// The line and paragraph breaks a line said holds as a space.
+const BREAKS: [char; 4] = ['\r', '\n', '\u{2028}', '\u{2029}'];
+
+/// Whether `char` is kept off a line as it is: a control character, a
+/// line or paragraph break, or one of [`FORMATTING`].
+fn unshown(char: char) -> bool {
+    char.is_control()
+        || BREAKS.contains(&char)
+        || FORMATTING.iter().any(|range| range.contains(&char))
+}
+
+/// Writes `line` as one line, every control and format character it holds
+/// from a name or an answer herald was handed dropped: a line break would
+/// start a line of its own, which GitHub Actions could read as a workflow
+/// command, an escape could make the terminal do what the forge says, such
+/// as setting the clipboard, and a bidi override could make a name read as
+/// another. A line or paragraph break becomes a space.
 pub(crate) fn say(to: &mut dyn Write, line: &str) {
-    let _ = writeln!(to, "{}", line.replace(['\r', '\n'], " "));
+    let shown: String = line
+        .chars()
+        .map(|char| if BREAKS.contains(&char) { ' ' } else { char })
+        .filter(|char| !unshown(*char))
+        .collect();
+    let _ = writeln!(to, "{shown}");
+}
+
+/// Writes `json`, serialised JSON, as one line: the line breaks between its
+/// values become spaces, and every character [`say`] drops, which can stand
+/// only within a string there, is escaped as `\uXXXX` (a character above
+/// U+FFFF as its UTF-16 surrogate pair), so the JSON reads back unchanged.
+pub(crate) fn say_json(to: &mut dyn Write, json: &str) {
+    let mut shown = String::with_capacity(json.len());
+    for char in json.chars() {
+        if matches!(char, '\r' | '\n') {
+            shown.push(' ');
+        } else if unshown(char) {
+            let mut units = [0; 2];
+            for unit in char.encode_utf16(&mut units) {
+                let _ = write!(shown, "\\u{unit:04x}");
+            }
+        } else {
+            shown.push(char);
+        }
+    }
+    let _ = writeln!(to, "{shown}");
 }
 
 /// `message` as one workflow command's message: a line break would start

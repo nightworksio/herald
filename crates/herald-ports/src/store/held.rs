@@ -37,11 +37,13 @@ pub enum Held {
     Pulls,
     /// The reports whose living posts were sent advisories (ADR-0067).
     Recalls,
+    /// The record of each re-run an operator applied (ADR-0068).
+    Actions,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -58,6 +60,7 @@ impl Held {
         Self::Decisions,
         Self::Pulls,
         Self::Recalls,
+        Self::Actions,
     ];
 
     /// The kind as an error names it.
@@ -79,6 +82,7 @@ impl Held {
             Self::Decisions => "decisions",
             Self::Pulls => "pull requests",
             Self::Recalls => "reports whose living posts were sent advisories",
+            Self::Actions => "re-runs",
         }
     }
 

@@ -4,6 +4,7 @@ use std::future::Future;
 use herald_core::status;
 use herald_core::{Sent, Waits};
 use jiff::{SignedDuration, Timestamp};
+use zeroize::Zeroize as _;
 
 use crate::outbound::Outbound;
 use crate::secret::{Secret, SecretText};
@@ -275,6 +276,11 @@ pub struct Response {
 }
 
 impl Response {
+    /// Its body zeroed and emptied, where it held a secret now read.
+    pub fn wipe(&mut self) {
+        self.body.zeroize();
+    }
+
     /// The first value of the header `name`, matched without regard to case.
     #[must_use]
     pub fn header(&self, name: &str) -> Option<&str> {
@@ -478,6 +484,17 @@ impl<H: Http> Http for &H {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wiped_answer_holds_nothing_of_its_body() {
+        let mut answer = Response {
+            status: 200,
+            headers: Vec::new(),
+            body: b"held".to_vec(),
+        };
+        answer.wipe();
+        assert_eq!(answer.body, b"");
+    }
 
     #[test]
     fn a_request_reads_no_more_than_its_cap_its_ask_and_the_ceiling() {

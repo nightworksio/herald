@@ -56,9 +56,11 @@ fn github_plans_each_failed_actions_run_on_the_head_whose_job_of_the_check_faile
         &queued(Forge::GitHub),
         vec![
             answer(&runs),
-            answer(&json!({ "jobs": [{ "name": "test", "conclusion": "failure" }] })),
             answer(
-                &json!({ "jobs": [{ "name": "test", "conclusion": "success" }, { "name": "lint", "conclusion": "failure" }] }),
+                &json!({ "jobs": [{ "id": 420, "name": "lint", "conclusion": "failure" }, { "id": 421, "name": "test", "conclusion": "failure" }] }),
+            ),
+            answer(
+                &json!({ "jobs": [{ "id": 430, "name": "test", "conclusion": "success" }, { "id": 431, "name": "lint", "conclusion": "failure" }] }),
             ),
         ],
     );
@@ -66,9 +68,9 @@ fn github_plans_each_failed_actions_run_on_the_head_whose_job_of_the_check_faile
         plan.unwrap(),
         Plan::Runs(vec![Rerun {
             run: "42".to_owned(),
+            job: "421".to_owned(),
             page: "https://github.com/o/r/actions/runs/42".to_owned(),
-            call: "POST https://api.github.com/repos/o/r/actions/runs/42/rerun-failed-jobs"
-                .to_owned(),
+            call: "POST https://api.github.com/repos/o/r/actions/jobs/421/rerun".to_owned(),
         }])
     );
     assert_eq!(
@@ -84,24 +86,35 @@ fn github_plans_each_failed_actions_run_on_the_head_whose_job_of_the_check_faile
 }
 
 #[test]
-fn gitlab_plans_each_failed_pipeline_on_the_head_and_forgejo_says_why_it_cannot() {
+fn gitlab_plans_each_failed_pipeline_whose_job_of_the_check_failed_and_forgejo_says_why_not() {
+    let pipelines = json!([
+        { "id": 7, "web_url": "https://gitlab.com/o/r/-/pipelines/7" },
+        { "id": 6, "web_url": "https://gitlab.com/o/r/-/pipelines/6" }
+    ]);
     let (plan, asked) = planned(
         &queued(Forge::GitLab),
-        vec![answer(
-            &json!([{ "id": 7, "web_url": "https://gitlab.com/o/r/-/pipelines/7" }]),
-        )],
+        vec![
+            answer(&pipelines),
+            answer(&json!([{ "id": 70, "name": "lint" }, { "id": 71, "name": "test" }])),
+            answer(&json!([{ "id": 60, "name": "lint" }])),
+        ],
     );
     assert_eq!(
         plan.unwrap(),
         Plan::Runs(vec![Rerun {
             run: "7".to_owned(),
+            job: "71".to_owned(),
             page: "https://gitlab.com/o/r/-/pipelines/7".to_owned(),
-            call: "POST https://gitlab.com/api/v4/projects/o%2Fr/pipelines/7/retry".to_owned(),
+            call: "POST https://gitlab.com/api/v4/projects/o%2Fr/jobs/71/retry".to_owned(),
         }])
     );
     assert_eq!(
         asked,
-        ["https://gitlab.com/api/v4/projects/o%2Fr/pipelines?sha=h1&status=failed&per_page=5"]
+        [
+            "https://gitlab.com/api/v4/projects/o%2Fr/pipelines?sha=h1&status=failed&per_page=5",
+            "https://gitlab.com/api/v4/projects/o%2Fr/pipelines/7/jobs?scope=failed&per_page=100",
+            "https://gitlab.com/api/v4/projects/o%2Fr/pipelines/6/jobs?scope=failed&per_page=100",
+        ]
     );
     let (none, _) = planned(&queued(Forge::GitLab), vec![answer(&json!([]))]);
     assert_eq!(none.unwrap(), Plan::Unplanned(NO_PIPELINE));
@@ -120,6 +133,12 @@ fn runs_that_cannot_be_read_fail_the_plan() {
     let (failed, _) = planned(
         &queued(Forge::GitHub),
         vec![answer(&runs), answer(&json!("jobs"))],
+    );
+    assert!(matches!(failed, Err(Unpolled::Unreadable(_))));
+    let pipelines = json!([{ "id": 7, "web_url": "https://gitlab.com/o/r/-/pipelines/7" }]);
+    let (failed, _) = planned(
+        &queued(Forge::GitLab),
+        vec![answer(&pipelines), answer(&json!({}))],
     );
     assert!(matches!(failed, Err(Unpolled::Unreadable(_))));
 }
@@ -158,7 +177,7 @@ fn a_plan_reads_only_the_newest_runs_it_is_bounded_to() {
         { "id": 42, "html_url": "https://github.com/o/r/actions/runs/42" },
         { "id": 41, "html_url": "https://github.com/o/r/actions/runs/41" }
     ] });
-    let failed = json!({ "jobs": [{ "name": "test", "conclusion": "failure" }] });
+    let failed = json!({ "jobs": [{ "id": 420, "name": "test", "conclusion": "failure" }] });
     let (plan, asked) = planned_most(
         &queued(Forge::GitHub),
         vec![answer(&runs), answer(&failed)],
@@ -176,7 +195,14 @@ fn a_plan_reads_only_the_newest_runs_it_is_bounded_to() {
         { "id": 8, "web_url": "https://gitlab.com/o/r/-/pipelines/8" },
         { "id": 7, "web_url": "https://gitlab.com/o/r/-/pipelines/7" }
     ]);
-    let (plan, _) = planned_most(&queued(Forge::GitLab), vec![answer(&pipelines)], 1);
+    let (plan, _) = planned_most(
+        &queued(Forge::GitLab),
+        vec![
+            answer(&pipelines),
+            answer(&json!([{ "id": 80, "name": "test" }])),
+        ],
+        1,
+    );
     assert!(matches!(plan.unwrap(), Plan::Runs(runs) if runs.len() == 1 && runs[0].run == "8"));
 }
 

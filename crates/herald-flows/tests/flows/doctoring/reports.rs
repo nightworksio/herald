@@ -219,16 +219,22 @@ private = {private}
             .notes
             .into_iter()
             .filter(|note| {
-                note.starts_with("The rule flaky")
-                    && !note.starts_with("The rule flaky reads the view")
+                (note.starts_with("The rule flaky")
+                    && !note.starts_with("The rule flaky reads the view"))
+                    || note.starts_with("herald rerun --apply")
             })
             .collect()
     };
     assert_eq!(
         notes("true"),
         [
-            "The rule flaky plans at most 20 re-runs of flaky checks a window, each once a run and head with its evidence and exact call, to its private routes alone; a rule never re-runs. A plan reads the newest 5 failed runs on a head: at most 6 requests on GitHub, one on GitLab, each charged to the run's budget.",
-            "The rule flaky reads graphed live, and only kept records tell a flaky candidate, so none of its checks is one."
+            "The rule flaky plans at most 20 re-runs of flaky checks a window, each once a run and head with its evidence and exact call, to its private routes alone; a rule never re-runs. A plan reads the newest 5 failed runs on a head and each one's jobs: at most 6 requests, each charged to the run's budget.",
+            "The rule flaky reads graphed live, and only kept records tell a flaky candidate, so none of its checks is one.",
+            format!(
+                "herald rerun --apply cannot re-run the jobs graphed reads: {}.",
+                herald_kinds::UNWRITTEN
+            )
+            .as_str()
         ]
     );
     assert!(notes("false")[0].contains("no private route names it, so its plans reach nobody"));
@@ -471,5 +477,56 @@ fn a_private_route_s_check_is_named_with_its_cost_and_one_vouched_for_as_on_the_
             "The route team says private = true, but its post is not living, so it is sent"
         )),
         "{found:?}"
+    );
+}
+
+#[test]
+fn a_rule_planning_re_runs_says_whether_an_apply_can_re_run_each_source_s_runs_and_why_not() {
+    let text = |(store, kind, keys): (&str, &str, &str)| {
+        format!(
+            r#"version = 1
+[store]
+kind = "{store}"
+[destinations.discord]
+kind = "discord"
+token = {{ secret = "HERALD_DISCORD_TOKEN" }}
+[sources.graphed]
+kind = "{kind}"
+repository = "o/graphed"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+{keys}
+[views.queue]
+mode = "live"
+[rules.flaky]
+flaky = {{ rerun = true }}
+"#
+        )
+    };
+    let applies = |given| -> String {
+        on(&loaded(&text(given)), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .find(|note| note.starts_with("herald rerun --apply"))
+            .unwrap()
+    };
+    let write = r#"write = { token = { secret = "HERALD_RERUN" } }"#;
+    let both = format!("{write}\nsign_in = {{ client_id = \"Iv23liClient\" }}");
+    assert_eq!(
+        applies(("sqlite", "github", write)),
+        format!(
+            "herald rerun --apply cannot re-run the jobs graphed reads: {}.",
+            herald_kinds::UNSIGNED
+        )
+    );
+    assert!(applies(("markers", "github", &both)).ends_with(&format!("{}.", herald_flows::UNKEPT)));
+    let ready = applies(("sqlite", "github", &both));
+    assert!(
+        ready.starts_with("herald rerun --apply can re-run the jobs graphed reads, each once: an operator signs in at https://github.com as the client Iv23liClient asking no scope, and must hold write or above on the repository; the call is made with HERALD_RERUN alone"),
+        "{ready}"
+    );
+    let gitlab = applies(("sqlite", "gitlab", &both));
+    assert!(
+        gitlab.contains("at https://gitlab.com as the client Iv23liClient asking read_api"),
+        "{gitlab}"
     );
 }

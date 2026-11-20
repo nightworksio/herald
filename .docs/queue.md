@@ -332,17 +332,18 @@ flaky = { window = "7d", least = 1 }
 A rule with `flaky = { rerun = true }` plans a re-run of each flaky check
 failing on its view's pull requests, at most `most` a window. A plan names
 the check, the head it fails on, how often it flipped, and each failed run
-on the head that ran it with the exact call that re-runs its failed jobs.
-A plan reads the newest `runs` failed runs: one request for them and, on
-GitHub, one for each run's jobs. Every request a plan, a view or a
+on the head whose job of that check failed, with that job and the exact
+call that re-runs that one job (ADR-0068). A plan reads the newest `runs`
+failed runs: one request for them and one for each run's jobs. Every
+request a plan, a view or a
 reconcile makes is charged to the run's budget as it is made, so a host's
 request limit stops the read before the request past it:
 
 | Forge | Runs read | The call |
 |-------|-----------|----------|
-| GitHub | `actions/runs?head_sha=<head>&status=failure`, then each run's jobs | `POST …/actions/runs/<id>/rerun-failed-jobs` |
-| GitLab | `pipelines?sha=<head>&status=failed` | `POST …/pipelines/<id>/retry` |
-| Forgejo | none: it has no API to re-run a run | none; the plan says to re-run it by hand |
+| GitHub | `actions/runs?head_sha=<head>&status=failure`, then each run's jobs | `POST …/actions/jobs/<job>/rerun` |
+| GitLab | `pipelines?sha=<head>&status=failed`, then each pipeline's failed jobs | `POST …/jobs/<job>/retry` |
+| Forgejo | none: it has no API to re-run a job | none; the plan says to re-run it by hand |
 
 The `rerun` event carries `rule`, `check`, `head`, `flips`, `repository`
 and `number`, with `run_id` and `call` where a run can be re-run and
@@ -352,242 +353,103 @@ rule that say `private = true` alone. herald ships `herald:rerun`. A rule
 only plans: `mode = "apply"` is refused, as a re-run is made by an
 operator signed in through the forge, never by a rule on its own.
 
-### Capacity
+### Applying a re-run
 
-A view with `overviews = ["capacity"]` shows, beside its rows, the CI runs
-queued and running in its repositories, the oldest queued, and the runs
-started for a pull request on a commit no open pull request's head is,
-superseded by a newer push (ADR-0066):
-
-| Key | What it sets | Where absent |
-|-----|--------------|--------------|
-| `overviews` | the overviews it shows: `"capacity"` | none |
-| `capacity_from` | `"shown"`, the repositories it shows a pull request of; or `"members"`, its owner's newest pushed | `"shown"` |
-| `capacity_repositories` | the most members `"members"` reads, 1 to 100 | `20` |
-
-| Forge | Runs read | Its token needs |
-|-------|-----------|-----------------|
-| GitHub, GitHub Enterprise Server, GHE.com | `actions/runs?status=queued` and `?status=in_progress` | Actions: read (a GitHub App or fine-grained token), or `repo` (`public_repo` for a public repository) as a classic token |
-| GitLab, self-managed included | `pipelines?status=pending` and `?status=running` | `read_api` and the Reporter role |
-| Forgejo | `actions/tasks`, those waiting and running | read access to the repository |
-
-It reads and shows only repositories the view's `repositories` filter
-holds: `"shown"` takes those of the rows the view shows, and `"members"`
-only the members the filter holds. A listing that fills its page (100,
-or 50 on Forgejo) is named in `view.overviews.unread` as holding more
-than it counts, and the run's request budget ending leaves the section
-unread with that reason rather than stopping the report.
-
-Each repository costs two requests on GitHub and GitLab and one on
-Forgejo, and `"members"` one more for their order: GitHub's `sort=pushed`
-and GitLab's `order_by=last_activity_at`. Forgejo lists no push order, so
-it takes the first members its membership record keeps. A view with a
-`repositories` filter takes the first members it holds by name instead,
-with no request for their order, so the push times of the repositories
-it hides choose nothing. With `"shown"`,
-the runs of a repository with no open pull request are not counted, and
-doctor says so. A repository whose runs the token may not read, or a
-Forgejo that answers no tasks API, is named in `view.overviews.unread`
-with why, never counted as idle. Each run is seen as its repository's
-rows are, or as its membership record holds it, or as private, and an
-audience is shown only the runs and unread repositories it may see.
-
-Templates read `view.overviews.capacity` as `queued`, `running`,
-`oldest_queued` and `superseded`, each `{ repository, id, url, sha,
-created }`, absent where the view shows no capacity; and
-`view.overviews.unread` as `{ repository, reason }`.
+`herald rerun [rule]` lists each plan now, with the command that applies
+it; it reads no write credential. `herald rerun <rule> --apply --job
+<job>@<head>` re-runs the jobs named, each at most once, and only an
+operator at the terminal can: apply never runs unattended. It re-runs
+the one job of the flaky check, never the run's other failed jobs. It
+needs, on the source that reads the repository:
 
 ```toml
-[views.ci]
-overviews = ["capacity"]
-capacity_from = "members"
-capacity_repositories = 20
+[sources.app]
+kind = "github"
+repository = "acme/app"
+token = { secret = "HERALD_GITHUB_TOKEN" }
+write = { app = "rerun" }                  # or { token = { secret = "NAME" } }
+sign_in = { client_id = "Iv23liExample" }
 ```
 
-Reports and rules watching one view read it once a round.
+| Key | What it is | Default |
+|-----|------------|---------|
+| `write` | the credential the call is made with: `{ token = { secret } }`, or `{ app = "<github_apps name>" }` with `installation` | none: apply refuses |
+| `sign_in.client_id` | the GitHub App, OAuth application or GitLab application the operator signs in through, by the forge's device flow; never a write App's own. A private GitHub repository needs a GitHub App's client id: its user token holds that App's read permissions. A GitHub App must be installed on the repository's account and hold no permission but `read`, its account permissions among them | none: apply refuses |
+| `sign_in.scopes` | the scopes asked for, each one that only reads: `read:user` or `read:org` on GitHub; `read_api`, `read_user`, `openid`, `profile` or `email` on GitLab. Any other does not load | none on GitHub, `["read_api"]` on GitLab |
+| `sign_in.web` | the web root the device flow is asked at | the API's: `https://github.com`, a GHE.com tenant's `https://<tenant>.ghe.com`, a GitHub Enterprise Server's or self-managed GitLab's host |
+| `sign_in.least` | the least role the operator must hold on the repository: `"write"` (GitHub write, GitLab Developer, or above), `"maintain"` (GitHub maintain, GitLab Maintainer) or `"admin"` (GitHub admin, GitLab Owner) | `"write"` |
 
-### Advisories
+The write credential is held apart. The config does not load where its
+secret is one herald reads for anything else (the source's token, another
+source's, a destination's, an App a source reads as, a webhook, the
+static log's token, the store); where another source's `write` names it at another API; where a
+source reads as its App, under any table; or where its App mints at
+another origin than the source reads. An apply refuses a write secret
+holding the read secret's value under another name, and a write App
+that is an App herald reads as: the minted token's installation id is
+compared with every installation a source reads through, and its App id,
+as GitHub names it, with every App a source reads as, so the same App
+under another table, with another key or on another account makes no
+call. It is sent to the source's own API alone, never read by a poll, a
+report or the server, and kept nowhere. A write App's token is minted
+for one call, after every check and herald's record, holding `actions:
+write` on that one repository alone: where GitHub's answer says it holds
+more, or names another repository, it is never used and herald revokes it (`DELETE /installation/token`
+with that token, over the write connection, whatever the budget holds),
+saying in the refusal where the revocation failed. A stolen write credential re-runs without herald,
+so give it nothing but re-running: a GitHub App installed with `actions:
+write` alone on the repositories concerned, or a GitLab token of the
+Developer role on those projects alone. The forge's audit log names that
+credential, not the operator; herald's own record names them.
 
-A view with `overviews = ["advisories"]` shows, beside its rows, its
-repositories' open security alerts, to routes that say `private = true`
-alone (ADR-0067):
+An apply reads the plans again and takes only the jobs they still hold
+on the head named, so a plan listed before the head moved re-runs
+nothing, and signs the operator in only at the sources of those jobs.
+herald shows a code and the page to enter it at, a page on the sign-in's
+own web root over https alone, and waits at the forge's interval until
+they finish, decline or the code expires. Their token lives in memory
+for that apply alone, is never written, logged or shown, and only reads.
+On GitLab herald refuses it where a scope `/oauth/token/info` names can
+do more. On GitHub what the token is decides, by the prefix GitHub
+documents for it:
 
-| Key | What it sets | Where absent |
-|-----|--------------|--------------|
-| `advisories_from` | `"owner"`, the organization's or group's own listings and a user's members one by one; `"shown"`, the repositories it shows a pull request of; or `"members"`, its owner's newest pushed | `"owner"` |
-| `advisory_repositories` | the most repositories read one by one, 1 to 100 | `20` |
-| `most_advisories` | the most open advisories read, a page of 100 a request, 1 to 10000 | `1000` |
+- `gho_`, an OAuth application's token: `GET /user` must name its scopes
+  in `X-OAuth-Scopes`, and each must be on the read-only list; a token
+  whose scopes GitHub does not name is refused.
+- `ghu_`, a GitHub App's user token: herald reads every page of `GET
+  /user/installations` with it, then `GET /apps/{app_slug}` once for each
+  App they name; it refuses the token where an installation or an App
+  holds a permission that is not `read` (an App's account permissions,
+  such as `git_ssh_keys`, among them), an installation is the write
+  App's or names another client id than `sign_in.client_id`, none names
+  its App, or any of these reads fails, whatever the
+  scopes header says.
+- Any other token is refused, and the refusal shows no part of it.
 
-A one-repository source reads its repository whatever `advisories_from`
-says. An owner's own listings keep only the advisories of repositories
-its membership record holds. A GitHub user and a GitLab user namespace
-have no such listing, so their newest pushed members are read one by one.
-Only the repositories the view's `repositories` holds are read one by
-one, and only their advisories are shown or count toward
-`most_advisories`. A view with a `repositories` filter never reads its
-owner's own listings, whose pages count the alerts of the repositories
-it hides too: it reads each repository it holds one by one, the first
-by name, at most `advisory_repositories`, with no request for their push
-order, so what it shows is the same whatever the repositories it hides
-hold or when they were pushed to. Where a held repository's advisory was left out past
-`most_advisories`, or a listing names a next page off the forge's API,
-the section says more were open, never how many; where an owner's
-listing runs past the pages `most_advisories` can fill, that listing is
-named unread with how many pages were read. Members past
-`advisory_repositories`, and members with no open pull request where it
-reads those shown alone, are named unread with how many were not read.
-A report round sends every report's posts to the routes no section can
-reach first, then reads advisories, only where a route can be shown
-them, leaving one request for each route still waiting, then sends
-those: the run's budget ending during the read names them unread and
-never stops the report or delays another route's post.
+When the apply ends, whatever came of it, herald asks GitLab to revoke
+the token (`POST /oauth/revoke`, as a public client); GitHub revokes a
+token only for a client holding its secret, which herald never holds. The
+revocation is sent only where the apply ends as it should: on a panic or
+a Ctrl-C it is not, and the token lives on. A GitLab token lives until it
+expires (two hours), a GitHub App's user token until it expires (eight
+hours, where the App has user token expiry turned on), and an OAuth
+application's until the operator revokes it at the forge.
 
-| Forge | Listings read | Its token needs |
-|-------|---------------|-----------------|
-| GitHub, GitHub Enterprise Server, GHE.com | `code-scanning`, `dependabot` and `secret-scanning` `alerts?state=open`, of each repository or under `/orgs/<owner>` | Dependabot alerts, Code scanning alerts and Secret scanning alerts: read (a GitHub App or fine-grained token), or `security_events` (and `repo` for a private repository) as a classic token; an organization's listings also need an organization owner or security manager, with `read:org` as a classic token |
-| GitLab, self-managed included | the GraphQL `vulnerabilities` of each project or group, detected or confirmed | `read_api`, the Developer role, and GitLab Ultimate |
-| Forgejo | none: Forgejo raises no security alerts | |
-
-A listing the token may not read, or one the forge does not find, is
-named in `view.overviews.advisories.unread` with the permission it needs,
-never shown as clean. A secret scanning row names the secret's type, its
-repository, state, age and link, and never the secret or where it was
-found: GitHub's listing is asked with `hide_secret=true`, and GitLab's is
-asked no vulnerability's file.
-
-**Who is shown them.** One rule decides: only a route that says
-`private = true`, whose place herald checked is not publicly readable
-right now, or that you vouch for where herald cannot check, is shown the
-section. herald's own ActivityPub actor, a herald feed, a push to a peer
-taking no private events, a Mastodon status posted `public` or
-`unlisted` and a Discord crosspost post where anyone may read them, so
-such a route saying `private = true` does not load. Before each run's
-first advisory send, once a run for each place and charged to the run's
-budget, herald asks:
-
-| Destination | It is private only where | Asked by |
-|-------------|--------------------------|----------|
-| Matrix | joining takes an invite or a knock (`m.room.join_rules` `invite`, `knock`), or a membership of at most five rooms that each take one (`restricted`, `knock_restricted`, whose `allow` list is read one level deep), and the history is not `world_readable` | the room's two state events and the join rules of each room it lets in, through the bot, which must have joined each |
-| Slack | the channel is private and shared with no other organization through Slack Connect; a channel an Enterprise Grid organization shares counts as public unless the destination says `org_shared = "private"` | `conversations.info`, through a bot token with `groups:read` (`channels:read` for a public channel) |
-| Discord | the server's `@everyone` may not view the channel, every other role that may is listed by id in the route's `viewers` (Administrator roles and the bot's own role included), no member is let in by an overwrite of their own unless listed too, and the server's onboarding neither shows the channel nor hands out a listed role; a thread is not read | the channel, its server and its onboarding, through a bot token that sees the channel |
-| Mastodon, `visibility = "private"` | the account approves each follower (`locked`) | `verify_credentials` |
-
-A place anyone more may read, or one herald cannot read, budget ended
-included, is sent the line below, and a living post there loses the
-section at its next post. A Discord or Slack route reached by a webhook
-cannot be asked: it is sent the line unless it also says
-`vouch_unchecked = true`, your word that its place is private. That key
-loads only beside `private = true`, and only on a route herald cannot
-check; doctor lists every route sent advisories on it. Doctor's online
-check reads a Matrix room and a Discord channel the same way, and names
-a private route to a place anyone more may read a mistake, naming each
-Discord role or member that withholds it by id and name. No setting widens
-it, `[doctor] private_to_public` included, and no repository's
-visibility does, a public repository's advisories included. Every other
-route is sent, in its place, the one line "A section of this report was
-withheld from this route because it is not private.", the same where the
-view found none, so the line says nothing of what was held. A route's
-counts, titles and totals never count advisories, so what it is sent is
-the same, byte for byte, whatever the section held. Doctor flags two
-routes posting to one place where only one is shown the section.
-
-**Only living posts.** A report carries its advisories only in a living
-post (`living = true`, or a board, on a destination that edits), which
-herald can always find again to take the section out. A private route
-that posts each window anew is sent the withheld line, and doctor says
-the report must be living to carry advisories.
-
-**Living posts.** Before a living post is sent the section, the report's
-cursor records where the post is, never what it showed, and one store
-record names the report, its name alone; where either cannot be written,
-or the store keeps no such record (the markers store), the post is sent
-the withheld line, and doctor says why. Once its route is gone, stops
-being living, stops naming the report, moves, or is no longer shown the
-section, or the report, its board or its view is gone from the config,
-or the view no longer reads advisories, herald edits the post at the next report round to "The advisory section
-of this report was removed because this route no longer receives it."
-(the template `herald:recalled`, which cannot be replaced and says
-nothing else). Where its destination is gone or cannot edit, or no route
-reaches it, herald retries each round and doctor names the post, which
-is then deleted by hand. Before anything else a run sends, it keeps two
-requests for each recorded post it may recall, so the post itself goes
-and the fixed line is posted however long the section was; a run whose
-budget ends before even that leaves the section up until a run reaches
-it, and doctor names such a post. Each run also checks every such post's place
-again and recalls the post where it no longer passes. Matrix and
-Mastodon keep what an edit replaced (a room's timeline holds each
-`m.replace`, a status shows its edit history), so there a living post of
-a post that is or was sent the section is never edited: each new
-revision, and a recall, redacts or deletes every event herald sent for
-it, the post itself first, and posts anew, under a key the homeserver or
-instance has not seen, so it never answers with the deleted post; an
-edit, a redaction and a post outside a replacement each go under a key
-of their own too. A replacement cut short is resumed, and a post it sent
-but never recorded is read back first. A new replacement reads back
-what earlier runs sent and never recorded and deletes it; a post it
-cannot find again keeps its recall record, and doctor names it as
-possibly orphaned, to be deleted by hand. `herald orphans clear
-<report>` lists them by route (`--route <id>` for one route), each
-route's with a short digest of what it lists and the command that
-clears it, and says what clearing means. `herald orphans clear <report>
---route <id> --deleted --seen <digest>` says that route's parts were
-deleted by hand and drops them, only while they are still the ones
-listed (else it refuses: list them again), and the next round drops the
-record. A post, chunk or edit sent again after its answer was lost goes
-under the key it was first sent under, so the server never makes it
-twice.
-Between runs nothing reacts, and what a reader already saw cannot be
-unsent.
-
-**What a run tells and when it sends.** A run tells of a route that is
-or was sent the section, and of each recall, in one fixed line: sent, or
-stopped, never why, its steps, how many parts it took or whether the
-post changed. Where such a route stops, the next run sends that route
-alone; every other route's window is remembered. Every route no section reaches is sent its post before any
-advisory is read, any post recalled or any section sent, so neither what
-it is sent nor whether the run's budget lets it out depends on the
-advisories.
-
-| Where a view leaves herald | Advisories |
-|----------------------------|------------|
-| A route's post, or a living post's edit | in a living post alone, where the route says `private = true` and its destination does not post publicly |
-| `herald queue`, as a table or JSON | with `--private` alone |
-| A grouped route's digest, a herald feed, the static log, a push route | never: they carry no view |
-| A rule's nudges and re-run plans | never: they show no view |
-| A run's told lines, a round's answer, doctor, the app API | never |
-
-`herald queue --private` has no setting or environment variable: it is
-typed each time, and in a public CI job's log it publishes the
-advisories.
-
-Templates read `view.overviews.advisories` as `count`, `more`, `open`,
-each `{ repository, tool, severity, summary, state, url, opened, age }`,
-and `unread`, each `{ repository, reason }`, only where the route was
-shown them; and `view.overviews.withheld`, the line, only where it was
-not. The shipped `herald:queue` template prints both.
-
-```toml
-[views.security]
-overviews = ["advisories"]
-advisories_from = "owner"
-```
-
-## Templates
-
-A route's template reads the board as `view`:
-
-| Key | Holds |
-|-----|-------|
-| `view.name`, `view.total`, `view.stale` | the view's name, how many it shows, how many are stale |
-| `view.counts` | each state with its `count`, as `{ state, count }` |
-| `view.groups` | each group's `name` and `rows` |
-| `view.batches` | each batch's `package`, `to`, `green`, `failing` and `rows` |
-| `view.overviews` | its overviews, `capacity` and `unread` (above) |
-| `view.failures` | each failing check's `check`, `count`, `broken`, `flips`, `flaky` and `pulls`, each `{ repository, number }` |
-| a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `reviewers` (each asked, or a team's `org/team`), `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale`, `waiting_on` (the logins whose turn it is), `overlaps` (the numbers of the open pull requests changing a path it changes, where the view predicts conflicts) |
-
-herald ships `herald:queue`; a `[templates."herald:queue"]` table replaces
-it.
+Right before each call herald reads, in turn: the operator's role on the
+repository, the pull request's head, and the job (it must be of the run
+named, have run on that head, read as failed, and neither it nor its run
+been re-run, every page of a GitLab pipeline's jobs read). It then writes
+its record of the re-run (run, job, head, operator, the credential's
+name, time) as new, so two applies racing never both call, and only then
+mints a write App's token and calls. A call whose answer is lost is not
+asked again: herald reads the job back and records whether it was
+re-run. Only a call the forge refused outright, or one never sent as the
+run's budget ended or the App's token could not be minted or held more,
+may be asked for again; where herald's record could not be updated, it
+still says the call is being made, the apply says so, and herald never
+asks for that job again. A store that keeps no records (`markers`)
+refuses every apply. Forgejo has no API to re-run a job nor a device
+flow, so its sources take neither key.
 
 ## `herald queue`
 
@@ -600,6 +462,21 @@ herald queue security --private   # this output is private: print its advisories
 The JSON holds the keys a template reads as `view`. A view's advisories
 are printed only with `--private`; without it they are withheld, as from
 a route that is not private.
+
+## `herald rerun`
+
+```sh
+herald rerun                       # every rule's plans, read now
+herald rerun flaky --apply --job 420@<head>   # sign in, then re-run job 420 on that head once
+```
+
+`--apply` prints, for each job named, whether it was re-run and why not
+where it was not. Every line drops the control and format characters a
+forge's names could hold, and a line or paragraph break becomes a space;
+`herald queue` and `herald doctor` with `--format json` escape them as
+`\uXXXX` instead, so the JSON reads back unchanged. Like `herald queue`, it prints a private
+repository's plans too: a CI job's log may be public, so run it where
+its output is private.
 
 ## Time zones
 

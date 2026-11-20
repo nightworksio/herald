@@ -19,7 +19,7 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 use super::cli::{Layer, Running};
-use super::output::say;
+use super::output::{say, say_json};
 use super::serving::hosting;
 use super::stores::{Native, composed};
 use super::{Connect, DONE, MISTAKEN, STOPPED, place};
@@ -397,7 +397,7 @@ fn printed(
                 mistakes: &findings.mistakes,
                 federation: shown.map(federation::FederationJson::from),
             };
-            say(out, &serde_json::to_string(&report).unwrap_or_default());
+            say_json(out, &serde_json::to_string(&report).unwrap_or_default());
         }
         Format::Text => {
             say(

@@ -203,6 +203,12 @@ pub(crate) fn reconciled(source: &SourceName) -> String {
 /// are kept (ADR-0067).
 pub(crate) const RECALLS: &str = "recalls.json";
 
+/// Where the record of the re-run of the run `key` is kept: every re-run
+/// in one directory, its key written as one segment (ADR-0068).
+pub(crate) fn action(key: &herald_core::RunKey) -> String {
+    format!("actions/{}.json", segment(&key.to_string()))
+}
+
 pub(crate) fn position(destination: &DestinationName) -> String {
     format!("positions/{}.json", segment(destination.as_str()))
 }

@@ -1,6 +1,7 @@
 //! A rule's plan to re-run a flaky check once: the pull request whose
 //! check failed, the evidence that it is flaky, and the exact call that
-//! would re-run its failed jobs, or why none can (ADR-0065).
+//! would re-run the job of that check, or why none can (ADR-0065,
+//! ADR-0068).
 
 use std::collections::BTreeMap;
 
@@ -23,14 +24,17 @@ pub const MOST_RUNS_ALLOWED: usize = 100;
 /// What an event's identity begins with where it is a re-run plan.
 pub const RERUN_PREFIX: &str = "rerun";
 
-/// One run a plan would re-run: its forge id, its page, and the exact call.
+/// One job a plan would re-run: its run's forge id and its own, the run's
+/// page, and the exact call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rerun {
     /// The run's id on its forge.
     pub run: String,
-    /// Its page.
+    /// The id of the run's job of the check, the one job re-run.
+    pub job: String,
+    /// The run's page.
     pub page: String,
-    /// The exact call that re-runs its failed jobs, as `METHOD URL`.
+    /// The exact call that re-runs that job alone, as `METHOD URL`.
     pub call: String,
 }
 
@@ -46,7 +50,7 @@ pub struct RerunPlan<'a> {
     /// How many times it failed then passed on one head within the view's
     /// window.
     pub flips: usize,
-    /// The run it would re-run, or why none can be.
+    /// The job it would re-run, with its run, or why none can be.
     pub run: Result<&'a Rerun, &'a str>,
 }
 

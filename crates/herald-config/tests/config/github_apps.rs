@@ -1,7 +1,7 @@
 //! The GitHub Apps sources read as, each read with its defaults, and every
 //! source naming one checked against it.
 
-use herald_config::load;
+use herald_config::{Uses, load};
 use herald_core::SecretRef;
 use herald_kinds::{Installation, Installed};
 
@@ -197,4 +197,187 @@ fn an_app_s_key_is_read_by_a_poll_of_its_sources_and_its_webhook_by_a_server() {
         used(herald_config::Uses::Serves),
         ["HERALD_APP_HOOK", "HERALD_APP_KEY"]
     );
+}
+
+const REPO: &str = "[sources.org]\nkind = \"github\"\nrepository = \"o/r\"\n";
+
+#[test]
+fn a_write_credential_is_refused_at_load_where_it_is_the_credential_the_source_reads_with() {
+    let rerun = "[github_apps.rerun]\nclient_id = \"Iv23liRerun\"\nprivate_key = { secret = \"HERALD_RERUN_KEY\" }\n";
+    let written = loaded(&format!(
+        "{REPO}token = {{ secret = \"HERALD_READ\" }}\nwrite = {{ app = \"rerun\" }}\nsign_in = {{ client_id = \"Iv23liClient\" }}\n{rerun}"
+    ))
+    .unwrap();
+    let source = &written.sources[&herald_core::SourceName::new("org")];
+    assert_eq!(
+        source
+            .write()
+            .map(|write| write.name().to_owned())
+            .as_deref(),
+        Some("rerun")
+    );
+    assert!(
+        !written
+            .secrets_used(herald_config::Uses::Serves)
+            .contains("HERALD_RERUN_KEY")
+    );
+    refused(
+        &format!(
+            "{REPO}token = {{ secret = \"HERALD_READ\" }}\nwrite = {{ token = {{ secret = \"HERALD_READ\" }} }}\n"
+        ),
+        "names the secret HERALD_READ the source reads with",
+    );
+    refused(
+        &format!(
+            "{REPO}app = \"herald\"\nwrite = {{ token = {{ secret = \"HERALD_APP_KEY\" }} }}\n{APP}"
+        ),
+        "names the secret HERALD_APP_KEY, which the source reads with",
+    );
+    refused(
+        &format!(
+            "{REPO}app = \"herald\"\nwrite = {{ app = \"rerun\" }}\n{APP}[github_apps.rerun]\nclient_id = \"Iv23liOther\"\nprivate_key = {{ secret = \"HERALD_APP_KEY\" }}\n"
+        ),
+        "signs with the secret HERALD_APP_KEY, which the source reads with",
+    );
+    refused(
+        &format!(
+            "{REPO}app = \"herald\"\nwrite = {{ app = \"rerun\" }}\n{APP}[github_apps.rerun]\nclient_id = \"Iv23liABCDEF\"\nprivate_key = {{ secret = \"HERALD_OTHER_KEY\" }}\n"
+        ),
+        "is the App the source reads as, under another table",
+    );
+    refused(
+        &format!(
+            "{REPO}write = {{ app = \"rerun\" }}\n[github_apps.rerun]\nclient_id = \"Iv23liRerun\"\nprivate_key = {{ secret = \"K\" }}\napi = \"https://ghe.example/api/v3\"\n"
+        ),
+        "a write credential is sent to the source's own API alone",
+    );
+    refused(
+        &format!("{REPO}write = {{ app = \"missing\" }}\n"),
+        "no [github_apps.missing] is given",
+    );
+}
+
+const OTHER: &str = "[sources.other]\nkind = \"github\"\nrepository = \"o/other\"\n";
+
+const RERUN_APP: &str = "[github_apps.rerun]\nclient_id = \"Iv23liRerun\"\nprivate_key = { secret = \"HERALD_RERUN_KEY\" }\n";
+
+#[test]
+fn a_write_secret_is_refused_at_load_where_herald_reads_it_for_anything_else() {
+    let token = "write = { token = { secret = \"HERALD_RERUN\" } }\n";
+    let shared = format!("{REPO}{token}{OTHER}{token}");
+    assert!(loaded(&shared).is_ok(), "{:?}", loaded(&shared).err());
+    let cases = [
+        (
+            format!("{REPO}{token}{OTHER}token = {{ secret = \"HERALD_RERUN\" }}\n"),
+            "which herald also reads",
+        ),
+        (
+            format!("{REPO}write = {{ token = {{ secret = \"HERALD_DISCORD_TOKEN\" }} }}\n"),
+            "which herald also reads",
+        ),
+        (
+            format!(
+                "{REPO}write = {{ token = {{ secret = \"HERALD_APP_HOOK\" }} }}\n{OTHER}app = \"herald\"\n{APP}webhook = {{ secret = \"HERALD_APP_HOOK\" }}\n"
+            ),
+            "which herald also reads",
+        ),
+        (
+            format!("{REPO}{token}{OTHER}api = \"https://ghes.example/api/v3\"\n{token}"),
+            "at another API",
+        ),
+        (
+            format!(
+                "{REPO}write = {{ app = \"rerun\" }}\n{OTHER}write = {{ token = {{ secret = \"HERALD_RERUN_KEY\" }} }}\n{RERUN_APP}"
+            ),
+            "as another credential",
+        ),
+        (
+            format!(
+                "{REPO}write = {{ app = \"rerun\" }}\n{OTHER}write = {{ token = {{ secret = \"HERALD_RERUN\" }} }}\n[destinations.chat]\nkind = \"discord\"\ntoken = {{ secret = \"HERALD_RERUN_KEY\" }}\n{RERUN_APP}"
+            ),
+            "App's key is held in the secret HERALD_RERUN_KEY, which herald also reads",
+        ),
+        (
+            format!("{REPO}write = {{ app = \"rerun\" }}\n{OTHER}app = \"rerun\"\n{RERUN_APP}"),
+            "a source reads as the App rerun",
+        ),
+        (
+            format!(
+                "{REPO}write = {{ app = \"rerun\" }}\n{OTHER}app = \"herald\"\n{RERUN_APP}[github_apps.herald]\nclient_id = \"Iv23liRerun\"\nprivate_key = {{ secret = \"HERALD_APP_KEY\" }}\n"
+            ),
+            "a source reads as the App rerun",
+        ),
+        (
+            format!("{REPO}write = {{ token = {{ secret = \"GITHUB_TOKEN\" }} }}\n{PAGES}"),
+            "the secret GITHUB_TOKEN, which herald also reads",
+        ),
+        (
+            format!(
+                "{REPO}write = {{ token = {{ secret = \"W\" }} }}\n{PAGES}token = {{ secret = \"W\" }}\n"
+            ),
+            "the secret W, which herald also reads",
+        ),
+    ];
+    for (config, said) in cases {
+        refused(&config, said);
+    }
+    let apart = format!("{REPO}{token}{PAGES}token = {{ secret = \"HERALD_PAGES\" }}\n");
+    assert!(loaded(&apart).is_ok(), "{:?}", loaded(&apart).err());
+}
+
+const PAGES: &str = "[federation]\ndomain = \"owner.example\"\nkeys = [{ secret = \"HERALD_KEY\" }]\n[federation.pages]\nurl = \"https://owner.example\"\n";
+
+#[test]
+fn every_use_a_run_may_have_is_listed_once() {
+    let listed = |uses: Uses| match uses {
+        Uses::Announces | Uses::Polls | Uses::Serves => uses,
+    };
+    assert_eq!(
+        Uses::ALL.map(listed),
+        [Uses::Announces, Uses::Polls, Uses::Serves]
+    );
+    let config = loaded(&format!(
+        "{REPO}token = {{ secret = \"HERALD_READ\" }}\n{PAGES}"
+    ))
+    .unwrap();
+    let read = config.secrets_read();
+    for uses in Uses::ALL {
+        assert!(read.is_superset(&config.secrets_used(uses)), "{uses:?}");
+    }
+    assert!(read.contains("GITHUB_TOKEN") && read.contains("HERALD_READ"));
+    assert!(read.is_superset(&config.secrets()));
+}
+
+#[test]
+fn a_sign_in_is_refused_at_load_where_it_is_the_client_id_of_a_write_app() {
+    let config = format!(
+        "{REPO}write = {{ app = \"rerun\" }}\nsign_in = {{ client_id = \"Iv23liRerun\" }}\n{RERUN_APP}"
+    );
+    refused(&config, "is the client id of a GitHub App a write names");
+    let elsewhere = format!(
+        "{REPO}write = {{ app = \"rerun\" }}\n{OTHER}sign_in = {{ client_id = \"Iv23liRerun\" }}\n{RERUN_APP}"
+    );
+    refused(&elsewhere, "is the client id of a GitHub App a write names");
+    let reading = format!(
+        "{REPO}write = {{ app = \"rerun\" }}\nsign_in = {{ client_id = \"Iv23liClient\" }}\n{RERUN_APP}"
+    );
+    assert!(loaded(&reading).is_ok(), "{:?}", loaded(&reading).err());
+}
+
+#[test]
+fn a_source_reading_as_one_app_writes_as_another_of_its_own() {
+    let config = loaded(&format!(
+        "{REPO}app = \"herald\"\nwrite = {{ app = \"rerun\" }}\n{APP}{RERUN_APP}"
+    ))
+    .unwrap();
+    let source = &config.sources[&herald_core::SourceName::new("org")];
+    assert_eq!(
+        source
+            .write()
+            .map(|write| write.name().to_owned())
+            .as_deref(),
+        Some("rerun")
+    );
+    assert!(config.secrets_read().contains("HERALD_APP_KEY"));
+    assert!(!config.secrets_read().contains("HERALD_RERUN_KEY"));
 }

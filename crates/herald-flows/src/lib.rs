@@ -19,6 +19,7 @@
 mod acting;
 mod advised;
 mod announce;
+mod applying;
 mod approving;
 mod audience;
 mod budget;
@@ -53,6 +54,10 @@ mod verification;
 mod withdraw;
 
 pub use announce::{Announced, Outcome, Ports, Stop, Within, announce, announce_within};
+pub use applying::{
+    Applied, Applying, Done, Planned, SHARED_INSTALLATION, SigningIn, UNCHOSEN, UNFINISHED, UNKEPT,
+    UNPLANNED, UNSEPARATED, rerun_apply, rerun_plans,
+};
 pub use approving::{Decision, decide, followers};
 pub use budget::{Budget, Requests};
 pub use command_answers::{Answer, completed, deferral, interact, replied};

@@ -110,8 +110,8 @@ pub enum Relisted {
 /// What a rule's plan to re-run a check found (ADR-0065).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
-    /// Each failed run on the head that ran the check, with the exact call
-    /// re-running its failed jobs.
+    /// Each failed run on the head whose job of the check failed, with
+    /// that job and the exact call re-running it alone.
     Runs(Vec<Rerun>),
     /// Why no run can be re-run, in plain words.
     Unplanned(&'static str),
@@ -156,9 +156,9 @@ pub trait Queue: fmt::Debug + Send + Sync {
 
     /// The failed runs on a head of a repository that ran a check, `ran`
     /// being the repository's full path, the head's sha and the check's
-    /// name, the newest `most` read, each with the exact call re-running
-    /// its failed jobs, asked through `http`; or why none can be re-run
-    /// (ADR-0065).
+    /// name, the newest `most` read, each with its failed job of the check
+    /// and the exact call re-running that job alone, asked through
+    /// `http`; or why none can be re-run (ADR-0065, ADR-0068).
     fn planned<'a>(
         &'a self,
         http: &'a dyn DynHttp,

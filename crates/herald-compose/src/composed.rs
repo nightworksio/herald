@@ -24,6 +24,8 @@ use crate::host::Host;
 use crate::hosting::Hosting;
 use crate::records::{OpenedRecords, Opener, Served, reached};
 
+mod rerunning;
+
 /// The variable that bounds a request's whole time, in milliseconds, in
 /// place of the config's `[http] total`.
 const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";

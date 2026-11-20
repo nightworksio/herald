@@ -1,6 +1,6 @@
 //! A rule's plan to re-run a flaky check: the failed runs on a pull
-//! request's head that ran it, each with the exact call that re-runs its
-//! failed jobs (ADR-0065).
+//! request's head that ran it, each with its failed job of that check and
+//! the exact call that re-runs that job alone (ADR-0065, ADR-0068).
 
 use herald_core::Rerun;
 use herald_kinds::{Plan, Unpolled};
@@ -19,12 +19,16 @@ const JOBS: &str = "a workflow run's jobs";
 /// What a head's failed GitLab pipelines are read as.
 const PIPELINES: &str = "a head's failed pipelines";
 
+/// What a pipeline's failed jobs are read as.
+const FAILED_JOBS: &str = "a pipeline's failed jobs";
+
 /// Why a check no failed GitHub Actions run ran cannot be re-run.
 pub const NO_RUN: &str =
     "no failed GitHub Actions run on the head ran this check, so herald has nothing to re-run";
 
 /// Why a GitLab merge request with no failed pipeline cannot be re-run.
-pub const NO_PIPELINE: &str = "no failed pipeline ran on the head, so herald has nothing to re-run";
+pub const NO_PIPELINE: &str =
+    "no failed pipeline on the head ran this check, so herald has nothing to re-run";
 
 /// Why nothing on Forgejo can be re-run.
 pub const UNRERUN: &str = "Forgejo has no API to re-run a run, so re-run it by hand";
@@ -49,8 +53,15 @@ struct Jobs {
 
 #[derive(Deserialize)]
 struct Job {
+    id: u64,
     name: String,
     conclusion: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PipelineJob {
+    id: u64,
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -61,10 +72,10 @@ struct Pipeline {
 
 impl Opened<'_> {
     /// The failed runs on `head` that ran the check `check`, the newest
-    /// `most` read, each with the exact call re-running its failed jobs,
-    /// asked through `http`: GitHub Actions' runs whose job of that name
-    /// failed, GitLab's failed pipelines, and nothing on Forgejo, which
-    /// says why.
+    /// `most` read, each with its failed job of that name and the exact
+    /// call re-running that job alone, asked through `http`: GitHub
+    /// Actions' runs and GitLab's pipelines whose job of that name failed,
+    /// and nothing on Forgejo, which says why.
     ///
     /// # Errors
     ///
@@ -80,23 +91,37 @@ impl Opened<'_> {
         let runs = match self.origin.forge() {
             Forge::Forgejo => return Ok(Plan::Unplanned(UNRERUN)),
             Forge::GitLab => {
-                let asked = self.origin.get(
+                let checked = self.origin.checked()?;
+                let asked = checked.get(
                     &format!("/pipelines?sha={head}&status=failed&per_page={most}"),
                     self.token,
-                )?;
+                );
                 let body = self.asked(http, asked, PIPELINES).await?;
                 let pipelines: Vec<Pipeline> =
                     herald_wire::read(PIPELINES, parse, &body).map_err(Unpolled::unreadable)?;
                 let project = crate::gitlab::project(api, path);
-                pipelines
-                    .into_iter()
-                    .take(most)
-                    .map(|pipeline| Rerun {
-                        run: pipeline.id.to_string(),
-                        page: pipeline.web_url,
-                        call: format!("POST {project}/pipelines/{}/retry", pipeline.id),
-                    })
-                    .collect::<Vec<_>>()
+                let mut planned = Vec::new();
+                for pipeline in pipelines.into_iter().take(most) {
+                    let asked = checked.get(
+                        &format!(
+                            "/pipelines/{}/jobs?scope=failed&per_page={PAGE}",
+                            pipeline.id
+                        ),
+                        self.token,
+                    );
+                    let body = self.asked(http, asked, FAILED_JOBS).await?;
+                    let jobs: Vec<PipelineJob> = herald_wire::read(FAILED_JOBS, parse, &body)
+                        .map_err(Unpolled::unreadable)?;
+                    if let Some(job) = jobs.iter().find(|job| job.name == check) {
+                        planned.push(Rerun {
+                            run: pipeline.id.to_string(),
+                            job: job.id.to_string(),
+                            page: pipeline.web_url,
+                            call: format!("POST {project}/jobs/{}/retry", job.id),
+                        });
+                    }
+                }
+                planned
             }
             Forge::GitHub => {
                 let checked = self.origin.checked()?;
@@ -119,17 +144,15 @@ impl Opened<'_> {
                     let body = self.asked(http, asked, JOBS).await?;
                     let jobs: Jobs =
                         herald_wire::read(JOBS, parse, &body).map_err(Unpolled::unreadable)?;
-                    let ran = jobs.jobs.iter().any(|job| {
+                    let ran = jobs.jobs.iter().find(|job| {
                         job.name == check && job.conclusion.as_deref().is_some_and(failed)
                     });
-                    if ran {
+                    if let Some(job) = ran {
                         planned.push(Rerun {
                             run: run.id.to_string(),
+                            job: job.id.to_string(),
                             page: run.html_url,
-                            call: format!(
-                                "POST {api}/repos/{path}/actions/runs/{}/rerun-failed-jobs",
-                                run.id
-                            ),
+                            call: format!("POST {api}/repos/{path}/actions/jobs/{}/rerun", job.id),
                         });
                     }
                 }

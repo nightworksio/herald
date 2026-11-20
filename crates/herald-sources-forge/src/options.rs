@@ -28,6 +28,9 @@ pub(crate) use runs::RunChoice;
 pub use runs::{Conclusion, RUN_ACTIONS, RUN_FROM, RunAction, RunFrom, Runs};
 pub use signals::{EDITS_DEPTH, Signals, TAG_WINDOW};
 pub use transport::{FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, Transport};
+pub use write::{
+    FORGEJO_UNWRITTEN, GITHUB_SCOPES, GITLAB_SCOPES, SignIn, Write, read_only, unread,
+};
 
 /// What an owner source makes of the repositories one glob names.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -285,6 +288,15 @@ pub struct SourceOptions {
     /// they did, and their labels and authors; every issue opened, closed
     /// or reopened where absent.
     pub issues: Option<Issues>,
+    /// The credential an operator's `herald rerun --apply` re-runs a
+    /// planned job with, apart from `token` and `app`: never read by a
+    /// poll, a report or the server (ADR-0068). A stolen write credential
+    /// re-runs without herald, so give it nothing but re-running.
+    pub write: Option<Write>,
+    /// How an operator signs in at the forge to apply a re-run, by its
+    /// OAuth device flow; herald reads their permission on the repository
+    /// with it right before each call (ADR-0068).
+    pub sign_in: Option<SignIn>,
 }
 
 /// Whether an override sets one of its keys.
@@ -380,6 +392,7 @@ impl SourceOptions {
         self.alerts_check(forge)?;
         self.pulls_check()?;
         self.issues_check(forge)?;
+        self.write_check(forge)?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -424,3 +437,4 @@ mod signals;
 #[cfg(test)]
 mod tests;
 mod transport;
+mod write;

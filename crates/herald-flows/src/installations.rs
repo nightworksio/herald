@@ -16,7 +16,7 @@ use herald_ports::{
 use jiff::{SignedDuration, Timestamp};
 
 use crate::announce::{Ports, Stop};
-use herald_wire::github_app::Unminted;
+use herald_wire::github_app::{Narrowed, Unminted};
 
 /// What an installation token kept in the store is sealed for.
 const PURPOSE: &str = "herald github-app installation token v1";
@@ -58,11 +58,12 @@ impl Target {
     }
 }
 
-/// What the last minting learned: the installation's id, and when its
-/// token expires.
+/// What the last minting learned: the installation's id, its App's id,
+/// and when its token expires.
 #[derive(Debug, Default)]
 struct Held {
     id: Option<u64>,
+    app: Option<u64>,
     expires: Option<Timestamp>,
 }
 
@@ -79,6 +80,7 @@ pub struct Minting {
     minted: Arc<Minted>,
     held: Arc<Mutex<Held>>,
     stored: bool,
+    narrowed: Option<Narrowed>,
 }
 
 /// Every installation the prepared sources read, as they are prepared.
@@ -119,12 +121,114 @@ impl Mintings {
             minted: Arc::clone(&minted),
             held: Arc::new(Mutex::new(Held::default())),
             stored: app.store_token,
+            narrowed: None,
         });
         Ok(Some(minted))
     }
 }
 
 impl Minting {
+    /// The token the source `name` reads with, where this installation's.
+    pub(crate) fn minted_for(&self, name: &SourceName) -> Option<Arc<Minted>> {
+        self.sources
+            .contains(name)
+            .then(|| Arc::clone(&self.minted))
+    }
+
+    /// The App's private key.
+    pub(crate) const fn key(&self) -> &Secret {
+        &self.key
+    }
+
+    /// A minting of the same App's installation of its own, never kept in
+    /// a store, whose token holds only what `narrowed` names (ADR-0068).
+    pub(crate) fn narrowed(&self, narrowed: Narrowed) -> Self {
+        Self {
+            app: self.app.clone(),
+            issuer: self.issuer.clone(),
+            api: self.api.clone(),
+            key: self.key.clone(),
+            target: self.target.clone(),
+            sources: self.sources.clone(),
+            minted: Arc::new(Minted::default()),
+            held: Arc::new(Mutex::new(Held::default())),
+            stored: false,
+            narrowed: Some(narrowed),
+        }
+    }
+
+    /// The App's id or client id, as its config names it.
+    pub(crate) fn issuer(&self) -> &str {
+        &self.issuer
+    }
+
+    /// The token it mints.
+    pub(crate) fn minted(&self) -> Arc<Minted> {
+        Arc::clone(&self.minted)
+    }
+
+    /// The id of its installation, where it is named or a token was minted
+    /// for it.
+    pub(crate) fn installation(&self) -> Option<u64> {
+        let held = self.held.lock().unwrap_or_else(PoisonError::into_inner).id;
+        match self.target {
+            Target::Fixed(id) => Some(id),
+            Target::Owner(_) | Target::Repository(_) => held,
+        }
+    }
+
+    /// The id of its installation and of its App, each looked up at its API
+    /// through `http`, signed by `signer`, where neither named nor found
+    /// before: the installation's lookup names its App, and an installation
+    /// named by its id is asked for its App.
+    ///
+    /// # Errors
+    ///
+    /// Where the App signs nothing or a lookup fails.
+    pub(crate) async fn identified<G: Signer, H: Http>(
+        &self,
+        (signer, http): (&G, &H),
+        now: Timestamp,
+    ) -> Result<(u64, u64), Unminted> {
+        let app = self.held.lock().unwrap_or_else(PoisonError::into_inner).app;
+        if let (Some(id), Some(app)) = (self.installation(), app) {
+            return Ok((id, app));
+        }
+        let jwt = self.jwt(signer, now).await?;
+        let erased = herald_ports::Erased(http as &dyn herald_ports::DynHttp);
+        let found = herald_wire::github_app::installation_id(
+            &erased,
+            (&self.api, self.target.installation(), self.installation()),
+            &jwt,
+        )
+        .await?;
+        let app = match found.app.or(app) {
+            Some(app) => app,
+            None => herald_wire::github_app::app_of(&erased, (&self.api, found.id), &jwt).await?,
+        };
+        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+        held.id = Some(found.id);
+        held.app = Some(app);
+        Ok((found.id, app))
+    }
+
+    /// The App's assertion of itself, signed with its key.
+    async fn jwt<G: Signer>(&self, signer: &G, now: Timestamp) -> Result<Secret, Unminted> {
+        let assertion = herald_wire::github_app::assertion(&self.issuer, now);
+        let signature = signer
+            .sign(Algorithm::RsaSha256, &self.key, assertion.as_bytes())
+            .await
+            .map_err(|error| {
+                Unminted::Unreadable(format!(
+                    "the GitHub App {}'s private key signs nothing: {error}",
+                    self.app
+                ))
+            })?;
+        Ok(herald_wire::github_app::jwt(
+            &self.app, &assertion, &signature,
+        ))
+    }
+
     /// The name its token is kept in the store as.
     fn kept_name(&self) -> String {
         let target = match &self.target {
@@ -202,12 +306,12 @@ impl Minting {
         (signer, http, tokens): (&G, &H, Option<Kept<'_, T>>),
         now: Timestamp,
     ) -> Result<Option<String>, Unminted> {
-        let known = {
+        let (known, app) = {
             let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
             if held.expires.is_some_and(|expires| now < expires - AHEAD) {
                 return Ok(None);
             }
-            held.id
+            (held.id, held.app)
         };
         let tokens = tokens.filter(|_| self.stored);
         let version = match tokens {
@@ -224,21 +328,12 @@ impl Minting {
             },
             None => None,
         };
-        let assertion = herald_wire::github_app::assertion(&self.issuer, now);
-        let signature = signer
-            .sign(Algorithm::RsaSha256, &self.key, assertion.as_bytes())
-            .await
-            .map_err(|error| {
-                Unminted::Unreadable(format!(
-                    "the GitHub App {}'s private key signs nothing: {error}",
-                    self.app
-                ))
-            })?;
-        let jwt = herald_wire::github_app::jwt(&self.app, &assertion, &signature);
+        let jwt = self.jwt(signer, now).await?;
         let minted = herald_wire::github_app::minted(
             http,
             (&self.api, self.target.installation(), known),
             (&format!("github_apps.{}", self.app), &jwt),
+            self.narrowed.as_ref(),
         )
         .await?;
         let unkept = match tokens {
@@ -251,6 +346,7 @@ impl Minting {
         self.minted.refresh(Some(minted.token));
         *self.held.lock().unwrap_or_else(PoisonError::into_inner) = Held {
             id: Some(minted.installation),
+            app: minted.app.or(app),
             expires: Some(minted.expires),
         };
         Ok(unkept)
@@ -301,6 +397,7 @@ pub(crate) async fn refreshed<S: Store, C: Clock, G: Signer, H: Http>(
             let stop = match unminted {
                 Unminted::Unreachable(reason) => Stop::Unreachable(reason),
                 Unminted::Unreadable(reason) => Stop::Source(reason),
+                wide @ Unminted::Wide(_) => Stop::Source(wide.to_string()),
             };
             (source, stop)
         })

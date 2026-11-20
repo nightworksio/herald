@@ -1315,6 +1315,11 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.runs.from` | array of [RunFrom](#runfrom) | What runs are read from: "actions", the forge's own CI, and on GitHub "checks", the check suites and commit statuses other CI services report; `["actions"]` where absent. |
 | `sources.<name>.runs.triggers` | array of string | What started the runs announced, as the forge names it, such as `push` or `schedule`; GitLab's `merge_request_event` is written `pull_request`. Every trigger where empty. |
 | `sources.<name>.runs.workflows` | array of string | The workflows, pipelines, check suites' apps or status contexts whose runs are announced, as globs as `include` writes them; every one where empty. |
+| `sources.<name>.sign_in` | table | How an operator signs in at the forge to apply a re-run, by its OAuth device flow; herald reads their permission on the repository with it right before each call (ADR-0068). |
+| `sources.<name>.sign_in.client_id` | string | The client id of the GitHub App, OAuth application or GitLab application with the device flow turned on; never that of the App a `write` names. A private GitHub repository needs a GitHub App's client id: its user token holds that App's read permissions alone. A GitHub App must be installed on the repository's account and hold no permission but read, its account permissions among them. |
+| `sources.<name>.sign_in.least` | [Permission](#permission) | The least the operator must be allowed on the repository: "write" (GitHub's write role, GitLab's Developer role, or above), "maintain" or "admin"; "write" where absent. |
+| `sources.<name>.sign_in.scopes` | array of string | The scopes asked for, each one that only reads: on GitHub `read:user` or `read:org`, none where absent; on GitLab `read_api`, `read_user`, `openid`, `profile` or `email`, `["read_api"]` where absent. The operator's token only reads who they are and what they may do on the repository; a scope that writes does not load. |
+| `sources.<name>.sign_in.web` | string | The web root the device flow is asked at; where absent, the API's: `https://github.com` for `https://api.github.com`, a GHE.com tenant's `https://acme.ghe.com` for `https://api.acme.ghe.com`, and a GitHub Enterprise Server's or a self-managed GitLab's host for an API ending in `/api/v3` or `/api/v4`. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
@@ -1327,6 +1332,11 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
+| `sources.<name>.write` | table | The credential an operator's `herald rerun --apply` re-runs a planned job with, apart from `token` and `app`: never read by a poll, a report or the server (ADR-0068). A stolen write credential re-runs without herald, so give it nothing but re-running. |
+| `sources.<name>.write.app` | string | The GitHub App re-runs are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, best installed with `actions: write` alone on the repositories concerned. |
+| `sources.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `sources.<name>.write.token` | table | A token that may re-run the repository's workflow runs or retry its pipelines, other than the one the source reads with. |
+| `sources.<name>.write.token.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `gitlab`
 
@@ -1419,6 +1429,11 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.runs.from` | array of [RunFrom](#runfrom) | What runs are read from: "actions", the forge's own CI, and on GitHub "checks", the check suites and commit statuses other CI services report; `["actions"]` where absent. |
 | `sources.<name>.runs.triggers` | array of string | What started the runs announced, as the forge names it, such as `push` or `schedule`; GitLab's `merge_request_event` is written `pull_request`. Every trigger where empty. |
 | `sources.<name>.runs.workflows` | array of string | The workflows, pipelines, check suites' apps or status contexts whose runs are announced, as globs as `include` writes them; every one where empty. |
+| `sources.<name>.sign_in` | table | How an operator signs in at the forge to apply a re-run, by its OAuth device flow; herald reads their permission on the repository with it right before each call (ADR-0068). |
+| `sources.<name>.sign_in.client_id` | string | The client id of the GitHub App, OAuth application or GitLab application with the device flow turned on; never that of the App a `write` names. A private GitHub repository needs a GitHub App's client id: its user token holds that App's read permissions alone. A GitHub App must be installed on the repository's account and hold no permission but read, its account permissions among them. |
+| `sources.<name>.sign_in.least` | [Permission](#permission) | The least the operator must be allowed on the repository: "write" (GitHub's write role, GitLab's Developer role, or above), "maintain" or "admin"; "write" where absent. |
+| `sources.<name>.sign_in.scopes` | array of string | The scopes asked for, each one that only reads: on GitHub `read:user` or `read:org`, none where absent; on GitLab `read_api`, `read_user`, `openid`, `profile` or `email`, `["read_api"]` where absent. The operator's token only reads who they are and what they may do on the repository; a scope that writes does not load. |
+| `sources.<name>.sign_in.web` | string | The web root the device flow is asked at; where absent, the API's: `https://github.com` for `https://api.github.com`, a GHE.com tenant's `https://acme.ghe.com` for `https://api.acme.ghe.com`, and a GitHub Enterprise Server's or a self-managed GitLab's host for an API ending in `/api/v3` or `/api/v4`. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
@@ -1431,6 +1446,11 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
+| `sources.<name>.write` | table | The credential an operator's `herald rerun --apply` re-runs a planned job with, apart from `token` and `app`: never read by a poll, a report or the server (ADR-0068). A stolen write credential re-runs without herald, so give it nothing but re-running. |
+| `sources.<name>.write.app` | string | The GitHub App re-runs are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, best installed with `actions: write` alone on the repositories concerned. |
+| `sources.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `sources.<name>.write.token` | table | A token that may re-run the repository's workflow runs or retry its pipelines, other than the one the source reads with. |
+| `sources.<name>.write.token.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `forgejo`
 
@@ -1523,6 +1543,11 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.runs.from` | array of [RunFrom](#runfrom) | What runs are read from: "actions", the forge's own CI, and on GitHub "checks", the check suites and commit statuses other CI services report; `["actions"]` where absent. |
 | `sources.<name>.runs.triggers` | array of string | What started the runs announced, as the forge names it, such as `push` or `schedule`; GitLab's `merge_request_event` is written `pull_request`. Every trigger where empty. |
 | `sources.<name>.runs.workflows` | array of string | The workflows, pipelines, check suites' apps or status contexts whose runs are announced, as globs as `include` writes them; every one where empty. |
+| `sources.<name>.sign_in` | table | How an operator signs in at the forge to apply a re-run, by its OAuth device flow; herald reads their permission on the repository with it right before each call (ADR-0068). |
+| `sources.<name>.sign_in.client_id` | string | The client id of the GitHub App, OAuth application or GitLab application with the device flow turned on; never that of the App a `write` names. A private GitHub repository needs a GitHub App's client id: its user token holds that App's read permissions alone. A GitHub App must be installed on the repository's account and hold no permission but read, its account permissions among them. |
+| `sources.<name>.sign_in.least` | [Permission](#permission) | The least the operator must be allowed on the repository: "write" (GitHub's write role, GitLab's Developer role, or above), "maintain" or "admin"; "write" where absent. |
+| `sources.<name>.sign_in.scopes` | array of string | The scopes asked for, each one that only reads: on GitHub `read:user` or `read:org`, none where absent; on GitLab `read_api`, `read_user`, `openid`, `profile` or `email`, `["read_api"]` where absent. The operator's token only reads who they are and what they may do on the repository; a scope that writes does not load. |
+| `sources.<name>.sign_in.web` | string | The web root the device flow is asked at; where absent, the API's: `https://github.com` for `https://api.github.com`, a GHE.com tenant's `https://acme.ghe.com` for `https://api.acme.ghe.com`, and a GitHub Enterprise Server's or a self-managed GitLab's host for an API ending in `/api/v3` or `/api/v4`. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
@@ -1535,6 +1560,11 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
+| `sources.<name>.write` | table | The credential an operator's `herald rerun --apply` re-runs a planned job with, apart from `token` and `app`: never read by a poll, a report or the server (ADR-0068). A stolen write credential re-runs without herald, so give it nothing but re-running. |
+| `sources.<name>.write.app` | string | The GitHub App re-runs are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, best installed with `actions: write` alone on the repositories concerned. |
+| `sources.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `sources.<name>.write.token` | table | A token that may re-run the repository's workflow runs or retry its pipelines, other than the one the source reads with. |
+| `sources.<name>.write.token.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `ghcr`
 
@@ -2230,6 +2260,10 @@ An overview a view shows beside its rows.
 ### PackageVisibility
 
 Who may see a package's version where its own visibility and its repository's differ.
+
+### Permission
+
+The least a signed-in operator must be allowed to do on a repository for herald to re-run a job of it on their word.
 
 ### Pin
 

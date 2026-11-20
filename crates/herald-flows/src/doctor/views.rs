@@ -114,7 +114,7 @@ fn planning(config: &Config, (name, rule): (&str, &Rule), notes: &mut Vec<String
         "to its private routes, and no private route names it, so its plans reach nobody"
     };
     notes.push(format!(
-        "The rule {name} plans at most {} re-runs of flaky checks a window, each once a run and head with its evidence and exact call, {reach}; a rule never re-runs. A plan reads the newest {} failed runs on a head: at most {} requests on GitHub, one on GitLab, each charged to the run's budget.",
+        "The rule {name} plans at most {} re-runs of flaky checks a window, each once a run and head with its evidence and exact call, {reach}; a rule never re-runs. A plan reads the newest {} failed runs on a head and each one's jobs: at most {} requests, each charged to the run's budget.",
         rule.most,
         rule.runs,
         rule.runs + 1
@@ -135,6 +135,44 @@ fn planning(config: &Config, (name, rule): (&str, &Rule), notes: &mut Vec<String
             source.as_str()
         )
     }));
+    let sources = config
+        .views
+        .get(&rule.watch.view)
+        .into_iter()
+        .flat_map(|view| &view.sources)
+        .filter_map(|source| config.sources.get(source).map(|found| (source, found)));
+    for (source, found) in sources {
+        notes.push(applies(config, (source.as_str(), found)));
+    }
+}
+
+/// Whether `herald rerun --apply` can re-run the jobs of the source
+/// `name`, and why not where it cannot (ADR-0068).
+fn applies(config: &Config, (name, source): (&str, &herald_kinds::Source)) -> String {
+    let unable =
+        |why: &str| format!("herald rerun --apply cannot re-run the jobs {name} reads: {why}.");
+    let Some(write) = source.write() else {
+        return unable(herald_kinds::UNWRITTEN);
+    };
+    let signing = match source.signing() {
+        Ok(signing) => signing,
+        Err(why) => return unable(why),
+    };
+    if !config.store.keeps_actions() {
+        return unable(crate::applying::UNKEPT);
+    }
+    let scopes = if signing.scopes.is_empty() {
+        "no scope".to_owned()
+    } else {
+        signing.scopes.join(", ")
+    };
+    format!(
+        "herald rerun --apply can re-run the jobs {name} reads, each once: an operator signs in at {} as the client {} asking {scopes}, and must hold {} or above on the repository; the call is made with {} alone, sent to the source's own API. A stolen write credential re-runs without herald, so give it nothing but re-running: a GitHub App installation with actions: write alone, or a GitLab token of the Developer role on these projects alone. The forge's audit log names that credential, not the operator; herald's record of each re-run names the operator.",
+        signing.web,
+        signing.client_id,
+        signing.least.name(),
+        write.name()
+    )
 }
 
 /// Each note on each view reading a source kept, and each view asking to

@@ -86,6 +86,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(held(holding.inboxes()) && held(holding.positions()));
     assert!(held(holding.waiting()) && held(holding.decisions()));
     assert!(held(holding.pulls()) && held(holding.recalls()));
+    assert!(held(holding.actions()));
     assert_eq!(Store::skipped(&holding), ["corrupt.json"]);
     assert!(!Store::writes_one_at_a_time(&holding));
     let none = None::<&Unkept>;
@@ -96,6 +97,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(none.inboxes().is_none() && none.positions().is_none());
     assert!(none.waiting().is_none() && none.decisions().is_none());
     assert!(none.pulls().is_none() && none.recalls().is_none());
+    assert!(none.actions().is_none());
 }
 
 #[test]
@@ -555,4 +557,30 @@ pub(crate) fn kept_pull() -> herald_core::KeptPull {
         number: 1,
     };
     herald_core::KeptPull::read(None, key, pull, Timestamp::UNIX_EPOCH)
+}
+
+#[test]
+fn the_record_of_each_re_run_kept_nowhere_answers_unsupported_naming_it() {
+    let key = herald_core::RunKey {
+        api: "https://api.github.com".to_owned(),
+        repository: "o/r".to_owned(),
+        run: "7".to_owned(),
+        job: "70".to_owned(),
+        head: "abc".to_owned(),
+    };
+    let action = herald_core::RerunRecord {
+        key: key.clone(),
+        operator: "octocat".to_owned(),
+        credential: "HERALD_RERUN".to_owned(),
+        at: Timestamp::UNIX_EPOCH,
+        reruns: 0,
+        outcome: herald_core::Reran::Calling,
+    };
+    for unkept in [None, Some(&Unkept)] {
+        assert_eq!(unsupported(unkept.action(&key)), naming("re-runs"));
+        assert_eq!(
+            unsupported(unkept.put_action(&action, None)),
+            naming("re-runs")
+        );
+    }
 }

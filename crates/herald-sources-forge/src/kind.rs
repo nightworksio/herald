@@ -353,6 +353,36 @@ impl SourceConfig for ForgeSource {
         hooked.map_err(|error| error.to_string())
     }
 
+    fn signing(&self) -> Result<herald_kinds::SignIn, &'static str> {
+        self.options.signing(self.forge)
+    }
+
+    fn write(&self) -> Option<herald_kinds::WriteCredential<'_>> {
+        self.options.writing(self.forge)
+    }
+
+    fn rerunner(
+        &self,
+        read: Option<Credential>,
+    ) -> Result<Arc<dyn herald_kinds::Rerunner>, &'static str> {
+        if self.forge == Forge::Forgejo {
+            return Err(crate::options::FORGEJO_UNWRITTEN);
+        }
+        let credential = self
+            .write()
+            .ok_or(herald_kinds::UNWRITTEN)?
+            .name()
+            .to_owned();
+        Ok(Arc::new(crate::rerunner::ForgeRerunner {
+            forge: self.forge,
+            api: crate::forge::api_of(self.forge, &self.options),
+            parse: self.options.reading().parse,
+            read: read.map(Token::of),
+            credential,
+            signing: self.options.signing(self.forge),
+        }))
+    }
+
     fn queue(&self, token: Option<Credential>) -> Option<Arc<dyn herald_kinds::Queue>> {
         let api = api_of(self.forge, &self.options);
         if let Some(owner) = &self.options.owner {

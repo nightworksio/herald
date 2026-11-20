@@ -221,6 +221,37 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// The credential it re-runs planned runs with, where it names one
+    /// (ADR-0068). It is never among [`SourceConfig::secret_refs`]: only
+    /// an operator's apply reads it.
+    fn write(&self) -> Option<crate::WriteCredential<'_>> {
+        None
+    }
+
+    /// How an operator signs in at its forge to apply a re-run, or why none
+    /// can (ADR-0068).
+    ///
+    /// # Errors
+    ///
+    /// Where it names no sign-in, or its platform has none.
+    fn signing(&self) -> Result<crate::SignIn, &'static str> {
+        Err(crate::UNSIGNED)
+    }
+
+    /// What re-runs planned jobs of its repositories, reading with `read`
+    /// where it has one and calling with the write credential alone; or
+    /// why nothing can, in plain words (ADR-0068).
+    ///
+    /// # Errors
+    ///
+    /// Where it re-runs nothing.
+    fn rerunner(
+        &self,
+        _read: Option<Credential>,
+    ) -> Result<Arc<dyn crate::Rerunner>, &'static str> {
+        Err(crate::UNWRITTEN)
+    }
+
     /// What reading at most `most` of its open pull requests costs each
     /// round, where [`SourceConfig::queue`] reads them.
     fn queue_cost(&self, _most: Most) -> Option<QueueCost> {

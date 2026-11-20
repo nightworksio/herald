@@ -852,6 +852,8 @@ pub trait Store: Sync {
     type Pulls: Pulls;
     /// The reports whose living posts were sent advisories.
     type Recalls: Recalls;
+    /// The re-runs operators applied.
+    type Actions: Actions;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -887,6 +889,9 @@ pub trait Store: Sync {
     /// them.
     fn recalls(&self) -> Option<&Self::Recalls>;
 
+    /// The re-runs operators applied, where it keeps them.
+    fn actions(&self) -> Option<&Self::Actions>;
+
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
     /// still reported.
@@ -898,6 +903,7 @@ pub trait Store: Sync {
     fn writes_one_at_a_time(&self) -> bool;
 }
 
+mod actions;
 mod decisions;
 mod held;
 mod keeper;
@@ -907,6 +913,7 @@ mod pulls;
 mod recalls;
 mod tokens;
 
+pub use actions::Actions;
 pub use decisions::Decisions;
 pub use held::Held;
 pub use keeper::Keeper;

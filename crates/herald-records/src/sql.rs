@@ -332,7 +332,7 @@ mod tests {
             RecordOptions::default(),
         ))
         .unwrap();
-        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 16]);
+        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 17]);
         assert!(!kept.writes_one_at_a_time());
     }
 

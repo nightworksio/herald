@@ -2,12 +2,13 @@
 //! records where the store keeps the kind, and [`Unkept`]'s refusal where it
 //! does not.
 
-use crate::{Decisions, Pulls, Recalls};
+use crate::{Actions, Decisions, Pulls, Recalls};
 use herald_core::{AdvisedReports, Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
     Schedule, SourceName, State, Subscription,
 };
+use herald_core::{RerunRecord, RunKey};
 use jiff::Timestamp;
 
 use super::{
@@ -485,6 +486,26 @@ impl<T: Recalls> Recalls for Option<&T> {
         match self {
             Some(kept) => kept.put_advised(reports, expected).await,
             None => Unkept.put_advised(reports, expected).await,
+        }
+    }
+}
+
+impl<T: Actions> Actions for Option<&T> {
+    async fn action(&self, key: &RunKey) -> Result<Option<Versioned<RerunRecord>>, StoreError> {
+        match self {
+            Some(kept) => kept.action(key).await,
+            None => Unkept.action(key).await,
+        }
+    }
+
+    async fn put_action(
+        &self,
+        action: &RerunRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_action(action, expected).await,
+            None => Unkept.put_action(action, expected).await,
         }
     }
 }

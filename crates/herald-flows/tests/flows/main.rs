@@ -82,6 +82,8 @@ mod replaced;
 #[cfg(test)]
 mod reports;
 #[cfg(test)]
+mod reran;
+#[cfg(test)]
 mod revise;
 #[cfg(test)]
 mod scoped;
