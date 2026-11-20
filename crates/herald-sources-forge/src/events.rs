@@ -4,13 +4,13 @@
 
 use std::collections::BTreeSet;
 
-use herald_core::{EventsRead, Owner, unreserved};
+use herald_core::{EventsRead, Owner};
 use herald_kinds::{Changed, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Method, Request, SecretText};
 use herald_wire::{SourceError, answered};
 use serde::Deserialize;
 
-use crate::forge::authorized;
+use crate::forge::{OWNER, authorized, whole};
 use crate::{Forge, Token};
 
 /// What `forge`'s events are called.
@@ -86,9 +86,9 @@ pub(crate) const GITHUB_PAGED: (usize, usize) = (GITHUB_PAGE, GITHUB_PAGES);
 
 impl Asking<'_> {
     /// The request for page `page` of the owner's events, conditional on
-    /// `etag` where there is one.
-    fn request(&self, page: usize, etag: Option<&str>) -> Request {
-        let (api, name, size) = (self.api, unreserved(self.name), self.paged.0);
+    /// `etag` where there is one; or why the owner's name names nothing.
+    fn request(&self, page: usize, etag: Option<&str>) -> Result<Request, Unpolled> {
+        let (api, name, size) = (self.api, whole(self.name, OWNER)?, self.paged.0);
         let kind = match self.owner {
             Owner::Organization => "orgs",
             Owner::User => "users",
@@ -104,7 +104,7 @@ impl Asking<'_> {
         let request = Request::new(Method::Get, SecretText::plain(url))
             .at_most(self.parse)
             .conditional(etag, None);
-        authorized(self.forge, request, self.token)
+        Ok(authorized(self.forge, request, self.token))
     }
 
     /// Each of GitHub's events in `body`, by its id, with the member it
@@ -161,7 +161,7 @@ async fn page(
     (number, etag): (usize, Option<&str>),
 ) -> Result<Option<Page>, Unpolled> {
     let answer = http
-        .send(asking.request(number, etag))
+        .send(asking.request(number, etag)?)
         .await
         .map_err(Unpolled::unreachable)?;
     if etag.is_some() && Forge::unchanged(&answer) {

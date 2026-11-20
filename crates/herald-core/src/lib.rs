@@ -86,7 +86,7 @@ pub use decide::{
 };
 pub use declined::Declined;
 pub use duration::Duration;
-pub use escaping::{Escaping, safe_url, unreserved};
+pub use escaping::{Escaping, safe_url, segment, unreserved};
 pub use event::{Draft, Event, Problem};
 pub use glob::{Glob, NotAGlob};
 pub use grant::{Action, Grant, until};
@@ -143,11 +143,14 @@ pub use profile::{
 };
 pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
-    Batch, Board, Bots, CAPACITY_REPOSITORIES, Capacity, Changed, Checks, Closed, Deciding,
-    Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, KeptPull, Lifecycle,
-    MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome, Overviews, Pull, PullKey, Ran,
-    Read, Reason, Reconciled, RepositoryKey, Review, Reviewed, Row, Rules, Running, Showing, Since,
-    Triage, Turn, Unread, Verdict, View, board, grouped, overlaps, rows,
+    ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
+    AdvisoriesFrom, Advisory, Batch, Board, Bots, CAPACITY_REPOSITORIES, Capacity, Changed, Checks,
+    Closed, Deciding, Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, KeptPull,
+    Lifecycle, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
+    MOST_ADVISORY_REPOSITORIES, MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome,
+    Overviews, Pull, PullKey, RECALLED, Ran, Read, Reason, Reconciled, RepositoryKey, Review,
+    Reviewed, Row, Rules, Running, Showing, Since, Surface, Triage, Turn, Unread, Verdict, View,
+    WITHHELD, advises, board, grouped, overlaps, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{
@@ -160,8 +163,8 @@ pub use report::{
 pub use rerun::{MOST_RUNS, MOST_RUNS_ALLOWED, RERUN_PREFIX, Rerun, RerunPlan, rerun_event};
 pub use retention::Retention;
 pub use revision::{
-    Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,
-    revised,
+    Edits, LateRelease, NO_PART, Replacing, Revise, Revision, Stray, Withdraw, already_deleted,
+    regrouped, replaced, resumes, revise, revised,
 };
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, Reach, RoleId, Route,

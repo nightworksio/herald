@@ -310,7 +310,7 @@ fn an_upcoming_release_waits_until_it_is_released() {
 
 #[test]
 fn one_release_is_asked_for_by_its_tag_and_becomes_its_event() {
-    let request = source(None).release_request("v1.126.0", None);
+    let request = source(None).release_request("v1.126.0", None).unwrap();
     assert_eq!(
         request.url.redacted(),
         "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/v1.126.0"
@@ -354,6 +354,7 @@ fn a_named_token_is_a_bearer_and_the_run_s_own_is_a_job_token() {
     assert_eq!(
         source(None)
             .releases_request(Some(&cursor), Some(&named))
+            .unwrap()
             .to_string(),
         [
             "GET https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases?per_page=30",
@@ -369,7 +370,7 @@ fn a_named_token_is_a_bearer_and_the_run_s_own_is_a_job_token() {
     assert_eq!(managed.api(), "https://gitlab.example/api/v4");
     assert_eq!(managed.forge(), Forge::GitLab);
     assert_eq!(
-        managed.repository_request(Some(&run)).to_string(),
+        managed.repository_request(Some(&run)).unwrap().to_string(),
         [
             "GET https://gitlab.example/api/v4/projects/gitlab-org%2Fcli",
             "Accept: application/json",

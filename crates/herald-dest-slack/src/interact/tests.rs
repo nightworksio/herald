@@ -304,7 +304,7 @@ fn the_manifest_points_the_command_and_buttons_at_herald_or_opens_socket_mode() 
         json!({ "is_enabled": true, "request_url": "https://herald.example/interactions/slack" })
     );
     assert_eq!(posted["settings"]["socket_mode_enabled"], false);
-    assert_eq!(posted["oauth_config"]["scopes"]["bot"][2], "commands");
+    assert_eq!(posted["oauth_config"]["scopes"]["bot"][3], "commands");
     let socket: Value = serde_json::from_str(&interacting("").manifest("slack", None)).unwrap();
     assert_eq!(socket["settings"]["socket_mode_enabled"], true);
     assert_eq!(

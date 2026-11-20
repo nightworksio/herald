@@ -129,6 +129,7 @@ fn a_reached_feed_is_published_to_by_the_flows_and_sent_nothing() {
     let reached = unset
         .reach(&Placed::new(FeedRouteOptions::default()), "", key())
         .unwrap();
+    assert!(!reached.keeps_edits());
     let fed = reached.feeds().unwrap();
     assert_eq!(fed.feeding, feeding(&unset));
     assert_eq!(fed.key, &key());

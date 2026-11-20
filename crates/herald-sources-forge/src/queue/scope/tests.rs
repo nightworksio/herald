@@ -56,7 +56,11 @@ fn scoped(forge: Forge, tokened: bool) -> Scoped {
 fn asked(owner: Owner, members: &[Listed], most: Most) -> Asked<'_> {
     Asked {
         most,
-        scope: Some(Scope { owner, members }),
+        scope: Some(Scope {
+            owner,
+            members,
+            narrowed: false,
+        }),
         stated: false,
         files: false,
     }

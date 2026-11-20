@@ -104,6 +104,43 @@ impl Config {
             || self.kinds.get(kind).is_some_and(|spec| !spec.private)
     }
 
+    /// The surface a report's sections leave through to the route `id`,
+    /// the one home deciding it from the route's own config: a feed, a push
+    /// or a grouped route's digest, which carry no view; else the route,
+    /// private only where it says `private = true` and its destination does
+    /// not post where anyone may read it, and recallable where it keeps a
+    /// living post. A route or destination it does not hold is not private
+    /// (ADR-0067).
+    #[must_use]
+    pub fn surface(&self, id: &RouteId) -> herald_core::Surface {
+        let not_private = herald_core::Surface::Route {
+            private: false,
+            recallable: false,
+        };
+        let Some(route) = self.routes.iter().find(|route| route.route.id == *id) else {
+            return not_private;
+        };
+        let Some(destination) = self.destinations.get(&route.route.destination) else {
+            return not_private;
+        };
+        if destination.feeding().is_some() {
+            return herald_core::Surface::Feed;
+        }
+        if destination.pushing().is_some() {
+            return herald_core::Surface::Push;
+        }
+        if route.route.delivery.group.is_some() {
+            return herald_core::Surface::Digest;
+        }
+        let public = destination
+            .public(&route.options, &route.route.delivery)
+            .is_some();
+        herald_core::Surface::Route {
+            private: route.private && !public,
+            recallable: route.living(),
+        }
+    }
+
     /// The domains herald's sessions may connect under: each Discord
     /// gateway's and Slack Socket Mode session's own, and those its
     /// destination adds (ADR-0016).
@@ -233,11 +270,23 @@ pub struct RouteConfig {
     /// Whether its place is declared private, so it may take a private or
     /// internal repository's events.
     pub private: bool,
+    /// Whether the operator vouches that its place, whose audience herald
+    /// cannot check, is private (ADR-0067).
+    pub vouched: bool,
     /// Whether it says whether its place is private.
     pub stated: bool,
     /// The private kinds it takes without saying whether its place is
     /// private.
     pub unstated: Vec<Kind>,
+}
+
+impl RouteConfig {
+    /// Whether it keeps one living post of a report: it asks to, and its
+    /// destination edits (ADR-0056).
+    #[must_use]
+    pub const fn living(&self) -> bool {
+        self.route.delivery.living && self.profile.features.edits
+    }
 }
 
 /// An app of the HTTP API: its credentials, what it may announce to, and

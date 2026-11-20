@@ -211,3 +211,41 @@ fn a_living_report_names_no_window_so_every_window_edits_one_post() {
     assert_eq!(living_identity("daily"), "report/daily");
     assert_eq!(event.occurred(), start);
 }
+
+#[test]
+fn a_report_s_event_is_the_same_whatever_advisories_its_view_found_on_every_surface() {
+    use crate::queue::tests::pull;
+    use crate::queue::{Advised, Advisories, Advisory, Surface, Unread, View, board as boarded};
+    let start = Timestamp::from_second(86_400).unwrap();
+    let advisory = |number: usize| Advisory {
+        repository: format!("o/r{number}"),
+        tool: "dependency-scanning".to_owned(),
+        severity: Some("critical".to_owned()),
+        summary: Some("Prototype pollution".to_owned()),
+        state: "open".to_owned(),
+        url: format!("https://github.com/o/r/security/dependabot/{number}"),
+        opened: start,
+    };
+    let many = Advisories {
+        open: (0..250).map(advisory).collect(),
+        unread: vec![Unread {
+            repository: "o/vault".to_owned(),
+            visibility: Visibility::Private,
+            reason: "refused".to_owned(),
+        }],
+        more: true,
+        at: start,
+    };
+    for surface in Surface::ALL {
+        for living in [false, true] {
+            let event = |found: &Advisories| {
+                let mut shown = boarded(&View::default(), &[pull()], start);
+                shown.overviews.advisories = Some(Advised::to(found, surface));
+                report_event(("daily", "queue"), &shown, start, living).unwrap()
+            };
+            let (with, without) = (event(&many), event(&Advisories::none(start)));
+            assert_eq!(with, without, "{surface:?} {living}");
+            assert_eq!(with.visibility(), Some(Visibility::Public), "{surface:?}");
+        }
+    }
+}

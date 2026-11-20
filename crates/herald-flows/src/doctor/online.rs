@@ -119,6 +119,10 @@ pub async fn online<H: Http, G: Signer>(
                     why,
                 )),
                 Probe::Said(said) => findings.notes.push(format!("The route {id}: {said}")),
+                Probe::Public(why) if route.config.private => findings.mistakes.push(format!(
+                    "The route {id} says private = true, but {why}; a section only private routes are shown, such as a view's advisories, would be published there: remove private = true, or make the place private"
+                )),
+                Probe::Public(why) => findings.notes.push(format!("The route {id}: {why}.")),
             }
         }
     }

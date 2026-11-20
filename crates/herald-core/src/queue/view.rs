@@ -204,6 +204,13 @@ impl View {
         named(&self.repositories, repository)
     }
 
+    /// Whether it holds every repository of its sources, filtering none
+    /// out by name.
+    #[must_use]
+    pub fn holds_every(&self) -> bool {
+        self.repositories.is_empty()
+    }
+
     /// Whose turn `pull` is, by what tells the view.
     fn decided(&self, pull: &Pull) -> (Turn, Reason) {
         match &self.deciding {

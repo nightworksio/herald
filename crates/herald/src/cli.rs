@@ -52,6 +52,31 @@ pub(crate) enum Command {
     Read(Reading),
 }
 
+/// What the operator says of a living post's possibly orphaned parts.
+#[derive(Debug, Subcommand)]
+pub(crate) enum Orphaning {
+    /// List the possibly orphaned parts doctor names for a report, each
+    /// route's with the command that clears it; with `--route`,
+    /// `--deleted` and the `--seen` digest listed, say that route's parts
+    /// were deleted by hand, so herald stops keeping them. Refuses where
+    /// there are none, or where they changed since they were listed.
+    Clear {
+        /// The report, as doctor names it.
+        report: String,
+        /// Only this route's parts.
+        #[arg(long)]
+        route: Option<String>,
+        /// Say each part listed for the route was deleted by hand, and
+        /// stop keeping it.
+        #[arg(long, requires_all = ["route", "seen"])]
+        deleted: bool,
+        /// The digest the listing printed for the route's parts: only
+        /// those are cleared.
+        #[arg(long, requires = "deleted")]
+        seen: Option<String>,
+    },
+}
+
 /// The commands that make tokens.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Tokens {
@@ -82,7 +107,16 @@ pub(crate) enum Reading {
         /// How it is printed.
         #[arg(long, value_enum, default_value_t = QueueFormat::Table)]
         format: QueueFormat,
+        /// Say this output is private, so a view's advisories are printed;
+        /// without it they are withheld, as from a route that is not private
+        /// (ADR-0067). A CI job's log may be public.
+        #[arg(long)]
+        private: bool,
     },
+    /// Say what you did by hand about a living post's possibly orphaned
+    /// parts, which doctor names (ADR-0067).
+    #[command(subcommand)]
+    Orphans(Orphaning),
     #[command(flatten)]
     Set(Setting),
     /// Trust another herald by the keys you confirm, list and check those

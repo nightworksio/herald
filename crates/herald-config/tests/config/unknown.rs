@@ -44,7 +44,7 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
             ),
             unknown(
                 "slack",
-                "`token`, `webhook`, `api`, `domain`, `team`, `interactions`, `read_back`, `pin_lookups`, `symbols`, `waits`"
+                "`token`, `webhook`, `api`, `domain`, `team`, `interactions`, `read_back`, `pin_lookups`, `symbols`, `waits`, `org_shared`"
             ),
             unknown(
                 "activitypub",

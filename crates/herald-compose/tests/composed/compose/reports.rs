@@ -52,6 +52,6 @@ fn a_view_is_read_through_the_composed_sources() {
         "test",
     ))
     .unwrap();
-    let read = pollster::block_on(composed.queue("queue"));
+    let read = pollster::block_on(composed.queue("queue", false));
     assert!(matches!(read, Err(Stop::Source(_))), "{read:?}");
 }

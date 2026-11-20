@@ -1,10 +1,12 @@
 //! A view's overviews beside its rows: its repositories' CI capacity, the
 //! runs queued and running and those superseded by a newer push
-//! (ADR-0066).
+//! (ADR-0066), and their advisories as its audience may see them
+//! (ADR-0067).
 
 use jiff::Timestamp;
 
 use super::View;
+use super::advisory::Advised;
 use crate::members::Visibility;
 
 /// The most repositories a view reads capacity of where it reads its
@@ -58,6 +60,17 @@ pub struct Unread {
     pub reason: String,
 }
 
+impl Unread {
+    /// Whether the view `view` names it: a repository `sourced` names only
+    /// where the view holds it, an owner or a source always, so a read that
+    /// failed is never shown as clean and no hidden repository is named.
+    /// Every overview's unread entries are narrowed by it alone.
+    #[must_use]
+    pub fn within(&self, view: &View, sourced: impl Fn(&str) -> bool) -> bool {
+        !sourced(&self.repository) || view.holds(&self.repository)
+    }
+}
+
 /// What a view's overviews found.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Overviews {
@@ -67,6 +80,9 @@ pub struct Overviews {
     pub unread: Vec<Unread>,
     /// The head of every open pull request the view read.
     pub heads: Vec<String>,
+    /// The advisories section, as the surface it leaves through is shown
+    /// it, where the view shows one.
+    pub advisories: Option<Advised>,
 }
 
 impl Overviews {
@@ -80,8 +96,7 @@ impl Overviews {
         if let Some(runs) = &mut self.capacity {
             runs.retain(|run| view.holds(&run.repository));
         }
-        self.unread
-            .retain(|unread| !sourced(&unread.repository) || view.holds(&unread.repository));
+        self.unread.retain(|unread| unread.within(view, &sourced));
         self
     }
 
@@ -122,6 +137,7 @@ impl Overviews {
                 .cloned()
                 .collect(),
             heads: self.heads.clone(),
+            advisories: self.advisories.clone(),
         }
     }
 }

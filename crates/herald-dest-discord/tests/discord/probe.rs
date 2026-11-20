@@ -27,6 +27,7 @@ fn reached(credential: Credential, channel: Option<&str>) -> Discord {
             channel: channel.map(ToOwned::to_owned),
             forum: false,
             subscribe: None,
+            viewers: Vec::new(),
         },
         None,
     )

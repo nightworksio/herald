@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::domain::Domain;
 use crate::interact::SECTION;
-use crate::options::RouteOptions;
+use crate::options::{OrgShared, RouteOptions};
 use crate::read::{failure, json, read, text};
 use crate::request::{EVENT, ROUTE, channel, get, pin, posted, step};
 use crate::web_api::{
@@ -39,6 +39,15 @@ const ALREADY_PINNED: &str = "already_pinned";
 const MESSAGE_GONE: &str = "message_not_found";
 /// What Slack answers for an unpin of a message no longer pinned, or gone.
 const UNPINNED: [&str; 2] = ["no_pin", "message_not_found"];
+/// What Slack answers when part of a request may have taken effect, or
+/// when the answer says nothing about the request itself.
+pub(crate) const UNSETTLED: [&str; 5] = [
+    "fatal_error",
+    "internal_error",
+    "service_unavailable",
+    "request_timeout",
+    "ratelimited",
+];
 /// The platform, as herald names it.
 pub(crate) const SLACK: &str = "Slack";
 
@@ -86,6 +95,7 @@ pub struct Slack {
     pub(crate) wording: Wording,
     pub(crate) waits: Waits,
     pub(crate) identity: Learned<Identity>,
+    pub(crate) org_shared: OrgShared,
 }
 
 impl Slack {
@@ -106,7 +116,15 @@ impl Slack {
             wording: Wording::default(),
             waits: Waits::DEFAULT,
             identity: Learned::new(),
+            org_shared: OrgShared::default(),
         }
+    }
+
+    /// The destination, counting a channel its Enterprise Grid organization
+    /// shares as `org_shared` says.
+    #[must_use]
+    pub fn org_shared(self, org_shared: OrgShared) -> Self {
+        Self { org_shared, ..self }
     }
 
     /// The destination, waiting `waits` where Slack names no wait.

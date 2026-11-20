@@ -460,7 +460,10 @@ fn online_each_route_s_platform_is_asked_and_its_answers_named_once_per_destinat
     assert_eq!(taken.gaps[0].feature, "announcing on the route again");
     assert_eq!(
         taken.notes,
-        ["The destination \"discord\" takes its credential."]
+        [
+            "The route releases: herald withholds advisories sections from this channel: Discord's answer did not say who may view the channel",
+            "The destination \"discord\" takes its credential."
+        ]
     );
     let (refused, _) = ask(&[("/users/@me", 401, "{}"), ("/users/@me", 401, "{}")]);
     assert_eq!(keyed(&refused), [("destinations.discord", None)]);
@@ -946,6 +949,7 @@ fn an_owner_registering_member_webhooks_is_checked_online_for_its_token_and_each
     );
 }
 
+mod addressed;
 mod federation;
 mod kept;
 mod reports;

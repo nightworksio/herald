@@ -83,7 +83,7 @@ impl Opened<'_> {
                 let asked = self.origin.get(
                     &format!("/pipelines?sha={head}&status=failed&per_page={most}"),
                     self.token,
-                );
+                )?;
                 let body = self.asked(http, asked, PIPELINES).await?;
                 let pipelines: Vec<Pipeline> =
                     herald_wire::read(PIPELINES, parse, &body).map_err(Unpolled::unreadable)?;
@@ -102,7 +102,7 @@ impl Opened<'_> {
                 let asked = self.origin.get(
                     &format!("/actions/runs?head_sha={head}&status=failure&per_page={most}"),
                     self.token,
-                );
+                )?;
                 let body = self.asked(http, asked, RUNS).await?;
                 let runs: Runs =
                     herald_wire::read(RUNS, parse, &body).map_err(Unpolled::unreadable)?;
@@ -114,7 +114,7 @@ impl Opened<'_> {
                             run.id
                         ),
                         self.token,
-                    );
+                    )?;
                     let body = self.asked(http, asked, JOBS).await?;
                     let jobs: Jobs =
                         herald_wire::read(JOBS, parse, &body).map_err(Unpolled::unreadable)?;

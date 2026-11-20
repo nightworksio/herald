@@ -505,8 +505,14 @@ fn a_route_taking_private_repositories_to_a_public_place_is_named_where_doctor_w
         "\n[doctor]\nprivate_to_public = \"allow\""
     )));
     assert!(!named(&unlisted("")));
-    assert!(!named(&unlisted(
-        "private = true\n[doctor]\nprivate_to_public = \"warn\""
+    assert!(!named(&crate::owner::owning(
+        crate::harness::private_config("\n[doctor]\nprivate_to_public = \"warn\""),
+        |options| {
+            options.visibility = Some(vec![
+                herald_core::Visibility::Public,
+                herald_core::Visibility::Private,
+            ]);
+        }
     )));
     assert!(!named(&crate::owner::owned_in(
         "\n[doctor]\nprivate_to_public = \"warn\"",

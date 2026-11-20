@@ -277,7 +277,12 @@
         },
         "visibility": {
           "description": "Who sees each Note on the timelines.",
-          "$ref": "#/$defs/Audience"
+          "$ref": "#/$defs/Audience",
+          "default": "public"
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
         },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -291,6 +296,26 @@
         "sources",
         "destination",
         "actor"
+      ]
+    },
+    "AdvisoriesFromFile": {
+      "description": "Which repositories an advisories overview reads.",
+      "oneOf": [
+        {
+          "description": "Its organization's or group's own listings, and a user's members\none by one, the newest pushed first.",
+          "type": "string",
+          "const": "owner"
+        },
+        {
+          "description": "Those the view shows a pull request of.",
+          "type": "string",
+          "const": "shown"
+        },
+        {
+          "description": "Its owner's members, the newest pushed first.",
+          "type": "string",
+          "const": "members"
+        }
       ]
     },
     "AlertAction": {
@@ -666,6 +691,17 @@
               "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
               "type": "string"
             },
+            "viewers": {
+              "description": "The ids of the roles, and of any member a permission overwrite of\ntheir own lets in, expected to view the channel: an advisories\nsection is sent there only where every role but `@everyone` that may\nview it is listed here, an Administrator role and the bot's own role\nincluded, and no member it does not list is let in by an overwrite;\nthe server's owner sees every channel and is not checked (ADR-0067).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
+            },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
               "$ref": "#/$defs/Withdraw",
@@ -807,7 +843,12 @@
             },
             "visibility": {
               "description": "Who sees each status.",
-              "$ref": "#/$defs/Visibility"
+              "$ref": "#/$defs/Visibility",
+              "default": "public"
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
             },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -928,6 +969,10 @@
             "view": {
               "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
               "type": "string"
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
             },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -1050,6 +1095,10 @@
             "view": {
               "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
               "type": "string"
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
             },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -1181,7 +1230,12 @@
             },
             "visibility": {
               "description": "Who sees each Note on the timelines.",
-              "$ref": "#/$defs/Audience"
+              "$ref": "#/$defs/Audience",
+              "default": "public"
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
             },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -1297,6 +1351,10 @@
               "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
               "type": "string"
             },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
+            },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
               "$ref": "#/$defs/Withdraw",
@@ -1409,6 +1467,10 @@
             "view": {
               "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
               "type": "string"
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
             },
             "withdraw": {
               "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -1875,6 +1937,10 @@
               "type": "string",
               "const": "slack"
             },
+            "org_shared": {
+              "description": "How a private channel an Enterprise Grid organization shares with\nits other workspaces counts before an advisories section is sent\nthere: as public, since members of every workspace of the\norganization may be in it (`public`, where unset), or as private\n(`private`), where the operator accepts that whole organization as\nits audience.",
+              "$ref": "#/$defs/OrgShared"
+            },
             "pin_lookups": {
               "description": "How many of its own pins it looks up, one request each, as it finds\na route's earlier pins, from 1 to 100; 25 where unset.",
               "$ref": "#/$defs/PinLookups"
@@ -2257,6 +2323,17 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "viewers": {
+          "description": "The ids of the roles, and of any member a permission overwrite of\ntheir own lets in, expected to view the channel: an advisories\nsection is sent there only where every role but `@everyone` that may\nview it is listed here, an Administrator role and the bot's own role\nincluded, and no member it does not list is let in by an overwrite;\nthe server's owner sees every channel and is not checked (ADR-0067).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
         },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -2850,6 +2927,10 @@
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
         },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
+        },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
           "$ref": "#/$defs/Withdraw",
@@ -2959,6 +3040,10 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
         },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -3362,7 +3447,12 @@
         },
         "visibility": {
           "description": "Who sees each status.",
-          "$ref": "#/$defs/Visibility"
+          "$ref": "#/$defs/Visibility",
+          "default": "public"
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
         },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -3648,6 +3738,10 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
         },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -3945,6 +4039,21 @@
       "maxLength": 1,
       "minLength": 1
     },
+    "OrgShared": {
+      "description": "How a private channel shared across an Enterprise Grid organization\ncounts before an advisories section is sent there (ADR-0067).",
+      "oneOf": [
+        {
+          "description": "As private: the operator accepts every workspace of the organization\nas its audience.",
+          "type": "string",
+          "const": "private"
+        },
+        {
+          "description": "As public: members of any workspace of the organization may be in it.",
+          "type": "string",
+          "const": "public"
+        }
+      ]
+    },
     "Override": {
       "description": "What an owner source makes of the repositories one glob names.",
       "type": "object",
@@ -3981,6 +4090,11 @@
     "OverviewName": {
       "description": "An overview a view shows beside its rows.",
       "oneOf": [
+        {
+          "description": "Its repositories' open security alerts, shown to private routes\nalone (ADR-0067).",
+          "type": "string",
+          "const": "advisories"
+        },
         {
           "description": "Its repositories' CI runs queued and running, and those superseded.",
           "type": "string",
@@ -5152,6 +5266,10 @@
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
           "type": "string"
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
         },
         "withdraw": {
           "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
@@ -7980,6 +8098,17 @@
       "description": "`[views.<name>]`: which open pull requests a report, `herald queue` and\nevery other surface shows, and how.",
       "type": "object",
       "properties": {
+        "advisories_from": {
+          "description": "Which repositories its advisories overview reads: \"owner\", where\nabsent, its organization's or group's own listings, and a user's\nmembers one by one, the newest pushed first; \"shown\", those it shows\na pull request of; or \"members\", its owner's newest pushed. A view\nthat filters its repositories by name reads those it holds one by\none, the first by name. A one-repository source reads its\nrepository.",
+          "$ref": "#/$defs/AdvisoriesFromFile"
+        },
+        "advisory_repositories": {
+          "description": "The most repositories its advisories overview reads one by one: 20\nwhere absent, from 1 to 100. Each costs three requests on GitHub\nand one on GitLab, and their order one more.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 100,
+          "minimum": 1
+        },
         "authors": {
           "description": "The authors it shows, by login, each a glob ignoring case; every one\nwhere empty.",
           "type": "array",
@@ -8007,11 +8136,11 @@
           }
         },
         "capacity_from": {
-          "description": "Which repositories its capacity overview reads: \"shown\", those it\nshows a pull request of, where absent; or \"members\", its owner's\nnewest pushed, at most `capacity_repositories`.",
+          "description": "Which repositories its capacity overview reads: \"shown\", those it\nshows a pull request of, where absent; or \"members\", its owner's\nnewest pushed, at most `capacity_repositories`, or where it filters\nits repositories by name the first by name of those it holds.",
           "$ref": "#/$defs/CapacityFrom"
         },
         "capacity_repositories": {
-          "description": "The most members \"members\" reads, the newest pushed first: 20 where\nabsent, from 1 to 100. Each costs two requests on GitHub and GitLab\nand one on Forgejo, and the order one more.",
+          "description": "The most members \"members\" reads, the newest pushed first, or the\nfirst by name where the view filters its repositories by name: 20\nwhere absent, from 1 to 100. Each costs two requests on GitHub and\nGitLab and one on Forgejo, and the push order one more.",
           "type": "integer",
           "format": "uint",
           "maximum": 100,
@@ -8058,6 +8187,13 @@
         "mode": {
           "description": "Where it reads its pull requests: \"auto\" where absent, kept of each\nsource that takes webhooks where the store keeps pull requests and\nlive otherwise; \"live\" from the forge each time; or \"kept\" from the\nrecords the store keeps, folded from webhooks and reconciled with a\nlisting.",
           "$ref": "#/$defs/ViewMode"
+        },
+        "most_advisories": {
+          "description": "The most open advisories its overview reads, a page of 100 a\nrequest: 1000 where absent, at most 10000. Past it the section says\nmore were open.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 10000,
+          "minimum": 1
         },
         "most_open": {
           "description": "The most open pull requests it lists of each repository: 500 where\nabsent.",

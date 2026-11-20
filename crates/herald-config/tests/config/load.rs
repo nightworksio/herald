@@ -140,7 +140,7 @@ fn a_name_that_resolves_to_nothing_names_what_there_is() {
         .replace("template = \"package-release\"", "template = \"other\"");
     assert_eq!(
         errors(&text),
-        "herald.toml:18:12 routes[0].sources: no source, app, report or rule is named \"herald\"; the sources, apps, reports and rules are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"herald:nudge\", \"herald:queue\", \"herald:rerun\", \"package-release\""
+        "herald.toml:18:12 routes[0].sources: no source, app, report or rule is named \"herald\"; the sources, apps, reports and rules are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"herald:nudge\", \"herald:queue\", \"herald:recalled\", \"herald:rerun\", \"package-release\""
     );
 }
 

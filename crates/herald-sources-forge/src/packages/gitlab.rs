@@ -1,7 +1,7 @@
 //! A GitLab project's packages and its container images' tags
 //! (ADR-0035).
 
-use herald_core::{Address, Cursor, Identity, Visibility, unreserved};
+use herald_core::{Address, Cursor, Identity, Visibility};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
@@ -11,7 +11,7 @@ use super::{
     Asking, CONTAINER, Found, Packaged, container, host_of, packaged, read, seen_packages,
 };
 use crate::Forge;
-use crate::forge::{Repository, validators};
+use crate::forge::{Repository, validators, whole};
 use crate::owner::next;
 
 /// The key of a project's listing of packages among the validators a
@@ -86,7 +86,7 @@ impl Asking<'_> {
                         self.origin.reading().page
                     ),
                     self.token,
-                )
+                )?
                 .conditional(
                     held.and_then(|held| held.etag.as_deref()),
                     held.and_then(|held| held.last_modified.as_deref()),
@@ -153,7 +153,7 @@ impl Asking<'_> {
                 "{path}?per_page={}&page={number}",
                 self.packaging.listed_page
             );
-            let answer = self.ask(http, self.origin.get(&asked, self.token)).await?;
+            let answer = self.ask(http, self.origin.get(&asked, self.token)?).await?;
             let page: Vec<T> = read(what, self.origin.reading().parse, &answer)?;
             *listed += page.len();
             if *listed > self.packaging.most.get() {
@@ -211,8 +211,10 @@ impl Asking<'_> {
                 let answer = self
                     .ask(
                         http,
-                        self.origin
-                            .get(&format!("{base}/{}", unreserved(&tag.name)), self.token),
+                        self.origin.get(
+                            &format!("{base}/{}", whole(&tag.name, crate::forge::TAG)?),
+                            self.token,
+                        )?,
                     )
                     .await?;
                 let read: GitLabTag = read(TAG, self.origin.reading().parse, &answer)?;

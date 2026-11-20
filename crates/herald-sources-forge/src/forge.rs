@@ -5,7 +5,7 @@ use herald_core::{
     Validators, unreserved,
 };
 use herald_core::{media, status};
-use herald_kinds::{Credential, Hooked, Minted};
+use herald_kinds::{Credential, Hooked, Minted, Unpolled};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde::Deserialize;
 
@@ -680,6 +680,45 @@ pub(crate) fn segments(path: &str) -> String {
         .join("/")
 }
 
+/// What a request names a tag.
+pub(crate) const TAG: &str = "tag";
+/// What a request names the repository it asks of.
+const REPOSITORY: &str = "repository's path";
+/// What a request names the owner it asks of.
+pub(crate) const OWNER: &str = "owner";
+/// What a request names a commit or tag object.
+const SHA: &str = "object id";
+/// What a request names a file.
+const FILE: &str = "file path";
+
+/// `text` as one segment of a URL's path, `/` encoded too, as the `what`
+/// a request names; or why it names nothing (ADR-0067).
+///
+/// # Errors
+///
+/// Where it is empty, `.` or `..`.
+pub(crate) fn whole(text: &str, what: &str) -> Result<String, Unpolled> {
+    herald_core::segment(text).ok_or_else(|| {
+        Unpolled::Unreadable(format!(
+            "the {what} \"{text}\" is empty or a dot segment, or holds one, which names nothing in a URL path, so it is not asked for"
+        ))
+    })
+}
+
+/// `path`, each of its `/`-separated parts through the one segment
+/// encoder, as the `what` a request names; or why it names nothing
+/// (ADR-0067).
+///
+/// # Errors
+///
+/// Where a part is empty, `.` or `..`.
+pub(crate) fn named(path: &str, what: &str) -> Result<String, Unpolled> {
+    path.split('/')
+        .map(|part| whole(part, what))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join("/"))
+}
+
 impl Origin {
     /// `repository` on `forge`, asked as `options` say.
     #[must_use]
@@ -736,15 +775,22 @@ impl Origin {
         &self.api
     }
 
-    /// The request for `path` under the repository, carrying `token`.
-    pub(crate) fn get(&self, path: &str, token: Option<&Token>) -> Request {
+    /// The request for `path` under the repository, carrying `token`, the
+    /// repository's path through the one segment encoder.
+    ///
+    /// # Errors
+    ///
+    /// Where a part of the repository's path is empty, `.` or `..`, which
+    /// would reach another path of the API (ADR-0067).
+    pub(crate) fn get(&self, path: &str, token: Option<&Token>) -> Result<Request, Unpolled> {
+        let repository = named(&self.repository, REPOSITORY)?;
         let base = match self.forge {
-            Forge::GitHub | Forge::Forgejo => format!("{}/repos/{}", self.api, self.repository),
+            Forge::GitHub | Forge::Forgejo => format!("{}/repos/{repository}", self.api),
             Forge::GitLab => gitlab::project(&self.api, &self.repository),
         };
         let request = Request::new(Method::Get, SecretText::plain(format!("{base}{path}")))
             .at_most(self.reading.parse);
-        authorized(self.forge, request, token)
+        Ok(authorized(self.forge, request, token))
     }
 
     /// The request for `path` under the API's base URL, carrying `token`.
@@ -758,27 +804,44 @@ impl Origin {
     }
 
     /// The request for the repository's numeric id and name.
-    #[must_use]
-    pub fn repository_request(&self, token: Option<&Token>) -> Request {
+    ///
+    /// # Errors
+    ///
+    /// Where the repository's path names nothing in a URL path.
+    pub fn repository_request(&self, token: Option<&Token>) -> Result<Request, Unpolled> {
         self.get("", token)
     }
 
     /// The request for the newest releases, conditional on the validators
     /// `cursor` holds.
-    #[must_use]
-    pub fn releases_request(&self, cursor: Option<&Cursor>, token: Option<&Token>) -> Request {
+    ///
+    /// # Errors
+    ///
+    /// Where the repository's path names nothing in a URL path.
+    pub fn releases_request(
+        &self,
+        cursor: Option<&Cursor>,
+        token: Option<&Token>,
+    ) -> Result<Request, Unpolled> {
         let page = self.forge.api().page;
-        let request = self.get(&format!("/releases?{page}={}", self.reading.page), token);
-        request.conditional(
+        let request = self.get(&format!("/releases?{page}={}", self.reading.page), token)?;
+        Ok(request.conditional(
             cursor.and_then(|cursor| cursor.etag.as_deref()),
             cursor.and_then(|cursor| cursor.last_modified.as_deref()),
-        )
+        ))
     }
 
     /// The request for the newest tags, conditional on `validators` where
     /// there are any.
-    #[must_use]
-    pub fn tags_request(&self, validators: Option<&Validators>, token: Option<&Token>) -> Request {
+    ///
+    /// # Errors
+    ///
+    /// Where the repository's path names nothing in a URL path.
+    pub fn tags_request(
+        &self,
+        validators: Option<&Validators>,
+        token: Option<&Token>,
+    ) -> Result<Request, Unpolled> {
         let page = self.forge.api().page;
         let path = match self.forge {
             Forge::GitLab => format!(
@@ -787,52 +850,71 @@ impl Origin {
             ),
             Forge::GitHub | Forge::Forgejo => format!("/tags?{page}={}", self.reading.page),
         };
-        self.get(&path, token).conditional(
+        Ok(self.get(&path, token)?.conditional(
             validators.and_then(|validators| validators.etag.as_deref()),
             validators.and_then(|validators| validators.last_modified.as_deref()),
-        )
+        ))
     }
 
     /// The request for the tag `tag` on GitLab or Forgejo; GitHub reads a
     /// tag through its reference.
-    #[must_use]
-    pub fn tag_request(&self, tag: &str, token: Option<&Token>) -> Request {
+    ///
+    /// # Errors
+    ///
+    /// Where the tag names nothing in a URL path.
+    pub fn tag_request(&self, tag: &str, token: Option<&Token>) -> Result<Request, Unpolled> {
         let path = match self.forge {
-            Forge::GitLab => format!("/repository/tags/{}", unreserved(tag)),
-            Forge::GitHub | Forge::Forgejo => format!("/tags/{}", segments(tag)),
+            Forge::GitLab => format!("/repository/tags/{}", whole(tag, TAG)?),
+            Forge::GitHub | Forge::Forgejo => format!("/tags/{}", named(tag, TAG)?),
         };
         self.get(&path, token)
     }
 
     /// The request for GitHub's reference of the tag `tag`, naming what it
     /// points at.
-    #[must_use]
-    pub fn reference_request(&self, tag: &str, token: Option<&Token>) -> Request {
-        self.get(&format!("/git/ref/tags/{}", segments(tag)), token)
+    ///
+    /// # Errors
+    ///
+    /// Where the tag names nothing in a URL path.
+    pub fn reference_request(&self, tag: &str, token: Option<&Token>) -> Result<Request, Unpolled> {
+        self.get(&format!("/git/ref/tags/{}", named(tag, TAG)?), token)
     }
 
     /// The request for the annotated tag object `sha`.
-    #[must_use]
-    pub fn tag_object_request(&self, sha: &str, token: Option<&Token>) -> Request {
-        self.get(&format!("/git/tags/{}", unreserved(sha)), token)
+    ///
+    /// # Errors
+    ///
+    /// Where the sha names nothing in a URL path.
+    pub fn tag_object_request(
+        &self,
+        sha: &str,
+        token: Option<&Token>,
+    ) -> Result<Request, Unpolled> {
+        self.get(&format!("/git/tags/{}", whole(sha, SHA)?), token)
     }
 
     /// The request for GitHub's commit `sha`.
-    #[must_use]
-    pub fn commit_request(&self, sha: &str, token: Option<&Token>) -> Request {
-        self.get(&format!("/git/commits/{}", unreserved(sha)), token)
+    ///
+    /// # Errors
+    ///
+    /// Where the sha names nothing in a URL path.
+    pub fn commit_request(&self, sha: &str, token: Option<&Token>) -> Result<Request, Unpolled> {
+        self.get(&format!("/git/commits/{}", whole(sha, SHA)?), token)
     }
 
     /// The request for the raw bytes of the file at `path`, at `reference`
     /// or the default branch, conditional on `etag` where there is one.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Where the path names nothing in a URL path.
     pub fn file_request(
         &self,
         (path, reference): (&str, Option<&str>),
         token: Option<&Token>,
         etag: Option<&str>,
-    ) -> Request {
-        let segments = segments(path);
+    ) -> Result<Request, Unpolled> {
+        let segments = named(path, FILE)?;
         let at = |given: Option<&str>| {
             given.map_or_else(String::new, |reference| {
                 format!("?ref={}", unreserved(reference))
@@ -842,106 +924,30 @@ impl Origin {
             Forge::GitHub => format!("/contents/{segments}{}", at(reference)),
             Forge::GitLab => format!(
                 "/repository/files/{}/raw{}",
-                unreserved(path),
+                whole(path, FILE)?,
                 at(Some(reference.unwrap_or(gitlab::DEFAULT_REF)))
             ),
             Forge::Forgejo => format!("/raw/{segments}{}", at(reference)),
         };
-        let request = self.get(&file, token).conditional(etag, None);
-        match self.forge {
+        let request = self.get(&file, token)?.conditional(etag, None);
+        Ok(match self.forge {
             Forge::GitHub => {
                 request.replacing("Accept", SecretText::plain(herald_wire::github::RAW))
             }
             Forge::GitLab | Forge::Forgejo => request,
-        }
+        })
     }
 
     /// The request for the release tagged `tag`.
-    #[must_use]
-    pub fn release_request(&self, tag: &str, token: Option<&Token>) -> Request {
-        let path = format!("{}{}", self.forge.api().tagged, unreserved(tag));
+    ///
+    /// # Errors
+    ///
+    /// Where the tag names nothing in a URL path.
+    pub fn release_request(&self, tag: &str, token: Option<&Token>) -> Result<Request, Unpolled> {
+        let path = format!("{}{}", self.forge.api().tagged, whole(tag, TAG)?);
         self.get(&path, token)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn each_forge_signs_under_its_own_scheme() {
-        assert_eq!(
-            [Forge::GitHub, Forge::GitLab, Forge::Forgejo].map(|forge| forge.scheme().name),
-            ["github", "gitlab", "forgejo"]
-        );
-    }
-
-    #[test]
-    fn each_forge_is_named_as_a_source_s_kind_writes_it() {
-        assert_eq!(Forge::ALL.map(Forge::kind), ["github", "gitlab", "forgejo"]);
-    }
-
-    #[test]
-    fn a_forge_s_repositories_are_named_on_its_api_s_host_without_github_s_api_label() {
-        for (forge, api, host) in [
-            (Forge::GitHub, "https://api.github.com", "github.com"),
-            (Forge::GitHub, "https://api.acme.ghe.com", "acme.ghe.com"),
-            (
-                Forge::GitHub,
-                "https://ghe.example:8443/api/v3",
-                "ghe.example:8443",
-            ),
-            (Forge::GitLab, "https://gitlab.com/api/v4", "gitlab.com"),
-            (
-                Forge::Forgejo,
-                "https://api.forge.example/api/v1",
-                "api.forge.example",
-            ),
-        ] {
-            assert_eq!(host_of(forge, api), host, "{api}");
-        }
-        assert_eq!(host_of(Forge::GitLab, "not a url"), "");
-        let origin = Origin::new(Forge::GitHub, &crate::SourceOptions::default(), "cli/cli");
-        assert_eq!(origin.host(), "github.com");
-    }
-
-    #[test]
-    fn each_forge_takes_a_repository_in_its_shape_and_an_api_at_a_web_address() {
-        let options = |repository: &str, api: Option<&str>| crate::SourceOptions {
-            repository: Some(repository.to_owned()),
-            api: api.map(ToOwned::to_owned),
-            ..crate::SourceOptions::default()
-        };
-        for forge in Forge::ALL {
-            assert_eq!(
-                options("nightworksio/herald", Some("https://forge.example/api/v1")).check(forge),
-                Ok(())
-            );
-            assert_eq!(
-                options("a/b", Some("ftp://forge.example")).check(forge),
-                Err("\"ftp://forge.example\" is not a web address; give the API's base URL, such as https://forge.example/api/v1".to_owned())
-            );
-        }
-        assert_eq!(options("group/sub/name", None).check(Forge::GitLab), Ok(()));
-        assert!(
-            options("group/sub/name", None)
-                .check(Forge::GitHub)
-                .is_err()
-        );
-        for (forge, shape) in [
-            (Forge::GitHub, "owner/name"),
-            (
-                Forge::GitLab,
-                "the project's full path, such as group/subgroup/name",
-            ),
-            (Forge::Forgejo, "owner/name"),
-        ] {
-            assert_eq!(
-                options("a/../b", None).check(forge),
-                Err(format!(
-                    "\"a/../b\" is not a repository; give it as {shape}, of letters, digits, '.', '_' and '-'"
-                ))
-            );
-        }
-    }
-}
+mod tests;

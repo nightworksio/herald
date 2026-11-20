@@ -99,3 +99,201 @@ fn a_view_the_config_does_not_name_is_refused_and_the_views_named() {
         refused.err
     );
 }
+
+#[test]
+fn a_view_s_advisories_are_printed_only_where_the_operator_says_the_output_is_private() {
+    let setup = setup(&format!(
+        "{CONFIG}[views.security]\nmost_pulls = 0\noverviews = [\"advisories\"]\n"
+    ));
+    let world = World::default();
+    listed(&world);
+    let alert = json!([{
+        "number": 3, "state": "open",
+        "html_url": "https://github.com/cli/cli/security/dependabot/3",
+        "created_at": "2026-10-01T12:00:00Z",
+        "security_advisory": { "summary": "Prototype pollution", "severity": "high" },
+    }]);
+    let mut state = world.state.lock().unwrap();
+    for (listing, answer) in [
+        ("code-scanning", (200, "[]".to_owned())),
+        ("dependabot", (200, alert.to_string())),
+        ("secret-scanning", (403, "{}".to_owned())),
+    ] {
+        let hidden = if listing == "secret-scanning" {
+            "&hide_secret=true"
+        } else {
+            ""
+        };
+        let path = format!("/repos/cli/cli/{listing}/alerts?state=open&per_page=100{hidden}");
+        state.forge.insert(path, answer);
+    }
+    drop(state);
+    let withheld = herald(&setup, &world, &["queue", "security"]);
+    assert_eq!((withheld.code, withheld.err.as_str()), (DONE, ""));
+    assert_eq!(withheld.out.lines().last(), Some(herald_core::WITHHELD));
+    assert!(!withheld.out.contains("dependabot"), "{}", withheld.out);
+    let json = herald(&setup, &world, &["queue", "security", "--format", "json"]);
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(read["overviews"]["withheld"], herald_core::WITHHELD);
+    assert!(read["overviews"].get("advisories").is_none());
+    let private = herald(&setup, &world, &["queue", "security", "--private"]);
+    let lines: Vec<&str> = private.out.lines().collect();
+    assert!(lines.contains(&"advisories (1)"), "{}", private.out);
+    assert!(
+        lines.iter().any(|line| line
+            .starts_with("  cli/cli dependency-scanning high: Prototype pollution, open, ")
+            && line.ends_with("  https://github.com/cli/cli/security/dependabot/3")),
+        "{}",
+        private.out
+    );
+    assert!(
+        lines.iter().any(|line| line.starts_with(
+            "  cli/cli unread, because GitHub's secret scanning alerts: the token may not read them"
+        )),
+        "{}",
+        private.out
+    );
+    assert!(!private.out.contains(herald_core::WITHHELD));
+    let json = herald(
+        &setup,
+        &world,
+        &["queue", "security", "--format", "json", "--private"],
+    );
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(read["overviews"]["advisories"]["count"], 1);
+    assert!(read["overviews"].get("withheld").is_none());
+}
+
+#[test]
+fn clearing_a_report_s_orphans_where_it_holds_none_is_refused() {
+    let setup = setup(&viewed());
+    let world = World::default();
+    let refused = herald(&setup, &world, &["orphans", "clear", "weekly"]);
+    assert_eq!(refused.code, STOPPED);
+    assert!(
+        refused
+            .err
+            .contains("no living post of the report weekly holds a possibly orphaned part"),
+        "{}",
+        refused.err
+    );
+}
+
+/// The ledger key of the report `live`'s living post on `route`.
+fn living(route: &str) -> herald_core::Key {
+    herald_core::Key::derive(
+        &herald_core::RouteId::new(route),
+        &herald_core::Identity::new(herald_core::living_identity("live")),
+    )
+}
+
+/// The report `live`'s living posts on the routes `a` and `b`, kept in
+/// the store `world` holds, each with one part sent and never found again.
+fn strayed(world: &World) {
+    use herald_ports::{Cursors as _, Ledger as _, Store as _};
+    let store = kept(world);
+    let posts: Vec<herald_core::AdvisedPost> = ["a", "b"]
+        .into_iter()
+        .map(|route| herald_core::AdvisedPost {
+            route: herald_core::RouteId::new(route),
+            destination: herald_core::DestinationName::new("room"),
+            placed: String::new(),
+        })
+        .collect();
+    let cursor = herald_core::Cursor {
+        advised: posts,
+        ..herald_core::Cursor::default()
+    };
+    let live = herald_core::SourceName::new("live");
+    pollster::block_on(store.cursors().put_cursor(&live, &cursor, None)).unwrap();
+    for route in ["a", "b"] {
+        let mut entry = herald_core::Entry::new(living(route));
+        entry.strays.push(herald_core::Stray {
+            part: 0,
+            token: format!("{route}.first"),
+        });
+        pollster::block_on(store.ledger().put_entry(&entry, None)).unwrap();
+    }
+}
+
+/// How many parts of the report `live`'s living post on `route` the store
+/// `world` holds still keeps as possibly orphaned.
+fn strays(world: &World, route: &str) -> usize {
+    use herald_ports::{Ledger as _, Store as _};
+    let store = kept(world);
+    pollster::block_on(store.ledger().entry(&living(route)))
+        .unwrap()
+        .map_or(0, |entry| entry.value.strays.len())
+}
+
+#[test]
+fn orphans_are_listed_with_each_route_s_digest_and_cleared_one_route_at_a_time() {
+    let setup = setup(&viewed());
+    let world = World::default();
+    strayed(&world);
+    let listed = herald(&setup, &world, &["orphans", "clear", "live"]);
+    assert_eq!((listed.code, listed.err.as_str()), (DONE, ""));
+    let lines: Vec<&str> = listed.out.lines().collect();
+    assert_eq!(lines.len(), 5, "{}", listed.out);
+    let seen = |route: &str| {
+        let confirm = format!(
+            "  once deleted by hand: herald orphans clear live --route {route} --deleted --seen "
+        );
+        let line = lines
+            .iter()
+            .find_map(|line| line.strip_prefix(confirm.as_str()))
+            .unwrap_or_else(|| panic!("{}", listed.out));
+        assert!(
+            line.len() == 12 && line.chars().all(|digit| digit.is_ascii_hexdigit()),
+            "{line}"
+        );
+        line.to_owned()
+    };
+    assert_eq!(
+        [lines[0], lines[2]],
+        [
+            "possibly orphaned: the post of the report live's living post on the route a",
+            "possibly orphaned: the post of the report live's living post on the route b",
+        ]
+    );
+    let (a, b) = (seen("a"), seen("b"));
+    assert_ne!(a, b);
+    assert!(
+        lines[4].starts_with(
+            "Clearing a route's parts with the command shown makes herald stop tracking them"
+        ),
+        "{}",
+        lines[4]
+    );
+    assert_eq!((strays(&world, "a"), strays(&world, "b")), (1, 1));
+    let unnamed = herald(&setup, &world, &["orphans", "clear", "live", "--deleted"]);
+    assert_ne!(unnamed.code, DONE);
+    assert_eq!((strays(&world, "a"), strays(&world, "b")), (1, 1));
+    let confirm = [
+        "orphans",
+        "clear",
+        "live",
+        "--route",
+        "a",
+        "--deleted",
+        "--seen",
+        a.as_str(),
+    ];
+    let cleared = herald(&setup, &world, &confirm);
+    assert_eq!((cleared.code, cleared.err.as_str()), (DONE, ""));
+    assert_eq!(
+        cleared.out.trim_end(),
+        "cleared: the post of the report live's living post on the route a"
+    );
+    assert_eq!((strays(&world, "a"), strays(&world, "b")), (0, 1));
+    let again = herald(&setup, &world, &confirm);
+    assert_eq!(again.code, STOPPED);
+    assert!(
+        again
+            .err
+            .contains("no living post of the report live holds a possibly orphaned part on the route a, so nothing was cleared"),
+        "{}",
+        again.err
+    );
+    assert_eq!(strays(&world, "b"), 1);
+}

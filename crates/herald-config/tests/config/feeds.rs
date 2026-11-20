@@ -169,7 +169,7 @@ fn a_feed_naming_no_bound_is_fitted_to_a_store_keeping_small_records() {
 }
 
 #[test]
-fn a_private_route_to_a_feed_does_not_load_unless_doctor_warns() {
+fn a_private_route_to_a_feed_does_not_load_whatever_doctor_says() {
     let private = format!("{ROUTE}private = true\n");
     let error = loaded(
         "kind = \"sqlite\"",
@@ -178,11 +178,21 @@ fn a_private_route_to_a_feed_does_not_load_unless_doctor_warns() {
     )
     .unwrap_err();
     assert!(
-            error.contains("routes[0].private: this route is declared private, and a herald feed is served to anyone and takes only public events; route private events elsewhere, or set [doctor] private_to_public = \"warn\""),
+            error.contains("routes[0].private: this route is declared private, but a herald feed is served to anyone; remove private = true, and route private events elsewhere"),
             "{error}"
         );
-    let warned = format!("[doctor]\nprivate_to_public = \"warn\"\n{FEDERATION}{FEED}");
-    assert!(loaded("kind = \"sqlite\"", &warned, &private).is_ok());
+    for guard in ["warn", "allow"] {
+        let widened = format!("[doctor]\nprivate_to_public = \"{guard}\"\n{FEDERATION}{FEED}");
+        assert!(
+            loaded("kind = \"sqlite\"", &widened, &private).is_err(),
+            "{guard}"
+        );
+    }
+    let config = sqlite(&format!("{FEDERATION}{FEED}")).unwrap();
+    assert_eq!(
+        config.surface(&config.routes[0].route.id),
+        herald_core::Surface::Feed
+    );
 }
 
 #[test]

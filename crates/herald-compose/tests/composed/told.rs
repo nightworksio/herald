@@ -409,6 +409,18 @@ fn a_route_says_what_it_did_with_an_announcement() {
 }
 
 #[test]
+fn a_route_sent_an_advisories_section_says_one_line_whatever_it_sent() {
+    assert_eq!(
+        told::report(&announced(Outcome::Sealed { stopped: false })),
+        "releases: its private post is up to date; what it shows is not told"
+    );
+    assert_eq!(
+        told::report(&announced(Outcome::Sealed { stopped: true })),
+        "releases: stopped before its private post was up to date; why is not told. The next run sends what remains."
+    );
+}
+
+#[test]
 fn an_owner_s_webhook_withheld_says_why() {
     use herald_flows::Withheld;
     for (withheld, why) in [

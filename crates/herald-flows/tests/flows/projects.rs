@@ -201,16 +201,22 @@ fn each_project_s_actor_is_served_while_named_kept_while_followed_after_it_leave
 }
 
 #[test]
-fn a_member_not_everyone_may_see_has_an_actor_only_on_a_private_route_or_where_doctor_allows_it() {
-    for (changed, status) in [("private = true", 200), ("private = false", 404)] {
-        let text = config_text().replacen("private = false", changed, 1);
-        let world = world_of(configured(&text));
-        assert_eq!(
-            world.answer(&get("/users/secret")).reply.status,
-            status,
-            "{changed}"
-        );
-    }
+fn a_member_not_everyone_may_see_has_an_actor_only_where_doctor_allows_it() {
+    let declared = config_text().replacen("private = false", "private = true", 1);
+    let refused = load(
+        "herald.toml",
+        &declared,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        refused.contains("herald's own ActivityPub actor serves its Notes to anyone who looks"),
+        "{refused}"
+    );
+    let world = world_of(projects());
+    assert_eq!(world.answer(&get("/users/secret")).reply.status, 404);
     let allowed = format!("{}[doctor]\nprivate_to_public = \"allow\"\n", config_text());
     let world = world_of(configured(&allowed));
     assert_eq!(world.answer(&get("/users/secret")).reply.status, 200);
@@ -760,7 +766,7 @@ fn doctor_names_each_actor_s_name_more_than_one_holds() {
 
 #[test]
 fn a_name_one_route_holds_as_gone_is_served_by_the_route_that_holds_it_live() {
-    let team = "[[routes]]\nid = \"team\"\nsources = [\"org\"]\ndestination = \"fedi\"\ntemplate = \"t\"\nactor = \"{{ event.project }}\"\nprivate = true\n";
+    let team = "[[routes]]\nid = \"team\"\nsources = [\"org\"]\ndestination = \"fedi\"\ntemplate = \"t\"\nactor = \"{{ event.project }}\"\n[doctor]\nprivate_to_public = \"allow\"\n";
     let world = World::with(
         configured(&format!("{}{team}", config_text())),
         Script::default(),

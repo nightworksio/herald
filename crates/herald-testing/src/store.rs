@@ -1,5 +1,5 @@
-use herald_core::{Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
-use herald_ports::{Decisions, Pulls};
+use herald_core::{AdvisedReports, Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
+use herald_ports::{Decisions, Pulls, Recalls};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
@@ -42,6 +42,7 @@ struct FakeState {
     peer_keys: BTreeMap<String, Versioned<PeerKeys>>,
     audits: BTreeMap<(String, String), Versioned<AuditDay>>,
     windows: BTreeMap<String, Versioned<Window>>,
+    recalls: BTreeMap<(), Versioned<AdvisedReports>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -626,6 +627,21 @@ impl Published for FakeStore {
     }
 }
 
+impl Recalls for FakeStore {
+    async fn advised(&self) -> Result<Option<Versioned<AdvisedReports>>, StoreError> {
+        Ok(lock(&self.state).recalls.get(&()).cloned())
+    }
+
+    async fn put_advised(
+        &self,
+        reports: &AdvisedReports,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(&mut state.recalls, (), reports, expected))
+    }
+}
+
 impl Pulls for FakeStore {
     async fn pull(&self, key: &PullKey) -> Result<Option<Versioned<KeptPull>>, StoreError> {
         Ok(lock(&self.state).pulls.get(key).cloned())
@@ -720,6 +736,7 @@ mod tests {
         assert!(itself(store.positions()));
         assert!(itself(store.decisions()));
         assert!(itself(store.pulls()));
+        assert!(itself(store.recalls()));
         assert!(itself(store.waiting()));
     }
 }

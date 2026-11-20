@@ -72,6 +72,18 @@ pub fn unreserved(text: &str) -> String {
     Escaping::UNRESERVED.escape(text)
 }
 
+/// `text` as one segment of a URL's path, every byte but a URL's
+/// unreserved ones percent-encoded; none where it is empty, `.` or `..`,
+/// which a URL parser takes as a step through the path however its dots
+/// are encoded, so no id can reach another path (ADR-0067).
+#[must_use]
+pub fn segment(text: &str) -> Option<String> {
+    match text {
+        "" | "." | ".." => None,
+        _ => Some(unreserved(text)),
+    }
+}
+
 /// `url` with every byte that could end a Markdown link or open markup in
 /// it percent-encoded.
 #[must_use]
@@ -89,6 +101,29 @@ mod tests {
         mark: '~',
         upper: false,
     };
+
+    #[test]
+    fn a_segment_of_dots_alone_is_refused_since_a_parser_steps_through_it_however_encoded() {
+        for folded in ["%2E%2E", "%2e%2e", ".%2E", "%2E", "."] {
+            let parsed = url::Url::parse(&format!("https://h.example/a/{folded}/b")).unwrap();
+            assert_ne!(parsed.path(), format!("/a/{folded}/b"), "{folded}");
+        }
+        for refused in ["", ".", ".."] {
+            assert_eq!(segment(refused), None, "{refused:?}");
+        }
+        for (id, sent) in [
+            ("%2e%2e", "%252e%252e"),
+            ("a/b", "a%2Fb"),
+            ("a?b", "a%3Fb"),
+            ("...", "..."),
+            ("$x.y", "%24x.y"),
+        ] {
+            let encoded = segment(id).unwrap();
+            assert_eq!(encoded, sent);
+            let parsed = url::Url::parse(&format!("https://h.example/a/{encoded}/b")).unwrap();
+            assert_eq!(parsed.path(), format!("/a/{sent}/b"), "{id}");
+        }
+    }
 
     #[test]
     fn every_byte_but_a_url_s_unreserved_ones_is_percent_encoded() {

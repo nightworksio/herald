@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions, Waits};
+use herald_core::{Answering, Delivery, Profile, SecretRef, Symbols, WaitOptions, Waits};
 use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
 use crate::setup::Setup;
@@ -122,6 +122,25 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
     /// of its kind.
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)>;
 
+    /// Why a route placed as `placed` and delivering as `delivery` posts
+    /// where anyone may read it, whatever the route says of its place; none
+    /// where its place may be private. Every kind decides it (ADR-0067).
+    fn public(&self, placed: &Placed, delivery: &Delivery) -> Option<&'static str>;
+
+    /// How herald learns who may read the place a route placed as `placed`
+    /// posts to, before each run's first advisories section is sent
+    /// there. Every kind decides it (ADR-0067).
+    fn checking(&self, placed: &Placed) -> Checking;
+
+    /// A route's own options for it, as [`crate::Placement::written`] wrote
+    /// them, read back and checked as a route's are at load: where a living
+    /// post it was sent is, so herald can edit it after the route is gone;
+    /// none where they do not read or the kind's check refuses them, as the
+    /// record comes from the store (ADR-0067).
+    fn recalled(&self, _written: &str) -> Option<Placed> {
+        None
+    }
+
     /// It, reached for a route placed as `placed` with its credential
     /// `secret` and herald's own `base` URL: where `placed` are options of
     /// its kind.
@@ -147,6 +166,36 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
         _secrets: &'a dyn DynSecrets,
     ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
         Box::pin(std::future::ready(Ok(None)))
+    }
+}
+
+/// How herald learns who may read the place a route posts to, before each
+/// run's first advisories section is sent there (ADR-0067).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Checking {
+    /// It asks the destination what `asks` says, by `requests` requests.
+    Asked {
+        /// What it asks, and what the credential needs to be answered.
+        asks: &'static str,
+        /// How many requests it takes.
+        requests: usize,
+    },
+    /// It cannot ask, for the reason given, which says how to make it
+    /// checkable: a route there is withheld a section unless it says
+    /// `vouch_unchecked = true`.
+    Unchecked(&'static str),
+    /// Its kind is never sent a section.
+    Unadvised,
+}
+
+impl Checking {
+    /// Why herald cannot ask who may read the place, where it cannot.
+    #[must_use]
+    pub const fn unchecked(self) -> Option<&'static str> {
+        match self {
+            Self::Unchecked(why) => Some(why),
+            Self::Asked { .. } | Self::Unadvised => None,
+        }
     }
 }
 

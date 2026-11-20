@@ -22,6 +22,7 @@ pub(crate) struct Script {
     headers: Vec<(String, String)>,
     heads: Heads,
     made: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    keyed: std::sync::Arc<std::collections::BTreeMap<String, Response>>,
 }
 
 impl Script {
@@ -56,6 +57,24 @@ impl Script {
             script.heads.lock().unwrap().push_back(response.headers);
         }
         script
+    }
+
+    /// The script answering each request by its URL, whatever the order,
+    /// with `keyed`'s answer to it, else 404.
+    pub(crate) fn keyed(keyed: std::collections::BTreeMap<String, Response>) -> Self {
+        Self {
+            keyed: std::sync::Arc::new(keyed),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn then(self, answers: &[(&str, u16, &str)]) -> Self {
+        self.answers.lock().unwrap().extend(
+            answers
+                .iter()
+                .map(|(line, status, body)| ((*line).to_owned(), *status, (*body).to_owned())),
+        );
+        self
     }
 
     /// How many requests it was sent.
@@ -96,6 +115,20 @@ impl Http for Script {
                 .map(|(name, value)| (name.clone(), value.expose()))
                 .collect(),
         );
+        if let Some(keyed) = self.keyed.get(&request.url.redacted()) {
+            return Ok(keyed.clone());
+        }
+        if !self.keyed.is_empty() && self.answers.lock().unwrap().is_empty() {
+            return Ok(self
+                .keyed
+                .get(&request.url.redacted())
+                .cloned()
+                .unwrap_or(Response {
+                    status: 404,
+                    headers: Vec::new(),
+                    body: b"{}".to_vec(),
+                }));
+        }
         let Some((expected, status, body)) = self.answers.lock().unwrap().pop_front() else {
             return Err(HttpError::Unreachable {
                 reason: format!("nothing scripted for {line}"),

@@ -183,7 +183,11 @@ impl Matrix {
             Ok(target) => target,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        let held = match pins(&http.send(pinned(self)).await?, self.waits) {
+        let asked = match pinned(self) {
+            Ok(asked) => asked,
+            Err(declined) => return Ok(Sent::Refused(declined.to_string())),
+        };
+        let held = match pins(&http.send(asked).await?, self.waits) {
             Ok(held) => held,
             Err(sent) => return Ok(sent),
         };
@@ -208,7 +212,11 @@ impl Matrix {
         if wanted == held {
             return Ok(landed);
         }
-        let answer = http.send(repinned(self, &wanted)).await?;
+        let written = match repinned(self, &wanted) {
+            Ok(written) => written,
+            Err(declined) => return Ok(Sent::Refused(declined.to_string())),
+        };
+        let answer = http.send(written).await?;
         Ok(failure(&answer, self.waits).unwrap_or(landed))
     }
 
@@ -216,7 +224,11 @@ impl Matrix {
     /// (ADR-0048): nothing where it is not pinned or the pins were written,
     /// and otherwise what the homeserver's trouble means.
     async fn unpinned<H: Http>(&self, http: &H, post: &str) -> Result<Option<Sent>, HttpError> {
-        let held = match pins(&http.send(pinned(self)).await?, self.waits) {
+        let asked = match pinned(self) {
+            Ok(asked) => asked,
+            Err(declined) => return Ok(Some(Sent::Refused(declined.to_string()))),
+        };
+        let held = match pins(&http.send(asked).await?, self.waits) {
             Ok(held) => held,
             Err(sent) => return Ok(Some(sent)),
         };
@@ -224,7 +236,11 @@ impl Matrix {
             return Ok(None);
         }
         let left: Vec<String> = held.into_iter().filter(|pin| pin != post).collect();
-        let answer = http.send(repinned(self, &left)).await?;
+        let written = match repinned(self, &left) {
+            Ok(written) => written,
+            Err(declined) => return Ok(Some(Sent::Refused(declined.to_string()))),
+        };
+        let answer = http.send(written).await?;
         Ok(failure(&answer, self.waits))
     }
 
@@ -248,7 +264,11 @@ impl Matrix {
         };
         let mut stale = Vec::new();
         for pin in candidates {
-            let response = http.send(event(self, pin)).await?;
+            let asked = match event(self, pin) {
+                Ok(asked) => asked,
+                Err(declined) => return Ok(Err(Sent::Refused(declined.to_string()))),
+            };
+            let response = http.send(asked).await?;
             if response.status == status::NOT_FOUND {
                 continue;
             }

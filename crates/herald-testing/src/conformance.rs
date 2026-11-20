@@ -1,8 +1,8 @@
-use herald_core::{Answer, Decided};
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, Proof, RouteId,
-    Schedule, Shown, Signal, SourceName, State, Step, Subscription, Tombstone, Validators,
+    AdvisedPost, Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, Proof,
+    RouteId, Schedule, Shown, Signal, SourceName, State, Step, Subscription, Tombstone, Validators,
 };
+use herald_core::{Answer, Decided};
 use herald_ports::Decisions;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -19,6 +19,7 @@ mod pending;
 mod published;
 mod pulls;
 mod raced;
+mod recalls;
 mod sql;
 mod tokens;
 mod unkept;
@@ -84,6 +85,11 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         let mut checks = Checks::default();
         pulls::pulls(kept, &mut checks).await?;
         pulls::reconciled(kept, &mut checks).await?;
+        checks.done()?;
+    }
+    if let Some(kept) = store.recalls() {
+        let mut checks = Checks::default();
+        recalls::recalls(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.waiting() {
@@ -236,6 +242,12 @@ fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
         sequence: Some(7),
         log: Some(3),
         ahead: vec!["conformance".to_owned()],
+        advised: vec![AdvisedPost {
+            route: RouteId::new("conformance"),
+            destination: DestinationName::new("conformance"),
+            placed: format!("{{\"channel\":\"{etag}\"}}"),
+        }],
+        pending: vec![RouteId::new("conformance")],
         projects: identities
             .iter()
             .map(|identity| (identity.clone(), "conformance".to_owned()))

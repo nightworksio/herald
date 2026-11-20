@@ -8,6 +8,7 @@
 
 mod activitypub;
 mod actor;
+mod audience;
 mod config;
 mod markers;
 mod mastodon;
@@ -26,6 +27,7 @@ pub use actor::{
     ActorError, ActorKey, Inboxes, KeyOwner, activity_json, actor_key, actor_of, confirms,
     document, inboxes, key_request, origin, same_origin,
 };
+pub use audience::ASKS;
 pub use config::{ACTIVITYPUB, ACTOR_SCHEME, ActorKind, MASTODON, MastodonKind};
 pub use markers::MastodonMarkers;
 pub use mastodon::{LIMIT, MASTODON_MARKUP, Mastodon, profile, shortest};

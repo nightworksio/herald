@@ -165,7 +165,7 @@ impl Interactions {
 
 /// What a route says about subscribing on Slack, where it mentions its
 /// subscribers.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "SlackSubscribe")]
 pub struct Subscribe {

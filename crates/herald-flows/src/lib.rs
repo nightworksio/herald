@@ -17,8 +17,10 @@
 //! trusted for it.
 
 mod acting;
+mod advised;
 mod announce;
 mod approving;
+mod audience;
 mod budget;
 mod command_answers;
 mod command_endpoints;
@@ -31,11 +33,13 @@ mod housekeep;
 mod installations;
 mod kept;
 mod oidc;
+mod orphans;
 pub mod peering;
 mod poll;
 mod prepare;
 mod preview;
 mod publishing;
+mod recall;
 mod report;
 mod reruns;
 mod room;
@@ -56,12 +60,13 @@ pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Federation, FeedShown, Findings, Gap, GrantShown, Here, Layer,
     Memory, OwnKey, PeerShown, Pulls, PushShown, Reached, Rounds, RunShown, Shown, SourceShown,
     Tier, doctor, egress_guarded, federation, granted, handed_over, kept_tokens, keys, online,
-    secrets, shared, unserved,
+    recalls, secrets, shared, unserved,
 };
 pub use follows::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
 pub use installations::AHEAD as MINTED_AHEAD;
+pub use orphans::{Orphaned, orphans, orphans_cleared};
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
 pub use prepare::{
     Asking, Connected, PrepareError, Prepared, PreparedPages, UnreadSecret, prepare,

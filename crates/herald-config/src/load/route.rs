@@ -655,6 +655,7 @@ impl Loader<'_> {
             options,
             profile,
             private,
+            vouched: route.vouch_unchecked.unwrap_or_default(),
             stated,
             unstated: if stated {
                 Vec::new()

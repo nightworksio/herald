@@ -10,10 +10,11 @@ use herald_wire::answered;
 
 use super::reconcile::Paged;
 use super::{Opened, PAGE, PER_PULL, ReadPath, github, gitlab, listing};
-use crate::forge::authorized;
+use crate::forge::{OWNER, authorized, whole};
 use crate::owner::Owned;
 use crate::{Forge, Origin, SourceOptions, Token};
 
+mod advised;
 mod pushed;
 mod search;
 
@@ -98,8 +99,9 @@ impl Scoped {
 
     /// The request for the `number`th page of the query `lists` over the
     /// repositories of the owner, of the kind `owner`.
-    fn request(&self, (lists, owner): (Lists, Owner), number: usize) -> Request {
+    fn request(&self, (lists, owner): (Lists, Owner), number: usize) -> Result<Request, Unpolled> {
         let name = &self.owner;
+        let segment = whole(name, OWNER)?;
         let path = match lists {
             Lists::Search => {
                 let qualifier = match owner {
@@ -113,11 +115,10 @@ impl Scoped {
             }
             Lists::Group => gitlab::group_path(name, number),
             Lists::Issues | Lists::Members => format!(
-                "/repos/issues/search?type=pulls&state=open&owner={}&limit={PAGE}&page={number}",
-                herald_core::unreserved(name)
+                "/repos/issues/search?type=pulls&state=open&owner={segment}&limit={PAGE}&page={number}"
             ),
         };
-        self.root.rooted(&path, self.token.as_ref())
+        Ok(self.root.rooted(&path, self.token.as_ref()))
     }
 
     /// The page of the query `lists` that `answer` holds, each pull request
@@ -337,7 +338,7 @@ impl Scoped {
         }
         if pull.head.is_none() {
             let what = opened.what();
-            let request = origin.get(&listing::one_path(pull.number), self.token.as_ref());
+            let request = origin.get(&listing::one_path(pull.number), self.token.as_ref())?;
             let body = opened.asked(http, request, what).await?;
             listing::one(what, &body, origin.reading().parse, pull)
                 .map_err(Unpolled::unreadable)?;
@@ -395,6 +396,18 @@ impl herald_kinds::Queue for Scoped {
         repository.rsplit_once('/').is_some_and(|(holder, _)| {
             self.forge()
                 .holds((&self.owner, self.options.subgroups()), holder)
+        })
+    }
+
+    fn advisories<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (asked, shown): (Asked<'a>, &'a [&'a str]),
+        advising: (herald_core::Advising, jiff::Timestamp),
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Advisories, Unpolled>> {
+        Box::pin(async move {
+            self.advisories_of(&Erased(http), (asked, shown), advising)
+                .await
         })
     }
 

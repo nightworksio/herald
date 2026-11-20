@@ -274,3 +274,186 @@ overviews = ["capacity"]
         "{members}"
     );
 }
+
+#[test]
+fn a_view_showing_advisories_names_its_cost_its_permissions_and_each_route_sent_the_line() {
+    let text = advised_text;
+    let notes = |extra: &str| -> Vec<String> {
+        on(&loaded(&text(extra)), &server(), &Here::default()).notes
+    };
+    let found = notes("");
+    let read: Vec<&String> = found
+        .iter()
+        .filter(|note| note.contains("advisories of"))
+        .collect();
+    assert_eq!(read.len(), 2, "{found:?}");
+    let owner = read[0];
+    assert!(
+        owner.starts_with("The report daily reads the view queue's advisories of its organization's or group's own listings"),
+        "{owner}"
+    );
+    for wanted in [
+        "its 20 newest pushed members",
+        "at most 1000 advisories read",
+        "herald queue only with --private",
+        "in a public CI job's log --private publishes them",
+        "Secret scanning alerts: read",
+        "security manager",
+        "Developer role on GitLab Ultimate",
+        "Forgejo raises no security alerts",
+        "never shown as clean",
+    ] {
+        assert!(owner.contains(wanted), "{wanted}\n{owner}");
+    }
+    let withheld: Vec<&String> = found
+        .iter()
+        .filter(|note| note.starts_with("The route ") && note.contains(herald_core::WITHHELD))
+        .collect();
+    assert_eq!(withheld.len(), 1, "{found:?}");
+    assert!(withheld[0].starts_with(
+        "The route lobby is not private, or posts where anyone may read it, so it is sent "
+    ));
+    assert!(withheld[0].contains("the report daily's advisories"));
+    let shown = notes("advisories_from = \"shown\"");
+    assert!(
+        shown
+            .iter()
+            .any(|note| note.contains("advisories of the repositories it shows a pull request of")),
+        "{shown:?}"
+    );
+    let members =
+        notes("advisories_from = \"members\"\nadvisory_repositories = 7\nmost_advisories = 50");
+    assert!(
+        members
+            .iter()
+            .any(|note| note.contains("its owner's 7 newest pushed members")
+                && note.contains("at most 50 advisories read")),
+        "{members:?}"
+    );
+}
+
+/// A config whose view `queue` shows advisories with `extra`, reported as
+/// `daily` to the private route `team` and the route `lobby`, both in one
+/// channel.
+fn advised_text(extra: &str) -> String {
+    format!(
+        r#"version = 1
+[store]
+kind = "sqlite"
+[destinations.discord]
+kind = "discord"
+token = {{ secret = "HERALD_DISCORD_TOKEN" }}
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+[views.queue]
+overviews = ["advisories"]
+{extra}
+[reports.daily]
+[rules.nudge]
+stages = ["1d"]
+[[routes]]
+id = "team"
+sources = ["daily"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:queue"
+private = true
+living = true
+[[routes]]
+id = "lobby"
+sources = ["daily"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:queue"
+"#
+    )
+}
+
+#[test]
+fn two_routes_posting_to_one_place_where_only_one_is_shown_advisories_are_flagged() {
+    let text = advised_text;
+    let found = on(&loaded(&text("")), &server(), &Here::default()).notes;
+    let shared: Vec<&String> = found
+        .iter()
+        .filter(|note| note.contains("post to one place"))
+        .collect();
+    assert_eq!(shared.len(), 1, "{found:?}");
+    assert!(
+        shared[0].starts_with("The routes team and lobby post to one place, and only one of them is shown the report daily's advisories"),
+        "{}",
+        shared[0]
+    );
+    let written = text("");
+    let (head, tail) = written.rsplit_once("1566200000000000100").unwrap();
+    let apart = on(
+        &loaded(&format!("{head}1566200000000000200{tail}")),
+        &server(),
+        &Here::default(),
+    )
+    .notes;
+    assert!(
+        apart.iter().all(|note| !note.contains("post to one place")),
+        "{apart:?}"
+    );
+}
+
+#[test]
+fn a_private_route_s_check_is_named_with_its_cost_and_one_vouched_for_as_on_the_operator_s_word() {
+    let found = on(&loaded(&advised_text("")), &server(), &Here::default()).notes;
+    let checked: Vec<&String> = found
+        .iter()
+        .filter(|note| note.starts_with("Before each run's first advisory send"))
+        .collect();
+    assert_eq!(
+        checked,
+        [&format!(
+            "Before each run's first advisory send, herald asks {}, by 3 requests charged to the run's budget, once a run for its place; where anyone more may read it, or herald cannot tell, the route team is sent \"{}\" in place of the report daily's advisories.",
+            herald_dest_discord::ASKS,
+            herald_core::WITHHELD
+        )],
+        "{found:?}"
+    );
+    let hooked = advised_text("")
+        .replace(
+            "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
+            "webhook = { secret = \"HERALD_DISCORD_WEBHOOK\" }",
+        )
+        .replace("channel = \"1566200000000000100\"\n", "");
+    for (vouch, wanted) in [
+        (
+            "",
+            "unless you vouch for its place with vouch_unchecked = true.",
+        ),
+        (
+            "vouch_unchecked = true\n",
+            "on the operator's word alone, as it says vouch_unchecked = true",
+        ),
+    ] {
+        let text = hooked.replace("private = true\n", &format!("private = true\n{vouch}"));
+        let found = on(&loaded(&text), &server(), &Here::default()).notes;
+        assert!(
+            found
+                .iter()
+                .any(|note| note.contains(wanted) && note.contains(herald_dest_discord::UNCHECKED)),
+            "{vouch}: {found:?}"
+        );
+    }
+    let markers = advised_text("").replace("kind = \"sqlite\"", "kind = \"markers\"");
+    let found = on(&loaded(&markers), &server(), &Here::default()).notes;
+    assert!(
+        found.iter().any(|note| note.starts_with(
+            "The route team keeps a living post and says private = true, but the store keeps no names"
+        )),
+        "{found:?}"
+    );
+    let posted = advised_text("").replace("living = true\n", "");
+    let found = on(&loaded(&posted), &server(), &Here::default()).notes;
+    assert!(
+        found.iter().any(|note| note.starts_with(
+            "The route team says private = true, but its post is not living, so it is sent"
+        )),
+        "{found:?}"
+    );
+}

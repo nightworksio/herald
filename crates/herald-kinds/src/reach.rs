@@ -91,6 +91,26 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// Who may read the place it posts to right now, asked through `http`
+    /// before a run's first advisories section is sent there: every kind
+    /// decides it, so a new one cannot be sent a section unchecked
+    /// (ADR-0067).
+    fn audience<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Audience>;
+
+    /// Whether an edit there leaves what a post showed before readable, as
+    /// an edit history or the replaced events of a room's timeline do: a
+    /// living post of a view that reads advisories is then deleted and
+    /// posted anew there, never edited. Every kind decides it (ADR-0067).
+    fn keeps_edits(&self) -> bool;
+
+    /// Whether `answer`, a client error answered as JSON to a request it
+    /// sent, is its platform's own error envelope, so the platform itself
+    /// declined the request and made nothing, rather than a page something
+    /// in front of it answered with, maybe after the platform kept what was
+    /// sent. A first send's record is dropped only on the platform's own
+    /// word, so every kind decides it (ADR-0067).
+    fn declines(&self, answer: &Response) -> bool;
+
     /// What its platform says, asked through `http`, of its credential and
     /// of what a route delivering as `delivery` needs, with nothing posted
     /// (ADR-0002): nothing where it has no platform to ask.
@@ -102,6 +122,34 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
         Box::pin(ready(Vec::new()))
     }
 }
+
+/// Who may read the place a route posts to, as its destination answered
+/// right before an advisories section would be sent there (ADR-0067).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Audience {
+    /// Only those invited or let in may: herald checked it.
+    Private,
+    /// More may, for the reason given.
+    Public(String),
+    /// Herald could not tell, for the reason given.
+    Unread(String),
+}
+
+impl Audience {
+    /// Why an advisories section is withheld there; none where herald
+    /// checked that only those invited or let in may read it.
+    #[must_use]
+    pub fn withheld(&self) -> Option<&str> {
+        match self {
+            Self::Private => None,
+            Self::Public(why) | Self::Unread(why) => Some(why),
+        }
+    }
+}
+
+/// Why a kind that posts where anyone may read, or carries no view, is
+/// never sent an advisories section, whatever a route says.
+pub const UNADVISED: &str = "its kind of destination is never sent an advisories section";
 
 /// What a platform answers when asked whether it serves a route
 /// (ADR-0002).
@@ -122,6 +170,9 @@ pub enum Probe {
     },
     /// What it says that the route could follow.
     Said(String),
+    /// It addresses the route's place to anyone, for the reason given, so
+    /// the route cannot say `private = true` (ADR-0067).
+    Public(String),
 }
 
 impl Probe {

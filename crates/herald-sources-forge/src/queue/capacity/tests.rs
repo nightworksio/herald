@@ -244,6 +244,7 @@ fn an_owner_counts_the_repositories_it_shows_or_its_newest_pushed_members() {
     let scope = Scope {
         owner: Owner::Organization,
         members: &members,
+        narrowed: false,
     };
     let asked = Asked {
         scope: Some(scope),
@@ -321,6 +322,7 @@ fn a_user_or_group_s_newest_pushed_repositories_are_asked_where_their_forge_list
             scope: Some(Scope {
                 owner,
                 members: &members,
+                narrowed: false,
             }),
             ..ONE.0
         };
@@ -338,6 +340,7 @@ fn a_user_or_group_s_newest_pushed_repositories_are_asked_where_their_forge_list
         scope: Some(Scope {
             owner: Owner::Organization,
             members: &members,
+            narrowed: false,
         }),
         ..ONE.0
     };

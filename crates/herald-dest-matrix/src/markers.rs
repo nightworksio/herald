@@ -41,7 +41,11 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
             .account(&self.http)
             .await?
             .map_err(MarkersError::unlanded)?;
-        let room = unreserved(&self.matrix.route.room);
+        let room = crate::request::segment(&self.matrix.route.room).map_err(|declined| {
+            MarkersError::Unreadable {
+                reason: declined.to_string(),
+            }
+        })?;
         let mut own = Vec::new();
         let mut from: Option<String> = None;
         for _ in 0..self.matrix.read_back.get() {
@@ -122,7 +126,10 @@ impl<H: Http> Markers for MatrixMarkers<'_, H> {
         for (index, reply) in (1..).zip(replies) {
             entry = entry.landed(Step::Chunk(index), landed(reply));
         }
-        let response = self.http.send(pinned(self.matrix)).await?;
+        let asked = pinned(self.matrix).map_err(|declined| MarkersError::Unreadable {
+            reason: declined.to_string(),
+        })?;
+        let response = self.http.send(asked).await?;
         let held = pins(&response, self.matrix.waits).map_err(MarkersError::unlanded)?;
         if held.iter().any(|pinned| pinned == root) {
             entry = entry

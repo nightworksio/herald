@@ -959,3 +959,5 @@ fn a_version_whose_page_is_no_web_address_polls_nothing() {
         Err(Unpolled::Unreadable(reason)) if reason.starts_with("GitHub's package versions")
     ));
 }
+
+mod dotted;

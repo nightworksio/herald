@@ -113,89 +113,6 @@ impl StoreError {
     }
 }
 
-/// A kind of record a store may hold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Held {
-    /// The ledger.
-    Ledger,
-    /// Cursors.
-    Cursors,
-    /// Schedules.
-    Schedules,
-    /// Subscriptions.
-    Subscriptions,
-    /// Each route's pinned post.
-    Pins,
-    /// The ids of webhook deliveries it admitted.
-    Deliveries,
-    /// The Notes herald's ActivityPub actors published.
-    Notes,
-    /// What each project last announced.
-    Latest,
-    /// Where each delivery to a follower's inbox stands.
-    Inboxes,
-    /// Where each session a destination holds stands.
-    Positions,
-    /// Events held back until they are due.
-    Pending,
-    /// Minted tokens, sealed.
-    Tokens,
-    /// What the instance published to its peers.
-    Published,
-    /// What models answered the tasks views asked (ADR-0057).
-    Decisions,
-    /// The pull requests kept mode keeps (ADR-0061).
-    Pulls,
-}
-
-impl Held {
-    /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 15] = [
-        Self::Ledger,
-        Self::Cursors,
-        Self::Schedules,
-        Self::Subscriptions,
-        Self::Pins,
-        Self::Deliveries,
-        Self::Notes,
-        Self::Latest,
-        Self::Inboxes,
-        Self::Positions,
-        Self::Pending,
-        Self::Tokens,
-        Self::Published,
-        Self::Decisions,
-        Self::Pulls,
-    ];
-
-    /// The kind as an error names it.
-    const fn what(self) -> &'static str {
-        match self {
-            Self::Ledger => "ledger",
-            Self::Cursors => "cursors",
-            Self::Schedules => "schedules",
-            Self::Subscriptions => "subscriptions",
-            Self::Pins => "pins",
-            Self::Deliveries => "deliveries",
-            Self::Notes => "notes",
-            Self::Latest => "latest",
-            Self::Inboxes => "deliveries to followers",
-            Self::Positions => "session positions",
-            Self::Pending => "held events",
-            Self::Tokens => "minted tokens",
-            Self::Published => "published key sets, feeds, and peers' key sets and audits",
-            Self::Decisions => "decisions",
-            Self::Pulls => "pull requests",
-        }
-    }
-
-    /// The error a store keeping none of this kind answers.
-    #[must_use]
-    pub const fn unsupported(self) -> StoreError {
-        StoreError::Unsupported { what: self.what() }
-    }
-}
-
 /// The ledger (ADR-0005). Entries are written with compare-and-set.
 pub trait Ledger: Sync {
     /// Whether it keeps entries or derives them from the destinations'
@@ -933,6 +850,8 @@ pub trait Store: Sync {
     type Decisions: Decisions;
     /// The pull requests it keeps.
     type Pulls: Pulls;
+    /// The reports whose living posts were sent advisories.
+    type Recalls: Recalls;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -964,6 +883,9 @@ pub trait Store: Sync {
     fn decisions(&self) -> Option<&Self::Decisions>;
     /// The pull requests kept mode keeps, where it keeps them.
     fn pulls(&self) -> Option<&Self::Pulls>;
+    /// The reports whose living posts were sent advisories, where it keeps
+    /// them.
+    fn recalls(&self) -> Option<&Self::Recalls>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
@@ -977,16 +899,20 @@ pub trait Store: Sync {
 }
 
 mod decisions;
+mod held;
 mod keeper;
 mod optional;
 mod published;
 mod pulls;
+mod recalls;
 mod tokens;
 
 pub use decisions::Decisions;
+pub use held::Held;
 pub use keeper::Keeper;
 pub use published::Published;
 pub use pulls::Pulls;
+pub use recalls::Recalls;
 pub use tokens::Tokens;
 
 #[cfg(test)]

@@ -63,6 +63,15 @@ pub struct Cursor {
     /// still sees (ADR-0049).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub projects: BTreeMap<Identity, String>,
+    /// Each living post of a report a route was sent its advisories
+    /// section in, until herald edits the section out (ADR-0067).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub advised: Vec<crate::AdvisedPost>,
+    /// Each route of a report sent its view's advisories section whose post
+    /// of the window it remembers stopped: sent again alone, so no other
+    /// route of the report is sent anew for it (ADR-0067).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending: Vec<crate::RouteId>,
 }
 
 /// When the proof of the newest envelope a source took of one identity from
@@ -254,6 +263,8 @@ impl Cursor {
             ahead: polled.ahead.clone(),
             proved: self.proofs(polled, remembered),
             projects,
+            advised: self.advised.clone(),
+            pending: self.pending.clone(),
         }
     }
 

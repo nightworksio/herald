@@ -33,6 +33,7 @@ fn overviews() -> Overviews {
             reason: "the token may not read its runs".to_owned(),
         }],
         heads: vec!["h1".to_owned()],
+        advisories: None,
     }
 }
 

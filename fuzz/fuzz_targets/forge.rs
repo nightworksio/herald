@@ -506,6 +506,22 @@ fn queued(bytes: &[u8]) {
                     "{counted:?}"
                 );
             }
+            let advising = herald_core::Advising {
+                from: herald_core::AdvisoriesFrom::Owner,
+                repositories: 1,
+                most: 3,
+            };
+            if let Ok(found) = pollster::block_on(queue.advisories(
+                &http,
+                (herald_kinds::Asked::default(), &["fuzzer/fuzzed"]),
+                (advising, jiff::Timestamp::UNIX_EPOCH),
+            )) {
+                assert!(found.open.len() <= 3, "{found:?}");
+                assert!(
+                    found.open.iter().all(|advisory| advisory.repository == "fuzzer/fuzzed"),
+                    "{found:?}"
+                );
+            }
             let asked = herald_kinds::Asked {
                 most,
                 files: true,
@@ -564,6 +580,7 @@ fn scoped(http: &Answering, most: herald_kinds::Most) {
                 scope: Some(herald_kinds::Scope {
                     owner,
                     members: &members,
+                    narrowed: false,
                 }),
                 stated: false,
                 files: true,

@@ -59,6 +59,7 @@ impl Setup {
                 channel: Some(channel.to_owned()),
                 forum,
                 subscribe: None,
+                viewers: Vec::new(),
             },
             None,
         )
@@ -76,6 +77,7 @@ fn webhook(url: &Secret, forum: bool) -> Discord {
             channel: None,
             forum,
             subscribe: None,
+            viewers: Vec::new(),
         },
         None,
     )

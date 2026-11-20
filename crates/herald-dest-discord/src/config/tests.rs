@@ -342,7 +342,7 @@ fn commands_are_answered_through_the_interaction_they_came_with() {
         .public(asked.command, asked.share);
     assert_eq!(
         interacting.deferred(&replying, &asked),
-        Some(interacting.defer(&reply(), public))
+        interacting.defer(&reply(), public)
     );
     assert_eq!(interacting.deferred(&Replying::new(()), &asked), None);
     let projects = ["herald".to_owned()];
@@ -352,7 +352,7 @@ fn commands_are_answered_through_the_interaction_they_came_with() {
     );
     assert_eq!(
         Interacts::complete(&interacting, &replying, &projects),
-        Some(Interacting::complete(&interacting, &reply(), &projects))
+        Interacting::complete(&interacting, &reply(), &projects)
     );
     assert!(interacting.gives_roles());
     let given = Interacts::role(&interacting, GUILD, "423456789012345678", ROLE, true).unwrap();
@@ -399,4 +399,58 @@ fn the_gateway_is_joined_as_the_bot_and_heard_as_herald_answers_it() {
     assert_eq!(session.closed(Some(4004)).len(), 1);
     let webhooked = Interacting::new(serde_json::from_value(gateway()).unwrap(), None, None);
     assert!(webhooked.session().is_none());
+}
+
+#[test]
+fn a_recalled_place_is_checked_as_a_route_s_is_and_a_tampered_one_reaches_nothing() {
+    let options = bot(&json!(null));
+    let written = route(&json!({ "channel": CHANNEL })).written().unwrap();
+    let placed = options.recalled(&written).unwrap();
+    assert_eq!(placed.place(), Some(CHANNEL));
+    assert_eq!(
+        options.checking(&placed),
+        Checking::Asked {
+            asks: crate::ASKS,
+            requests: 3
+        }
+    );
+    assert_eq!(
+        webhook(&json!(null)).checking(&placed),
+        Checking::Unchecked(crate::UNCHECKED)
+    );
+    for tampered in [
+        r#"{"channel":"1/../../users/@me"}"#,
+        r#"{"channel":"webhooks"}"#,
+        "not json",
+    ] {
+        assert!(options.recalled(tampered).is_none(), "{tampered}");
+    }
+}
+
+#[test]
+fn every_id_in_a_discord_path_is_percent_encoded_in_its_one_place() {
+    assert_eq!(
+        crate::request::path(&["channels", "1/../users", "messages"]),
+        Ok("/channels/1%2F..%2Fusers/messages".to_owned())
+    );
+    for dots in ["..", ".", ""] {
+        let declined = crate::request::path(&["channels", dots, "messages"]).unwrap_err();
+        assert_eq!(
+            declined.to_string(),
+            "the Discord id in the request's path is empty or a dot segment, which names nothing in a URL path, so this step is not taken"
+        );
+        assert!(
+            crate::request::endpoint("https://discord.com/api/v10", &["channels", dots]).is_err()
+        );
+    }
+    assert_eq!(
+        crate::request::path(&["channels", "%2e%2e", "messages"]),
+        Ok("/channels/%252e%252e/messages".to_owned())
+    );
+    let url =
+        crate::request::endpoint("https://discord.com/api/v10", &["channels", "1?x=#"]).unwrap();
+    assert_eq!(
+        url.expose(),
+        "https://discord.com/api/v10/channels/1%3Fx%3D%23"
+    );
 }

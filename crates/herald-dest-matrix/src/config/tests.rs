@@ -459,3 +459,13 @@ fn a_sync_taken_up_again_starts_where_the_last_left_off_and_skips_what_was_given
     assert!(matches!(effects[3], Effect::Asked(..)), "{effects:?}");
     assert_eq!(session.position(), Some("s2"));
 }
+
+#[test]
+fn a_recalled_place_is_checked_as_a_route_s_is_and_a_tampered_one_reaches_nothing() {
+    let options = options(None);
+    let written = route(ROOM).written().unwrap();
+    assert_eq!(options.recalled(&written).unwrap().place(), Some(ROOM));
+    for tampered in [r##"{"room":"#alias:matrix.example"}"##, "not json"] {
+        assert!(options.recalled(tampered).is_none(), "{tampered}");
+    }
+}

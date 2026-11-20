@@ -5,7 +5,9 @@ use std::num::NonZeroUsize;
 
 use std::collections::BTreeMap;
 
-use herald_core::{Capacity, Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View};
+use herald_core::{
+    Advising, Capacity, Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View,
+};
 use herald_kinds::Most;
 use jiff::SignedDuration;
 use jiff::civil::Weekday;
@@ -26,7 +28,7 @@ pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pul
 
 /// The body of [`QUEUE_TEMPLATE`]: each group's rows, oldest first, then
 /// each batch of bumps.
-pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.{% endif %}";
+pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
 
 /// The template herald ships for a rule's re-run plan, which a route names
 /// as `template = "herald:rerun"` and `[templates."herald:rerun"]`
@@ -39,6 +41,14 @@ pub(crate) const RERUN_TITLE: &str = "{{ event.attributes.repository }}#{{ event
 /// The body of [`RERUN_TEMPLATE`]: the evidence, then the exact call, or
 /// why none can be made.
 pub(crate) const RERUN_BODY: &str = "{{ event.attributes.check }} failed then passed on one head {{ event.attributes.flips }} times; it fails on {{ event.attributes.head }}. {% if event.attributes.call %}A re-run of run {{ event.attributes.run_id }} would call {{ event.attributes.call }}.{% else %}No re-run can be planned: {{ event.attributes.reason }}.{% endif %}";
+
+/// The template herald edits a living post to once its route no longer
+/// receives the advisories section it showed: fixed, so no config can make
+/// it say what was removed (ADR-0067).
+pub const RECALL_TEMPLATE: &str = "herald:recalled";
+
+/// The title and body of [`RECALL_TEMPLATE`].
+pub(crate) const RECALL_TEXT: &str = herald_core::RECALLED;
 
 /// The template herald ships for a nudge, which a route names as
 /// `template = "herald:nudge"` and `[templates."herald:nudge"]` replaces.
@@ -80,6 +90,9 @@ pub struct ViewConfig {
     /// Which repositories its capacity overview reads, where it shows one
     /// (ADR-0066).
     pub capacity: Option<Capacity>,
+    /// How its advisories overview reads, where it shows one; shown to
+    /// private routes alone (ADR-0067).
+    pub advisories: Option<Advising>,
 }
 
 /// Where a view reads its open pull requests (ADR-0061).
@@ -320,21 +333,58 @@ pub(crate) struct ViewFile {
     pub(crate) overviews: Vec<OverviewName>,
     /// Which repositories its capacity overview reads: "shown", those it
     /// shows a pull request of, where absent; or "members", its owner's
-    /// newest pushed, at most `capacity_repositories`.
+    /// newest pushed, at most `capacity_repositories`, or where it filters
+    /// its repositories by name the first by name of those it holds.
     pub(crate) capacity_from: Option<CapacityFrom>,
-    /// The most members "members" reads, the newest pushed first: 20 where
-    /// absent, from 1 to 100. Each costs two requests on GitHub and GitLab
-    /// and one on Forgejo, and the order one more.
+    /// The most members "members" reads, the newest pushed first, or the
+    /// first by name where the view filters its repositories by name: 20
+    /// where absent, from 1 to 100. Each costs two requests on GitHub and
+    /// GitLab and one on Forgejo, and the push order one more.
     #[schemars(range(min = 1, max = herald_core::MOST_CAPACITY_REPOSITORIES))]
     pub(crate) capacity_repositories: Option<NonZeroUsize>,
+    /// Which repositories its advisories overview reads: "owner", where
+    /// absent, its organization's or group's own listings, and a user's
+    /// members one by one, the newest pushed first; "shown", those it shows
+    /// a pull request of; or "members", its owner's newest pushed. A view
+    /// that filters its repositories by name reads those it holds one by
+    /// one, the first by name. A one-repository source reads its
+    /// repository.
+    pub(crate) advisories_from: Option<AdvisoriesFromFile>,
+    /// The most repositories its advisories overview reads one by one: 20
+    /// where absent, from 1 to 100. Each costs three requests on GitHub
+    /// and one on GitLab, and their order one more.
+    #[schemars(range(min = 1, max = herald_core::MOST_ADVISORY_REPOSITORIES))]
+    pub(crate) advisory_repositories: Option<NonZeroUsize>,
+    /// The most open advisories its overview reads, a page of 100 a
+    /// request: 1000 where absent, at most 10000. Past it the section says
+    /// more were open.
+    #[schemars(range(min = 1, max = herald_core::MOST_ADVISORIES_ALLOWED))]
+    pub(crate) most_advisories: Option<NonZeroUsize>,
 }
 
 /// An overview a view shows beside its rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum OverviewName {
+    /// Its repositories' open security alerts, shown to private routes
+    /// alone (ADR-0067).
+    Advisories,
     /// Its repositories' CI runs queued and running, and those superseded.
     Capacity,
+}
+
+/// Which repositories an advisories overview reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AdvisoriesFromFile {
+    /// Its organization's or group's own listings, and a user's members
+    /// one by one, the newest pushed first.
+    #[default]
+    Owner,
+    /// Those the view shows a pull request of.
+    Shown,
+    /// Its owner's members, the newest pushed first.
+    Members,
 }
 
 /// Which repositories a capacity overview reads.

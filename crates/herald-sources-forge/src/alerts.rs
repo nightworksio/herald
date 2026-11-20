@@ -24,6 +24,8 @@ mod github;
 mod gitlab;
 
 pub(crate) use github::Scanner;
+pub(crate) use github::listed as github_listed;
+pub(crate) use gitlab::{OPENED, opened, opened_listing};
 
 /// How an alert's title names what raised it.
 const fn label(tool: Tool) -> &'static str {
@@ -64,6 +66,8 @@ pub(crate) struct ForgeAlert {
     pub(crate) resolution: Option<String>,
     pub(crate) url: String,
     pub(crate) occurred: Timestamp,
+    /// The repository's full path, where an owner's listing names it.
+    pub(crate) repository: Option<String>,
 }
 
 impl ForgeAlert {
@@ -247,7 +251,10 @@ pub(crate) struct Asking<'a> {
 impl Asking<'_> {
     /// The listings a poll reads, with their requests, each of GitHub's
     /// conditional on what `cursor` keeps.
-    fn listings(&self, cursor: Option<&Cursor>) -> Vec<(Listed, Option<Validators>, Request)> {
+    fn listings(
+        &self,
+        cursor: Option<&Cursor>,
+    ) -> Result<Vec<(Listed, Option<Validators>, Request)>, Unpolled> {
         let reading = self.origin.reading();
         match self.origin.forge() {
             Forge::GitHub => Scanner::ALL
@@ -259,12 +266,12 @@ impl Asking<'_> {
                         .cloned();
                     let request = self
                         .origin
-                        .get(&github::listing_path(scanner, reading.page), self.token)
+                        .get(&github::listing_path(scanner, reading.page), self.token)?
                         .conditional(
                             kept.as_ref().and_then(|kept| kept.etag.as_deref()),
                             kept.as_ref().and_then(|kept| kept.last_modified.as_deref()),
                         );
-                    (Listed::GitHub(scanner), kept, request)
+                    Ok((Listed::GitHub(scanner), kept, request))
                 })
                 .collect(),
             Forge::GitLab => {
@@ -274,9 +281,9 @@ impl Asking<'_> {
                     (self.origin.path(), self.token),
                     (reading.page, reading.parse),
                 );
-                vec![(Listed::GitLab, None, request)]
+                Ok(vec![(Listed::GitLab, None, request)])
             }
-            Forge::Forgejo => Vec::new(),
+            Forge::Forgejo => Ok(Vec::new()),
         }
     }
 
@@ -288,7 +295,7 @@ impl Asking<'_> {
         cursor: Option<&Cursor>,
     ) -> Result<Asked, Unpolled> {
         let mut answers = Vec::new();
-        for (listed, kept, request) in self.listings(cursor) {
+        for (listed, kept, request) in self.listings(cursor)? {
             let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
             answers.push((listed, kept, answer));
         }

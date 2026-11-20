@@ -199,6 +199,10 @@ pub(crate) fn reconciled(source: &SourceName) -> String {
     format!("reconciled/{}.json", segment(source.as_str()))
 }
 
+/// Where the names of the reports whose living posts were sent advisories
+/// are kept (ADR-0067).
+pub(crate) const RECALLS: &str = "recalls.json";
+
 pub(crate) fn position(destination: &DestinationName) -> String {
     format!("positions/{}.json", segment(destination.as_str()))
 }

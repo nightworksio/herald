@@ -234,3 +234,169 @@ fn a_group_s_post_is_edited_where_it_landed_renders_otherwise_and_the_destinatio
     assert_eq!(regrouped(&unposted, &tag(), true), Revise::Keep);
     assert_eq!(regrouped(&Entry::new(key()), &tag(), true), Revise::Keep);
 }
+
+#[test]
+fn a_replacement_deletes_every_part_then_resumes_only_what_it_left() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let entry = posted(tag());
+    let replacing = replaced(&entry, &release(), at);
+    assert_eq!(replacing.deleting, [0, 2, 1]);
+    assert_eq!(
+        replacing.deletions(),
+        [Step::Delete(0), Step::Delete(2), Step::Delete(1)]
+    );
+    let entry = Entry {
+        replacing: Some(replacing.clone()),
+        ..entry
+    };
+    assert_eq!(entry.reposting().records, []);
+    let deleted = entry
+        .clone()
+        .landed(Step::Delete(2), Facts::default())
+        .landed(Step::Delete(1), Facts::default())
+        .landed(Step::Delete(0), Facts::default())
+        .attempted(Step::Post, at);
+    let resumed = replaced(
+        &deleted,
+        &release(),
+        at + jiff::SignedDuration::from_hours(1),
+    );
+    assert_eq!(resumed.deleting, Vec::<u32>::new());
+    assert_eq!(resumed.at, at);
+    let Plan::Send(planned) = plan(Some(&deleted.reposting()), &[Step::Post], "run", at) else {
+        panic!("the post is planned again");
+    };
+    assert!(planned[0].verify_first);
+    let moved = replaced(&deleted, &tag(), at + jiff::SignedDuration::from_hours(1));
+    assert_ne!(moved.at, at);
+    assert_eq!(deleted.clone().settled().revision, Some(release()));
+    assert_eq!(deleted.clone().settled().replacing, None);
+}
+
+#[test]
+fn a_replacement_s_post_and_chunks_are_told_apart_from_any_earlier_one_s() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let entry = posted(tag());
+    assert_eq!(entry.post_token(), key().to_string());
+    let first = Entry {
+        replacing: Some(replaced(&entry, &release(), at)),
+        ..entry.clone()
+    };
+    let again = Entry {
+        replacing: Some(replaced(
+            &entry,
+            &release(),
+            at + jiff::SignedDuration::from_hours(1),
+        )),
+        ..entry.clone()
+    };
+    assert_ne!(first.post_token(), entry.post_token());
+    assert_ne!(first.post_token(), again.post_token());
+    assert!(first.post_token().contains(&release().digest));
+    assert_ne!(first.chunk_token(1), entry.chunk_token(1));
+    assert_ne!(first.chunk_token(1), again.chunk_token(1));
+    assert_eq!(first.post_token(), first.clone().post_token());
+}
+
+#[test]
+fn a_post_and_its_chunks_are_told_apart_by_when_they_were_sent() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let later = at + jiff::SignedDuration::from_hours(1);
+    let first = Entry::new(key())
+        .revising(release())
+        .attempted(Step::Post, at)
+        .attempted(Step::Chunk(1), at);
+    let forgotten = Entry::new(key())
+        .revising(release())
+        .attempted(Step::Post, later)
+        .attempted(Step::Chunk(1), later);
+    assert_eq!(first.post_token(), format!("{}.1000", key()));
+    assert_ne!(first.post_token(), forgotten.post_token());
+    assert_ne!(first.chunk_token(1), forgotten.chunk_token(1));
+    assert_eq!(first.sent_at(&Step::Chunk(1)), Some(at));
+    assert_eq!(posted(tag()).sent_at(&Step::Post), None);
+}
+
+#[test]
+fn a_new_replacement_deletes_what_an_earlier_one_sent_unrecorded_and_takes_none_for_its_own() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let earlier = Entry {
+        replacing: Some(replaced(&posted(tag()), &release(), at)),
+        ..Entry::new(key())
+    }
+    .attempted(Step::Post, at);
+    assert!(resumes(&earlier, &release()));
+    assert!(!resumes(&earlier, &tag()));
+    assert_eq!(earlier.unrecorded(), [Step::Post]);
+    let read = Entry::new(key()).landed(Step::Post, sent("unrecorded"));
+    let found = earlier.clone().found(Some(&read));
+    assert_eq!(found.part(0), Some("unrecorded"));
+    assert_eq!(replaced(&found, &tag(), at).deleting, [0]);
+    let token = earlier.post_token();
+    let lost = earlier.found(None);
+    assert_eq!(lost.strays, [Stray { part: 0, token }]);
+    assert_eq!(lost.unrecorded(), []);
+    assert_eq!(replaced(&lost, &tag(), at).deleting, Vec::<u32>::new());
+    let chunked = posted(tag()).attempted(Step::Chunk(3), at);
+    let read = Entry::new(key()).landed(Step::Chunk(3), sent("three"));
+    assert_eq!(
+        replaced(&chunked.clone().found(Some(&read)), &release(), at).deleting,
+        [0, 3, 2, 1]
+    );
+    let strayed = chunked.found(None).strayed(&Step::Pin);
+    let parts: Vec<u32> = strayed.strays.iter().map(|stray| stray.part).collect();
+    assert_eq!(parts, [3]);
+}
+
+#[test]
+fn a_send_again_after_an_unanswered_one_goes_under_the_first_send_s_key() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let later = at + jiff::SignedDuration::from_hours(1);
+    let once = Entry::new(key())
+        .revising(release())
+        .attempted(Step::Post, at)
+        .attempted(Step::Chunk(1), at);
+    let again = once
+        .clone()
+        .attempted(Step::Post, later)
+        .attempted(Step::Chunk(1), later);
+    assert_eq!(again.post_token(), once.post_token());
+    assert_eq!(again.chunk_token(1), once.chunk_token(1));
+    assert_eq!(again.sent_at(&Step::Post), Some(at));
+    let landed = again
+        .landed(Step::Post, sent("post"))
+        .attempted(Step::Post, later);
+    assert_eq!(landed.sent_at(&Step::Post), Some(later));
+}
+
+#[test]
+fn a_stray_is_dropped_once_a_send_under_its_own_key_lands() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let under_way = Entry {
+        replacing: Some(replaced(&posted(tag()), &release(), at)),
+        ..Entry::new(key())
+    };
+    let strayed = under_way.attempted(Step::Post, at).strayed(&Step::Post);
+    assert_eq!(strayed.strays.len(), 1);
+    let resent = strayed.clone().attempted(Step::Post, at);
+    assert_eq!(resent.landed(Step::Post, sent("post")).strays, []);
+    let other = Entry {
+        replacing: Some(replaced(&posted(tag()), &tag(), at)),
+        ..strayed
+    };
+    assert_eq!(other.landed(Step::Post, sent("post")).strays.len(), 1);
+}
+
+#[test]
+fn a_post_or_chunk_answered_without_landing_leaves_nothing_to_find_again() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let entry = Entry::new(key())
+        .attempted(Step::Post, at)
+        .attempted(Step::Pin, at)
+        .refused(&Step::Post)
+        .refused(&Step::Pin);
+    assert_eq!(entry.unrecorded(), []);
+    assert_eq!(entry.sent_at(&Step::Pin), Some(at));
+    let landed = posted(tag()).refused(&Step::Chunk(1));
+    assert_eq!(landed.part(1), Some("one"));
+}

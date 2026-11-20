@@ -8,6 +8,7 @@
 //! announcement is pinned through the room's pinned events, and each post
 //! carries its markers in a namespaced field of its content.
 
+mod audience;
 mod config;
 mod held;
 mod interact;
@@ -22,6 +23,7 @@ mod request;
 mod revise;
 mod setup;
 
+pub use audience::ASKS;
 pub use config::{KIND, MatrixKind, SCHEME};
 pub use interact::{Interacting, Replying, Synced, UnreadTransaction, accepted};
 pub use interactions::{Interactions, Via};

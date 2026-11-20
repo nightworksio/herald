@@ -31,6 +31,7 @@ mod dry_run;
 mod followers;
 mod health;
 mod lambda;
+mod orphaning;
 mod output;
 mod pages;
 mod peers;
@@ -271,8 +272,23 @@ async fn answered(
             say(out, config.store.kind());
             DONE
         }
-        Reading::Queue { view, format } => {
-            let done = queueing::queueing(config, vars, connect, (view.as_deref(), format), out);
+        Reading::Orphans(cli::Orphaning::Clear {
+            report,
+            route,
+            seen,
+            ..
+        }) => {
+            let asked = (report.as_str(), route.as_deref(), seen.as_deref());
+            let done = orphaning::cleared(config, vars, connect, asked, out);
+            finished(done.await, err)
+        }
+        Reading::Queue {
+            view,
+            format,
+            private,
+        } => {
+            let asked = (view.as_deref(), format, private);
+            let done = queueing::queueing(config, vars, connect, asked, out);
             finished(done.await, err)
         }
         Reading::Preview {

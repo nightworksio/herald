@@ -381,7 +381,10 @@ unread with that reason rather than stopping the report.
 Each repository costs two requests on GitHub and GitLab and one on
 Forgejo, and `"members"` one more for their order: GitHub's `sort=pushed`
 and GitLab's `order_by=last_activity_at`. Forgejo lists no push order, so
-it takes the first members its membership record keeps. With `"shown"`,
+it takes the first members its membership record keeps. A view with a
+`repositories` filter takes the first members it holds by name instead,
+with no request for their order, so the push times of the repositories
+it hides choose nothing. With `"shown"`,
 the runs of a repository with no open pull request are not counted, and
 doctor says so. A repository whose runs the token may not read, or a
 Forgejo that answers no tasks API, is named in `view.overviews.unread`
@@ -402,6 +405,172 @@ capacity_repositories = 20
 ```
 
 Reports and rules watching one view read it once a round.
+
+### Advisories
+
+A view with `overviews = ["advisories"]` shows, beside its rows, its
+repositories' open security alerts, to routes that say `private = true`
+alone (ADR-0067):
+
+| Key | What it sets | Where absent |
+|-----|--------------|--------------|
+| `advisories_from` | `"owner"`, the organization's or group's own listings and a user's members one by one; `"shown"`, the repositories it shows a pull request of; or `"members"`, its owner's newest pushed | `"owner"` |
+| `advisory_repositories` | the most repositories read one by one, 1 to 100 | `20` |
+| `most_advisories` | the most open advisories read, a page of 100 a request, 1 to 10000 | `1000` |
+
+A one-repository source reads its repository whatever `advisories_from`
+says. An owner's own listings keep only the advisories of repositories
+its membership record holds. A GitHub user and a GitLab user namespace
+have no such listing, so their newest pushed members are read one by one.
+Only the repositories the view's `repositories` holds are read one by
+one, and only their advisories are shown or count toward
+`most_advisories`. A view with a `repositories` filter never reads its
+owner's own listings, whose pages count the alerts of the repositories
+it hides too: it reads each repository it holds one by one, the first
+by name, at most `advisory_repositories`, with no request for their push
+order, so what it shows is the same whatever the repositories it hides
+hold or when they were pushed to. Where a held repository's advisory was left out past
+`most_advisories`, or a listing names a next page off the forge's API,
+the section says more were open, never how many; where an owner's
+listing runs past the pages `most_advisories` can fill, that listing is
+named unread with how many pages were read. Members past
+`advisory_repositories`, and members with no open pull request where it
+reads those shown alone, are named unread with how many were not read.
+A report round sends every report's posts to the routes no section can
+reach first, then reads advisories, only where a route can be shown
+them, leaving one request for each route still waiting, then sends
+those: the run's budget ending during the read names them unread and
+never stops the report or delays another route's post.
+
+| Forge | Listings read | Its token needs |
+|-------|---------------|-----------------|
+| GitHub, GitHub Enterprise Server, GHE.com | `code-scanning`, `dependabot` and `secret-scanning` `alerts?state=open`, of each repository or under `/orgs/<owner>` | Dependabot alerts, Code scanning alerts and Secret scanning alerts: read (a GitHub App or fine-grained token), or `security_events` (and `repo` for a private repository) as a classic token; an organization's listings also need an organization owner or security manager, with `read:org` as a classic token |
+| GitLab, self-managed included | the GraphQL `vulnerabilities` of each project or group, detected or confirmed | `read_api`, the Developer role, and GitLab Ultimate |
+| Forgejo | none: Forgejo raises no security alerts | |
+
+A listing the token may not read, or one the forge does not find, is
+named in `view.overviews.advisories.unread` with the permission it needs,
+never shown as clean. A secret scanning row names the secret's type, its
+repository, state, age and link, and never the secret or where it was
+found: GitHub's listing is asked with `hide_secret=true`, and GitLab's is
+asked no vulnerability's file.
+
+**Who is shown them.** One rule decides: only a route that says
+`private = true`, whose place herald checked is not publicly readable
+right now, or that you vouch for where herald cannot check, is shown the
+section. herald's own ActivityPub actor, a herald feed, a push to a peer
+taking no private events, a Mastodon status posted `public` or
+`unlisted` and a Discord crosspost post where anyone may read them, so
+such a route saying `private = true` does not load. Before each run's
+first advisory send, once a run for each place and charged to the run's
+budget, herald asks:
+
+| Destination | It is private only where | Asked by |
+|-------------|--------------------------|----------|
+| Matrix | joining takes an invite or a knock (`m.room.join_rules` `invite`, `knock`), or a membership of at most five rooms that each take one (`restricted`, `knock_restricted`, whose `allow` list is read one level deep), and the history is not `world_readable` | the room's two state events and the join rules of each room it lets in, through the bot, which must have joined each |
+| Slack | the channel is private and shared with no other organization through Slack Connect; a channel an Enterprise Grid organization shares counts as public unless the destination says `org_shared = "private"` | `conversations.info`, through a bot token with `groups:read` (`channels:read` for a public channel) |
+| Discord | the server's `@everyone` may not view the channel, every other role that may is listed by id in the route's `viewers` (Administrator roles and the bot's own role included), no member is let in by an overwrite of their own unless listed too, and the server's onboarding neither shows the channel nor hands out a listed role; a thread is not read | the channel, its server and its onboarding, through a bot token that sees the channel |
+| Mastodon, `visibility = "private"` | the account approves each follower (`locked`) | `verify_credentials` |
+
+A place anyone more may read, or one herald cannot read, budget ended
+included, is sent the line below, and a living post there loses the
+section at its next post. A Discord or Slack route reached by a webhook
+cannot be asked: it is sent the line unless it also says
+`vouch_unchecked = true`, your word that its place is private. That key
+loads only beside `private = true`, and only on a route herald cannot
+check; doctor lists every route sent advisories on it. Doctor's online
+check reads a Matrix room and a Discord channel the same way, and names
+a private route to a place anyone more may read a mistake, naming each
+Discord role or member that withholds it by id and name. No setting widens
+it, `[doctor] private_to_public` included, and no repository's
+visibility does, a public repository's advisories included. Every other
+route is sent, in its place, the one line "A section of this report was
+withheld from this route because it is not private.", the same where the
+view found none, so the line says nothing of what was held. A route's
+counts, titles and totals never count advisories, so what it is sent is
+the same, byte for byte, whatever the section held. Doctor flags two
+routes posting to one place where only one is shown the section.
+
+**Only living posts.** A report carries its advisories only in a living
+post (`living = true`, or a board, on a destination that edits), which
+herald can always find again to take the section out. A private route
+that posts each window anew is sent the withheld line, and doctor says
+the report must be living to carry advisories.
+
+**Living posts.** Before a living post is sent the section, the report's
+cursor records where the post is, never what it showed, and one store
+record names the report, its name alone; where either cannot be written,
+or the store keeps no such record (the markers store), the post is sent
+the withheld line, and doctor says why. Once its route is gone, stops
+being living, stops naming the report, moves, or is no longer shown the
+section, or the report, its board or its view is gone from the config,
+or the view no longer reads advisories, herald edits the post at the next report round to "The advisory section
+of this report was removed because this route no longer receives it."
+(the template `herald:recalled`, which cannot be replaced and says
+nothing else). Where its destination is gone or cannot edit, or no route
+reaches it, herald retries each round and doctor names the post, which
+is then deleted by hand. Before anything else a run sends, it keeps two
+requests for each recorded post it may recall, so the post itself goes
+and the fixed line is posted however long the section was; a run whose
+budget ends before even that leaves the section up until a run reaches
+it, and doctor names such a post. Each run also checks every such post's place
+again and recalls the post where it no longer passes. Matrix and
+Mastodon keep what an edit replaced (a room's timeline holds each
+`m.replace`, a status shows its edit history), so there a living post of
+a post that is or was sent the section is never edited: each new
+revision, and a recall, redacts or deletes every event herald sent for
+it, the post itself first, and posts anew, under a key the homeserver or
+instance has not seen, so it never answers with the deleted post; an
+edit, a redaction and a post outside a replacement each go under a key
+of their own too. A replacement cut short is resumed, and a post it sent
+but never recorded is read back first. A new replacement reads back
+what earlier runs sent and never recorded and deletes it; a post it
+cannot find again keeps its recall record, and doctor names it as
+possibly orphaned, to be deleted by hand. `herald orphans clear
+<report>` lists them by route (`--route <id>` for one route), each
+route's with a short digest of what it lists and the command that
+clears it, and says what clearing means. `herald orphans clear <report>
+--route <id> --deleted --seen <digest>` says that route's parts were
+deleted by hand and drops them, only while they are still the ones
+listed (else it refuses: list them again), and the next round drops the
+record. A post, chunk or edit sent again after its answer was lost goes
+under the key it was first sent under, so the server never makes it
+twice.
+Between runs nothing reacts, and what a reader already saw cannot be
+unsent.
+
+**What a run tells and when it sends.** A run tells of a route that is
+or was sent the section, and of each recall, in one fixed line: sent, or
+stopped, never why, its steps, how many parts it took or whether the
+post changed. Where such a route stops, the next run sends that route
+alone; every other route's window is remembered. Every route no section reaches is sent its post before any
+advisory is read, any post recalled or any section sent, so neither what
+it is sent nor whether the run's budget lets it out depends on the
+advisories.
+
+| Where a view leaves herald | Advisories |
+|----------------------------|------------|
+| A route's post, or a living post's edit | in a living post alone, where the route says `private = true` and its destination does not post publicly |
+| `herald queue`, as a table or JSON | with `--private` alone |
+| A grouped route's digest, a herald feed, the static log, a push route | never: they carry no view |
+| A rule's nudges and re-run plans | never: they show no view |
+| A run's told lines, a round's answer, doctor, the app API | never |
+
+`herald queue --private` has no setting or environment variable: it is
+typed each time, and in a public CI job's log it publishes the
+advisories.
+
+Templates read `view.overviews.advisories` as `count`, `more`, `open`,
+each `{ repository, tool, severity, summary, state, url, opened, age }`,
+and `unread`, each `{ repository, reason }`, only where the route was
+shown them; and `view.overviews.withheld`, the line, only where it was
+not. The shipped `herald:queue` template prints both.
+
+```toml
+[views.security]
+overviews = ["advisories"]
+advisories_from = "owner"
+```
 
 ## Templates
 
@@ -425,9 +594,12 @@ it.
 ```sh
 herald queue                 # the built-in view, as a table
 herald queue review --format json
+herald queue security --private   # this output is private: print its advisories
 ```
 
-The JSON holds the keys a template reads as `view`.
+The JSON holds the keys a template reads as `view`. A view's advisories
+are printed only with `--private`; without it they are withheld, as from
+a route that is not private.
 
 ## Time zones
 

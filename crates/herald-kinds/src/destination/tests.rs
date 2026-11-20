@@ -35,6 +35,14 @@ impl DestinationConfig for Plain {
         vec![&self.key]
     }
 
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        None
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        Checking::Unadvised
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         placed.of::<Spot>().map(|_| (PROFILE, Some(PROFILE)))
     }
@@ -83,6 +91,14 @@ impl DestinationConfig for Patient {
 
     fn secret_refs(&self) -> Vec<&SecretRef> {
         Vec::new()
+    }
+
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        None
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        Checking::Unadvised
     }
 
     fn profile(&self, _: &Placed) -> Option<(Profile, Option<Profile>)> {
@@ -238,4 +254,18 @@ fn a_destination_reaches_and_profiles_only_routes_placed_as_its_kind() {
     let patient = Destination::new(Patient);
     assert_eq!(patient.profile(&spot), None);
     assert_eq!(patient.reach(&spot, "", secret()), None);
+}
+
+#[test]
+fn only_a_place_herald_cannot_ask_of_says_why() {
+    assert_eq!(Checking::Unchecked("why").unchecked(), Some("why"));
+    for asked in [
+        Checking::Unadvised,
+        Checking::Asked {
+            asks: "a",
+            requests: 1,
+        },
+    ] {
+        assert_eq!(asked.unchecked(), None);
+    }
 }

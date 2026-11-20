@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 
 use super::{Interacting, accepted, text};
 use crate::interactions::snowflake;
+use crate::request::path;
 
 impl Interacting {
     /// The request that gives `user` the role `role` in `guild` where `give`,
@@ -20,7 +21,7 @@ impl Interacting {
         Some(
             self.bare(
                 method,
-                &format!("/guilds/{guild}/members/{user}/roles/{role}"),
+                &path(&["guilds", guild, "members", user, "roles", role]).ok()?,
             )?
             .header(
                 "X-Audit-Log-Reason",
@@ -40,7 +41,7 @@ impl Interacting {
         if !snowflake(guild) {
             return None;
         }
-        self.bare(Method::Get, &format!("/guilds/{guild}/roles"))
+        self.bare(Method::Get, &path(&["guilds", guild, "roles"]).ok()?)
     }
 
     /// The request that makes a mentionable role named `name` in `guild`;
@@ -53,7 +54,7 @@ impl Interacting {
         }
         self.json(
             Method::Post,
-            &format!("/guilds/{guild}/roles"),
+            &path(&["guilds", guild, "roles"]).ok()?,
             &json!({ "name": name, "mentionable": true }),
         )
     }

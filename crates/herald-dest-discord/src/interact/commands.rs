@@ -5,6 +5,7 @@ use herald_ports::{Method, Request};
 use serde_json::{Value, json};
 
 use super::{Interacting, PROJECT, SHARE, SUB_COMMAND};
+use crate::request::path;
 
 /// An option holding text.
 const STRING: u64 = 3;
@@ -69,9 +70,10 @@ impl Interacting {
     pub(crate) fn register(&self) -> Option<Request> {
         let application = &self.interactions.application;
         let path = match &self.interactions.guild {
-            Some(guild) => format!("/applications/{application}/guilds/{guild}/commands"),
-            None => format!("/applications/{application}/commands"),
-        };
+            Some(guild) => path(&["applications", application, "guilds", guild, "commands"]),
+            None => path(&["applications", application, "commands"]),
+        }
+        .ok()?;
         self.json(Method::Put, &path, &self.commands())
     }
 }

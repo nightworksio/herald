@@ -1,4 +1,4 @@
-use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url, unreserved};
+use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url};
 use herald_core::{media, status};
 use herald_ports::{Method, Request, Response, SecretText};
 use serde_json::{Map, Value, json};
@@ -52,8 +52,43 @@ pub(crate) fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
         .body(body.to_string())
 }
 
-pub(crate) fn room(matrix: &Matrix) -> String {
-    format!("/rooms/{}", unreserved(&matrix.route.room))
+/// The path of the route's room.
+///
+/// # Errors
+///
+/// Where the room's id names nothing in a path.
+pub(crate) fn room(matrix: &Matrix) -> Result<String, Declined> {
+    Ok(format!("/rooms/{}", segment(&matrix.route.room)?))
+}
+
+/// `text` as one segment of a Matrix path, through the one segment
+/// encoder (ADR-0067).
+///
+/// # Errors
+///
+/// Where it is empty, `.` or `..`: the step is declined.
+pub(crate) fn segment(text: &str) -> Result<String, Declined> {
+    Declined::segment(text, UNNAMED)
+}
+
+/// What a segment of a Matrix path is called where it names nothing.
+const UNNAMED: &str = "Matrix id in the request's path";
+
+/// The longest event id Matrix gives, in bytes.
+const EVENT_ID: usize = 255;
+
+/// Why a recorded event is not used: it is not shaped as an event id.
+pub(crate) const MALFORMED_EVENT: Declined = Declined::Malformed("Matrix event id");
+
+/// `id`, where it is shaped as a Matrix event id: `$` and printable ASCII,
+/// at most 255 bytes. A room version 3 id's base64 may hold `/` or `+`,
+/// which [`segment`] escapes.
+pub(crate) fn event_id(id: &str) -> Result<&str, Declined> {
+    let shaped = id.len() > 1
+        && id.len() <= EVENT_ID
+        && id.starts_with('$')
+        && id.bytes().all(|byte| byte.is_ascii_graphic());
+    shaped.then_some(id).ok_or(MALFORMED_EVENT)
 }
 
 /// Whether `user` is written as a Matrix user id, so it can be mentioned.
@@ -176,16 +211,19 @@ pub(crate) fn posted<'a>(
     step: &Step,
     what: &'static str,
 ) -> Result<&'a str, Declined> {
-    entry.message(step).ok_or(Declined::Missing(what))
+    entry
+        .message(step)
+        .ok_or(Declined::Missing(what))
+        .and_then(event_id)
 }
 
-pub(crate) fn sent(matrix: &Matrix, transaction: &str, content: &Value) -> Request {
-    let path = format!(
-        "{}/send/{MESSAGE}/{}",
-        room(matrix),
-        unreserved(transaction)
-    );
-    put(matrix, &path, content)
+pub(crate) fn sent(
+    matrix: &Matrix,
+    transaction: &str,
+    content: &Value,
+) -> Result<Request, Declined> {
+    let path = format!("{}/send/{MESSAGE}/{}", room(matrix)?, segment(transaction)?);
+    Ok(put(matrix, &path, content))
 }
 
 pub(crate) fn step(
@@ -196,16 +234,20 @@ pub(crate) fn step(
 ) -> Result<Request, Declined> {
     let key = announcement.key.to_string();
     match step {
-        Step::Post => Ok(sent(matrix, &key, &announcement_content(announcement))),
+        Step::Post => sent(
+            matrix,
+            &entry.post_token(),
+            &announcement_content(announcement),
+        ),
         Step::Chunk(index) => {
             let root = posted(entry, &Step::Post, "the announcement's message")?;
             let before = entry
                 .before(*index)
                 .ok_or(Declined::Missing("the message before it"))?;
             let content = chunk_content(announcement, *index, root, before);
-            Ok(sent(matrix, &entry.chunk_token(*index), &content))
+            sent(matrix, &entry.chunk_token(*index), &content)
         }
-        Step::Pin | Step::Unpin => Ok(pinned(matrix)),
+        Step::Pin | Step::Unpin => pinned(matrix),
         Step::Crosspost => Err(cannot("crosspost")),
         Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
         Step::Deliver(_) | Step::Deliveries | Step::Updates(_) | Step::Deletes => {
@@ -220,8 +262,11 @@ pub(crate) fn step(
 }
 
 /// The request reading the room's pinned events.
-pub(crate) fn pinned(matrix: &Matrix) -> Request {
-    get(matrix, &format!("{}/state/{PINNED_EVENTS}", room(matrix)))
+pub(crate) fn pinned(matrix: &Matrix) -> Result<Request, Declined> {
+    Ok(get(
+        matrix,
+        &format!("{}/state/{PINNED_EVENTS}", room(matrix)?),
+    ))
 }
 
 /// The room's pinned events, as `response` holds them, or what the
@@ -291,15 +336,15 @@ pub(crate) fn without(held: &[String], stale: &[String], post: &str) -> Vec<Stri
 }
 
 /// The write setting the room's pins to `pins`.
-pub(crate) fn repinned(matrix: &Matrix, pins: &[String]) -> Request {
-    let path = format!("{}/state/{PINNED_EVENTS}", room(matrix));
-    put(matrix, &path, &json!({ "pinned": pins }))
+pub(crate) fn repinned(matrix: &Matrix, pins: &[String]) -> Result<Request, Declined> {
+    let path = format!("{}/state/{PINNED_EVENTS}", room(matrix)?);
+    Ok(put(matrix, &path, &json!({ "pinned": pins })))
 }
 
 /// The request reading the event `event` of the room.
-pub(crate) fn event(matrix: &Matrix, event: &str) -> Request {
-    get(
+pub(crate) fn event(matrix: &Matrix, event: &str) -> Result<Request, Declined> {
+    Ok(get(
         matrix,
-        &format!("{}/event/{}", room(matrix), unreserved(event)),
-    )
+        &format!("{}/event/{}", room(matrix)?, segment(event)?),
+    ))
 }

@@ -114,7 +114,12 @@ fn ran_within(
             ..Budget::UNBOUNDED
         },
     };
-    let board = pollster::block_on(herald_flows::queue(&config, &connected, &ports, "ci"));
+    let board = pollster::block_on(herald_flows::queue(
+        &config,
+        &connected,
+        &ports,
+        ("ci", false),
+    ));
     let swept = if board.is_ok() && most.is_none() {
         pollster::block_on(report(&config, &connected, &ports, "r1"))
     } else {

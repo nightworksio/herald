@@ -1,12 +1,16 @@
 //! The config's tests, one module for each part of `herald.toml`.
 
 #[cfg(test)]
+mod addressed;
+#[cfg(test)]
 mod announce;
 #[cfg(test)]
 mod apps;
 #[cfg(test)]
 mod boards;
 mod common;
+#[cfg(test)]
+mod declines;
 #[cfg(test)]
 mod destination_settings;
 #[cfg(test)]

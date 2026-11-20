@@ -388,7 +388,11 @@ pub(crate) struct Asking<'a> {
 
 impl Asking<'_> {
     /// The listings a poll reads, each conditional on what `cursor` keeps.
-    fn listings(&self, cursor: Option<&Cursor>) -> Vec<Listing> {
+    ///
+    /// # Errors
+    ///
+    /// Where the repository's path names nothing in a URL path.
+    fn listings(&self, cursor: Option<&Cursor>) -> Result<Vec<Listing>, Unpolled> {
         let forge = self.origin.forge();
         let page = self.origin.reading().page;
         let mut listings = Vec::new();
@@ -402,7 +406,7 @@ impl Asking<'_> {
                 Forge::Forgejo => forgejo::runs_path(self.choice, page),
             };
             listings.push(Listing {
-                request: self.conditional(&path, kept.as_ref()),
+                request: self.conditional(&path, kept.as_ref())?,
                 kept,
                 ran: Ran::Run,
             });
@@ -414,21 +418,21 @@ impl Asking<'_> {
                     .and_then(|cursor| cursor.listings.get(ran.name()))
                     .cloned();
                 listings.push(Listing {
-                    request: self.conditional(&path, kept.as_ref()),
+                    request: self.conditional(&path, kept.as_ref())?,
                     kept,
                     ran,
                 });
             }
         }
-        listings
+        Ok(listings)
     }
 
     /// The request for `path` under the repository, conditional on `kept`.
-    fn conditional(&self, path: &str, kept: Option<&Validators>) -> Request {
-        self.origin.get(path, self.token).conditional(
+    fn conditional(&self, path: &str, kept: Option<&Validators>) -> Result<Request, Unpolled> {
+        Ok(self.origin.get(path, self.token)?.conditional(
             kept.and_then(|kept| kept.etag.as_deref()),
             kept.and_then(|kept| kept.last_modified.as_deref()),
-        )
+        ))
     }
 
     /// The runs of `repository` in `answer` to the listing of `ran`.
@@ -464,7 +468,7 @@ impl Asking<'_> {
         cursor: Option<&Cursor>,
     ) -> Result<Asked, Unpolled> {
         let mut answers = Vec::new();
-        for listing in self.listings(cursor) {
+        for listing in self.listings(cursor)? {
             let answer = http
                 .send(listing.request)
                 .await

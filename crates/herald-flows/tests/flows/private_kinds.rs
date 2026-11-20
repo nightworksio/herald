@@ -23,7 +23,12 @@ fn of(kind: Kind) -> Event {
 
 fn announced(config: &Config, event: &Event) -> Outcome {
     let store = healthy();
-    let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]);
+    let crossposted = config.routes[0].route.delivery.crosspost;
+    let answers: Vec<_> = [POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]
+        .into_iter()
+        .filter(|answer| crossposted || *answer != CROSSPOSTED)
+        .collect();
+    let script = Script::answering(&answers);
     let prepared = pollster::block_on(prepare(
         config,
         &secrets(),
@@ -62,7 +67,10 @@ fn a_private_kind_reaches_no_route_that_says_nothing_of_its_place() {
         Outcome::Sent { .. }
     ));
     for stated in ["private = true", "private = false"] {
-        let config = config(stated);
+        let config = match stated {
+            "private = true" => crate::harness::private_config(""),
+            _ => config(stated),
+        };
         assert!(config.routes[0].stated, "{stated}");
         assert!(
             matches!(announced(&config, &of(Kind::ALERT)), Outcome::Sent { .. }),

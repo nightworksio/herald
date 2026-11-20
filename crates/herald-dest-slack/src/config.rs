@@ -3,8 +3,8 @@ use herald_core::{
     Symbols, Text, WaitOptions,
 };
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, optional,
+    Carried, Checking, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts,
+    Placed, Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, optional,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
@@ -87,6 +87,26 @@ impl DestinationConfig for DestinationOptions {
         })
     }
 
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        None
+    }
+    fn checking(&self, _: &Placed) -> Checking {
+        match self.token {
+            Some(_) => Checking::Asked {
+                asks: crate::audience::ASKS,
+                requests: crate::audience::REQUESTS,
+            },
+            None => Checking::Unchecked(crate::audience::UNCHECKED),
+        }
+    }
+
+    fn recalled(&self, written: &str) -> Option<Placed> {
+        serde_json::from_str::<RouteOptions>(written)
+            .ok()
+            .filter(|route| route.check().is_ok())
+            .map(Placed::new)
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         placed.of::<RouteOptions>()?;
         Some((
@@ -109,6 +129,7 @@ impl DestinationConfig for DestinationOptions {
                 .reading_back(self.read_back.unwrap_or_default())
                 .looking_up(self.pin_lookups.unwrap_or_default())
                 .waiting(self.waits())
+                .org_shared(self.org_shared.unwrap_or_default())
                 .worded(
                     self.interactions
                         .as_ref()
@@ -139,6 +160,10 @@ impl DestinationConfig for DestinationOptions {
 }
 
 impl Placement for RouteOptions {
+    fn written(&self) -> Option<String> {
+        serde_json::to_string(self).ok()
+    }
+
     fn place(&self) -> Option<&str> {
         self.channel.as_deref()
     }

@@ -244,10 +244,13 @@ fn asked(
     })
 }
 
-/// Where the answer to the interaction `value` goes.
+/// Where the answer to the interaction `value` goes, its token through the
+/// one segment encoder, as it is a part of each answer's URL path.
 fn replying(value: &Value) -> Result<Replying, UnreadInteraction> {
     let id = text(value, "id").ok_or(UnreadInteraction::NotAnInteraction)?;
-    let token = text(value, "token").ok_or(UnreadInteraction::NotAnInteraction)?;
+    let token = text(value, "token")
+        .and_then(herald_core::segment)
+        .ok_or(UnreadInteraction::NotAnInteraction)?;
     Ok(Replying {
         id: id.to_owned(),
         token: Secret::new("the interaction's token", token),

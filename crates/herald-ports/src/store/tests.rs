@@ -85,7 +85,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(held(holding.notes()) && held(holding.announcements()));
     assert!(held(holding.inboxes()) && held(holding.positions()));
     assert!(held(holding.waiting()) && held(holding.decisions()));
-    assert!(held(holding.pulls()));
+    assert!(held(holding.pulls()) && held(holding.recalls()));
     assert_eq!(Store::skipped(&holding), ["corrupt.json"]);
     assert!(!Store::writes_one_at_a_time(&holding));
     let none = None::<&Unkept>;
@@ -95,7 +95,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(none.notes().is_none() && none.announcements().is_none());
     assert!(none.inboxes().is_none() && none.positions().is_none());
     assert!(none.waiting().is_none() && none.decisions().is_none());
-    assert!(none.pulls().is_none());
+    assert!(none.pulls().is_none() && none.recalls().is_none());
 }
 
 #[test]
@@ -507,6 +507,18 @@ fn pull_requests_kept_nowhere_answer_unsupported_naming_them() {
         assert_eq!(
             unsupported(unkept.put_reconciled(&source, &reconciled, None)),
             naming("pull requests")
+        );
+    }
+}
+
+#[test]
+fn the_names_of_advised_reports_kept_nowhere_answer_unsupported_naming_them() {
+    for unkept in [None, Some(&Unkept)] {
+        let named = "reports whose living posts were sent advisories";
+        assert_eq!(unsupported(unkept.advised()), naming(named));
+        assert_eq!(
+            unsupported(unkept.put_advised(&herald_core::AdvisedReports::default(), None)),
+            naming(named)
         );
     }
 }

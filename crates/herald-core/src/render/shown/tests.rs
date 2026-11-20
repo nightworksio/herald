@@ -248,6 +248,7 @@ fn a_view_shows_its_runs_queued_and_running_the_oldest_queued_and_those_supersed
             reason: "its runs are unread".to_owned(),
         }],
         heads: vec!["31".to_owned(), "32".to_owned()],
+        ..Overviews::default()
     };
     let value = view_value(Showing {
         view: "queue",
@@ -304,5 +305,99 @@ fn a_view_shows_its_runs_queued_and_running_the_oldest_queued_and_those_supersed
             unread.get_attr("reason").unwrap().to_string()
         ),
         ("o/vault".to_owned(), "its runs are unread".to_owned())
+    );
+}
+
+fn advised(surface: crate::queue::Surface) -> Board {
+    let at = Timestamp::from_second(3 * 24 * 60 * 60).unwrap();
+    let found = crate::queue::Advisories {
+        open: vec![crate::queue::Advisory {
+            repository: "o/app".to_owned(),
+            tool: "secret-scanning".to_owned(),
+            severity: None,
+            summary: Some("Example Service Key".to_owned()),
+            state: "open".to_owned(),
+            url: "https://github.com/o/app/security/secret-scanning/4".to_owned(),
+            opened: Timestamp::from_second(24 * 60 * 60).unwrap(),
+        }],
+        unread: vec![crate::queue::Unread {
+            repository: "o/vault".to_owned(),
+            visibility: crate::Visibility::Private,
+            reason: "refused".to_owned(),
+        }],
+        more: false,
+        at,
+    };
+    let mut board = shown();
+    board.overviews.advisories = Some(crate::queue::Advised::to(&found, surface));
+    board
+}
+
+#[test]
+fn a_private_surface_reads_each_advisory_by_its_allowlist() {
+    let board = advised(crate::queue::Surface::Route {
+        private: true,
+        recallable: true,
+    });
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let overviews = value.get_attr("overviews").unwrap();
+    assert_eq!(keys(&overviews), ["advisories", "capacity", "unread"]);
+    let advisories = overviews.get_attr("advisories").unwrap();
+    assert_eq!(keys(&advisories), ["count", "more", "open", "unread"]);
+    assert_eq!(advisories.get_attr("count").unwrap().to_string(), "1");
+    let advisory = advisories
+        .get_attr("open")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert_eq!(
+        keys(&advisory),
+        [
+            "age",
+            "opened",
+            "repository",
+            "severity",
+            "state",
+            "summary",
+            "tool",
+            "url"
+        ]
+    );
+    assert_eq!(advisory.get_attr("age").unwrap().to_string(), "2d");
+    let unread = advisories
+        .get_attr("unread")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert_eq!(unread.get_attr("reason").unwrap().to_string(), "refused");
+}
+
+#[test]
+fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
+    let board = advised(crate::queue::Surface::Route {
+        private: false,
+        recallable: true,
+    });
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let overviews = value.get_attr("overviews").unwrap();
+    assert_eq!(keys(&overviews), ["capacity", "unread", "withheld"]);
+    assert_eq!(
+        overviews.get_attr("withheld").unwrap().to_string(),
+        crate::queue::WITHHELD
+    );
+    let unadvised = shown();
+    let plain = view_value(Showing {
+        view: "queue",
+        board: &unadvised,
+    });
+    assert_eq!(
+        keys(&plain.get_attr("overviews").unwrap()),
+        ["capacity", "unread"]
     );
 }

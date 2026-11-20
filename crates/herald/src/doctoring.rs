@@ -12,7 +12,7 @@ use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
     Announced, EGRESS_GUARDED, Federation, Findings, Gap, Here, Outcome, Tier, doctor,
-    egress_guarded, handed_over, kept_tokens, keys, online, shared, trial,
+    egress_guarded, handed_over, kept_tokens, keys, online, recalls, shared, trial,
 };
 use herald_ports::{Clock as _, Keyring, Secrets as _, Store};
 use schemars::JsonSchema;
@@ -107,6 +107,17 @@ impl<H: Host> Through<H> for Rotating {
     ) -> Findings {
         let mut findings = handed_over(serving.config, &serving.ports.store.published()).await;
         findings.extend(shared(serving.config, &serving.ports.store.cursors()).await);
+        findings.extend(
+            recalls(
+                serving.config,
+                (
+                    &serving.ports.store.cursors(),
+                    &serving.ports.store.recalls(),
+                    &serving.ports.store.ledger(),
+                ),
+            )
+            .await,
+        );
         findings
     }
 }

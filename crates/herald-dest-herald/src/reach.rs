@@ -4,8 +4,8 @@ use herald_core::{
     Announcement, Bullet, Chore, Delivery, Emphases, Entry, Escape, Features, Fences, Heading,
     Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, Sent, Step, Symbols, Threads,
 };
-use herald_kinds::{Fed, Feeding, Reach, Signing, UnreadPosts};
-use herald_ports::{Base, Boxed, DynHttp, DynMarkers, HttpError, Secret};
+use herald_kinds::{Audience, Fed, Feeding, Reach, Signing, UNADVISED, UnreadPosts};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, HttpError, Response, Secret};
 
 use crate::FeedOptions;
 
@@ -102,6 +102,18 @@ impl Reach for Feed {
         _: &'a str,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
         Box::pin(ready(Ok(Sent::Refused(UNSENT.to_owned()))))
+    }
+
+    fn audience<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(ready(Audience::Public(UNADVISED.to_owned())))
+    }
+
+    fn keeps_edits(&self) -> bool {
+        false
+    }
+
+    fn declines(&self, _: &Response) -> bool {
+        false
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {

@@ -29,7 +29,7 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
     let view = config.views.get(&rule.watch.view)?;
-    let pulls = match view_pulls(flow, (&rule.watch.view, view), reads).await {
+    let pulls = match view_pulls(flow, (&rule.watch.view, view, None), reads).await {
         Ok(read) => read.pulls,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };

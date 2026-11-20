@@ -233,6 +233,12 @@ pub fn report(announced: &Announced) -> String {
     match &announced.outcome {
         Outcome::Sent { steps: sent } => format!("{route}: announced ({})", steps(sent)),
         Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
+        Outcome::Sealed { stopped: false } => {
+            format!("{route}: its private post is up to date; what it shows is not told")
+        }
+        Outcome::Sealed { stopped: true } => format!(
+            "{route}: stopped before its private post was up to date; why is not told. The next run sends what remains."
+        ),
         Outcome::Unedited => format!("{route}: an edit of nothing it announced; nothing sent"),
         Outcome::Skipped(reason) => format!("{route}: skipped, as {reason}; nothing sent"),
         Outcome::Gathered { key, due } => {

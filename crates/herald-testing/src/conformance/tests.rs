@@ -15,6 +15,7 @@ mod latest;
 mod pending;
 mod published;
 mod pulls;
+mod recalls;
 mod tokens;
 mod unkept;
 
@@ -132,6 +133,10 @@ enum Fault {
     OverwritesAnyReconcileVersion,
     KeepsTheFirstReconcile,
     SharesReconciles,
+    HoldsUnwrittenRecalls,
+    OverwritesAnyRecallsVersion,
+    OverwritesAStaleRecallsVersion,
+    KeepsTheFirstRecalls,
 }
 
 struct Faulty {

@@ -48,6 +48,12 @@ pub(crate) const CONVERSATIONS_HISTORY: WebMethod = WebMethod {
     name: "conversations.history",
     scopes: HISTORY,
 };
+/// Who may read a channel: whether it is private, and whom it is shared
+/// with.
+pub(crate) const CONVERSATIONS_INFO: WebMethod = WebMethod {
+    name: "conversations.info",
+    scopes: &["channels:read", "groups:read"],
+};
 /// A thread's replies.
 pub(crate) const CONVERSATIONS_REPLIES: WebMethod = WebMethod {
     name: "conversations.replies",
@@ -70,12 +76,13 @@ pub(crate) const PINS_REMOVE: WebMethod = WebMethod {
 };
 
 /// Every method herald calls with its bot token.
-pub(crate) const METHODS: [WebMethod; 9] = [
+pub(crate) const METHODS: [WebMethod; 10] = [
     AUTH_TEST,
     BOTS_INFO,
     CHAT_GET_PERMALINK,
     CHAT_POST_MESSAGE,
     CONVERSATIONS_HISTORY,
+    CONVERSATIONS_INFO,
     CONVERSATIONS_REPLIES,
     PINS_ADD,
     PINS_LIST,
@@ -108,9 +115,11 @@ mod tests {
             bot_scopes(),
             [
                 "channels:history",
+                "channels:read",
                 "chat:write",
                 "commands",
                 "groups:history",
+                "groups:read",
                 "pins:read",
                 "pins:write",
                 "users:read",

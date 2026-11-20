@@ -220,6 +220,7 @@ fn the_requests_carry_a_forgejo_token_and_ask_codeberg_where_no_api_is_named() {
     assert_eq!(
         source(None)
             .releases_request(None, Some(&named))
+            .unwrap()
             .to_string(),
         [
             "GET https://codeberg.org/api/v1/repos/forgejo/forgejo/releases?limit=30",
@@ -232,7 +233,9 @@ fn the_requests_carry_a_forgejo_token_and_ask_codeberg_where_no_api_is_named() {
     let run = Token::Run(Secret::new("GITHUB_TOKEN", "hunter2"));
     let own = source(Some("https://forge.example/api/v1"));
     assert_eq!(
-        own.release_request("v17.0.1", Some(&run)).to_string(),
+        own.release_request("v17.0.1", Some(&run))
+            .unwrap()
+            .to_string(),
         [
             "GET https://forge.example/api/v1/repos/forgejo/forgejo/releases/tags/v17.0.1",
             "Accept: application/json",

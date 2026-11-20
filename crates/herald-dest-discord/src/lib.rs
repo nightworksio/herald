@@ -7,6 +7,7 @@
 //! request built from the announcement and the steps already landed, and
 //! each response is read back into the facts the ledger records.
 
+mod audience;
 mod config;
 mod discord;
 mod gateway;
@@ -24,6 +25,7 @@ mod revise;
 mod setup;
 mod unpin;
 
+pub use audience::{ASKS, UNCHECKED};
 pub use config::{DiscordKind, KIND, SCHEME};
 pub use discord::{Discord, MARKUP, profile};
 pub use gateway::{Effect, Gateway};

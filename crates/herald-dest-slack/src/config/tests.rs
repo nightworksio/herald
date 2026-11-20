@@ -394,3 +394,25 @@ fn socket_mode_is_opened_with_the_app_level_token_and_heard_as_herald_answers_it
     let unopened = interacted(&bot(&json!({ "via": "socket" })), &secrets);
     assert!(unopened.session().is_none());
 }
+
+#[test]
+fn a_recalled_place_is_checked_as_a_route_s_is_and_a_tampered_one_reaches_nothing() {
+    let options = bot(&json!(null));
+    let written = route(&json!({ "channel": CHANNEL })).written().unwrap();
+    let placed = options.recalled(&written).unwrap();
+    assert_eq!(placed.place(), Some(CHANNEL));
+    assert_eq!(
+        options.checking(&placed),
+        Checking::Asked {
+            asks: crate::ASKS,
+            requests: 1
+        }
+    );
+    assert_eq!(
+        webhook(&json!(null)).checking(&placed),
+        Checking::Unchecked(crate::UNCHECKED)
+    );
+    for tampered in [r#"{"channel":"C01/../x"}"#, "not json"] {
+        assert!(options.recalled(tampered).is_none(), "{tampered}");
+    }
+}

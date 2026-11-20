@@ -6,14 +6,14 @@ use herald_ports::{Method, Request, Secret, SecretText};
 use serde_json::json;
 
 use crate::discord::Discord;
-use crate::request::{bare, chunk, json, message, thread, thread_name};
+use crate::request::{bare, chunk, endpoint, json, message, path, recorded, thread, thread_name};
 
 /// Why a thread cannot be renamed: it is not recorded.
 const NO_THREAD: Declined = Declined::Missing("the thread opened from the announcement");
 
 /// The message of `part` in the record `entry` keeps.
 fn part(entry: &Entry, part: u32) -> Result<&str, Declined> {
-    entry.part(part).ok_or(NO_PART)
+    entry.part(part).ok_or(NO_PART).and_then(recorded)
 }
 
 /// What `part` of `announcement` reads, edited: the post's message, or an
@@ -34,9 +34,14 @@ fn body(discord: &Discord, part: u32, announcement: &Announcement, delivery: &De
 
 /// The webhook's address of the message `message`, in the thread `entry`
 /// records where it records one.
-fn webhook_message(url: &Secret, message: &str, entry: &Entry, components: bool) -> SecretText {
-    let query: Vec<String> = thread(entry)
-        .map(|thread| format!("thread_id={thread}"))
+fn webhook_message(
+    url: &Secret,
+    message: &str,
+    entry: &Entry,
+    components: bool,
+) -> Result<SecretText, Declined> {
+    let query: Vec<String> = thread(entry)?
+        .map(|thread| format!("thread_id={}", herald_core::unreserved(thread)))
         .into_iter()
         .chain(components.then(|| "with_components=true".to_owned()))
         .collect();
@@ -45,7 +50,7 @@ fn webhook_message(url: &Secret, message: &str, entry: &Entry, components: bool)
     } else {
         format!("?{}", query.join("&"))
     };
-    SecretText::secret(url.clone()).then(format!("/messages/{message}{query}"))
+    Ok(SecretText::secret(url.clone()).then(format!("{}{query}", path(&["messages", message])?)))
 }
 
 /// The webhook's edit of `part` of `announcement`.
@@ -57,7 +62,7 @@ pub(crate) fn webhook_edit(
     delivery: &Delivery,
     entry: &Entry,
 ) -> Result<Request, Declined> {
-    let target = webhook_message(url, part(entry, edited)?, entry, edited == 0);
+    let target = webhook_message(url, part(entry, edited)?, entry, edited == 0)?;
     Ok(json(
         Method::Patch,
         target,
@@ -72,16 +77,21 @@ pub(crate) fn webhook_delete(
     deleted: u32,
     entry: &Entry,
 ) -> Result<Request, Declined> {
-    let target = webhook_message(url, part(entry, deleted)?, entry, false);
+    let target = webhook_message(url, part(entry, deleted)?, entry, false)?;
     Ok(bare(Method::Delete, target, None))
 }
 
 /// The channel the bot's message of `part` is in: a forum post's thread, or
 /// the thread its chunks follow in, else the route's channel.
-fn bot_channel<'a>(discord: &Discord, channel: &'a str, entry: &'a Entry, part: u32) -> &'a str {
+fn bot_channel<'a>(
+    discord: &Discord,
+    channel: &'a str,
+    entry: &'a Entry,
+    part: u32,
+) -> Result<&'a str, Declined> {
     match (part, discord.route.forum) {
-        (0, false) => channel,
-        _ => thread(entry).unwrap_or(channel),
+        (0, false) => Ok(channel),
+        _ => Ok(thread(entry)?.unwrap_or(channel)),
     }
 }
 
@@ -95,11 +105,10 @@ pub(crate) fn bot_edit(
     entry: &Entry,
 ) -> Result<Request, Declined> {
     let message = part(entry, edited)?;
-    let api = &discord.api;
-    let target = bot_channel(discord, channel, entry, edited);
+    let target = bot_channel(discord, channel, entry, edited)?;
     Ok(json(
         Method::Patch,
-        SecretText::plain(format!("{api}/channels/{target}/messages/{message}")),
+        endpoint(&discord.api, &["channels", target, "messages", message])?,
         discord.credential.bot(),
         body(discord, edited, announcement, delivery),
     ))
@@ -113,11 +122,10 @@ pub(crate) fn bot_delete(
     entry: &Entry,
 ) -> Result<Request, Declined> {
     let message = part(entry, deleted)?;
-    let api = &discord.api;
-    let target = bot_channel(discord, channel, entry, deleted);
+    let target = bot_channel(discord, channel, entry, deleted)?;
     Ok(bare(
         Method::Delete,
-        SecretText::plain(format!("{api}/channels/{target}/messages/{message}")),
+        endpoint(&discord.api, &["channels", target, "messages", message])?,
         discord.credential.bot(),
     ))
 }
@@ -129,11 +137,10 @@ pub(crate) fn bot_rename(
     announcement: &Announcement,
     entry: &Entry,
 ) -> Result<Request, Declined> {
-    let opened = thread(entry).ok_or(NO_THREAD)?;
-    let api = &discord.api;
+    let opened = thread(entry)?.ok_or(NO_THREAD)?;
     Ok(json(
         Method::Patch,
-        SecretText::plain(format!("{api}/channels/{opened}")),
+        endpoint(&discord.api, &["channels", opened])?,
         discord.credential.bot(),
         json!({ "name": thread_name(announcement) }).to_string(),
     ))

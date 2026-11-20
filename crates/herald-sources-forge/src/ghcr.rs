@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use herald_core::{
     Cursor, Draft, Duration, Event, Glob, KEEP_MEMBERS, Kind, Listed, Listing, Owner, PACKAGE,
     PACKAGE_TYPE, Polled, ProjectName, RELEASE_LINK, Sandbox, SecretRef, Selection, Size,
-    Visibility, path_of_names, prerelease_version, status, unreserved, versioned, web_url,
+    Visibility, path_of_names, prerelease_version, status, versioned, web_url,
 };
 use herald_kinds::{
     Credential, Expand, Expanded, Fault, Poll, Polling, SourceConfig, SourceKind, Unlisted,
@@ -20,7 +20,7 @@ use herald_wire::{PARSE_LIMIT, Reading, SourceError, answered};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
 
-use crate::forge::authorized;
+use crate::forge::{OWNER, authorized, whole};
 use crate::options::{
     MOST_PACKAGES, MOST_PACKAGES_ALLOWED, MOVING, PackageVisibility, SourceOptions, registry_host,
 };
@@ -310,17 +310,9 @@ impl Images {
     }
 
     /// The path under which GitHub serves the packages of the owner, as an
-    /// `owner`.
-    fn base(&self, owner: Owner) -> String {
-        let account = match owner {
-            Owner::Organization => "orgs",
-            Owner::User => "users",
-        };
-        format!(
-            "{}/{account}/{}/packages",
-            self.api,
-            unreserved(&self.owner)
-        )
+    /// `owner`; or why its name names nothing.
+    fn base(&self, owner: Owner) -> Result<String, Unpolled> {
+        packages(&self.api, (owner, &self.owner))
     }
 
     fn get(&self, url: String) -> Request {
@@ -374,7 +366,7 @@ impl Images {
             let number = pages.len() + 1;
             let url = format!(
                 "{}?package_type=container&per_page={page}&page={number}",
-                self.base(owner)
+                self.base(owner).map_err(Unlisted::Failed)?
             );
             let answer = http
                 .send(self.get(url))
@@ -464,8 +456,8 @@ impl Expand for Images {
     fn member(&self, image: &Listed) -> Arc<dyn Poll> {
         let known = *self.kind.lock().unwrap_or_else(PoisonError::into_inner);
         let (first, fallback) = match known {
-            Some(owner) => (self.base(owner), None),
-            None => (self.base(Owner::Organization), Some(self.base(Owner::User))),
+            Some(owner) => (owner, None),
+            None => (Owner::Organization, Some(Owner::User)),
         };
         Arc::new(ImageVersions {
             api: self.api.clone(),
@@ -527,8 +519,8 @@ impl Expand for Images {
 #[derive(Debug)]
 struct ImageVersions {
     api: String,
-    first: String,
-    fallback: Option<String>,
+    first: Owner,
+    fallback: Option<Owner>,
     image: String,
     project: String,
     owner: String,
@@ -539,15 +531,29 @@ struct ImageVersions {
     token: Option<Token>,
 }
 
+/// What a request names an image.
+const IMAGE: &str = "image";
+
+/// The path under which GitHub serves the packages of the owner `name`, as
+/// an `owner`; or why the name names nothing.
+fn packages(api: &str, (owner, name): (Owner, &str)) -> Result<String, Unpolled> {
+    let account = match owner {
+        Owner::Organization => "orgs",
+        Owner::User => "users",
+    };
+    Ok(format!("{api}/{account}/{}/packages", whole(name, OWNER)?))
+}
+
 impl ImageVersions {
-    fn request(&self, base: &str, cursor: Option<&Cursor>) -> Request {
-        authorized(
+    fn request(&self, owner: Owner, cursor: Option<&Cursor>) -> Result<Request, Unpolled> {
+        let base = packages(&self.api, (owner, &self.owner))?;
+        Ok(authorized(
             Forge::GitHub,
             Request::new(
                 Method::Get,
                 SecretText::plain(format!(
                     "{base}/container/{}/versions?per_page={}",
-                    unreserved(&self.image),
+                    whole(&self.image, IMAGE)?,
                     self.reading.page
                 )),
             )
@@ -557,7 +563,7 @@ impl ImageVersions {
         .conditional(
             cursor.and_then(|cursor| cursor.etag.as_deref()),
             cursor.and_then(|cursor| cursor.last_modified.as_deref()),
-        )
+        ))
     }
 
     fn events(&self, answer: &Response) -> Result<Polled, SourceError> {
@@ -650,7 +656,7 @@ impl Poll for ImageVersions {
         Box::pin(async move {
             let http = Erased(http);
             let mut answer = http
-                .send(self.request(&self.first, cursor))
+                .send(self.request(self.first, cursor)?)
                 .await
                 .map_err(Unpolled::unreachable)?;
             if let Some(fallback) = self
@@ -659,7 +665,7 @@ impl Poll for ImageVersions {
                 .filter(|_| answer.status == status::NOT_FOUND)
             {
                 answer = http
-                    .send(self.request(fallback, cursor))
+                    .send(self.request(*fallback, cursor)?)
                     .await
                     .map_err(Unpolled::unreachable)?;
             }

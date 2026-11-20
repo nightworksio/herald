@@ -319,8 +319,7 @@ pub fn load(
     let doctor = loader.doctor(sections.doctor);
     loader.exposed(&sources, &routes, doctor);
     loader.unstated(&routes, doctor);
-    loader.unfed(&destinations, &routes, doctor);
-    loader.unpushed(&destinations, &peers, &routes, doctor);
+    loader.unaddressed(&destinations, &routes);
     loader.routed((&sources, &source_spans), &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());

@@ -119,12 +119,12 @@ impl Releases {
             Listed::Read(tag) => return Ok(tag),
             Listed::Referenced(name) => {
                 let reference = self
-                    .ask(http, self.origin.reference_request(&name, token))
+                    .ask(http, self.origin.reference_request(&name, token)?)
                     .await?;
                 match forge.pointed(&reference).map_err(Unpolled::unreadable)? {
                     Pointed::Tag(sha) => {
                         let object = self
-                            .ask(http, self.origin.tag_object_request(&sha, token))
+                            .ask(http, self.origin.tag_object_request(&sha, token)?)
                             .await?;
                         forge
                             .tag_object(&object, None)
@@ -132,7 +132,7 @@ impl Releases {
                     }
                     Pointed::Commit(sha) => {
                         let commit = self
-                            .ask(http, self.origin.commit_request(&sha, token))
+                            .ask(http, self.origin.commit_request(&sha, token)?)
                             .await?;
                         forge.committed(&commit, &name)
                     }
@@ -144,7 +144,7 @@ impl Releases {
                 message,
             } => {
                 let object = self
-                    .ask(http, self.origin.tag_object_request(&object, token))
+                    .ask(http, self.origin.tag_object_request(&object, token)?)
                     .await?;
                 forge
                     .tag_object(&object, message)
@@ -245,13 +245,13 @@ pub async fn tag_event_of(
     let http = Erased(http);
     let forge = origin.forge();
     let described = releases
-        .ask(&http, origin.repository_request(token))
+        .ask(&http, origin.repository_request(token)?)
         .await?;
     let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
     let listed = match forge {
         Forge::GitHub => Listed::Referenced(tag.to_owned()),
         Forge::GitLab | Forge::Forgejo => {
-            let answer = releases.ask(&http, origin.tag_request(tag, token)).await?;
+            let answer = releases.ask(&http, origin.tag_request(tag, token)?).await?;
             forge.tag(tag, &answer).map_err(Unpolled::unreadable)?
         }
     };
@@ -377,7 +377,7 @@ impl Poll for Releases {
             let token = self.token.as_ref();
             let releases = if self.signals.takes(Signal::Release) {
                 Some(
-                    self.ask(&http, self.origin.releases_request(cursor, token))
+                    self.ask(&http, self.origin.releases_request(cursor, token)?)
                         .await?,
                 )
             } else {
@@ -386,7 +386,7 @@ impl Poll for Releases {
             let kept = cursor.and_then(|cursor| cursor.validators(Signal::Tag));
             let tags = if self.signals.takes(Signal::Tag) {
                 Some(
-                    self.ask(&http, self.origin.tags_request(kept, token))
+                    self.ask(&http, self.origin.tags_request(kept, token)?)
                         .await?,
                 )
             } else {
@@ -399,7 +399,7 @@ impl Poll for Releases {
                 return Ok(None);
             }
             let described = self
-                .ask(&http, self.origin.repository_request(token))
+                .ask(&http, self.origin.repository_request(token)?)
                 .await?;
             let forge = self.origin.forge();
             let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;

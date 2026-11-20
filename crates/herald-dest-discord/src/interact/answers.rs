@@ -5,7 +5,7 @@ use herald_ports::{Method, Request, SecretText};
 use serde_json::{Value, json};
 
 use super::{Interacting, Replying};
-use crate::request::json;
+use crate::request::{json, path};
 
 /// The answer to a ping.
 const PONG: u64 = 1;
@@ -19,20 +19,21 @@ const EPHEMERAL: u64 = 64;
 pub const MESSAGE: usize = 2_000;
 
 impl Interacting {
-    fn callback(&self, replying: &Replying, body: String) -> Request {
-        let url = SecretText::plain(format!("{}/interactions/{}/", self.api, replying.id))
+    fn callback(&self, replying: &Replying, body: String) -> Option<Request> {
+        let path = path(&["interactions", &replying.id]).ok()?;
+        let url = SecretText::plain(format!("{}{path}/", self.api))
             .then_secret(replying.token.clone())
             .then("/callback");
-        json(Method::Post, url, None, body)
+        Some(json(Method::Post, url, None, body))
     }
 
-    fn hook(&self, replying: &Replying, rest: &str) -> SecretText {
-        SecretText::plain(format!(
-            "{}/webhooks/{}/",
-            self.api, self.interactions.application
-        ))
-        .then_secret(replying.token.clone())
-        .then(rest)
+    fn hook(&self, replying: &Replying, rest: &str) -> Option<SecretText> {
+        let path = path(&["webhooks", &self.interactions.application]).ok()?;
+        Some(
+            SecretText::plain(format!("{}{path}/", self.api))
+                .then_secret(replying.token.clone())
+                .then(rest),
+        )
     }
 
     /// The request that answers the interaction `replying` names as one that
@@ -40,15 +41,15 @@ impl Interacting {
     /// an endpoint gives in its response, sent where the gateway carried the
     /// interaction.
     #[must_use]
-    pub(crate) fn defer(&self, replying: &Replying, public: bool) -> Request {
+    pub(crate) fn defer(&self, replying: &Replying, public: bool) -> Option<Request> {
         self.callback(replying, deferred(public))
     }
 
     /// The request that answers the interaction `replying` names with
     /// `projects` as the completions of what was typed, sent where the
-    /// gateway carried the interaction.
+    /// gateway carried the interaction; none where its id names nothing.
     #[must_use]
-    pub fn complete(&self, replying: &Replying, projects: &[String]) -> Request {
+    pub fn complete(&self, replying: &Replying, projects: &[String]) -> Option<Request> {
         self.callback(replying, choices(projects))
     }
 
@@ -62,7 +63,7 @@ impl Interacting {
         parts
             .iter()
             .enumerate()
-            .map(|(index, part)| {
+            .filter_map(|(index, part)| {
                 let (method, rest, body) = if index == 0 {
                     (
                         Method::Patch,
@@ -80,7 +81,8 @@ impl Interacting {
                         }),
                     )
                 };
-                json(method, self.hook(replying, rest), None, body.to_string())
+                let hook = self.hook(replying, rest)?;
+                Some(json(method, hook, None, body.to_string()))
             })
             .collect()
     }

@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use herald_core::Delivery;
-use herald_kinds::Probe;
+use herald_kinds::{Audience, Probe};
 use herald_ports::Http;
 use serde::Deserialize;
 
@@ -73,7 +73,16 @@ pub(crate) async fn probe<H: Http>(matrix: &Matrix, http: &H, delivery: &Deliver
     };
     let mut probes = vec![taken];
     let roomed = &matrix.route.room;
-    let path = format!("{}/state/m.room.power_levels/", room(matrix));
+    let path = match room(matrix) {
+        Ok(room) => format!("{room}/state/m.room.power_levels/"),
+        Err(declined) => {
+            probes.push(Probe::Route {
+                key: Some("room"),
+                why: declined.to_string(),
+            });
+            return probes;
+        }
+    };
     let answer = http.send(get(matrix, &path)).await;
     if let Some(withheld) = Probe::route(HOMESERVER, Some("room"), &answer, &|status| {
         format!(
@@ -95,6 +104,13 @@ pub(crate) async fn probe<H: Http>(matrix: &Matrix, http: &H, delivery: &Deliver
             key: Some("room"),
             why: format!("{user_id} needs power level {level} in {roomed} to send {event}; raise the bot's power level there"),
         });
+    }
+    match crate::audience::audience(matrix, http).await {
+        Audience::Private => {}
+        Audience::Public(why) => probes.push(Probe::Public(why)),
+        Audience::Unread(why) => probes.push(Probe::Said(format!(
+            "herald withholds advisories sections from this room: {why}"
+        ))),
     }
     probes
 }

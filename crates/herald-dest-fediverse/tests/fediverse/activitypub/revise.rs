@@ -174,3 +174,8 @@ fn a_note_carries_every_part_so_its_edits_and_deletions_ask_nothing() {
     }
     assert!(http.0.lock().unwrap().is_empty());
 }
+
+#[test]
+fn an_update_of_an_actor_s_post_leaves_what_it_replaced_with_the_servers_it_reached() {
+    assert!(herald_kinds::Reach::keeps_edits(&actor()));
+}

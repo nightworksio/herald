@@ -310,6 +310,7 @@ fn a_reached_push_goes_to_the_peer_s_inbox_and_is_sent_nothing_step_by_step() {
         })
         .unwrap();
     let reached = peered.reach(&placed(), "", key()).unwrap();
+    assert!(!reached.keeps_edits());
     let pushed = reached.pushes().unwrap();
     assert_eq!(pushed.peer, "upstream");
     assert_eq!(

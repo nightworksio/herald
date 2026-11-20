@@ -294,6 +294,52 @@ fn a_view_shows_the_capacity_of_the_repositories_it_shows_where_it_names_no_othe
 }
 
 #[test]
+fn a_view_reads_its_owner_s_advisories_where_it_names_no_other_within_its_bounds() {
+    let config = loaded(&with(
+        "[views.security]\noverviews = [\"advisories\"]\n\n[reports.daily]\n",
+    ));
+    assert_eq!(
+        config.views["security"].advisories,
+        Some(herald_core::Advising {
+            from: herald_core::AdvisoriesFrom::Owner,
+            repositories: herald_core::ADVISORY_REPOSITORIES,
+            most: herald_core::MOST_ADVISORIES,
+        })
+    );
+    assert_eq!(config.views["security"].capacity, None);
+    assert_eq!(config.views[BUILT_IN_VIEW].advisories, None);
+    for (from, wanted) in [
+        ("shown", herald_core::AdvisoriesFrom::Shown),
+        ("members", herald_core::AdvisoriesFrom::Members),
+        ("owner", herald_core::AdvisoriesFrom::Owner),
+    ] {
+        let set = loaded(&with(&format!(
+            "[views.security]\noverviews = [\"advisories\", \"capacity\"]\nadvisories_from = \"{from}\"\nadvisory_repositories = 100\nmost_advisories = 10000\n\n[reports.daily]\n"
+        )));
+        assert_eq!(
+            set.views["security"].advisories,
+            Some(herald_core::Advising {
+                from: wanted,
+                repositories: 100,
+                most: 10_000,
+            })
+        );
+    }
+    let error = errors(&with(
+        "[views.wide]\noverviews = [\"advisories\"]\nadvisory_repositories = 101\nmost_advisories = 10001\n\n[views.unshown]\nmost_advisories = 5\n\n[views.named]\nadvisories_from = \"owner\"\n\n[views.counted]\nadvisory_repositories = 2\n",
+    ));
+    for wanted in [
+        "views.wide.advisory_repositories: an advisories overview reads from 1 to 100 repositories one by one, such as advisory_repositories = 20",
+        "views.wide.most_advisories: an advisories overview reads from 1 to 10000 open advisories, such as most_advisories = 1000",
+        "views.unshown: advisories_from, advisory_repositories and most_advisories take effect with overviews = [\"advisories\"], which this view does not name",
+        "views.named: advisories_from",
+        "views.counted: advisories_from",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
+}
+
+#[test]
 fn every_mistake_in_a_view_or_report_is_named_by_its_key() {
     let error = errors(&with(
         r#"[sources.news]

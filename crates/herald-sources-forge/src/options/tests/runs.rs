@@ -76,6 +76,14 @@ fn runs_is_given_only_where_runs_are_announced_and_each_of_its_keys_is_sound() {
             Forge::GitHub,
             "runs.workflows: \"[\" opens a [ it never closes with a character in it; close it, or write [[] for a [ itself",
         ),
+        (
+            ran(Runs {
+                branches: vec!["main".to_owned(), "release/../../user".to_owned()],
+                ..Runs::default()
+            }),
+            Forge::GitHub,
+            "runs.branches: \"release/../../user\" holds an empty part, '.' or '..', which names no branch in a URL path; give the branch's own name",
+        ),
     ];
     for (options, forge, refusal) in refused {
         assert_eq!(options.check(forge), Err(refusal.to_owned()));

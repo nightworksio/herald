@@ -1,9 +1,11 @@
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Probe, Reach, Signing};
-use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError};
+use herald_kinds::{Audience, Probe, Reach, Signing};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
+use serde_json::Value;
 
 use crate::discord::Discord;
 use crate::markers::DiscordMarkers;
+use crate::read::json;
 
 impl Reach for Discord {
     fn profile(&self) -> Profile {
@@ -39,6 +41,18 @@ impl Reach for Discord {
 
     fn posts<'a>(&'a self, http: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(DiscordMarkers::new(self, Erased(http)))
+    }
+
+    fn audience<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(async move { crate::audience::audience(self, &Erased(http)).await })
+    }
+
+    fn keeps_edits(&self) -> bool {
+        false
+    }
+
+    fn declines(&self, answer: &Response) -> bool {
+        json(answer).get("code").is_some_and(Value::is_u64)
     }
 
     fn probe<'a>(&'a self, http: &'a dyn DynHttp, _: &'a Delivery) -> Boxed<'a, Vec<Probe>> {

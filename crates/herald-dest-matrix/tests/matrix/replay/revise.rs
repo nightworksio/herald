@@ -1,7 +1,7 @@
 //! A Matrix post brought to a new revision: each part replaced by an edit
 //! event, and each reply no longer needed redacted.
 
-use herald_core::{Entry, Facts, Sent, Step, unreserved};
+use herald_core::{Entry, Facts, Sent, Step, digest, unreserved};
 use herald_dest_matrix::{Matrix, RouteOptions};
 use herald_ports::Secret;
 use herald_testing::sample::announcement;
@@ -109,11 +109,41 @@ fn a_reply_no_longer_needed_is_redacted() {
                 "{}/redact/{}/{}",
                 room(),
                 unreserved(REPLY),
-                unreserved(&format!("{key}.redact.1"))
+                unreserved(&format!("{key}.redact.1.{}", digest(REPLY)))
             ),
             Some(json!({}))
         )
     );
+}
+
+#[test]
+fn two_replacements_redact_their_own_events_under_their_own_transactions() {
+    let first = request(&Step::Delete(0), &posted());
+    let replaced = Entry::new(announcement().key).landed(Step::Post, sent("$reposted"));
+    let second = request(&Step::Delete(0), &replaced);
+    let transaction = |url: &str| url.rsplit('/').next().unwrap_or_default().to_owned();
+    assert!(first.url.contains("/redact/%24post/"), "{}", first.url);
+    assert!(
+        second.url.contains("/redact/%24reposted/"),
+        "{}",
+        second.url
+    );
+    assert_ne!(transaction(&first.url), transaction(&second.url));
+}
+
+#[test]
+fn an_edit_back_to_an_earlier_revision_goes_under_a_transaction_of_its_own() {
+    let at = jiff::Timestamp::from_second(1_000).unwrap();
+    let once = posted().attempted(edit(0), at);
+    let again = posted().attempted(edit(0), at + jiff::SignedDuration::from_hours(2));
+    let retried = once
+        .clone()
+        .attempted(edit(0), at + jiff::SignedDuration::from_hours(1));
+    let retried = request(&edit(0), &retried);
+    let (once, again) = (request(&edit(0), &once), request(&edit(0), &again));
+    assert!(once.url.ends_with(".r2.0.1000"), "{}", once.url);
+    assert_ne!(once.url, again.url);
+    assert_eq!(once.url, retried.url);
 }
 
 #[test]
@@ -154,5 +184,35 @@ fn an_edit_or_redaction_lands_and_one_of_an_event_gone_lands_too() {
     assert_eq!(
         sending(&Step::Delete(1), 404, json!({ "errcode": "M_NOT_FOUND" })),
         Sent::Landed(Facts::default())
+    );
+}
+
+#[test]
+fn a_recorded_event_not_shaped_as_one_is_never_sent_to_and_one_that_is_stays_one_segment() {
+    for id in ["..", ".", "%2e%2e", "a/b", "a?b"] {
+        let entry = Entry::new(announcement().key)
+            .landed(Step::Post, sent(id))
+            .landed(Step::Chunk(1), sent(id));
+        for step in [edit(0), edit(1), Step::Delete(1)] {
+            let refused = matrix()
+                .request(&step, &announcement(), &entry)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                refused.contains("not an id the platform gives"),
+                "{id} {step:?}: {refused}"
+            );
+        }
+    }
+    let entry = Entry::new(announcement().key)
+        .landed(Step::Post, sent(POST))
+        .landed(Step::Chunk(1), sent("$a/../b?c"));
+    let redacted = request(&Step::Delete(1), &entry);
+    assert!(
+        redacted
+            .url
+            .starts_with(&format!("{}/redact/%24a%2F..%2Fb%3Fc/", room())),
+        "{}",
+        redacted.url
     );
 }

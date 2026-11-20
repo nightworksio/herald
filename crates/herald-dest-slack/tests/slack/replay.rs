@@ -664,6 +664,7 @@ fn a_destination_takes_one_credential_a_channel_is_named_by_its_id_and_slack_doe
         interactions: None,
         read_back: None,
         pin_lookups: None,
+        org_shared: None,
     };
     assert_eq!(reached(secret(), None).bot(), Ok(true));
     assert_eq!(reached(None, secret()).bot(), Ok(false));
