@@ -66,6 +66,7 @@ impl Pulls for Faulty {
         match self.fault {
             Fault::HoldsAnUnwrittenReconcile => Ok(Some(Versioned {
                 value: Reconciled {
+                    repositories: std::collections::BTreeSet::new(),
                     repository: None,
                     at: None,
                     validators: Vec::new(),

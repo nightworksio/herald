@@ -753,6 +753,7 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
     let kept = crate::store::tests::kept_pull();
     let source = SourceName::new("s");
     let reconciled = herald_core::Reconciled {
+        repositories: std::collections::BTreeSet::new(),
         repository: None,
         at: None,
         validators: Vec::new(),

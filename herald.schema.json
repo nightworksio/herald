@@ -7730,6 +7730,11 @@
             "type": "string"
           }
         },
+        "listed_visibility": {
+          "description": "Whether a live read through a REST listing without a token, as of\nGitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may\nsee a repository from what the listing states of it, rather than\ntaking each of its rows as private: false where absent. It never\nwidens a kept record, a read with a token, a GitLab listing, or an\nowner's rows, which its membership record names.",
+          "type": "boolean",
+          "default": false
+        },
         "mode": {
           "description": "Where it reads its pull requests: \"auto\" where absent, kept of each\nsource that takes webhooks where the store keeps pull requests and\nlive otherwise; \"live\" from the forge each time; or \"kept\" from the\nrecords the store keeps, folded from webhooks and reconciled with a\nlisting.",
           "$ref": "#/$defs/ViewMode"
@@ -7763,7 +7768,7 @@
           "$ref": "#/$defs/Rules"
         },
         "sources": {
-          "description": "The sources it reads, each naming one repository on a forge; every\nsuch source where absent.",
+          "description": "The sources it reads, each naming one repository or an owner on a\nforge; every such source where absent.",
           "type": "array",
           "items": {
             "type": "string"

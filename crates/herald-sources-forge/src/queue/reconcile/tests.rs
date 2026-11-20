@@ -74,6 +74,7 @@ fn relisted(forge: Forge, tokened: bool, kept: &[Validators], answers: Vec<Respo
         visibility: Some(Visibility::Public),
         most_open: 2 * PAGE,
         most_pulls: MOST_PULLS,
+        stated: false,
     };
     let http = ScriptedHttp::new(answers);
     let answer = pollster::block_on(opened.relisted(&Erased(&http as &dyn DynHttp), kept));
@@ -266,6 +267,7 @@ fn completed(
         visibility: None,
         most_open: PAGE,
         most_pulls: MOST_PULLS,
+        stated: false,
     };
     let http = ScriptedHttp::new(answers);
     let read = pollster::block_on(opened.completed(

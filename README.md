@@ -649,9 +649,9 @@ forge, narrowed per source and matched by a route's `match.attributes`:
 
 ### The queue
 
-A `[views.<name>]` table names which open pull requests herald shows and
-whose turn each is, with bots' bumps batched across repositories; it reads
-them live from the forge, or kept, from records its webhooks keep current.
+A `[views.<name>]` table names which open pull requests of repositories
+or whole owners herald shows and whose turn each is, bots' bumps batched;
+it reads them live, or kept, from records its webhooks keep current.
 A `[reports.<name>]` table announces a view once a window, at a wall-clock
 time in its own time zone, through the routes naming the report, and the
 shipped `herald:queue` template renders it. A `[boards.<name>]` table, or

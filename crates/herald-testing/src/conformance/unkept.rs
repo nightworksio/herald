@@ -89,6 +89,7 @@ pub(super) async fn pulls(store: &impl Pulls, checks: &mut Checks) {
         "reconciled",
     );
     let reconciled = herald_core::Reconciled {
+        repositories: std::collections::BTreeSet::new(),
         repository: None,
         at: None,
         validators: Vec::new(),

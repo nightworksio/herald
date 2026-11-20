@@ -404,14 +404,14 @@ impl KeptPull {
     }
 
     /// Whether a round's listing of it as `listed` reads it in full again:
-    /// it was never read in full, it was closed, its head, last activity or
-    /// repository differs, or its checks are still running, which ends with
-    /// no activity of its own.
+    /// it was never read in full, it was closed, its head where the listing
+    /// names one, its last activity or its repository differs, or its checks
+    /// are still running, which ends with no activity of its own.
     #[must_use]
     pub fn stale(&self, listed: &Pull) -> bool {
         self.read.is_none()
             || !self.open()
-            || self.pull.head != listed.head
+            || (listed.head.is_some() && self.pull.head != listed.head)
             || self.pull.updated != listed.updated
             || self.pull.repository != listed.repository
             || self.pull.checks == Checks::Pending
@@ -629,10 +629,14 @@ impl KeptPull {
 /// Where a source's reconcile stands: the repository it lists, when it
 /// last listed it, and the validators each page of the listing was
 /// answered with (ADR-0061).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Reconciled {
     /// The repository, where a listing or a delivery named it.
     pub repository: Option<RepositoryKey>,
+    /// Each repository of an owner source a listing or a delivery named
+    /// (ADR-0062).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub repositories: BTreeSet<RepositoryKey>,
     /// When it was last listed.
     pub at: Option<Timestamp>,
     /// The validators of each page, in order.

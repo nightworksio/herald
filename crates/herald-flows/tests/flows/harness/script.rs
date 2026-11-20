@@ -17,6 +17,7 @@ pub(crate) struct Script {
     most: std::sync::Arc<Mutex<Vec<usize>>>,
     headers: Vec<(String, String)>,
     heads: Heads,
+    made: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Script {
@@ -53,6 +54,11 @@ impl Script {
         script
     }
 
+    /// How many requests it was sent.
+    pub(crate) fn made(&self) -> &std::sync::atomic::AtomicUsize {
+        &self.made
+    }
+
     pub(crate) fn seen(&self) -> Vec<String> {
         self.seen.lock().unwrap().clone()
     }
@@ -74,6 +80,7 @@ impl Script {
 
 impl Http for Script {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
+        self.made.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let line = format!("{} {}", request.method.as_str(), request.url.redacted());
         self.seen.lock().unwrap().push(line.clone());
         self.bodies.lock().unwrap().push(request.body.clone());

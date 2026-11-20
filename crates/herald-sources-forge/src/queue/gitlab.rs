@@ -21,6 +21,16 @@ pub(super) fn path(number: usize) -> String {
     )
 }
 
+/// The path, under the API's base URL, of the `number`th page of the open
+/// merge requests of every project of the group `group` and its
+/// subgroups, the most recently updated first (ADR-0062).
+pub(super) fn group_path(group: &str, number: usize) -> String {
+    format!(
+        "/groups/{}/merge_requests?state=opened&scope=all&order_by=updated_at&sort=desc&per_page={PAGE}&page={number}",
+        herald_core::unreserved(group)
+    )
+}
+
 #[derive(Deserialize)]
 struct User {
     username: String,
@@ -145,6 +155,25 @@ pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, 
         repository: id,
         visibility: None,
     })
+}
+
+/// The open merge requests of a group's projects `body` holds, parsing no
+/// more than `parse` bytes, each with the id of its project, and how many
+/// it held in all; one naming no project is left out (ADR-0062).
+pub(super) fn grouped(
+    body: &[u8],
+    parse: usize,
+) -> Result<(Vec<(String, Pull)>, usize), SourceError> {
+    let requests: Vec<Request> = herald_wire::read(WHAT, parse, body)?;
+    let items = requests.len();
+    let pulls = requests
+        .into_iter()
+        .filter_map(|request| {
+            let id = request.project_id?.to_string();
+            Some((id, request.read(("", ""), Visibility::Private)))
+        })
+        .collect();
+    Ok((pulls, items))
 }
 
 #[cfg(test)]

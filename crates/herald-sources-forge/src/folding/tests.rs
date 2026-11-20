@@ -30,7 +30,7 @@ fn delivered(forge: Forge, name: &str, payload: &Value) -> Result<Option<Folding
     folded(
         forge,
         (name, payload.to_string().as_bytes()),
-        ("herald", PATH),
+        Of::Repository(PATH),
     )
 }
 
@@ -537,4 +537,31 @@ fn a_repository_delivery_says_who_may_now_see_every_pull_request_of_it() {
     unsaid["private"] = Value::Null;
     let payload = json!({ "action": "renamed", "repository": unsaid });
     assert_eq!(said(Forge::Forgejo, "repository", &payload), []);
+}
+
+#[test]
+fn an_owner_s_delivery_is_folded_where_the_owner_holds_its_repository_and_named_by_it() {
+    let payload = json!({ "action": "opened", "pull_request": pull("open", false),
+        "repository": repository() });
+    let bytes = payload.to_string();
+    let owned = folded(
+        Forge::GitHub,
+        ("pull_request", bytes.as_bytes()),
+        Of::Owner("NightworksIO", false),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(described(&owned.folded).project, "herald");
+    let unheld = folded(
+        Forge::GitHub,
+        ("pull_request", bytes.as_bytes()),
+        Of::Owner("lemonfiber", false),
+    )
+    .unwrap_err();
+    assert!(
+        unheld
+            .to_string()
+            .contains("not of a repository lemonfiber, what its source names, holds"),
+        "{unheld}"
+    );
 }

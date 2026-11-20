@@ -50,6 +50,44 @@ fn numbered_query(numbers: &[u64]) -> String {
     )
 }
 
+/// The query reading in full each of the pull requests of each repository
+/// of `groups`, a repository under the alias `r<place>` and each of its
+/// pull requests under `p<place>` (ADR-0062).
+fn scoped_query(groups: &[(&str, Vec<u64>)]) -> String {
+    let fields = fields();
+    let mut declared = Vec::new();
+    let mut repositories = String::new();
+    for (place, (_, numbers)) in groups.iter().enumerate() {
+        declared.push(format!("$o{place}: String!, $n{place}: String!"));
+        let _ = write!(
+            repositories,
+            " r{place}: repository(owner: $o{place}, name: $n{place}) {{ visibility"
+        );
+        for (pull, number) in numbers.iter().enumerate() {
+            let _ = write!(
+                repositories,
+                " p{pull}: pullRequest(number: {number}) {{ {fields} }}"
+            );
+        }
+        repositories.push_str(" }");
+    }
+    format!("query({}) {{{repositories} }}", declared.join(", "))
+}
+
+/// The request reading in full each pull request of each repository of
+/// `groups`, each a repository's full path and its pull requests' numbers,
+/// posted to `endpoint`, reading at most `parse` bytes (ADR-0062).
+pub(super) fn scoped_request(endpoint: &str, groups: &[(&str, Vec<u64>)], parse: usize) -> Request {
+    let mut variables = serde_json::Map::new();
+    for (place, (path, _)) in groups.iter().enumerate() {
+        let (owner, name) = path.split_once('/').unwrap_or((path, ""));
+        variables.insert(format!("o{place}"), json!(owner));
+        variables.insert(format!("n{place}"), json!(name));
+    }
+    let body = json!({ "query": scoped_query(groups), "variables": variables });
+    posted(endpoint, &body, parse)
+}
+
 /// The request for the page of the repository at `path` after `after`,
 /// posted to `endpoint`, reading at most `parse` bytes.
 pub(super) fn request(endpoint: &str, path: &str, after: Option<&str>, parse: usize) -> Request {
@@ -378,6 +416,41 @@ pub(super) fn numbered(
         .flatten()
         .map(|node| node.read((project, repository), seen))
         .collect())
+}
+
+#[derive(Deserialize)]
+struct ScopedAnswer {
+    data: Option<std::collections::BTreeMap<String, Option<Numbered>>>,
+}
+
+/// The pull requests `body` reads in full of each repository `named`
+/// names in the order [`scoped_request`] asked them, parsing no more than
+/// `parse` bytes, each seen by the stricter of who its repository's own
+/// answer and `named` say may see it; a repository or pull request the
+/// answer holds nothing for is left out (ADR-0062).
+pub(super) fn scoped(
+    body: &[u8],
+    parse: usize,
+    named: &[Named<'_>],
+) -> Result<Vec<Pull>, SourceError> {
+    let answer: ScopedAnswer = herald_wire::read(WHAT, parse, body)?;
+    let mut found = answer.data.unwrap_or_default();
+    let mut pulls = Vec::new();
+    for (place, (project, repository, known)) in named.iter().enumerate() {
+        let Some(Some(numbered)) = found.remove(&format!("r{place}")) else {
+            continue;
+        };
+        let read = visibility(numbered.visibility.as_deref());
+        let seen = known.map_or(read, |known| known.max(read));
+        pulls.extend(
+            numbered
+                .pulls
+                .into_values()
+                .flatten()
+                .map(|node| node.read((project, repository), seen)),
+        );
+    }
+    Ok(pulls)
 }
 
 /// Why an answer naming no repository cannot be read.

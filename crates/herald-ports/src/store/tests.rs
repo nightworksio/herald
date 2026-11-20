@@ -481,6 +481,7 @@ fn pull_requests_kept_nowhere_answer_unsupported_naming_them() {
             number: 1,
         };
         let reconciled = herald_core::Reconciled {
+            repositories: std::collections::BTreeSet::new(),
             repository: None,
             at: None,
             validators: Vec::new(),

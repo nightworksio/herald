@@ -93,6 +93,45 @@ a reviewer GitHub names an owner, member or collaborator, or Forgejo marks
 official, decides a review. `herald doctor` names each report's path and
 the most requests it takes a round.
 
+### An owner's repositories
+
+A view may read a source naming an `owner` rather than one repository
+(ADR-0062). It reads the owner's open pull requests by one query over
+them, and keeps only those of a repository the owner's membership record
+holds and has not left, so the source's selection applies. Each pull
+request is shown as its repository's project and seen as the membership
+record says, as the owner's releases are.
+
+| Forge | The query | Then |
+|-------|-----------|------|
+| GitHub | `search/issues` for `is:pr is:open org:<owner>` (`user:` for a user), at most 1,000 | with a token, one GraphQL request for up to 100 pull requests across repositories; without, each pull request, its reviews and its head's check runs |
+| GitLab | the group's `merge_requests`, its subgroups' included | nothing: the listing reads them in full |
+| Forgejo | `repos/issues/search?type=pulls&owner=<owner>` | each pull request, its reviews and its head's combined status |
+
+Where GitHub's search finds more than 1,000, or the owner is a GitLab
+user, each repository is listed on its own instead, at least a request
+each. An owner is read once its first poll has listed its repositories;
+until then the view says so and is not shown. Kept mode keeps one record
+per pull request as for one repository, folds a delivery only of a member
+the membership record holds and has not left, and closes the records of a
+repository that left the selection. A kept record is seen at least as
+strictly as the membership record now says.
+
+### Visibility a listing states
+
+A live read through a REST listing without a token, as GitHub without a
+token and Forgejo give, takes every row as private. `listed_visibility =
+true` on a view makes such a read take who may see the repository from
+what its listing states of it instead: `base.repo.visibility` on GitHub,
+GitHub Enterprise Server and GHE.com, or its `private` flag, and
+`private` with `internal` on Forgejo, Codeberg's or self-hosted (ADR-0062).
+It widens only those rows, and only to what the listing states: a
+repository the listing calls internal stays internal. It never widens a
+read with a token, which reads visibility itself or keeps every row
+private, a GitLab listing, which states none, a kept record (ADR-0061
+decision 5), or an owner's rows, which its membership record names.
+`herald doctor` names each view that sets it.
+
 ### Live or kept
 
 A view reads each source live, from the forge each time, or kept, from

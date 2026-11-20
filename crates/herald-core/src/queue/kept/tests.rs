@@ -132,6 +132,30 @@ fn a_listing_reads_again_only_what_changed_was_never_read_closed_or_still_runs()
     let mut hidden = pull();
     hidden.visibility = Visibility::Private;
     assert!(!kept.stale(&hidden));
+    let mut searched = pull();
+    searched.head = None;
+    assert!(!kept.stale(&searched));
+}
+
+#[test]
+fn a_reconcile_written_before_owners_reads_back_holding_no_repositories_and_writes_none() {
+    let read: Reconciled = serde_json::from_str("{\"repository\":null,\"at\":null}").unwrap();
+    assert_eq!(read, Reconciled::default());
+    assert!(
+        !serde_json::to_string(&read)
+            .unwrap()
+            .contains("repositories")
+    );
+    let owned = Reconciled {
+        repositories: [RepositoryKey {
+            host: "github.com".to_owned(),
+            id: "1".to_owned(),
+        }]
+        .into(),
+        ..Reconciled::default()
+    };
+    let written = serde_json::to_string(&owned).unwrap();
+    assert_eq!(serde_json::from_str::<Reconciled>(&written).unwrap(), owned);
 }
 
 #[test]
@@ -410,6 +434,7 @@ fn a_delivery_names_the_pull_request_it_is_of_and_a_check_names_its_head_alone()
 fn a_reconcile_is_due_every_round_or_once_its_interval_passed() {
     let hour = SignedDuration::from_hours(1);
     let listed = Reconciled {
+        repositories: std::collections::BTreeSet::new(),
         repository: None,
         at: Some(at(3_600)),
         validators: Vec::new(),

@@ -24,7 +24,7 @@ use crate::views::{
     ReportFile, Rule, RuleFile, RulesFile, ViewConfig, ViewFile, ViewMode,
 };
 
-/// The names of `sources` that list their repository's open pull requests.
+/// The names of `sources` that list their repositories' open pull requests.
 fn queued(sources: &BTreeMap<SourceName, Source>) -> Vec<SourceName> {
     sources
         .iter()
@@ -121,7 +121,7 @@ impl Loader<'_> {
             }
             let names: Vec<&str> = queued.iter().map(SourceName::as_str).collect();
             let why = if sources.contains_key(&name) {
-                "names no one repository on a forge, so it lists no pull requests a view reads"
+                "names no repository or owner on a forge, so it lists no pull requests a view reads"
             } else {
                 "is no source"
             };
@@ -225,6 +225,7 @@ impl Loader<'_> {
             },
             mode: file.mode.unwrap_or_default(),
             reconcile: file.reconcile.map(|every| every.0),
+            stated: file.listed_visibility,
         }
     }
 
@@ -246,6 +247,7 @@ impl Loader<'_> {
                 decide: BTreeMap::new(),
                 mode: ViewMode::default(),
                 reconcile: None,
+                stated: false,
             },
         )]);
         for (name, value) in self.named(value, "views") {

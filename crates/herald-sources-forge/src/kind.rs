@@ -354,8 +354,22 @@ impl SourceConfig for ForgeSource {
     }
 
     fn queue(&self, token: Option<Credential>) -> Option<Arc<dyn herald_kinds::Queue>> {
-        let repository = self.options.repository.as_deref()?;
         let api = api_of(self.forge, &self.options);
+        if let Some(owner) = &self.options.owner {
+            let owned = Owned::new(
+                self.forge,
+                (owner, self.names.as_deref()),
+                &self.options,
+                (None, 0),
+            );
+            return Some(Arc::new(crate::queue::Scoped::new(
+                (self.forge, owner),
+                &self.options,
+                token.map(Token::of),
+                (herald_wire::github::graphql(&api), owned),
+            )));
+        }
+        let repository = self.options.repository.as_deref()?;
         Some(Arc::new(crate::queue::Queued {
             origin: Origin::new(self.forge, &self.options, repository),
             token: token.map(Token::of),
@@ -369,19 +383,23 @@ impl SourceConfig for ForgeSource {
         headers: &[(&str, &str)],
         payload: &[u8],
     ) -> Result<Option<herald_core::Folding>, String> {
-        let (Some(name), Some(repository)) = (
-            self.forge.event_named(headers),
-            self.options.repository.as_deref(),
-        ) else {
+        let Some(name) = self.forge.event_named(headers) else {
             return Ok(None);
         };
-        crate::folding::folded(self.forge, (name, payload), (named(repository), repository))
-            .map_err(|error| error.to_string())
+        let of = match (&self.options.owner, self.options.repository.as_deref()) {
+            (Some(owner), _) => crate::folding::Of::Owner(owner, self.options.subgroups()),
+            (None, Some(repository)) => crate::folding::Of::Repository(repository),
+            (None, None) => return Ok(None),
+        };
+        crate::folding::folded(self.forge, (name, payload), of).map_err(|error| error.to_string())
     }
 
     fn queue_cost(&self, most: herald_kinds::Most) -> Option<herald_kinds::QueueCost> {
-        self.options.repository.as_ref()?;
         let tokened = self.token().is_some() || self.installed().is_some();
+        if self.options.owner.is_some() {
+            return Some(crate::queue::scope_cost(self.forge, tokened, most));
+        }
+        self.options.repository.as_ref()?;
         Some(crate::queue::cost(self.forge, tokened, most))
     }
 

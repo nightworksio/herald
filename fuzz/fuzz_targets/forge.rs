@@ -491,7 +491,11 @@ fn queued(bytes: &[u8]) {
             let Some(queue) = source.queue(token) else {
                 continue;
             };
-            let Ok(pulls) = pollster::block_on(queue.opened(&http, most)) else {
+            let asked = herald_kinds::Asked {
+                most,
+                ..herald_kinds::Asked::default()
+            };
+            let Ok(pulls) = pollster::block_on(queue.opened(&http, asked)) else {
                 continue;
             };
             assert!(pulls.len() <= most.open, "{}", pulls.len());
@@ -499,6 +503,61 @@ fn queued(bytes: &[u8]) {
                 assert_eq!(pull.repository, "fuzzer/fuzzed");
                 assert_eq!(pull.project, "fuzzed");
                 assert!(!pull.unread || index >= most.pulls, "{pull:?}");
+            }
+        }
+    }
+    scoped(&http, most);
+}
+
+/// What each forge's one query over an owner's repositories makes of the
+/// fuzzed answer: only pull requests of the owner's member, named and seen
+/// as its membership record says.
+fn scoped(http: &Answering, most: herald_kinds::Most) {
+    let member = herald_core::Listed {
+        id: "7".to_owned(),
+        name: "fuzzed".to_owned(),
+        path: "fuzzer/fuzzed".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    let members = [member];
+    for (forge, owner) in FORGES
+        .into_iter()
+        .flat_map(|forge| [herald_core::Owner::Organization, herald_core::Owner::User].map(|owner| (forge, owner)))
+    {
+        let source = ForgeSource {
+            forge,
+            options: SourceOptions {
+                owner: Some("fuzzer".to_owned()),
+                ..SourceOptions::default()
+            },
+            names: None,
+        };
+        for token in [None, Some(Credential::Named(Secret::new("TOKEN", "t")))] {
+            let Some(queue) = source.queue(token) else {
+                continue;
+            };
+            let asked = herald_kinds::Asked {
+                most,
+                scope: Some(herald_kinds::Scope {
+                    owner,
+                    members: &members,
+                }),
+                stated: false,
+            };
+            let Ok(pulls) = pollster::block_on(queue.opened(http, asked)) else {
+                continue;
+            };
+            assert!(pulls.len() <= most.open, "{}", pulls.len());
+            for pull in &pulls {
+                assert!(pull.repository.eq_ignore_ascii_case("fuzzer/fuzzed"), "{pull:?}");
+                assert_eq!(pull.visibility, herald_core::Visibility::Public, "{pull:?}");
             }
         }
     }

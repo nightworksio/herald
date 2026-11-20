@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Pull, Validators, Visibility};
+use herald_core::{Listed, Owner, Pull, Validators, Visibility};
 use herald_ports::{Boxed, DynHttp};
 
 use crate::Unpolled;
@@ -31,6 +31,30 @@ impl Default for Most {
     }
 }
 
+/// The repositories of an owner source a view reads (ADR-0062).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Scope<'a> {
+    /// What kind of account the owner is, as its last listing found.
+    pub owner: Owner,
+    /// Each repository its selection takes, as its membership record holds
+    /// it: what names each pull request's project and who may see it.
+    pub members: &'a [Listed],
+}
+
+/// How a view asks a source for its open pull requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Asked<'a> {
+    /// How many it reads.
+    pub most: Most,
+    /// The owner's repositories it reads, where the source names an owner
+    /// rather than one repository.
+    pub scope: Option<Scope<'a>>,
+    /// Whether a live read through a REST listing without a token takes
+    /// who may see the repository from what the listing states, rather than
+    /// taking each pull request as private (ADR-0062).
+    pub stated: bool,
+}
+
 /// What reading a source's open pull requests costs each round, as doctor
 /// shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +69,10 @@ pub struct QueueCost {
     /// Whether it reads whether each can be merged; a batch of bumps counts
     /// none green where it does not.
     pub mergeability: bool,
+    /// Whether it reads an owner's repositories by one query over them,
+    /// each repository listed on its own past what that query lists
+    /// (ADR-0062).
+    pub scoped: bool,
 }
 
 /// What a reconcile's listing of a repository's open pull requests found
@@ -67,22 +95,37 @@ pub enum Relisted {
     },
 }
 
+impl Relisted {
+    /// The pull requests it listed, none where nothing changed.
+    #[must_use]
+    pub fn pulls(self) -> Vec<Pull> {
+        match self {
+            Self::Unchanged => Vec::new(),
+            Self::Listed { pulls, .. } => pulls,
+        }
+    }
+}
+
 /// A source's repository's open pull requests, read for a view.
 pub trait Queue: fmt::Debug + Send + Sync {
-    /// Its open pull requests, at most `most`, asked through `http`.
+    /// Whether it reads an owner's repositories, so a view asks it with
+    /// their [`Scope`].
+    fn scoped(&self) -> bool;
+
+    /// Its open pull requests, as `asked`, asked through `http`.
     fn opened<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        most: Most,
+        asked: Asked<'a>,
     ) -> Boxed<'a, Result<Vec<Pull>, Unpolled>>;
 
-    /// Its open pull requests, at most `most.open`, each read as far as a
-    /// listing reads it, asked through `http` conditional on `validators`,
-    /// the last answer of each page (ADR-0061).
+    /// Its open pull requests, at most `asked.most.open`, each read as far
+    /// as a listing reads it, asked through `http` conditional on
+    /// `validators`, the last answer of each page (ADR-0061).
     fn listed<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        most: Most,
+        asked: Asked<'a>,
         validators: &'a [Validators],
     ) -> Boxed<'a, Result<Relisted, Unpolled>>;
 
@@ -90,6 +133,42 @@ pub trait Queue: fmt::Debug + Send + Sync {
     fn completed<'a>(
         &'a self,
         http: &'a dyn DynHttp,
+        asked: Asked<'a>,
         pulls: Vec<Pull>,
     ) -> Boxed<'a, Result<Vec<Pull>, Unpolled>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_relisting_gives_the_pull_requests_it_listed_and_none_where_nothing_changed() {
+        assert_eq!(Relisted::Unchanged.pulls(), Vec::<Pull>::new());
+        let listed = Relisted::Listed {
+            pulls: Vec::new(),
+            repository: Some("1".to_owned()),
+            visibility: None,
+            validators: Vec::new(),
+        };
+        assert_eq!(listed.pulls(), Vec::<Pull>::new());
+        let pull: Pull = serde_json::from_value(serde_json::json!({
+            "project": "r", "repository": "o/r", "visibility": "private", "number": 1,
+            "title": "t", "url": "https://github.com/o/r/pull/1", "author": null,
+            "bot": false, "draft": false, "labels": [],
+            "opened": "2026-11-18T10:00:00Z", "updated": "2026-11-18T11:00:00Z",
+            "review": "unasked", "reviewers": [], "checks": "absent", "mergeable": "unknown",
+            "queued": false, "forge": null, "head": null, "unread": false
+        }))
+        .unwrap();
+        let listed = Relisted::Listed {
+            pulls: vec![pull.clone()],
+            repository: None,
+            visibility: None,
+            validators: Vec::new(),
+        };
+        assert_eq!(listed.pulls(), [pull]);
+        assert!(!Asked::default().stated);
+        assert_eq!(Asked::default().most, Most::default());
+    }
 }

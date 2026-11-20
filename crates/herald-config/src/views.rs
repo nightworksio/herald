@@ -45,7 +45,8 @@ pub(crate) const NUDGE_BODY: &str = "{{ event.title }}: {{ event.attributes.turn
 pub struct ViewConfig {
     /// What it shows, and how.
     pub view: View,
-    /// The sources it reads, each naming one repository on a forge.
+    /// The sources it reads, each naming one repository or an owner on a
+    /// forge.
     pub sources: Vec<SourceName>,
     /// How many it reads of each.
     pub most: Most,
@@ -56,6 +57,10 @@ pub struct ViewConfig {
     /// How long kept mode waits at least before listing a source's open
     /// pull requests again; every round where `None`.
     pub reconcile: Option<SignedDuration>,
+    /// Whether a live read through a REST listing without a token takes
+    /// who may see a repository from what the listing states, rather than
+    /// taking each of its rows as private (ADR-0062).
+    pub stated: bool,
 }
 
 /// Where a view reads its open pull requests (ADR-0061).
@@ -196,8 +201,8 @@ pub(crate) struct RulesFile {
 #[serde(deny_unknown_fields)]
 #[serde(rename = "View")]
 pub(crate) struct ViewFile {
-    /// The sources it reads, each naming one repository on a forge; every
-    /// such source where absent.
+    /// The sources it reads, each naming one repository or an owner on a
+    /// forge; every such source where absent.
     #[schemars(with = "Option<Vec<String>>")]
     pub(crate) sources: Option<Vec<Spanned<String>>>,
     /// The states it shows, every one where empty.
@@ -258,6 +263,14 @@ pub(crate) struct ViewFile {
     /// pull requests again, each page conditional on its last answer; every
     /// round where absent.
     pub(crate) reconcile: Option<Duration>,
+    /// Whether a live read through a REST listing without a token, as of
+    /// GitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may
+    /// see a repository from what the listing states of it, rather than
+    /// taking each of its rows as private: false where absent. It never
+    /// widens a kept record, a read with a token, a GitLab listing, or an
+    /// owner's rows, which its membership record names.
+    #[serde(default)]
+    pub(crate) listed_visibility: bool,
 }
 
 /// A day of the week, by its first three letters.

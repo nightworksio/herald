@@ -349,7 +349,7 @@ fn stale(world: &World) -> Option<bool> {
 #[test]
 fn a_change_of_an_owner_s_repositories_marks_its_listing_stale_and_polls_it_at_once() {
     let mut world = owned_world();
-    let payload = br#"{"action":"created","repository":{"id":7,"full_name":"cli/new"}}"#;
+    let payload = br#"{"action":"created","repository":{"id":7,"full_name":"cli/new","html_url":"https://github.com/cli/new","private":false}}"#;
     let signature = signed("hook-secret", payload);
     let headers = [
         ("X-Hub-Signature-256", signature.as_str()),
@@ -364,7 +364,11 @@ fn a_change_of_an_owner_s_repositories_marks_its_listing_stale_and_polls_it_at_o
             "herald lists the owner's repositories again".to_owned()
         )
     );
-    let Some(job @ Job::Poll { relist: true, .. }) = answered.job else {
+    let job = match answered.job {
+        Some(Job::Fanned { jobs, .. }) => jobs.into_iter().next(),
+        job => job,
+    };
+    let Some(job @ Job::Poll { relist: true, .. }) = job else {
         panic!("a change of the owner's repositories is left to a poll");
     };
     let Did::Polled(swept) = world.work(job.clone()) else {

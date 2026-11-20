@@ -136,3 +136,36 @@ private = false
         ]
     );
 }
+
+#[test]
+fn a_view_of_an_owner_names_its_scope_query_and_one_taking_listed_visibility_says_what_it_widens() {
+    let config = loaded(
+        r#"version = 1
+[store]
+kind = "sqlite"
+[sources.org]
+kind = "github"
+owner = "o"
+token = { secret = "HERALD_GITHUB_TOKEN" }
+[views.queue]
+listed_visibility = true
+[reports.daily]
+"#,
+    );
+    let notes = on(&config, &server(), &Here::default()).notes;
+    let named = |start: &str| {
+        notes
+            .iter()
+            .find(|note| note.starts_with(start))
+            .cloned()
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        named("The report daily"),
+        "The report daily reads the view queue of org by search, at most 10 requests a round; it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each."
+    );
+    assert_eq!(
+        named("The view queue takes"),
+        "The view queue takes who may see each repository a REST listing reads without a token, on GitHub, GitHub Enterprise Server, GHE.com or Forgejo, from what the listing states, as listed_visibility = true asks; a read with a token, a GitLab listing, a kept record and an owner's rows are seen as before."
+    );
+}
