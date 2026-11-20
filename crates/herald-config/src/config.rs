@@ -8,6 +8,7 @@ use herald_core::{
 use herald_kinds::{ConfiguredStore, Destination, Placed, Registering, Source};
 use jiff::SignedDuration;
 
+use crate::oidc::{Oidc, Replay};
 use crate::peers::Peer;
 
 /// A config, read, resolved and with its templates compiled.
@@ -134,6 +135,7 @@ impl Config {
     pub fn secrets_used(&self, uses: Uses) -> BTreeSet<&str> {
         let destinations = self.destinations.values().flat_map(|destination| {
             let mut named: Vec<&SecretRef> = self.credential(destination).into_iter().collect();
+            named.extend(destination.reads());
             if uses == Uses::Serves {
                 named.extend(destination.secret_refs());
             }
@@ -238,16 +240,24 @@ pub struct RouteConfig {
     pub unstated: Vec<Kind>,
 }
 
-/// An app of the HTTP API: its token's hash and what it may announce to.
+/// An app of the HTTP API: its credentials, what it may announce to, and
+/// the names it pushes into herald sources as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct App {
     /// The SHA-256 of each of its tokens, in lowercase hex.
     pub tokens: Vec<String>,
+    /// The ID tokens it takes as credentials (ADR-0064).
+    pub oidc: Vec<Oidc>,
     /// The projects it may announce, each a glob.
     pub projects: Vec<Glob>,
     /// The routes it announces to: those it names, or every route that
     /// names it among its sources.
     pub routes: Vec<RouteId>,
+    /// The names it stands for when a run holding one of its ID tokens
+    /// pushes into a herald source.
+    pub peers: BTreeSet<String>,
+    /// How often one of its ID tokens may be presented.
+    pub replay: Replay,
 }
 
 /// A GitHub App herald reads as, through installation tokens it mints

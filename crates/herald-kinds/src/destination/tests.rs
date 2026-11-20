@@ -160,6 +160,7 @@ fn a_destination_is_its_kind_equal_only_to_the_same_options_and_keeps_every_defa
         destination.peered(crate::Peered {
             url: "https://peer.example".to_owned(),
             private: false,
+            presented: crate::Presented::default(),
         }),
         None
     );
@@ -225,6 +226,15 @@ fn a_destination_reaches_and_profiles_only_routes_placed_as_its_kind() {
         Some(Reached::new(Reaching("https://based.example")))
     );
     assert_eq!(destination.reach(&Placed::new(Room), "", secret()), None);
+    assert_eq!(
+        destination.reach_reading(
+            &spot,
+            "https://herald.example",
+            (secret(), vec![Secret::new("OTHER", "other")])
+        ),
+        Some(Reached::new(Reaching("https://based.example")))
+    );
+    assert_eq!(destination.reads(), Vec::<&SecretRef>::new());
     let patient = Destination::new(Patient);
     assert_eq!(patient.profile(&spot), None);
     assert_eq!(patient.reach(&spot, "", secret()), None);

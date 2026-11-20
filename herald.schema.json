@@ -369,12 +369,33 @@
       "additionalProperties": false
     },
     "App": {
-      "description": "An app of the HTTP API (ADR-0007).",
+      "description": "An app of the HTTP API (ADR-0007), which may also push into a herald\nsource as the peers it stands for.",
       "type": "object",
       "properties": {
-        "projects": {
-          "description": "The projects it may announce, at least one, each a glob ignoring\ncase, such as `\"plugin-*\"`. A project named with no wildcard is one\nthe app announces as; a glob only scopes what it may announce, and\ntakes no project from a source or member.",
+        "oidc": {
+          "description": "The ID tokens it takes as credentials: each the issuer of a CI run's\nID token and what such a token must say, so a run of GitHub Actions\nor GitLab CI proves who it is and keeps no stored secret.",
           "type": "array",
+          "items": {
+            "$ref": "#/$defs/Oidc"
+          }
+        },
+        "peers": {
+          "description": "The names it stands for when a run holding one of its ID tokens\npushes into a herald source, such as a repository's herald running\nin CI, which has no URL or keys of its own. A herald source grants\neach name in its `peers`, as it grants a peer; no name is a table of\n`[peers]` or another app's.",
+          "type": "array",
+          "default": [],
+          "examples": [
+            [
+              "plugin-ci"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "projects": {
+          "description": "The projects it may announce, each a glob ignoring case, such as\n`\"plugin-*\"`; at least one, unless it stands for `peers` alone. A\nproject named with no wildcard is one the app announces as; a glob\nonly scopes what it may announce, and takes no project from a\nsource or member.",
+          "type": "array",
+          "default": [],
           "examples": [
             [
               "herald"
@@ -382,8 +403,11 @@
           ],
           "items": {
             "type": "string"
-          },
-          "minItems": 1
+          }
+        },
+        "replay": {
+          "description": "How often one of its ID tokens may be presented: `\"once\"`, where\nthe store keeps deliveries, remembers each token taken until it\nexpires and refuses it a second time, so a captured token is\nworth nothing once used; `\"until-expiry\"` takes it as often as it\ncomes until it expires. `\"once\"` where absent and the store keeps\ndeliveries, else `\"until-expiry\"`, which `herald doctor` names.",
+          "$ref": "#/$defs/Replay"
         },
         "routes": {
           "description": "The routes it announces to, each naming the app among its sources;\nevery such route where it names none.",
@@ -403,8 +427,27 @@
         }
       },
       "additionalProperties": false,
-      "required": [
-        "projects"
+      "anyOf": [
+        {
+          "properties": {
+            "projects": {
+              "minItems": 1
+            }
+          },
+          "required": [
+            "projects"
+          ]
+        },
+        {
+          "properties": {
+            "peers": {
+              "minItems": 1
+            }
+          },
+          "required": [
+            "peers"
+          ]
+        }
       ]
     },
     "Approve": {
@@ -1966,9 +2009,28 @@
           "description": "A peer's herald source each event is pushed to: an envelope proved by the instance's newest key, in a request signed by it.",
           "type": "object",
           "properties": {
+            "audience": {
+              "description": "What the run's ID token must be meant for with `credential =\n\"id-token\"`: the peer's URL where absent, and always on the peer's\norigin. A token whose `aud` names another is never sent, so no\nherald is handed a token meant for another, which it could present\nthere.",
+              "type": "string"
+            },
+            "credential": {
+              "description": "What proves who pushes: \"key\", where absent, proves each envelope\nand signs each request with `[federation]`'s newest key; \"id-token\"\npresents the CI run's ID token, which an app of the peer's takes,\nand the peer proves each envelope itself.",
+              "$ref": "#/$defs/PushCredential"
+            },
             "envelope": {
               "description": "The most bytes one envelope takes, its proof counted: \"16KiB\" where\nunset, and at most \"64KiB\". A longer event's body is cut to fit.",
               "$ref": "#/$defs/Size"
+            },
+            "id_token": {
+              "description": "Where the run's ID tokens come from with `credential = \"id-token\"`:\n\"actions\", where absent, asks GitHub Actions for a fresh one for\neach push, which needs the job's `id-token: write` permission;\n\"variables\" reads them from `id_tokens`, each presented for one\npush in turn, as GitLab CI's `id_tokens:` sets them.",
+              "$ref": "#/$defs/IdTokenSource"
+            },
+            "id_tokens": {
+              "description": "The run's variables holding its ID tokens with `id_token =\n\"variables\"`, each a token for one push: `[{ secret =\n\"HERALD_ID_TOKEN\" }]` where absent. A peer whose app takes each\ntoken once refuses a second push with one; give as many as the run\npushes, each its own `id_tokens:` entry with the peer's URL as its\n`aud`. The pushes past them wait for a later run.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SecretRef"
+              }
             },
             "inbox": {
               "description": "The peer's herald source taking the pushes, whose inbox is\n`/herald/v1/inbox/<inbox>` under the peer's URL.",
@@ -2881,6 +2943,21 @@
       },
       "additionalProperties": false
     },
+    "IdTokenSource": {
+      "description": "Where a run's ID tokens come from.",
+      "oneOf": [
+        {
+          "description": "Asked of GitHub Actions for each push.",
+          "type": "string",
+          "const": "actions"
+        },
+        {
+          "description": "Read from the run's variables, one for each push.",
+          "type": "string",
+          "const": "variables"
+        }
+      ]
+    },
     "Inbound": {
       "description": "`[server.inbound]`: what a signed inbound request may carry and still be\nchecked. Each bound may be at most four times its default, and doctor\nnames one set above it.",
       "type": "object",
@@ -3726,6 +3803,85 @@
         "model"
       ]
     },
+    "Oidc": {
+      "description": "The issuer of ID tokens an app takes, and what each token must say.",
+      "type": "object",
+      "properties": {
+        "algorithms": {
+          "description": "The algorithms a token may be signed with; `[\"RS256\"]` where absent.\nWhat its header names is never taken on its own.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TokenAlgorithm"
+          }
+        },
+        "audience": {
+          "description": "What a token's `aud` claim must name: this herald's `[server] url`\nwhere absent, else `https://` and its `[federation] domain`. Never\nan issuer, a peer's URL, nor a GitHub's default `<GitHub>/<owner>`,\nwhich every herald of the owner would take alike: github.com's, or\nthe GHE.com enterprise's or GitHub Enterprise Server's the issuer\nis.",
+          "type": "string"
+        },
+        "claims": {
+          "description": "Each claim a token must carry, by name, and the pattern its value\nmust match, case and all: `*` stands for any run of characters and\n`?` for any one, neither reaching past a `/`. At least one binds\nwho the run is: `repository_id`, `repository_owner_id`, `project_id`\nor `namespace_id` with no wildcard, `repository`,\n`repository_owner`, `project_path` or `namespace_path` with none\nbefore its first `/`, or `sub` as `repo:<owner>/...` or\n`project_path:<group>/...`, the owner whole; else a token of any\nrepository at the issuer would be taken, as a GitHub repository\nshapes its own `sub`. Prefer an id a renamed or re-created\nrepository never inherits; `herald doctor` names an entry that\nbinds names alone, `sub` among them.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "ref": "refs/tags/v*",
+              "repository_id": "123456"
+            }
+          ]
+        },
+        "issuer": {
+          "description": "The issuer, `https://`, exactly as its tokens' `iss` claim names it:\n`https://token.actions.githubusercontent.com` for GitHub Actions,\nwith `/<enterprise>` after it where an enterprise of GitHub\nEnterprise Cloud issues its own; `https://token.actions.<enterprise>.ghe.com`\non GHE.com; `https://<host>/_services/token` on GitHub Enterprise\nServer; `https://gitlab.com`, or the instance's URL on GitLab\nself-managed.",
+          "type": "string",
+          "examples": [
+            "https://token.actions.githubusercontent.com"
+          ]
+        },
+        "jwks": {
+          "description": "Where the issuer's keys are read, `https://`, in place of the\n`jwks_uri` its discovery document names on its own origin.",
+          "type": "string"
+        },
+        "keys": {
+          "description": "The issuer's keys, as a JSON Web Key Set's `keys` lists them,\npinned so they are never read from the network; each rotation is\nthen the operator's to write.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "keys_for": {
+          "description": "How long the issuer's keys, once read, are used before they are\nread again: \"1h\" where absent, and at most \"1d\". Keys that cannot be\nread again are not used past it.",
+          "$ref": "#/$defs/Duration"
+        },
+        "keys_retry": {
+          "description": "How long after the issuer's keys were last fetched, or tried, a\ntoken naming a key they hold none of has them fetched again: \"1m\"\nwhere absent, from \"10s\" to `keys_for`. A rotated key is taken\nwithin it, and however many tokens name unknown keys, the issuer is\nasked at most once in it.",
+          "$ref": "#/$defs/Duration"
+        },
+        "lifetime": {
+          "description": "The longest a token may live, from its `iat` to its `exp`: \"1h\"\nwhere absent, at most \"1d\". A longer-lived token is refused, so a\ncaptured one is worth nothing past it; GitLab CI's tokens live as\nlong as their job's timeout.",
+          "$ref": "#/$defs/Duration"
+        },
+        "skew": {
+          "description": "How far a token's `exp`, `nbf` and `iat` may stand from this\nherald's clock: \"1m\" where absent, at most \"5m\".",
+          "$ref": "#/$defs/Duration"
+        },
+        "takes": {
+          "description": "What its tokens may do: `\"announce\"` through the HTTP API, `\"push\"`\ninto a herald source as a name the app stands for, or both. Where\nabsent, what the app does; an app naming both projects and peers\nsays it on each entry, so no token is taken by both unless its entry\ngrants both.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Taking"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "issuer"
+      ]
+    },
     "OneCharacter": {
       "description": "One character, as a config writes it.",
       "type": "string",
@@ -4075,6 +4231,21 @@
       },
       "additionalProperties": false
     },
+    "PushCredential": {
+      "description": "What proves who pushes to a peer.",
+      "oneOf": [
+        {
+          "description": "`[federation]`'s newest key.",
+          "type": "string",
+          "const": "key"
+        },
+        {
+          "description": "The CI run's ID token (ADR-0064).",
+          "type": "string",
+          "const": "id-token"
+        }
+      ]
+    },
     "Rate": {
       "description": "How many in a length of time: a number, a slash and s, m, h or d, as \"120/m\".",
       "type": "string",
@@ -4140,6 +4311,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "Replay": {
+      "description": "How often a token an app takes may be presented.",
+      "oneOf": [
+        {
+          "description": "Once: each token taken is remembered until it expires, and taken\nno second time.",
+          "type": "string",
+          "const": "once"
+        },
+        {
+          "description": "As often as it is presented until it expires.",
+          "type": "string",
+          "const": "until-expiry"
+        }
+      ]
     },
     "Replies": {
       "description": "Who sees herald's answers to `latest` and `changelog`; the answers to\n`subscribe` and `unsubscribe` are always the asker's alone.",
@@ -7412,6 +7598,21 @@
         }
       ]
     },
+    "Taking": {
+      "description": "What a token an entry takes may do.",
+      "oneOf": [
+        {
+          "description": "Announce through the HTTP API, as the app.",
+          "type": "string",
+          "const": "announce"
+        },
+        {
+          "description": "Push into a herald source, as a name the app stands for.",
+          "type": "string",
+          "const": "push"
+        }
+      ]
+    },
     "Task": {
       "description": "`[tasks.<name>]`: one closed-set question, asked of its models in\nturn where a view's rules cannot tell.",
       "type": "object",
@@ -7516,6 +7717,16 @@
       "additionalProperties": false,
       "required": [
         "name"
+      ]
+    },
+    "TokenAlgorithm": {
+      "description": "The algorithm an ID token is signed with, of those herald checks.",
+      "oneOf": [
+        {
+          "description": "RSASSA-PKCS1-v1_5 with SHA-256.",
+          "type": "string",
+          "const": "RS256"
+        }
       ]
     },
     "TokenHash": {

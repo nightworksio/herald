@@ -69,6 +69,22 @@ impl Address {
     pub fn names_a_user(&self) -> bool {
         !self.0.username().is_empty() || self.0.password().is_some()
     }
+
+    /// Its path alone.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        self.0.path()
+    }
+
+    /// Whether it is `https`, names no user, and carries no query or
+    /// fragment.
+    #[must_use]
+    pub fn bare_https(&self) -> bool {
+        self.scheme() == "https"
+            && !self.names_a_user()
+            && self.0.query().is_none()
+            && self.0.fragment().is_none()
+    }
 }
 
 /// Whether `url` is a web address: `https://` or `http://`, in any case,
@@ -167,6 +183,27 @@ mod tests {
         ] {
             assert!(!web_url(url), "{url}");
         }
+    }
+
+    #[test]
+    fn a_bare_https_address_names_no_user_query_or_fragment() {
+        for (url, bare) in [
+            ("https://issuer.example/_services/token", true),
+            ("https://issuer.example", true),
+            ("http://issuer.example", false),
+            ("https://user@issuer.example", false),
+            ("https://:secret@issuer.example", false),
+            ("https://issuer.example/?q", false),
+            ("https://issuer.example/#f", false),
+        ] {
+            assert_eq!(Address::parse(url).unwrap().bare_https(), bare, "{url}");
+        }
+        assert_eq!(
+            Address::parse("https://ghes.example/_services/token?x")
+                .unwrap()
+                .path(),
+            "/_services/token"
+        );
     }
 
     #[test]

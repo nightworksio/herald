@@ -394,3 +394,20 @@ fn a_feed_s_url_names_the_instance_it_is_served_by() {
         assert_eq!(feed_at(other), None, "{other}");
     }
 }
+
+#[test]
+fn an_envelope_made_here_names_this_instance_alone_as_its_path() {
+    let here = "https://herald.example/.well-known/herald";
+    let made = made_at(
+        br#"{"identity": "github.com/1/v1", "path": ["https://elsewhere.example/.well-known/herald"]}"#,
+        here,
+    )
+    .unwrap();
+    assert_eq!(
+        made,
+        json!({ "identity": "github.com/1/v1", "path": [here] })
+    );
+    for unread in [b"[1]".as_slice(), b"not json"] {
+        assert!(made_at(unread, here).is_err());
+    }
+}

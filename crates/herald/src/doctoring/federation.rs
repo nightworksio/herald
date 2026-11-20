@@ -4,8 +4,8 @@
 
 use herald_config::Config;
 use herald_flows::{
-    Federation, FeedShown, GrantShown, OwnKey, PeerShown, Pulls, PushShown, Reached, Shown,
-    SourceShown,
+    Federation, FeedShown, GrantShown, OwnKey, PeerShown, Pulls, PushShown, Reached, RunShown,
+    Shown, SourceShown,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -112,6 +112,22 @@ pub(super) struct PushJson<'a> {
     inbox: &'a str,
     /// Whether private events go to the peer.
     private: bool,
+    /// Whether it presents a CI run's ID token in place of the instance's
+    /// key.
+    id_token: bool,
+}
+
+/// An issuer of ID tokens an app takes.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(super) struct RunJson<'a> {
+    /// The app's name.
+    app: &'a str,
+    /// The issuer.
+    issuer: &'a str,
+    /// What a token's audience must name.
+    audience: &'a str,
+    /// The names the app stands for when its runs push.
+    peers: &'a [String],
 }
 
 /// A `herald` source.
@@ -185,6 +201,8 @@ pub(super) struct FederationJson<'a> {
     sources: Vec<SourceJson<'a>>,
     /// What each peer may do with each source.
     grants: Vec<GrantJson<'a>>,
+    /// Each issuer of ID tokens each app takes.
+    runs: Vec<RunJson<'a>>,
     /// How many seconds what each peer asked is kept.
     keep_audit: i64,
     /// Where its feeds are written as a static signed log; null where they
@@ -206,6 +224,7 @@ impl<'a> From<&'a Federation> for FederationJson<'a> {
             pushes: federation.pushes.iter().map(push_json).collect(),
             sources: federation.sources.iter().map(source_json).collect(),
             grants: federation.grants.iter().map(grant_json).collect(),
+            runs: federation.runs.iter().map(run_json).collect(),
             keep_audit: federation.keep_audit.as_secs(),
             pages: federation.pages.as_ref().map(|pages| PagesJson {
                 url: &pages.url,
@@ -265,6 +284,17 @@ fn push_json(push: &PushShown) -> PushJson<'_> {
         peer: &push.peer,
         inbox: &push.inbox,
         private: push.private,
+        id_token: push.id_token,
+    }
+}
+
+/// `run` as the JSON names it.
+fn run_json(run: &RunShown) -> RunJson<'_> {
+    RunJson {
+        app: &run.app,
+        issuer: &run.issuer,
+        audience: &run.audience,
+        peers: &run.peers,
     }
 }
 
@@ -326,9 +356,25 @@ pub(super) fn lines(federation: &Federation) -> Vec<String> {
         } else {
             "public events alone"
         };
+        let presenting = if push.id_token {
+            ", presenting the run's ID token"
+        } else {
+            ""
+        };
         lines.push(format!(
-            "destinations.{}: pushes to peers.{} at {}, {private}.",
+            "destinations.{}: pushes to peers.{} at {}, {private}{presenting}.",
             push.name, push.peer, push.inbox
+        ));
+    }
+    for run in &federation.runs {
+        let standing = if run.peers.is_empty() {
+            String::new()
+        } else {
+            format!(", standing for {}", run.peers.join(", "))
+        };
+        lines.push(format!(
+            "apps.{}: takes ID tokens of {} meant for {}{standing}.",
+            run.app, run.issuer, run.audience
         ));
     }
     lines.extend(federation.sources.iter().map(source_line));

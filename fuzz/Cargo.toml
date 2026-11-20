@@ -130,3 +130,10 @@ bench = false
 name = "models"
 path = "fuzz_targets/models.rs"
 test = false
+
+[[bin]]
+name = "id_token"
+path = "fuzz_targets/id_token.rs"
+test = false
+doc = false
+bench = false

@@ -2,6 +2,8 @@
 //! peer and UTC day, and how many requests a peer made in its rate's
 //! window (ADR-0054).
 
+use std::collections::BTreeMap;
+
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
@@ -29,6 +31,20 @@ pub struct Audited {
     pub outcome: u16,
     /// Why it was answered so.
     pub reason: String,
+    /// What the ID token it came with said of the run that sent it, where
+    /// it came with one: the token's issuer, its id and run where it names
+    /// them, and each claim its app's entry binds; never the token.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence: BTreeMap<String, String>,
+    /// The identity of the envelope it pushed with an ID token: as taken,
+    /// under `herald/<peer>/` where its grant's namespaces hold it not;
+    /// else as the envelope names it, where it names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
+    /// The digest of the body it pushed with an ID token, as its
+    /// `Content-Digest` names it: `sha-256=:<base64>:`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
 }
 
 impl Audited {
@@ -231,6 +247,9 @@ mod tests {
             resource: "sources.releases".to_owned(),
             outcome: 202,
             reason: "taken".to_owned(),
+            evidence: BTreeMap::new(),
+            identity: None,
+            digest: None,
         };
         for _ in 0..=AuditDay::MOST {
             kept.record(entry.clone());
@@ -239,7 +258,22 @@ mod tests {
         assert_eq!((kept.entries.len(), kept.more), (AuditDay::MOST, 2));
         let json = serde_json::to_string(&entry).unwrap();
         assert!(!json.contains("keyid"), "{json}");
+        for absent in ["evidence", "identity", "digest"] {
+            assert!(!json.contains(absent), "{json}");
+        }
         assert_eq!(serde_json::from_str::<Audited>(&json).unwrap(), entry);
+        let evidenced = Audited {
+            evidence: BTreeMap::from([("iss".to_owned(), "https://issuer.example".to_owned())]),
+            identity: Some("github.com/1/v1".to_owned()),
+            digest: Some("sha-256=:YWI=:".to_owned()),
+            ..entry.clone()
+        };
+        let json = serde_json::to_string(&evidenced).unwrap();
+        assert!(
+            json.contains(r#""evidence":{"iss":"https://issuer.example"},"identity":"github.com/1/v1","digest":"sha-256=:YWI=:""#),
+            "{json}"
+        );
+        assert_eq!(serde_json::from_str::<Audited>(&json).unwrap(), evidenced);
         assert_eq!(utc_day(at(86_399)), "1970-01-01");
         assert_eq!(utc_day(at(86_400)), "1970-01-02");
     }

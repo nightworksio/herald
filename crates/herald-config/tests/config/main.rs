@@ -34,6 +34,8 @@ mod matching;
 #[cfg(test)]
 mod models;
 #[cfg(test)]
+mod oidc;
+#[cfg(test)]
 mod owner;
 #[cfg(test)]
 mod pages;

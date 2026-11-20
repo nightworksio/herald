@@ -17,7 +17,22 @@ The HTTP API's apps, by name.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `apps.<name>.projects` | array of string | The projects it may announce, at least one, each a glob ignoring case, such as `"plugin-*"`. A project named with no wildcard is one the app announces as; a glob only scopes what it may announce, and takes no project from a source or member. |
+| `apps.<name>.oidc` | array of tables | The ID tokens it takes as credentials: each the issuer of a CI run's ID token and what such a token must say, so a run of GitHub Actions or GitLab CI proves who it is and keeps no stored secret. |
+| `apps.<name>.oidc[].algorithms` | array of [TokenAlgorithm](#tokenalgorithm) | The algorithms a token may be signed with; `["RS256"]` where absent. What its header names is never taken on its own. |
+| `apps.<name>.oidc[].audience` | string | What a token's `aud` claim must name: this herald's `[server] url` where absent, else `https://` and its `[federation] domain`. Never an issuer, a peer's URL, nor a GitHub's default `<GitHub>/<owner>`, which every herald of the owner would take alike: github.com's, or the GHE.com enterprise's or GitHub Enterprise Server's the issuer is. |
+| `apps.<name>.oidc[].claims` | table | Each claim a token must carry, by name, and the pattern its value must match, case and all: `*` stands for any run of characters and `?` for any one, neither reaching past a `/`. At least one binds who the run is: `repository_id`, `repository_owner_id`, `project_id` or `namespace_id` with no wildcard, `repository`, `repository_owner`, `project_path` or `namespace_path` with none before its first `/`, or `sub` as `repo:<owner>/...` or `project_path:<group>/...`, the owner whole; else a token of any repository at the issuer would be taken, as a GitHub repository shapes its own `sub`. Prefer an id a renamed or re-created repository never inherits; `herald doctor` names an entry that binds names alone, `sub` among them. |
+| `apps.<name>.oidc[].claims.<name>` | string |  |
+| `apps.<name>.oidc[].issuer` | string | The issuer, `https://`, exactly as its tokens' `iss` claim names it: `https://token.actions.githubusercontent.com` for GitHub Actions, with `/<enterprise>` after it where an enterprise of GitHub Enterprise Cloud issues its own; `https://token.actions.<enterprise>.ghe.com` on GHE.com; `https://<host>/_services/token` on GitHub Enterprise Server; `https://gitlab.com`, or the instance's URL on GitLab self-managed. |
+| `apps.<name>.oidc[].jwks` | string | Where the issuer's keys are read, `https://`, in place of the `jwks_uri` its discovery document names on its own origin. |
+| `apps.<name>.oidc[].keys` | array of object | The issuer's keys, as a JSON Web Key Set's `keys` lists them, pinned so they are never read from the network; each rotation is then the operator's to write. |
+| `apps.<name>.oidc[].keys_for` | [Duration](#duration) | How long the issuer's keys, once read, are used before they are read again: "1h" where absent, and at most "1d". Keys that cannot be read again are not used past it. |
+| `apps.<name>.oidc[].keys_retry` | [Duration](#duration) | How long after the issuer's keys were last fetched, or tried, a token naming a key they hold none of has them fetched again: "1m" where absent, from "10s" to `keys_for`. A rotated key is taken within it, and however many tokens name unknown keys, the issuer is asked at most once in it. |
+| `apps.<name>.oidc[].lifetime` | [Duration](#duration) | The longest a token may live, from its `iat` to its `exp`: "1h" where absent, at most "1d". A longer-lived token is refused, so a captured one is worth nothing past it; GitLab CI's tokens live as long as their job's timeout. |
+| `apps.<name>.oidc[].skew` | [Duration](#duration) | How far a token's `exp`, `nbf` and `iat` may stand from this herald's clock: "1m" where absent, at most "5m". |
+| `apps.<name>.oidc[].takes` | array of [Taking](#taking) | What its tokens may do: `"announce"` through the HTTP API, `"push"` into a herald source as a name the app stands for, or both. Where absent, what the app does; an app naming both projects and peers says it on each entry, so no token is taken by both unless its entry grants both. |
+| `apps.<name>.peers` | array of string | The names it stands for when a run holding one of its ID tokens pushes into a herald source, such as a repository's herald running in CI, which has no URL or keys of its own. A herald source grants each name in its `peers`, as it grants a peer; no name is a table of `[peers]` or another app's. |
+| `apps.<name>.projects` | array of string | The projects it may announce, each a glob ignoring case, such as `"plugin-*"`; at least one, unless it stands for `peers` alone. A project named with no wildcard is one the app announces as; a glob only scopes what it may announce, and takes no project from a source or member. |
+| `apps.<name>.replay` | [Replay](#replay) | How often one of its ID tokens may be presented: `"once"`, where the store keeps deliveries, remembers each token taken until it expires and refuses it a second time, so a captured token is worth nothing once used; `"until-expiry"` takes it as often as it comes until it expires. `"once"` where absent and the store keeps deliveries, else `"until-expiry"`, which `herald doctor` names. |
 | `apps.<name>.routes` | array of string | The routes it announces to, each naming the app among its sources; every such route where it names none. |
 | `apps.<name>.tokens` | array of [TokenHash](#tokenhash) | The SHA-256 of each of the app's tokens, written `sha256:` and 64 lowercase hex digits, as `herald token new` prints it. A token is rotated by adding the new one before the old one is removed. |
 
@@ -49,11 +64,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -102,11 +119,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
 | `boards.<name>.link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -150,11 +169,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -198,11 +219,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -249,11 +272,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.language` | string | The language each Note is written in, as an ISO 639 code. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -296,11 +321,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -342,11 +369,13 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `boards.<name>.match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `boards.<name>.match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `boards.<name>.match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `boards.<name>.match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `boards.<name>.match.properties.<name>` | array of string |  |
 | `boards.<name>.match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `boards.<name>.match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -394,6 +423,7 @@ Discord, by bot token or webhook.
 | `destinations.<name>.interactions.replies` | [Replies](#replies) | Who sees the answers to `latest` and `changelog`. |
 | `destinations.<name>.interactions.template` | string | The template `latest` takes its title from and `changelog` its body, in place of the route's own. |
 | `destinations.<name>.interactions.via` | [DiscordVia](#discordvia) | How Discord carries them. |
+| `destinations.<name>.interactions.wording` | table | What it says back and how it describes its commands, phrase by phrase, each a template over `project`, `projects`, `named` and `command`; herald's own words for every phrase left out. |
 | `destinations.<name>.interactions.wording.<name>` | string |  |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.pin_lookups` | [PinLookups](#pinlookups) | How many pins it looks up, one request each, as it finds a route's earlier pins in a forum, from 1 to 100; 25 where unset. |
@@ -455,6 +485,7 @@ A bot account on a Matrix homeserver.
 | `destinations.<name>.interactions.template` | string | The template `latest` takes its title from and `changelog` its body, in place of the route's own. |
 | `destinations.<name>.interactions.timeline` | integer | The most messages one sync reads from each room, from 1 to 100; 20 where unset. |
 | `destinations.<name>.interactions.via` | [MatrixVia](#matrixvia) | How the homeserver carries them. |
+| `destinations.<name>.interactions.wording` | table | What it says back and how it describes its commands, phrase by phrase, each a template over `project`, `projects`, `named` and `command`; herald's own words for every phrase left out. |
 | `destinations.<name>.interactions.wording.<name>` | string |  |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.pin_lookups` | [PinLookups](#pinlookups) | How many of the room's pins it looks up, one request each, as it finds a route's earlier pins, from 1 to 100; 25 where unset. |
@@ -492,6 +523,7 @@ Slack, by bot token or webhook.
 | `destinations.<name>.interactions.signing.secret` | string | The secret's name. |
 | `destinations.<name>.interactions.template` | string | The template `latest` takes its title from and `changelog` its body, in place of the route's own. |
 | `destinations.<name>.interactions.via` | [SlackVia](#slackvia) | How Slack carries them. |
+| `destinations.<name>.interactions.wording` | table | What it says back and how it describes its commands, phrase by phrase, each a template over `project`, `projects`, `named` and `command`; herald's own words for every phrase left out. |
 | `destinations.<name>.interactions.wording.<name>` | string |  |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.pin_lookups` | [PinLookups](#pinlookups) | How many of its own pins it looks up, one request each, as it finds a route's earlier pins, from 1 to 100; 25 where unset. |
@@ -528,6 +560,7 @@ herald's own ActivityPub actors, on its domain.
 | `destinations.<name>.key` | table | The secret holding the actors' RSA private key, as PKCS#8 PEM, such as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` writes; `[federation] actor_key` where unset. |
 | `destinations.<name>.key.secret` | string | The secret's name. |
 | `destinations.<name>.kind` | string |  |
+| `destinations.<name>.lists` | array of tables | Shared block lists, each a file of Mastodon's domain block CSV pinned by its SHA-256, whose domains are blocked beside `block`'s; `[federation]`'s where unset. |
 | `destinations.<name>.lists[].file` | string | The file, as a path beside `herald.toml`. |
 | `destinations.<name>.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
 | `destinations.<name>.mode` | [Mode](#mode) | Whom its actors federate with: `open`, everyone `block` does not name, or `allowlist`, only those `allow` names; `[federation]`'s where unset. |
@@ -560,7 +593,12 @@ A peer's herald source each event is pushed to: an envelope proved by the instan
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `destinations.<name>` | table | A peer's herald source each event is pushed to: an envelope proved by the instance's newest key, in a request signed by it. |
+| `destinations.<name>.audience` | string | What the run's ID token must be meant for with `credential = "id-token"`: the peer's URL where absent, and always on the peer's origin. A token whose `aud` names another is never sent, so no herald is handed a token meant for another, which it could present there. |
+| `destinations.<name>.credential` | [PushCredential](#pushcredential) | What proves who pushes: "key", where absent, proves each envelope and signs each request with `[federation]`'s newest key; "id-token" presents the CI run's ID token, which an app of the peer's takes, and the peer proves each envelope itself. |
 | `destinations.<name>.envelope` | [Size](#size) | The most bytes one envelope takes, its proof counted: "16KiB" where unset, and at most "64KiB". A longer event's body is cut to fit. |
+| `destinations.<name>.id_token` | [IdTokenSource](#idtokensource) | Where the run's ID tokens come from with `credential = "id-token"`: "actions", where absent, asks GitHub Actions for a fresh one for each push, which needs the job's `id-token: write` permission; "variables" reads them from `id_tokens`, each presented for one push in turn, as GitLab CI's `id_tokens:` sets them. |
+| `destinations.<name>.id_tokens` | array of tables | The run's variables holding its ID tokens with `id_token = "variables"`, each a token for one push: `[{ secret = "HERALD_ID_TOKEN" }]` where absent. A peer whose app takes each token once refuses a second push with one; give as many as the run pushes, each its own `id_tokens:` entry with the peer's URL as its `aud`. The pushes past them wait for a later run. |
+| `destinations.<name>.id_tokens[].secret` | string | The secret's name. |
 | `destinations.<name>.inbox` | string | The peer's herald source taking the pushes, whose inbox is `/herald/v1/inbox/<inbox>` under the peer's URL. |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.peer` | string | The peer of `[peers]` each event is pushed to. |
@@ -595,7 +633,9 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.followers.per_domain` | integer | The most followers one actor keeps from any one server; no limit where unset. |
 | `federation.grants_ending` | [Duration](#duration) | How soon before a grant ends doctor names it: "7d" where absent, at most "90d" (ADR-0054). |
 | `federation.keep_audit` | [Duration](#duration) | How long what each peer asked is kept, by UTC day: "90d" where absent, at most "365d" (ADR-0054). |
+| `federation.keys` | array of tables | The secrets holding the instance's Ed25519 private keys, each as PKCS#8 PEM, such as `openssl genpkey -algorithm ed25519` writes, newest first: the first signs, and every one verifies. Rotate by writing a new key before the old one, and leave the old one out once peers know the new one. |
 | `federation.keys[].secret` | string | The secret's name. |
+| `federation.lists` | array of tables | Shared block lists, for an ActivityPub destination that names no `lists`. |
 | `federation.lists[].file` | string | The file, as a path beside `herald.toml`. |
 | `federation.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
 | `federation.mode` | [Mode](#mode) | Whom herald's actors federate with, for an ActivityPub destination that names no `mode`: `open` or `allowlist`. |
@@ -648,9 +688,11 @@ The kinds of event the config declares beside those herald ships, by name; its a
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `kinds.<name>.attributes` | table | The attributes its events carry, by name, as `event.attributes.<name>` reads them. |
 | `kinds.<name>.attributes.<name>.required` | boolean | Whether every event of the kind carries it. |
 | `kinds.<name>.attributes.<name>.type` | [AttributeType](#attributetype) | What it holds. |
 | `kinds.<name>.description` | string | What it is, in a sentence. |
+| `kinds.<name>.links` | array of tables | The links that become its buttons, in order: each a name, labelled by its name, or a name and a label. |
 
 ### `kinds.<name>.links[]`: A link whose button is labelled by its name
 
@@ -711,6 +753,7 @@ The other heralds this one trusts, by name.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `peers.<name>.grants` | array of tables | What the peer may do with this herald's resources, each also granted on the resource itself, such as `[{ resource = "sources.upstream", actions = ["push"] }]`. None where absent. |
 | `peers.<name>.grants[].actions` | array of [Action](#action) | What the peer may do with it, such as `["push"]`. |
 | `peers.<name>.grants[].namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/'. None where absent. |
 | `peers.<name>.grants[].resource` | string | The resource, such as "sources.upstream", a `herald` source. |
@@ -771,11 +814,13 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -821,11 +866,13 @@ Which events go where, rendered how.
 | `routes[].link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -866,11 +913,13 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -911,11 +960,13 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -959,11 +1010,13 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -1003,11 +1056,13 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -1046,11 +1101,13 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
 | `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties` | table | The custom properties, every one of which a repository holds with one of the values given for it; any value where none is given. |
 | `routes[].match.properties.<name>` | array of string |  |
 | `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
 | `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
@@ -1214,6 +1271,7 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
+| `sources.<name>.properties` | table | Custom properties, every one of which a member holds with one of the values given, such as `{ team = "media", tier = ["core", "edge"] }`. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.pulls` | table | Which pull requests are announced where the signals take "pull-request": what they did, whether drafts are, and their labels and authors; every pull request opened, ready for review or merged where absent. |
 | `sources.<name>.pulls.actions` | array of [PullAction](#pullaction) | What a pull request did that is announced: `opened`, `ready_for_review`, `reopened`, `merged`, `closed`; `["opened", "ready_for_review", "merged"]` where absent. |
@@ -1222,6 +1280,7 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.pulls.labels` | array of string | The labels, as globs as `include` writes them, any one of which a pull request announced carries; every pull request where empty. |
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.repositories` | table | What the source makes of the repositories each glob names, as `include` writes them; where several name one repository, the narrowest that sets a key gives it. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
@@ -1316,6 +1375,7 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
+| `sources.<name>.properties` | table | Custom properties, every one of which a member holds with one of the values given, such as `{ team = "media", tier = ["core", "edge"] }`. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.pulls` | table | Which pull requests are announced where the signals take "pull-request": what they did, whether drafts are, and their labels and authors; every pull request opened, ready for review or merged where absent. |
 | `sources.<name>.pulls.actions` | array of [PullAction](#pullaction) | What a pull request did that is announced: `opened`, `ready_for_review`, `reopened`, `merged`, `closed`; `["opened", "ready_for_review", "merged"]` where absent. |
@@ -1324,6 +1384,7 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.pulls.labels` | array of string | The labels, as globs as `include` writes them, any one of which a pull request announced carries; every pull request where empty. |
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.repositories` | table | What the source makes of the repositories each glob names, as `include` writes them; where several name one repository, the narrowest that sets a key gives it. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
@@ -1418,6 +1479,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
+| `sources.<name>.properties` | table | Custom properties, every one of which a member holds with one of the values given, such as `{ team = "media", tier = ["core", "edge"] }`. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.pulls` | table | Which pull requests are announced where the signals take "pull-request": what they did, whether drafts are, and their labels and authors; every pull request opened, ready for review or merged where absent. |
 | `sources.<name>.pulls.actions` | array of [PullAction](#pullaction) | What a pull request did that is announced: `opened`, `ready_for_review`, `reopened`, `merged`, `closed`; `["opened", "ready_for_review", "merged"]` where absent. |
@@ -1426,6 +1488,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.pulls.labels` | array of string | The labels, as globs as `include` writes them, any one of which a pull request announced carries; every pull request where empty. |
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.repositories` | table | What the source makes of the repositories each glob names, as `include` writes them; where several name one repository, the narrowest that sets a key gives it. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
@@ -1671,6 +1734,7 @@ Another herald's feed, each answer and envelope checked against the keys trusted
 | `sources.<name>.peer` | string | The peer of `[peers]` whose feed it pulls, through the keys pinned for it; with `feed`, in place of `url`. |
 | `sources.<name>.peer_share` | integer | How many tombstones of identities it took, which it never forgets, it keeps of any one instance before it takes no new identity of it: 1000 where absent, and at most 4000. A pull reads such an envelope again later; a tombstone of an identity it took is always taken. |
 | `sources.<name>.peer_tombstones` | integer | How many tombstones of identities it never took it keeps of any one instance: 250 where absent, or `tombstones` where that is fewer, and at most `tombstones`. |
+| `sources.<name>.peers` | table | What each peer of `[peers]` may do with the source, by the peer's name, such as `{ upstream = { actions = ["push"] } }`; the peer's own `grants` must name the same. None where absent. |
 | `sources.<name>.peers.<name>.actions` | array of [Action](#action) | What the peer may do, such as `["push"]`. |
 | `sources.<name>.peers.<name>.namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/', such as "github.com/123456"; every other is taken as herald/<peer>/<identity>. None where absent. |
 | `sources.<name>.peers.<name>.until` | string | When the grant ends, in RFC 3339 such as "2027-01-01T00:00:00Z" or as a TOML datetime with its offset; never where absent. |
@@ -1898,6 +1962,7 @@ The closed-set questions views ask of models where their rules cannot tell, by n
 | `tasks.<name>.least` | number | The least probability an answer is taken at, from 0 to 1, where a model gives one; where a model gives none, no answer is taken. |
 | `tasks.<name>.models` | array of string | The models asked, in turn, until one answers, such as `["jev", "local"]`. |
 | `tasks.<name>.most` | integer | The most pull requests it is asked of a round: 50 where absent; the rest read as unknown. |
+| `tasks.<name>.options` | table | The options it may be answered with, each a key and what it means. |
 | `tasks.<name>.options.<name>` | string |  |
 
 ## `templates`
@@ -1927,6 +1992,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.authors` | array of string | The authors it shows, by login, each a glob ignoring case; every one where empty. |
 | `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
+| `views.<name>.decide` | table | The task that decides each slot its rules leave untold, such as `{ turn = "whose", priority = "urgency" }`; nothing is asked of a model where absent. |
 | `views.<name>.decide.<name>` | string |  |
 
 ### `views.<name>.deciding`: herald's own rules, or the forge's own status
@@ -1940,6 +2006,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `views.<name>.deciding` | table | The labels maintainers set. |
+| `views.<name>.deciding.labels` | array of tables | Each label and its state, in the order they are tried. |
 | `views.<name>.deciding.labels[].label` | string | The label, as the forge names it, ignoring case. |
 | `views.<name>.deciding.labels[].state` | [Turn](#turn) | The state. |
 
@@ -2064,6 +2131,10 @@ When a held group is announced.
 
 What doctor does with a config that takes something private to a public place.
 
+### IdTokenSource
+
+Where a run's ID tokens come from.
+
 ### IssueAction
 
 What an issue did that is announced.
@@ -2136,6 +2207,10 @@ Which pre-releases a route takes.
 
 What a pull request did that is announced.
 
+### PushCredential
+
+What proves who pushes to a peer.
+
 ### Rate
 
 How many in a length of time: a number, a slash and s, m, h or d, as "120/m".
@@ -2147,6 +2222,10 @@ How many pages of its own posts the destination reads back, 5 by default.
 ### RecordKind
 
 A kind of record a store may keep beside its ledger, cursors, schedules and deliveries, which every store that keeps records keeps.
+
+### Replay
+
+How often a token an app takes may be presented.
 
 ### Replies
 
@@ -2187,6 +2266,14 @@ How Slack carries commands to herald.
 ### TagOrdering
 
 How Docker Hub lists a repository's tags.
+
+### Taking
+
+What a token an entry takes may do.
+
+### TokenAlgorithm
+
+The algorithm an ID token is signed with, of those herald checks.
 
 ### TokenHash
 

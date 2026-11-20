@@ -411,6 +411,12 @@ pub enum HttpError {
         /// What the transport said.
         reason: String,
     },
+    /// No connection to the host was made, so nothing of the request
+    /// left.
+    Unconnected {
+        /// What the transport said.
+        reason: String,
+    },
     /// The host did not answer in time.
     TimedOut,
 }
@@ -419,7 +425,9 @@ impl fmt::Display for HttpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Refused { url } => write!(f, "{url} is not a host this destination may reach"),
-            Self::Unreachable { reason } => write!(f, "the host could not be reached: {reason}"),
+            Self::Unreachable { reason } | Self::Unconnected { reason } => {
+                write!(f, "the host could not be reached: {reason}")
+            }
             Self::TimedOut => f.write_str("the host did not answer in time"),
         }
     }
@@ -432,6 +440,13 @@ impl HttpError {
         Self::Unreachable {
             reason: reason.to_string(),
         }
+    }
+
+    /// Whether the request provably never left: refused before it was
+    /// sent, or no connection was made for it.
+    #[must_use]
+    pub const fn unsent(&self) -> bool {
+        matches!(self, Self::Refused { .. } | Self::Unconnected { .. })
     }
 }
 
@@ -775,5 +790,16 @@ mod tests {
             HttpError::TimedOut.to_string(),
             "the host did not answer in time"
         );
+        let unconnected = HttpError::Unconnected {
+            reason: "connection refused".to_owned(),
+        };
+        assert_eq!(
+            unconnected.to_string(),
+            "the host could not be reached: connection refused"
+        );
+        assert!(unconnected.unsent());
+        assert!(HttpError::Refused { url: String::new() }.unsent());
+        assert!(!HttpError::unreachable("reset").unsent());
+        assert!(!HttpError::TimedOut.unsent());
     }
 }

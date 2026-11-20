@@ -78,10 +78,7 @@ impl<'a> Written<'a> {
                 }
             }
         } else if let Some(fields) = resolved.get("properties").and_then(Value::as_object) {
-            let what = said(node);
-            if path.contains('.') && !what.is_empty() {
-                rows.push(format!("| `{path}` | table | {what} |"));
-            }
+            described(path, node, "table", rows);
             for (key, field) in fields {
                 self.walk(&format!("{path}.{key}"), field, rows, within);
             }
@@ -89,8 +86,10 @@ impl<'a> Written<'a> {
             .get("additionalProperties")
             .filter(|entry| entry.is_object())
         {
+            described(path, node, "table", rows);
             self.walk(&format!("{path}.<name>"), entry, rows, within);
         } else if let Some(item) = resolved.get("items").filter(|item| self.nested(item)) {
+            described(path, node, "array of tables", rows);
             self.walk(&format!("{path}[]"), item, rows, within);
         } else {
             let what = Some(said(node))
@@ -118,6 +117,9 @@ impl<'a> Written<'a> {
     }
 
     fn variants(&self, node: &'a Value) -> Option<&'a Vec<Value>> {
+        if node.get("properties").is_some() {
+            return None;
+        }
         node.get("oneOf")
             .or_else(|| node.get("anyOf"))
             .and_then(Value::as_array)
@@ -175,6 +177,15 @@ impl<'a> Written<'a> {
     }
 }
 
+/// A row for the table or array of tables `node` at `path`, of `shape`,
+/// where it is nested and says what it is.
+fn described(path: &str, node: &Value, shape: &str, rows: &mut Vec<String>) {
+    let what = said(node);
+    if path.contains('.') && !what.is_empty() {
+        rows.push(format!("| `{path}` | {shape} | {what} |"));
+    }
+}
+
 fn properties(node: &Value) -> impl Iterator<Item = (&String, &Value)> {
     node.get("properties")
         .and_then(Value::as_object)
@@ -207,7 +218,12 @@ mod tests {
             "list": {"type": "array"},
             "names": {"type": "array", "items": {"type": "string"}},
             "rows": {"type": "array", "items": {"$ref": "#/$defs/Row"}},
+            "nest": {"type": "object", "properties": {
+                "cells": {"description": "Its cells.", "type": "array", "items": {"$ref": "#/$defs/Row"}},
+                "named": {"description": "Its names.", "type": "object", "additionalProperties": {"type": "string"}}
+            }},
             "shape": {"description": "A shape.", "$ref": "#/$defs/Shape"},
+            "held": {"description": "A held table.", "$ref": "#/$defs/Held"},
             "named": {"type": "object", "additionalProperties": {"type": "boolean"}}
         },
         "$defs": {
@@ -221,6 +237,17 @@ mod tests {
                 }
             },
             "Leaf": {"description": "A leaf.", "type": "string"},
+            "Held": {
+                "type": "object",
+                "properties": {
+                    "left": {"description": "Its left.", "type": "array", "items": {"type": "string"}},
+                    "right": {"description": "Its right.", "type": "array", "items": {"type": "string"}}
+                },
+                "anyOf": [
+                    {"required": ["left"], "properties": {"left": {"minItems": 1}}},
+                    {"required": ["right"], "properties": {"right": {"minItems": 1}}}
+                ]
+            },
             "Bare": {"type": "string"},
             "Row": {"type": "object", "properties": {"cell": {"type": "integer"}}},
             "Shape": {
@@ -251,10 +278,17 @@ mod tests {
             "\n### `shape.tint` of kind `circle`: A solid fill\n\n| Setting",
             "| `shape.tint.color` | string |  |",
             "\n### Bare\n\n### Leaf\n\nA leaf.\n",
+            "| `held.left` | array of string | Its left. |",
+            "| `nest.cells` | array of tables | Its cells. |",
+            "| `nest.cells[].cell` | integer |  |",
+            "| `nest.named` | table | Its names. |",
+            "| `nest.named.<name>` | string |  |",
+            "| `held.right` | array of string | Its right. |",
         ] {
             assert!(written.contains(row), "{row} in {written}");
         }
         assert!(!written.contains("tree.child"), "{written}");
+        assert!(!written.contains("### `held`"), "{written}");
         assert!(!written.contains("\n\n\n"), "{written}");
         assert!(reference("not json").ends_with("## Types\n"));
     }

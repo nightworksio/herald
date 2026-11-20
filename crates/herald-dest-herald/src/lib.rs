@@ -10,7 +10,9 @@ mod push;
 mod reach;
 
 pub use options::{FeedOptions, FeedRouteOptions};
-pub use push::{HERALD_PUSH, Push, PushKind, PushOptions, PushRouteOptions};
+pub use push::{
+    HERALD_PUSH, IdTokenSource, Push, PushCredential, PushKind, PushOptions, PushRouteOptions,
+};
 pub use reach::Feed;
 
 use herald_kinds::{DestinationKind, Fault, Placing};

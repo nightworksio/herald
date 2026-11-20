@@ -23,7 +23,7 @@ const IF_NONE_MATCH: &str = "if-none-match";
 const NO_FEED: &str = "herald feed on this host";
 
 /// The answer to `method` on `rest`, the path under herald's API, signed.
-pub(super) async fn api<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K>(
+pub(super) async fn api<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P: Http, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
     rest: &str,

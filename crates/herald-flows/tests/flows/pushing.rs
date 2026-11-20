@@ -5,6 +5,7 @@
 
 use herald_config::{Config, Uses, load};
 use herald_core::{Audited, Entry, Event, Identity, Key, RouteId, SourceName, Step, Visibility};
+use herald_dest_herald::PushOptions;
 use herald_flows::{Connected, Outcome, Ports, Stop, announce, prepare, trial};
 use herald_peers::digest::content_digest;
 use herald_peers::keys::method;
@@ -19,12 +20,22 @@ use crate::pulls::{DOMAIN, OLD};
 
 /// Where the peer's inbox is.
 pub(crate) const PUSHED_TO: &str = "POST https://herald.example/herald/v1/inbox/inbox";
+/// A request for the run's ID token meant for the peer.
+const ASKED: &str =
+    "GET «secret:ACTIONS_ID_TOKEN_REQUEST_URL»&audience=https%3A%2F%2Fherald.example";
+
 /// Why an event that is not public is pushed to no peer that takes no
 /// private events.
 const UNSHARED: &str =
     "the event is not public, and the peer takes no private events, so it is pushed none";
 
 fn config(peer: &str) -> Config {
+    configured(peer, "")
+}
+
+/// The config of a push to `receiver`, the peer's table carrying `peer`
+/// and the push `push`.
+fn configured(peer: &str, push: &str) -> Config {
     let text = format!(
         r#"version = 1
 [store]
@@ -45,6 +56,7 @@ kind = "herald-push"
 peer = "receiver"
 inbox = "inbox"
 waits = {{ outage = "40s" }}
+{push}
 [sources.gate]
 kind = "github"
 repository = "nightworksio/php-mutation-gate"
@@ -97,10 +109,38 @@ impl Sender {
     /// One whose peer's inbox answers `answers` in turn, the peer taking
     /// private events where `private`.
     pub(crate) fn new(private: bool, answers: &[(&str, u16, &str)]) -> Self {
-        let config = config(if private { "private = true" } else { "" });
+        Self::of(config(if private { "private = true" } else { "" }), answers)
+    }
+
+    /// One presenting the run's ID token `token`, its push carrying
+    /// `push`, whose peer's inbox answers `answers` in turn.
+    fn presenting(token: &str, push: &str, answers: &[(&str, u16, &str)]) -> Self {
+        Self::holding(
+            configured(
+                "",
+                &format!("credential = \"id-token\"\nid_token = \"variables\"\n{push}"),
+            ),
+            token,
+            answers,
+        )
+    }
+
+    fn of(config: Config, answers: &[(&str, u16, &str)]) -> Self {
+        Self::holding(config, "", answers)
+    }
+
+    /// [`Sender::of`], the run's ID token `token`.
+    fn holding(config: Config, token: &str, answers: &[(&str, u16, &str)]) -> Self {
         let secrets = FakeSecrets::default()
             .with("PUSH_KEY", str::from_utf8(&OLD).unwrap())
-            .with("HERALD_MARKER", "marker-key");
+            .with("HERALD_MARKER", "marker-key")
+            .with("HERALD_ID_TOKEN", token)
+            .with("HERALD_ID_TOKEN_2", token)
+            .with(
+                PushOptions::ACTIONS_URL,
+                "https://actions.example/idtoken?api-version=2.0",
+            )
+            .with(PushOptions::ACTIONS_TOKEN, "asking");
         let prepared =
             pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Announces)).unwrap();
         let script = Script::answering(answers);
@@ -118,6 +158,24 @@ impl Sender {
 
     pub(crate) fn announced(&self, event: &Event) -> Outcome {
         self.signed(&FakeSigner, event)
+    }
+
+    /// What each route did with `event`.
+    fn announced_all(&self, event: &Event) -> Vec<herald_flows::Announced> {
+        let ports = Ports {
+            store: &self.store,
+            clock: &FakeClock::at(NOON),
+            signer: &FakeSigner,
+            budget: herald_flows::Budget::UNBOUNDED,
+        };
+        pollster::block_on(announce(
+            &self.config,
+            &self.connected,
+            &ports,
+            &SourceName::new("gate"),
+            event,
+            "r1",
+        ))
     }
 
     /// [`Sender::announced`], each signature as long as an Ed25519
@@ -227,6 +285,162 @@ fn a_public_event_is_pushed_once_proved_and_signed_by_the_instance_s_newest_key(
     );
     assert_eq!(sender.announced(&event("v1")), Outcome::AlreadyAnnounced);
     assert_eq!(sender.script.seen().len(), 1);
+}
+
+/// A run's ID token meant for `audience`.
+fn meant_for(audience: &str) -> String {
+    let mut claims = crate::serving::oidc::run("42");
+    claims["aud"] = serde_json::json!(audience);
+    crate::serving::oidc::id_token(&crate::serving::oidc::header("k1"), &claims)
+}
+
+#[test]
+fn a_run_presents_its_id_token_and_pushes_the_envelope_for_the_peer_to_prove() {
+    let token = meant_for("https://herald.example");
+    let sender = Sender::presenting(&token, "", &[(PUSHED_TO, 202, "taken")]);
+    assert_eq!(sender.announced(&event("v1")), sent());
+    let [envelope] = sender.pushed().try_into().unwrap();
+    assert_eq!(envelope["identity"], "github.com/1/v1");
+    assert_eq!(envelope.get("proof"), None);
+    let [headers] = sender.script.asked().try_into().unwrap();
+    assert_eq!(header(&headers, "Authorization"), format!("Bearer {token}"));
+    assert_eq!(header(&headers, "content-type"), "application/json");
+    assert_eq!(header(&headers, "signature-input"), "");
+    assert_eq!(sender.script.most(), [Audited::NAMED_MOST]);
+    let refused = Sender::presenting(
+        &token,
+        "",
+        &[(PUSHED_TO, 401, "the ID token is not meant for this herald")],
+    );
+    let Stop::Refused(why) = stop(&refused.announced(&event("v1"))).clone() else {
+        panic!("refused");
+    };
+    assert!(
+        why.contains("the ID token is not meant for this herald"),
+        "{why}"
+    );
+    assert_eq!(
+        refused
+            .entry("v1")
+            .and_then(|entry| entry.message(&Step::Post).map(str::to_owned)),
+        None
+    );
+}
+
+#[test]
+fn a_run_s_id_token_meant_for_another_herald_is_never_sent() {
+    let elsewhere = meant_for("https://other.example");
+    for (token, push) in [
+        (elsewhere.as_str(), ""),
+        ("not an ID token", ""),
+        (
+            &meant_for("https://herald.example") as &str,
+            "audience = \"https://herald.example/ci\"",
+        ),
+    ] {
+        let sender = Sender::presenting(token, push, &[]);
+        let Stop::Refused(why) = stop(&sender.announced(&event("v1"))).clone() else {
+            panic!("refused");
+        };
+        assert!(why.contains("the run's ID token is not meant for"), "{why}");
+        assert!(!why.contains(token), "{why}");
+        assert_eq!(sender.script.seen(), Vec::<String>::new());
+    }
+    let named = Sender::presenting(
+        &meant_for("https://herald.example/ci"),
+        "audience = \"https://herald.example/ci\"",
+        &[(PUSHED_TO, 202, "taken")],
+    );
+    assert_eq!(named.announced(&event("v1")), sent());
+}
+
+#[test]
+fn a_run_on_github_actions_asks_for_a_fresh_id_token_for_each_push() {
+    let first = meant_for("https://herald.example");
+    let mut later = crate::serving::oidc::run("42");
+    later["jti"] = serde_json::json!("second");
+    let second = crate::serving::oidc::id_token(&crate::serving::oidc::header("k1"), &later);
+    let answer = |token: &str| serde_json::json!({ "count": 1, "value": token }).to_string();
+    let (one, two) = (answer(&first), answer(&second));
+    let sender = Sender::holding(
+        configured("", "credential = \"id-token\""),
+        "",
+        &[
+            (ASKED, 200, &one),
+            (PUSHED_TO, 202, "taken"),
+            (ASKED, 200, &two),
+            (PUSHED_TO, 202, "taken"),
+        ],
+    );
+    assert_eq!(sender.announced(&event("v1")), sent());
+    assert_eq!(sender.announced(&event("v2")), sent());
+    assert_eq!(sender.script.seen(), [ASKED, PUSHED_TO, ASKED, PUSHED_TO]);
+    let asked = sender.script.asked();
+    assert_eq!(header(&asked[0], "Authorization"), "Bearer asking");
+    assert_eq!(
+        header(&asked[1], "Authorization"),
+        format!("Bearer {first}")
+    );
+    assert_eq!(
+        header(&asked[3], "Authorization"),
+        format!("Bearer {second}")
+    );
+    for (status, body, why) in [
+        (
+            403,
+            String::new(),
+            "the CI answered 403 when asked for the run's ID token",
+        ),
+        (
+            200,
+            "{}".to_owned(),
+            "the CI answered no ID token when asked for one",
+        ),
+        (
+            200,
+            answer(&meant_for("https://other.example")),
+            "the run's ID token is not meant for https://herald.example",
+        ),
+    ] {
+        let refused = Sender::holding(
+            configured("", "credential = \"id-token\""),
+            "",
+            &[(ASKED, status, &body)],
+        );
+        let Stop::Refused(said) = stop(&refused.announced(&event("v1"))).clone() else {
+            panic!("refused");
+        };
+        assert!(said.starts_with(why), "{said}");
+        assert_eq!(refused.script.seen(), [ASKED]);
+    }
+    let unreached = Sender::holding(configured("", "credential = \"id-token\""), "", &[]);
+    assert!(matches!(
+        stop(&unreached.announced(&event("v1"))),
+        Stop::Unreachable(said) if said.starts_with("the run's ID token: ")
+    ));
+}
+
+#[test]
+fn a_run_presents_each_id_token_it_read_once_and_leaves_the_rest_to_a_later_run() {
+    let token = meant_for("https://herald.example");
+    let sender = Sender::presenting(
+        &token,
+        "id_tokens = [{ secret = \"HERALD_ID_TOKEN\" }, { secret = \"HERALD_ID_TOKEN_2\" }]",
+        &[(PUSHED_TO, 202, "taken"), (PUSHED_TO, 202, "taken")],
+    );
+    assert_eq!(sender.announced(&event("v1")), sent());
+    assert_eq!(sender.announced(&event("v2")), sent());
+    assert!(matches!(
+        stop(&sender.announced(&event("v3"))),
+        Stop::Limit(said) if said.starts_with("every ID token the run read was presented once")
+    ));
+    assert_eq!(sender.script.seen(), [PUSHED_TO, PUSHED_TO]);
+    assert_eq!(
+        sender
+            .entry("v3")
+            .and_then(|entry| entry.message(&Step::Post).map(str::to_owned)),
+        None
+    );
 }
 
 #[test]
@@ -397,4 +611,55 @@ fn doctor_counts_a_route_to_a_push_as_federation_s() {
             shown: Some(herald_flows::Shown::of(&OLD)),
         }]
     );
+}
+
+#[test]
+fn a_run_s_destinations_naming_one_variable_present_its_token_once() {
+    let token = meant_for("https://herald.example");
+    let again = "[destinations.again]\nkind = \"herald-push\"\npeer = \"receiver\"\ninbox = \"inbox\"\ncredential = \"id-token\"\nid_token = \"variables\"\n\
+                 [[routes]]\nid = \"again\"\nsources = [\"gate\"]\ndestination = \"again\"\n";
+    let sender = Sender::presenting(&token, again, &[(PUSHED_TO, 202, "taken")]);
+    let announced = sender.announced_all(&event("v1"));
+    assert_eq!(sender.script.seen(), [PUSHED_TO]);
+    let limited = announced
+        .iter()
+        .filter(|announced| {
+            matches!(
+                &announced.outcome,
+                Outcome::Stopped {
+                    reason: Stop::Limit(_),
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(limited, 1, "{announced:?}");
+}
+
+#[test]
+fn a_token_whose_push_never_left_is_presented_again_and_one_that_may_have_is_not() {
+    let token = meant_for("https://herald.example");
+    let unconnected = Sender::presenting(
+        &token,
+        "",
+        &[
+            (PUSHED_TO, crate::harness::UNCONNECTED, "connection refused"),
+            (PUSHED_TO, 202, "taken"),
+        ],
+    );
+    assert!(matches!(
+        stop(&unconnected.announced(&event("v1"))),
+        Stop::Unreachable(said) if said.ends_with("connection refused")
+    ));
+    assert_eq!(unconnected.announced(&event("v2")), sent());
+    let lost = Sender::presenting(&token, "", &[]);
+    assert!(matches!(
+        stop(&lost.announced(&event("v1"))),
+        Stop::Unreachable(_)
+    ));
+    assert!(matches!(
+        stop(&lost.announced(&event("v2"))),
+        Stop::Limit(_)
+    ));
+    assert_eq!(lost.script.seen(), [PUSHED_TO]);
 }

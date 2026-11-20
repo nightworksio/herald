@@ -709,8 +709,11 @@ fn a_member_whose_template_names_another_source_s_project_from_a_hostile_topic_i
         "ci".to_owned(),
         herald_config::App {
             tokens: Vec::new(),
+            oidc: Vec::new(),
             projects: vec![herald_core::Glob::new("deploys").unwrap()],
             routes: Vec::new(),
+            peers: std::collections::BTreeSet::new(),
+            replay: herald_config::Replay::Once,
         },
     );
     let listing = json!([

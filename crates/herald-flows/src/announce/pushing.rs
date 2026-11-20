@@ -1,10 +1,13 @@
 //! An event pushed to a peer's herald source (ADR-0054): as an envelope
-//! proved by the instance's newest key, in a request that key signs, once
-//! for each revision the route shows.
+//! proved by the instance's newest key, in a request that key signs, or
+//! as it is with a CI run's ID token for the peer to prove (ADR-0064),
+//! once for each revision the route shows.
 
 use herald_core::media::JSON;
-use herald_core::{Audited, Entry, Event, Facts, Identity, Key, Revision, Sent, Step, Visibility};
-use herald_kinds::Pushed;
+use herald_core::{
+    Audited, Entry, Event, Facts, IdToken, Identity, Key, Revision, Sent, Step, Visibility,
+};
+use herald_kinds::{IdTokens, Presented, Proving, Pushed};
 use herald_peers::answer::CONTENT_TYPE;
 use herald_peers::digest::{CONTENT_DIGEST, content_digest};
 use herald_peers::discovery::Instance;
@@ -14,7 +17,7 @@ use herald_peers::keys::method;
 use herald_peers::message::{Covered, Message};
 use herald_peers::request::demanded;
 use herald_ports::{
-    Algorithm, Clock, Http, Ledger, Method, Request, SecretText, Signer, Store, Versioned,
+    Algorithm, Clock, Http, Ledger, Method, Request, Secret, SecretText, Signer, Store, Versioned,
 };
 
 use super::feeding::unprovable;
@@ -27,6 +30,9 @@ const UNSHARED: &str =
 
 /// Who answers a push.
 const INBOX: &str = "the peer's inbox";
+
+/// What a token asked of the CI is named, in place of a secret's name.
+const ASKED: &str = "the run's ID token";
 
 impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     /// What the route did with `event`, pushed to the peer `pushed` names:
@@ -133,20 +139,118 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         self.recorded(&forgotten, Some(record), withdrawn).await
     }
 
-    /// `envelope` of the announcement `key` keys, proved by the instance's
-    /// newest key and pushed to the peer `pushed` names in a request that
-    /// key signs, under a nonce no other request takes: once the peer's
-    /// inbox took it.
+    /// `envelope` of the announcement `key` keys, pushed to the peer
+    /// `pushed` names: proved by the instance's newest key in a request
+    /// that key signs, under a nonce no other request takes; or as it is,
+    /// with the run's ID token, for the peer to prove (ADR-0064). Done once
+    /// the peer's inbox took it.
     async fn delivered_to(
         &self,
         pushed: Pushed<'_>,
         (instance, key): (&Instance<'_>, &Key),
         envelope: &Envelope,
     ) -> Result<(), Stop> {
-        let public = self.public(pushed.key).await?;
-        let proved = self
-            .proved((pushed.key, &public), instance, envelope)
-            .await?;
+        let mut spent = None;
+        let (body, request) = match pushed.proving {
+            Proving::Key(secret) => {
+                self.signed((pushed.inbox, secret), (instance, key), envelope)
+                    .await?
+            }
+            Proving::IdToken { tokens, audience } => {
+                let (token, read) = self.id_token(tokens, audience).await?;
+                if !IdToken::read(token.expose()).is_ok_and(|read| read.meant_for(audience)) {
+                    return Err(Stop::Refused(format!(
+                        "the run's ID token is not meant for {audience}, so it is not sent"
+                    )));
+                }
+                let body = envelope.to_string().into_bytes();
+                let request = Request::new(Method::Post, SecretText::plain(pushed.inbox))
+                    .header(CONTENT_TYPE, SecretText::plain(JSON))
+                    .bearer(token.clone());
+                spent = read.map(|read| (read, token));
+                (body, request)
+            }
+        };
+        let response = self
+            .http
+            .send(Request {
+                body,
+                most: Audited::NAMED_MOST,
+                ..request
+            })
+            .await
+            .map_err(|error| {
+                if let Some((read, token)) = spent.filter(|_| error.unsent()) {
+                    read.unspent(&token);
+                }
+                Stop::Unreachable(error.to_string())
+            })?;
+        let said = || Audited::named(&String::from_utf8_lossy(&response.body));
+        match response.failure(pushed.waits, None, INBOX, said) {
+            None | Some(Sent::Landed(_)) => Ok(()),
+            Some(Sent::RetryAfter(after)) => Err(Stop::RetryAfter(after)),
+            Some(Sent::Refused(reason)) => Err(Stop::Refused(reason)),
+        }
+    }
+
+    /// The run's ID token for one push, meant for `audience`: asked of the
+    /// CI afresh, or the first of those read from its variables no push
+    /// presented, with what holds them presented.
+    ///
+    /// # Errors
+    ///
+    /// The CI does not answer one, or every one read was presented.
+    async fn id_token<'t>(
+        &self,
+        tokens: IdTokens<'t>,
+        audience: &str,
+    ) -> Result<(Secret, Option<&'t Presented>), Stop> {
+        let (url, token) = match tokens {
+            IdTokens::Requested { url, token } => (url, token),
+            IdTokens::Read { tokens, presented } => {
+                let token = presented.next(tokens).ok_or_else(|| {
+                    Stop::Limit(
+                        "every ID token the run read was presented once; a later run pushes the rest, or give the run one more in id_tokens for each push".to_owned(),
+                    )
+                })?;
+                return Ok((token, Some(presented)));
+            }
+        };
+        let asked = SecretText::secret(url.clone()).then(IdToken::asking(url.expose(), audience));
+        let response = self
+            .http
+            .send(
+                Request::new(Method::Get, asked)
+                    .header("Accept", SecretText::plain(JSON))
+                    .bearer(token.clone())
+                    .at_most(IdToken::MOST.saturating_mul(2)),
+            )
+            .await
+            .map_err(|error| Stop::Unreachable(format!("the run's ID token: {error}")))?;
+        if response.status != herald_core::status::OK {
+            return Err(Stop::Refused(format!(
+                "the CI answered {} when asked for the run's ID token",
+                response.status
+            )));
+        }
+        IdToken::answered(&response.body)
+            .map(|value| (Secret::new(ASKED, value), None))
+            .ok_or_else(|| {
+                Stop::Refused("the CI answered no ID token when asked for one".to_owned())
+            })
+    }
+
+    /// `envelope` of the announcement `key` keys, proved by the instance's
+    /// newest key, `secret`, and the request to `inbox` carrying it, which
+    /// that key signs under a nonce no other request takes.
+    async fn signed(
+        &self,
+        (inbox, secret): (&str, &Secret),
+        (instance, key): (&Instance<'_>, &Key),
+        envelope: &Envelope,
+    ) -> Result<(Vec<u8>, Request), Stop> {
+        let public = self.public(secret).await?;
+        let proved = self.proved((secret, &public), instance, envelope).await?;
         let body = proved.to_string().into_bytes();
         let now = self.ports.clock.now();
         let created = now.as_second();
@@ -166,7 +270,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         };
         let message = Message {
             method: "POST",
-            url: pushed.inbox,
+            url: inbox,
             status: None,
             fields: &fields,
         };
@@ -174,28 +278,14 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let signature = self
             .ports
             .signer
-            .sign(Algorithm::Ed25519, pushed.key, &base)
+            .sign(Algorithm::Ed25519, secret, &base)
             .await
             .map_err(unprovable)?;
         fields.extend(covered.fields(&signature));
         let request = fields.into_iter().fold(
-            Request::new(Method::Post, SecretText::plain(pushed.inbox)),
+            Request::new(Method::Post, SecretText::plain(inbox)),
             |request, (name, value)| request.header(name, SecretText::plain(&value)),
         );
-        let response = self
-            .http
-            .send(Request {
-                body,
-                most: Audited::NAMED_MOST,
-                ..request
-            })
-            .await
-            .map_err(|error| Stop::Unreachable(error.to_string()))?;
-        let said = || Audited::named(&String::from_utf8_lossy(&response.body));
-        match response.failure(pushed.waits, None, INBOX, said) {
-            None | Some(Sent::Landed(_)) => Ok(()),
-            Some(Sent::RetryAfter(after)) => Err(Stop::RetryAfter(after)),
-            Some(Sent::Refused(reason)) => Err(Stop::Refused(reason)),
-        }
+        Ok((body, request))
     }
 }

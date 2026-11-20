@@ -3,7 +3,8 @@
 //! sources (ADR-0058).
 
 use herald_flows::{
-    Federation, FeedShown, GrantShown, OwnKey, Pulls, PushShown, Shown, SourceShown, federation,
+    Federation, FeedShown, GrantShown, OwnKey, Pulls, PushShown, RunShown, Shown, SourceShown,
+    federation,
 };
 use herald_peers::keys::fingerprint;
 use herald_peers::multibase::ed25519_public;
@@ -40,7 +41,10 @@ kind = "github"
 repository = "nightworksio/php-mutation-gate"
 [sources.inbox]
 kind = "herald"
-peers = {{ org = {{ actions = ["push"] }} }}
+peers = {{ org = {{ actions = ["push"] }}, runs-ci = {{ actions = ["push"] }} }}
+[apps.runs]
+oidc = [{{ issuer = "https://issuer.example", claims = {{ repository_id = "42" }} }}]
+peers = ["runs-ci"]
 [sources.pulled]
 kind = "herald"
 peer = "org"
@@ -109,11 +113,28 @@ fn doctor_shows_the_instance_s_keys_peers_and_grants() {
     );
     assert_eq!(
         shown.grants,
-        [GrantShown {
-            peer: "org".to_owned(),
-            source: "inbox".to_owned(),
-            actions: vec!["push"],
-            until: None,
+        [
+            GrantShown {
+                peer: "org".to_owned(),
+                source: "inbox".to_owned(),
+                actions: vec!["push"],
+                until: None,
+            },
+            GrantShown {
+                peer: "runs-ci".to_owned(),
+                source: "inbox".to_owned(),
+                actions: vec!["push"],
+                until: None,
+            },
+        ]
+    );
+    assert_eq!(
+        shown.runs,
+        [RunShown {
+            app: "runs".to_owned(),
+            issuer: "https://issuer.example".to_owned(),
+            audience: "https://herald.example".to_owned(),
+            peers: vec!["runs-ci".to_owned()],
         }]
     );
 }
@@ -136,6 +157,7 @@ fn doctor_shows_the_instance_s_feeds_pushes_and_herald_sources() {
             peer: "org".to_owned(),
             inbox: "https://herald.peer.example/herald/v1/inbox/up".to_owned(),
             private: true,
+            id_token: false,
         }]
     );
     assert_eq!(
