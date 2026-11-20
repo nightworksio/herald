@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use std::collections::BTreeMap;
 
-use herald_core::{Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View};
+use herald_core::{Capacity, Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View};
 use herald_kinds::Most;
 use jiff::SignedDuration;
 use jiff::civil::Weekday;
@@ -77,6 +77,9 @@ pub struct ViewConfig {
     /// read, and each row naming those of its repository and branch that
     /// change a path in common (ADR-0063).
     pub conflicts: bool,
+    /// Which repositories its capacity overview reads, where it shows one
+    /// (ADR-0066).
+    pub capacity: Option<Capacity>,
 }
 
 /// Where a view reads its open pull requests (ADR-0061).
@@ -311,6 +314,38 @@ pub(crate) struct ViewFile {
     /// on one head at `least` times (1 where absent) within `window`
     /// ("7d" where absent), as kept records saw it.
     pub(crate) flaky: Option<FlakyFile>,
+    /// The overviews it shows beside its rows, such as `["capacity"]`: none
+    /// where absent (ADR-0066).
+    #[serde(default)]
+    pub(crate) overviews: Vec<OverviewName>,
+    /// Which repositories its capacity overview reads: "shown", those it
+    /// shows a pull request of, where absent; or "members", its owner's
+    /// newest pushed, at most `capacity_repositories`.
+    pub(crate) capacity_from: Option<CapacityFrom>,
+    /// The most members "members" reads, the newest pushed first: 20 where
+    /// absent, from 1 to 100. Each costs two requests on GitHub and GitLab
+    /// and one on Forgejo, and the order one more.
+    #[schemars(range(min = 1, max = herald_core::MOST_CAPACITY_REPOSITORIES))]
+    pub(crate) capacity_repositories: Option<NonZeroUsize>,
+}
+
+/// An overview a view shows beside its rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum OverviewName {
+    /// Its repositories' CI runs queued and running, and those superseded.
+    Capacity,
+}
+
+/// Which repositories a capacity overview reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum CapacityFrom {
+    /// Those the view shows a pull request of.
+    #[default]
+    Shown,
+    /// Its owner's members, the newest pushed first.
+    Members,
 }
 
 /// What makes a failing check a flaky candidate.

@@ -1997,6 +1997,8 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
 | `views.<name>.broken_at` | integer | How many open pull requests one check fails on before the base they merge into reads as broken: 3 where absent (ADR-0065). |
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
+| `views.<name>.capacity_from` | [CapacityFrom](#capacityfrom) | Which repositories its capacity overview reads: "shown", those it shows a pull request of, where absent; or "members", its owner's newest pushed, at most `capacity_repositories`. |
+| `views.<name>.capacity_repositories` | integer | The most members "members" reads, the newest pushed first: 20 where absent, from 1 to 100. Each costs two requests on GitHub and GitLab and one on Forgejo, and the order one more. |
 | `views.<name>.conflicts` | boolean | Whether it predicts conflicts: it reads the paths each pull request's head changes, at most 100 each, and each row names the open pull requests of its repository merging into its branch that change a path in common; false where absent. It costs a request a pull request read in full, but on GitHub with a token, which reads them with each pull request; a kept record keeps them until its head moves. |
 | `views.<name>.decide` | table | The task that decides each slot its rules leave untold, such as `{ turn = "whose", priority = "urgency" }`; nothing is asked of a model where absent. |
 | `views.<name>.decide.<name>` | string |  |
@@ -2027,6 +2029,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.mode` | [ViewMode](#viewmode) | Where it reads its pull requests: "auto" where absent, kept of each source that takes webhooks where the store keeps pull requests and live otherwise; "live" from the forge each time; or "kept" from the records the store keeps, folded from webhooks and reconciled with a listing. |
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
 | `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
+| `views.<name>.overviews` | array of [OverviewName](#overviewname) | The overviews it shows beside its rows, such as `["capacity"]`: none where absent (ADR-0066). |
 | `views.<name>.reconcile` | [Duration](#duration) | How long kept mode waits at least before listing a source's open pull requests again, each page conditional on its last answer; every round where absent. |
 | `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
 | `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
@@ -2075,6 +2078,10 @@ Who sees an actor's Notes on the timelines. Followers see every Note.
 ### Bots
 
 What a view does with a bot's pull requests.
+
+### CapacityFrom
+
+Which repositories a capacity overview reads.
 
 ### Colour
 
@@ -2187,6 +2194,10 @@ Whom herald's actors federate with.
 ### OneCharacter
 
 One character, as a config writes it.
+
+### OverviewName
+
+An overview a view shows beside its rows.
 
 ### PackageVisibility
 

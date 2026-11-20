@@ -352,6 +352,55 @@ rule that say `private = true` alone. herald ships `herald:rerun`. A rule
 only plans: `mode = "apply"` is refused, as a re-run is made by an
 operator signed in through the forge, never by a rule on its own.
 
+### Capacity
+
+A view with `overviews = ["capacity"]` shows, beside its rows, the CI runs
+queued and running in its repositories, the oldest queued, and the runs
+started for a pull request on a commit no open pull request's head is,
+superseded by a newer push (ADR-0066):
+
+| Key | What it sets | Where absent |
+|-----|--------------|--------------|
+| `overviews` | the overviews it shows: `"capacity"` | none |
+| `capacity_from` | `"shown"`, the repositories it shows a pull request of; or `"members"`, its owner's newest pushed | `"shown"` |
+| `capacity_repositories` | the most members `"members"` reads, 1 to 100 | `20` |
+
+| Forge | Runs read | Its token needs |
+|-------|-----------|-----------------|
+| GitHub, GitHub Enterprise Server, GHE.com | `actions/runs?status=queued` and `?status=in_progress` | Actions: read (a GitHub App or fine-grained token), or `repo` (`public_repo` for a public repository) as a classic token |
+| GitLab, self-managed included | `pipelines?status=pending` and `?status=running` | `read_api` and the Reporter role |
+| Forgejo | `actions/tasks`, those waiting and running | read access to the repository |
+
+It reads and shows only repositories the view's `repositories` filter
+holds: `"shown"` takes those of the rows the view shows, and `"members"`
+only the members the filter holds. A listing that fills its page (100,
+or 50 on Forgejo) is named in `view.overviews.unread` as holding more
+than it counts, and the run's request budget ending leaves the section
+unread with that reason rather than stopping the report.
+
+Each repository costs two requests on GitHub and GitLab and one on
+Forgejo, and `"members"` one more for their order: GitHub's `sort=pushed`
+and GitLab's `order_by=last_activity_at`. Forgejo lists no push order, so
+it takes the first members its membership record keeps. With `"shown"`,
+the runs of a repository with no open pull request are not counted, and
+doctor says so. A repository whose runs the token may not read, or a
+Forgejo that answers no tasks API, is named in `view.overviews.unread`
+with why, never counted as idle. Each run is seen as its repository's
+rows are, or as its membership record holds it, or as private, and an
+audience is shown only the runs and unread repositories it may see.
+
+Templates read `view.overviews.capacity` as `queued`, `running`,
+`oldest_queued` and `superseded`, each `{ repository, id, url, sha,
+created }`, absent where the view shows no capacity; and
+`view.overviews.unread` as `{ repository, reason }`.
+
+```toml
+[views.ci]
+overviews = ["capacity"]
+capacity_from = "members"
+capacity_repositories = 20
+```
+
 Reports and rules watching one view read it once a round.
 
 ## Templates
@@ -364,6 +413,7 @@ A route's template reads the board as `view`:
 | `view.counts` | each state with its `count`, as `{ state, count }` |
 | `view.groups` | each group's `name` and `rows` |
 | `view.batches` | each batch's `package`, `to`, `green`, `failing` and `rows` |
+| `view.overviews` | its overviews, `capacity` and `unread` (above) |
 | `view.failures` | each failing check's `check`, `count`, `broken`, `flips`, `flaky` and `pulls`, each `{ repository, number }` |
 | a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `reviewers` (each asked, or a team's `org/team`), `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale`, `waiting_on` (the logins whose turn it is), `overlaps` (the numbers of the open pull requests changing a path it changes, where the view predicts conflicts) |
 

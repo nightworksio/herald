@@ -1,0 +1,130 @@
+//! A view's overviews beside its rows: its repositories' CI capacity, the
+//! runs queued and running and those superseded by a newer push
+//! (ADR-0066).
+
+use jiff::Timestamp;
+
+use super::View;
+use crate::members::Visibility;
+
+/// The most repositories a view reads capacity of where it reads its
+/// owner's members, the newest pushed first, where it names no number.
+pub const CAPACITY_REPOSITORIES: usize = 20;
+
+/// The most repositories a view may read capacity of.
+pub const MOST_CAPACITY_REPOSITORIES: usize = 100;
+
+/// Which repositories a view reads capacity of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capacity {
+    /// Those it shows a pull request of.
+    Shown,
+    /// Its owner's members, the newest pushed first, at most `most`.
+    Members {
+        /// The most read.
+        most: usize,
+    },
+}
+
+/// One CI run, queued or running.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Running {
+    /// The repository's full path.
+    pub repository: String,
+    /// Who may see the repository.
+    pub visibility: Visibility,
+    /// Its id on the forge.
+    pub id: String,
+    /// Its page.
+    pub url: String,
+    /// The commit it runs on.
+    pub sha: String,
+    /// Whether it was started for a pull request.
+    pub pull: bool,
+    /// Whether it is still queued.
+    pub queued: bool,
+    /// When it was created.
+    pub created: Timestamp,
+}
+
+/// What of an overview could not be read, and why, in plain words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unread {
+    /// The repository's full path.
+    pub repository: String,
+    /// Who may see the repository.
+    pub visibility: Visibility,
+    /// Why it could not be read.
+    pub reason: String,
+}
+
+/// What a view's overviews found.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Overviews {
+    /// The queued and running runs, where the view shows capacity.
+    pub capacity: Option<Vec<Running>>,
+    /// What could not be read.
+    pub unread: Vec<Unread>,
+    /// The head of every open pull request the view read.
+    pub heads: Vec<String>,
+}
+
+impl Overviews {
+    /// It as the view `view` shows it: only the runs of the repositories
+    /// the view holds, and of what could not be read, a repository
+    /// `sourced` names only where the view holds it, an owner or a source
+    /// always, so a read that failed is never shown as clean and nothing
+    /// of a hidden repository leaves through it.
+    #[must_use]
+    pub fn within(mut self, view: &View, sourced: impl Fn(&str) -> bool) -> Self {
+        if let Some(runs) = &mut self.capacity {
+            runs.retain(|run| view.holds(&run.repository));
+        }
+        self.unread
+            .retain(|unread| !sourced(&unread.repository) || view.holds(&unread.repository));
+        self
+    }
+
+    /// It with `other`'s runs and unread repositories added.
+    pub fn merge(&mut self, other: Self) {
+        if let Some(runs) = other.capacity {
+            self.capacity.get_or_insert_default().extend(runs);
+        }
+        self.unread.extend(other.unread);
+    }
+
+    /// The runs started for a pull request on a commit no open pull
+    /// request's head is: superseded by a newer push, or by its closing.
+    #[must_use]
+    pub fn superseded(&self) -> Vec<&Running> {
+        self.capacity
+            .iter()
+            .flatten()
+            .filter(|run| run.pull && !self.heads.contains(&run.sha))
+            .collect()
+    }
+
+    /// It as an audience seeing no repository stricter than `visibility`
+    /// may be shown it.
+    #[must_use]
+    pub fn seen_by(&self, visibility: Visibility) -> Self {
+        Self {
+            capacity: self.capacity.as_ref().map(|runs| {
+                runs.iter()
+                    .filter(|run| run.visibility <= visibility)
+                    .cloned()
+                    .collect()
+            }),
+            unread: self
+                .unread
+                .iter()
+                .filter(|unread| unread.visibility <= visibility)
+                .cloned()
+                .collect(),
+            heads: self.heads.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

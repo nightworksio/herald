@@ -30,7 +30,7 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
     };
     let view = config.views.get(&rule.watch.view)?;
     let pulls = match view_pulls(flow, (&rule.watch.view, view), reads).await {
-        Ok(pulls) => pulls,
+        Ok(read) => read.pulls,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
     let shown = grouped(&view.view, decided_rows(flow, view, &pulls).await);

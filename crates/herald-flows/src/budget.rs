@@ -74,6 +74,10 @@ impl Budget<'_> {
     }
 }
 
+/// Why an overview's section was left unread where the run's budget ended.
+pub(crate) const BUDGET_ENDED: &str =
+    "the run's request budget ended before its runs were read; the next run reads them";
+
 /// An `Http` that starts each send only where a run's budget allows one
 /// more: the one home every read of a forge a run makes goes through,
 /// however many requests it takes (ADR-0062).
@@ -93,6 +97,24 @@ impl<'a, H: Http, C: Clock> Budgeted<'a, H, C> {
             budget,
             clock,
             refused: Mutex::new(None),
+        }
+    }
+
+    /// Why a read of an overview that failed as `unpolled` left its
+    /// section unread, in plain words: the run's budget ending leaves the
+    /// section unread, never the whole report stopped (ADR-0066).
+    pub(crate) fn unread(&self, unpolled: Unpolled) -> String {
+        let refused = self
+            .refused
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        match (refused, unpolled) {
+            (Some(_), _) => BUDGET_ENDED.to_owned(),
+            (None, Unpolled::Unreachable(reason)) => {
+                format!("its forge could not be reached: {reason}")
+            }
+            (None, Unpolled::Unreadable(reason)) => format!("its runs could not be read: {reason}"),
         }
     }
 

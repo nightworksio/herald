@@ -143,10 +143,11 @@ pub use profile::{
 };
 pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
-    Batch, Board, Bots, Changed, Checks, Closed, Deciding, Described, Failure, Flip, Folded,
-    Folding, GroupBy, Grouped, KeptPull, Lifecycle, MOST_FLIPS, Mergeable, Outcome, Pull, PullKey,
-    Ran, Read, Reason, Reconciled, RepositoryKey, Review, Reviewed, Row, Rules, Showing, Since,
-    Triage, Turn, Verdict, View, board, grouped, overlaps, rows,
+    Batch, Board, Bots, CAPACITY_REPOSITORIES, Capacity, Changed, Checks, Closed, Deciding,
+    Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, KeptPull, Lifecycle,
+    MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome, Overviews, Pull, PullKey, Ran,
+    Read, Reason, Reconciled, RepositoryKey, Review, Reviewed, Row, Rules, Running, Showing, Since,
+    Triage, Turn, Unread, Verdict, View, board, grouped, overlaps, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{

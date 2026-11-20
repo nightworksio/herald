@@ -6,6 +6,7 @@
 use std::fmt::Write as _;
 
 use herald_config::{Config, Guard, Report, Rule, ViewConfig, ViewMode};
+use herald_core::Capacity;
 use herald_core::report::UTC;
 use herald_core::stage_name;
 
@@ -23,6 +24,8 @@ const UNMERGEABLE: &str = "GitHub's REST API reads no mergeability, so none of i
 const SCOPED: &str = "it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each";
 
 /// What doctor says of a view predicting conflicts (ADR-0063).
+const CAPACITY_PERMISSIONS: &str = "Its token needs Actions: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api with the Reporter role on GitLab, self-managed included, and read access on Forgejo; a repository it may not read is named unread with why, never counted as idle.";
+
 const CONFLICTS: &str =
     "to predict conflicts it reads the paths each pull request's head changes, at most 100 each,";
 
@@ -162,6 +165,21 @@ pub(super) fn kept(config: &Config, findings: &mut super::Findings) {
     }
 }
 
+/// What doctor says of the view `view`, which the report or rule called
+/// `named` watches, reading capacity of the repositories `capacity` names
+/// (ADR-0066).
+fn capacity_note((named, view): (&str, &str), capacity: Capacity) -> String {
+    let which = match capacity {
+        Capacity::Shown => "the repositories it shows a pull request of, so the runs of one with no open pull request are not counted".to_owned(),
+        Capacity::Members { most } => format!(
+            "its owner's {most} newest pushed members, by one more request for their order (on Forgejo, which lists no push order, the first {most} its membership record keeps)"
+        ),
+    };
+    format!(
+        "The {named} shows the view {view}'s capacity of {which}: two requests a repository on GitHub and GitLab, one on Forgejo. {CAPACITY_PERMISSIONS}"
+    )
+}
+
 /// Each note on the report or rule `name`, called `named`, watching
 /// `view` as `report` says.
 fn watched(
@@ -209,6 +227,10 @@ fn watched(
         note.push('.');
         notes.push(note);
     }
+    notes.extend(
+        view.capacity
+            .map(|capacity| capacity_note((named, &report.view), capacity)),
+    );
     if let Some(zone) = report
         .schedule
         .zone

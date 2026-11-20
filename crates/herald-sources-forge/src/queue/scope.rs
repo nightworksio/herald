@@ -14,6 +14,7 @@ use crate::forge::authorized;
 use crate::owner::Owned;
 use crate::{Forge, Origin, SourceOptions, Token};
 
+mod pushed;
 mod search;
 
 use search::Located;
@@ -394,6 +395,18 @@ impl herald_kinds::Queue for Scoped {
         repository.rsplit_once('/').is_some_and(|(holder, _)| {
             self.forge()
                 .holds((&self.owner, self.options.subgroups()), holder)
+        })
+    }
+
+    fn capacity<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (asked, shown): (Asked<'a>, &'a [&'a str]),
+        capacity: herald_core::Capacity,
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Overviews, Unpolled>> {
+        Box::pin(async move {
+            self.capacity_of(&Erased(http), (asked, shown), capacity)
+                .await
         })
     }
 

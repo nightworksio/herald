@@ -115,6 +115,9 @@ listed_visibility = true
 conflicts = true
 broken_at = 5
 flaky = { window = "3d", least = 2 }
+overviews = ["capacity"]
+capacity_from = "members"
+capacity_repositories = 5
 
 [views.forge]
 deciding = "forge"
@@ -155,6 +158,11 @@ zone = "Europe/Amsterdam"
     assert!(mine.stated);
     assert!(!config.views["forge"].stated);
     assert!(mine.conflicts);
+    assert_eq!(
+        mine.capacity,
+        Some(herald_core::Capacity::Members { most: 5 })
+    );
+    assert_eq!(config.views["forge"].capacity, None);
     assert_eq!(
         mine.view.triage,
         herald_core::Triage {
@@ -244,6 +252,36 @@ fn a_view_named_queue_replaces_the_built_in_one() {
         config.views[BUILT_IN_VIEW].sources,
         [SourceName::new("gate")]
     );
+}
+
+#[test]
+fn a_view_shows_the_capacity_of_the_repositories_it_shows_where_it_names_no_other() {
+    let config = loaded(&with(
+        "[views.ci]\noverviews = [\"capacity\"]\n\n[reports.daily]\n",
+    ));
+    assert_eq!(
+        config.views["ci"].capacity,
+        Some(herald_core::Capacity::Shown)
+    );
+    let members = loaded(&with(
+        "[views.ci]\noverviews = [\"capacity\"]\ncapacity_from = \"members\"\n\n[reports.daily]\n",
+    ));
+    assert_eq!(
+        members.views["ci"].capacity,
+        Some(herald_core::Capacity::Members {
+            most: herald_core::CAPACITY_REPOSITORIES
+        })
+    );
+    let error = errors(&with(
+        "[views.wide]\noverviews = [\"capacity\"]\ncapacity_repositories = 101\n\n[views.unshown]\ncapacity_from = \"members\"\n\n[views.odd]\noverviews = [\"weather\"]\n",
+    ));
+    for wanted in [
+        "views.wide.capacity_repositories: a capacity overview reads from 1 to 100 repositories, such as capacity_repositories = 20",
+        "views.unshown: capacity_from and capacity_repositories take effect with overviews = [\"capacity\"], which this view does not name",
+        "views.odd",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
 }
 
 #[test]

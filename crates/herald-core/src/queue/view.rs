@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use jiff::{SignedDuration, Timestamp};
 
-use super::{Failure, Pull, Reason, Rules, Triage, Turn};
+use super::{Failure, Overviews, Pull, Reason, Rules, Triage, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::decide::Slot;
 use crate::glob::Glob;
@@ -169,6 +169,8 @@ pub struct Board {
     pub stale: usize,
     /// Each check failing on the pull requests it shows (ADR-0065).
     pub failures: Vec<Failure>,
+    /// Its overviews, as its audience may see them (ADR-0066).
+    pub overviews: Overviews,
 }
 
 impl Board {
@@ -194,6 +196,14 @@ fn named(globs: &[Glob], name: &str) -> bool {
 }
 
 impl View {
+    /// Whether it shows the repository at the full path `repository`: the
+    /// one home of its repository filter, which its rows and its overviews
+    /// both take (ADR-0066).
+    #[must_use]
+    pub fn holds(&self, repository: &str) -> bool {
+        named(&self.repositories, repository)
+    }
+
     /// Whose turn `pull` is, by what tells the view.
     fn decided(&self, pull: &Pull) -> (Turn, Reason) {
         match &self.deciding {
@@ -210,7 +220,7 @@ impl View {
             Bots::Only => pull.bot,
             Bots::Include | Bots::Batch => true,
         };
-        bots && named(&self.repositories, &pull.repository)
+        bots && self.holds(&pull.repository)
             && named(&self.authors, pull.author.as_deref().unwrap_or_default())
             && (self.labels.is_empty()
                 || pull.labels.iter().any(|label| named(&self.labels, label)))
@@ -349,6 +359,7 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
         counts,
         stale,
         failures,
+        overviews: Overviews::default(),
     }
 }
 

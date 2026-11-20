@@ -4,7 +4,7 @@
 use jiff::SignedDuration;
 use minijinja::{Value, context};
 
-use crate::queue::{Batch, Failure, Grouped, Row, Showing};
+use crate::queue::{Batch, Failure, Grouped, Overviews, Row, Running, Showing};
 
 /// How long `waited` is, in its largest whole unit: days, hours or
 /// minutes, as a report and `herald queue` write it.
@@ -84,6 +84,44 @@ fn failure_value(failure: &Failure) -> Value {
     }
 }
 
+fn run_value(run: &Running) -> Value {
+    context! {
+        repository => run.repository.as_str(),
+        id => run.id.as_str(),
+        url => run.url.as_str(),
+        sha => run.sha.as_str(),
+        created => run.created.to_string(),
+    }
+}
+
+/// The overviews `overviews` holds, `capacity` absent where the view
+/// shows none (ADR-0066).
+fn overviews_value(overviews: &Overviews) -> Value {
+    let capacity = overviews.capacity.as_ref().map(|runs| {
+        let queued: Vec<&Running> = runs.iter().filter(|run| run.queued).collect();
+        context! {
+            queued => queued.len(),
+            running => runs.len() - queued.len(),
+            oldest_queued => queued.iter().map(|run| run.created).min().map(|at| at.to_string()),
+            superseded => overviews.superseded().into_iter().map(run_value).collect::<Vec<_>>(),
+        }
+    });
+    let unread: Vec<Value> = overviews
+        .unread
+        .iter()
+        .map(|unread| {
+            context! {
+                repository => unread.repository.as_str(),
+                reason => unread.reason.as_str(),
+            }
+        })
+        .collect();
+    context! {
+        capacity => capacity,
+        unread => unread,
+    }
+}
+
 /// `showing` as a template reads it as `view`.
 pub(super) fn view_value(showing: Showing<'_>) -> Value {
     let board = showing.board;
@@ -99,6 +137,7 @@ pub(super) fn view_value(showing: Showing<'_>) -> Value {
         groups => board.groups.iter().map(group_value).collect::<Vec<_>>(),
         batches => board.batches.iter().map(batch_value).collect::<Vec<_>>(),
         failures => board.failures.iter().map(failure_value).collect::<Vec<_>>(),
+        overviews => overviews_value(&board.overviews),
     }
 }
 
