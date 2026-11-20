@@ -131,11 +131,17 @@ impl Sender {
 
     /// [`Sender::of`], the run's ID token `token`.
     fn holding(config: Config, token: &str, answers: &[(&str, u16, &str)]) -> Self {
+        Self::reading(config, (token, token), answers)
+    }
+
+    /// [`Sender::of`], the run's variables `HERALD_ID_TOKEN` and
+    /// `HERALD_ID_TOKEN_2` holding `tokens`.
+    fn reading(config: Config, tokens: (&str, &str), answers: &[(&str, u16, &str)]) -> Self {
         let secrets = FakeSecrets::default()
             .with("PUSH_KEY", str::from_utf8(&OLD).unwrap())
             .with("HERALD_MARKER", "marker-key")
-            .with("HERALD_ID_TOKEN", token)
-            .with("HERALD_ID_TOKEN_2", token)
+            .with("HERALD_ID_TOKEN", tokens.0)
+            .with("HERALD_ID_TOKEN_2", tokens.1)
             .with(
                 PushOptions::ACTIONS_URL,
                 "https://actions.example/idtoken?api-version=2.0",
@@ -662,4 +668,45 @@ fn a_token_whose_push_never_left_is_presented_again_and_one_that_may_have_is_not
         Stop::Limit(_)
     ));
     assert_eq!(lost.script.seen(), [PUSHED_TO]);
+}
+
+#[test]
+fn a_token_read_for_another_herald_is_passed_over_and_left_unpresented() {
+    let (other, ours) = (
+        meant_for("https://other.example"),
+        meant_for("https://herald.example"),
+    );
+    let both = "credential = \"id-token\"\nid_token = \"variables\"\n\
+                id_tokens = [{ secret = \"HERALD_ID_TOKEN\" }, { secret = \"HERALD_ID_TOKEN_2\" }]";
+    let sender = Sender::reading(
+        configured("", both),
+        (&other, &ours),
+        &[(PUSHED_TO, 202, "taken")],
+    );
+    assert_eq!(sender.announced(&event("v1")), sent());
+    let [headers] = sender.script.asked().try_into().unwrap();
+    assert_eq!(header(&headers, "Authorization"), format!("Bearer {ours}"));
+    let Stop::Refused(why) = stop(&sender.announced(&event("v2"))).clone() else {
+        panic!("refused");
+    };
+    assert!(why.contains("the run's ID token is not meant for"), "{why}");
+    assert_eq!(sender.script.seen(), [PUSHED_TO]);
+}
+
+#[test]
+fn a_token_that_cannot_be_read_is_never_presented_nor_spent() {
+    let both = "credential = \"id-token\"\nid_token = \"variables\"\n\
+                id_tokens = [{ secret = \"HERALD_ID_TOKEN\" }, { secret = \"HERALD_ID_TOKEN_2\" }]";
+    let sender = Sender::reading(
+        configured("", both),
+        ("unreadable", "not.a.token"),
+        &[(PUSHED_TO, 202, "taken")],
+    );
+    for version in ["v1", "v2"] {
+        let Stop::Refused(why) = stop(&sender.announced(&event(version))).clone() else {
+            panic!("refused, not spent");
+        };
+        assert!(why.contains("the run's ID token is not meant for"), "{why}");
+    }
+    assert_eq!(sender.script.seen(), Vec::<String>::new());
 }

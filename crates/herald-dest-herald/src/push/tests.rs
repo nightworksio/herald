@@ -248,7 +248,7 @@ fn a_push_on_another_ci_presents_each_id_token_its_variables_hold_once_in_turn()
         Proving::IdToken {
             tokens: IdTokens::Read { tokens, presented },
             ..
-        } => presented.next(tokens),
+        } => presented.next(tokens, |_| true),
         Proving::Key(_) | Proving::IdToken { .. } => panic!("read from the run's variables"),
     };
     assert_eq!(next(&one), Some(first));

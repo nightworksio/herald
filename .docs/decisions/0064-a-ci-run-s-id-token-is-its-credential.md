@@ -53,7 +53,11 @@ RSASSA-PKCS1-v1_5 SHA-256, as the GitHub App's tokens are minted with it
    before its first `/`, the owner, or `sub` as `repo:<owner>/...` or
    `project_path:<group>/...` with the owner written whole. A GitHub
    repository's admin shapes its own `sub` from claims such as `ref`,
-   `context` or `job_workflow_ref`, so any other `sub` binds no one. An
+   `context` or `job_workflow_ref`, so any other `sub` binds no one.
+   `repo:` and `project_path:` are the only subject shapes that count,
+   whatever the issuer: that they name the repository holds for GitHub
+   and GitLab, and for another issuer the operator must know whether a
+   repository can shape its own `sub`. An
    entry binding `ref` alone, `sub = "environment:prod"`, or
    `repository_owner = "org*"`, would take a token of any repository at
    the issuer. `herald doctor` names an entry binding no id of the first
@@ -154,12 +158,14 @@ RSASSA-PKCS1-v1_5 SHA-256, as the GitHub App's tokens are minted with it
     route's connection reaches the peer and that URL's origin alone. On
     GitLab CI, whose tokens are fixed for the job, `id_token =
     "variables"` reads them from `id_tokens`, each presented for one push
-    in turn; a job pushes once for each, and the rest wait for a later
-    run. Before sending, the run reads the token's `aud` and sends nothing
-    unless it names the destination's `audience`, the peer's URL where
-    absent and never another origin than it, so a token meant for one
-    herald is never presented to another, which could present it again
-    where it is meant.
+    in turn, and only where its `aud` names the destination's audience,
+    so one meant for another herald is left for it; a job pushes once
+    for each, and the rest wait for a later run. Before sending, the run
+    reads the token's `aud` and sends nothing unless it names the
+    destination's `audience`, the peer's URL where absent and never
+    another origin than it, so a token meant for one herald is never
+    presented to another, which could present it again where it is
+    meant.
 
 ## Consequences
 

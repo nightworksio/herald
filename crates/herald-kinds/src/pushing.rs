@@ -65,15 +65,23 @@ pub enum IdTokens<'a> {
 pub struct Presented(Arc<Mutex<BTreeSet<String>>>);
 
 impl Presented {
-    /// The first of `tokens` no push presented, now held as presented.
+    /// The first of `tokens` no push presented that `fits`, now held as
+    /// presented; one that does not fit stays unpresented.
     #[must_use]
-    pub fn next(&self, tokens: &[Secret]) -> Option<Secret> {
+    pub fn next(&self, tokens: &[Secret], fits: impl Fn(&Secret) -> bool) -> Option<Secret> {
         let mut presented = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let token = tokens
             .iter()
-            .find(|token| !presented.contains(token.name()))?;
+            .find(|token| !presented.contains(token.name()) && fits(token))?;
         presented.insert(token.name().to_owned());
         Some(token.clone())
+    }
+
+    /// Whether every one of `tokens` was presented.
+    #[must_use]
+    pub fn spent(&self, tokens: &[Secret]) -> bool {
+        let presented = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        tokens.iter().all(|token| presented.contains(token.name()))
     }
 
     /// `token` held as never presented, as its push sent nothing.
@@ -134,12 +142,26 @@ mod tests {
         let presented = Presented::default();
         let shared = presented.clone();
         let tokens = [Secret::new("FIRST", "a"), Secret::new("SECOND", "b")];
-        assert_eq!(presented.next(&tokens), Some(tokens[0].clone()));
-        assert_eq!(shared.next(&tokens[..1]), None);
-        assert_eq!(shared.next(&tokens), Some(tokens[1].clone()));
-        assert_eq!(presented.next(&tokens), None);
+        let any = |_: &Secret| true;
+        assert_eq!(presented.next(&tokens, any), Some(tokens[0].clone()));
+        assert_eq!(shared.next(&tokens[..1], any), None);
+        assert!(shared.spent(&tokens[..1]) && !shared.spent(&tokens));
+        assert_eq!(shared.next(&tokens, any), Some(tokens[1].clone()));
+        assert_eq!(presented.next(&tokens, any), None);
+        assert!(presented.spent(&tokens));
         presented.unspent(&tokens[0]);
-        assert_eq!(shared.next(&tokens), Some(tokens[0].clone()));
+        assert_eq!(shared.next(&tokens, any), Some(tokens[0].clone()));
         assert_eq!(presented, Presented::default());
+    }
+
+    #[test]
+    fn a_token_that_does_not_fit_is_passed_over_and_stays_unpresented() {
+        let presented = Presented::default();
+        let tokens = [Secret::new("OTHER", "x"), Secret::new("OURS", "y")];
+        let ours = |token: &Secret| token.expose() == "y";
+        assert_eq!(presented.next(&tokens, ours), Some(tokens[1].clone()));
+        assert_eq!(presented.next(&tokens, ours), None);
+        assert!(!presented.spent(&tokens));
+        assert_eq!(presented.next(&tokens, |_| true), Some(tokens[0].clone()));
     }
 }

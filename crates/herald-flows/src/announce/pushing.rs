@@ -158,10 +158,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             }
             Proving::IdToken { tokens, audience } => {
                 let (token, read) = self.id_token(tokens, audience).await?;
-                if !IdToken::read(token.expose()).is_ok_and(|read| read.meant_for(audience)) {
-                    return Err(Stop::Refused(format!(
-                        "the run's ID token is not meant for {audience}, so it is not sent"
-                    )));
+                if !meant_for(&token, audience) {
+                    return Err(unmeant(audience));
                 }
                 let body = envelope.to_string().into_bytes();
                 let request = Request::new(Method::Post, SecretText::plain(pushed.inbox))
@@ -195,11 +193,14 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
 
     /// The run's ID token for one push, meant for `audience`: asked of the
     /// CI afresh, or the first of those read from its variables no push
-    /// presented, with what holds them presented.
+    /// presented that is meant for it, with what holds them presented; a
+    /// token meant for another stays unpresented for the destination it is
+    /// meant for.
     ///
     /// # Errors
     ///
-    /// The CI does not answer one, or every one read was presented.
+    /// The CI does not answer one, every one read was presented, or none
+    /// left is meant for `audience`.
     async fn id_token<'t>(
         &self,
         tokens: IdTokens<'t>,
@@ -208,12 +209,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let (url, token) = match tokens {
             IdTokens::Requested { url, token } => (url, token),
             IdTokens::Read { tokens, presented } => {
-                let token = presented.next(tokens).ok_or_else(|| {
-                    Stop::Limit(
+                return match presented.next(tokens, |token| meant_for(token, audience)) {
+                    Some(token) => Ok((token, Some(presented))),
+                    None if presented.spent(tokens) => Err(Stop::Limit(
                         "every ID token the run read was presented once; a later run pushes the rest, or give the run one more in id_tokens for each push".to_owned(),
-                    )
-                })?;
-                return Ok((token, Some(presented)));
+                    )),
+                    None => Err(unmeant(audience)),
+                };
             }
         };
         let asked = SecretText::secret(url.clone()).then(IdToken::asking(url.expose(), audience));
@@ -288,4 +290,17 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         );
         Ok((body, request))
     }
+}
+
+/// Whether `token` is an ID token meant for `audience`.
+fn meant_for(token: &Secret, audience: &str) -> bool {
+    IdToken::read(token.expose()).is_ok_and(|read| read.meant_for(audience))
+}
+
+/// Why no ID token is presented where none the run holds is meant for
+/// `audience`.
+fn unmeant(audience: &str) -> Stop {
+    Stop::Refused(format!(
+        "the run's ID token is not meant for {audience}, so it is not sent"
+    ))
 }
