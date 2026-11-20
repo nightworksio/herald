@@ -53,8 +53,18 @@ on their platform.
 4. **No mutant survives.** Mutation testing is cargo-mutants, and it runs in
    CI only, cut into shards that run side by side.
    - **What a run mutates.** A pull request mutates what its diff touches,
-     with `--in-diff` against its merge base. `main` and a weekly scheduled
-     run mutate the whole workspace.
+     with `--in-diff` against its merge base. A nightly scheduled run on
+     `main`, a run started by hand and a release's gate mutate the whole
+     workspace. A push to `main` mutates nothing: its pull request mutated
+     its diff, and the next nightly run mutates it with everything else.
+   - **A red nightly run.** It fails on `main`: its status shows on the
+     commit it ran at and in the run list, as any red run on `main` does,
+     and is fixed before new work.
+   - **One test binary per crate.** Each mutant rebuilds every test binary
+     of its crate, so a crate's integration tests are the modules of one
+     binary, `tests/<name>/main.rs`.
+   - **Two mutants at once.** Each shard tests two mutants side by side,
+     `--jobs 2`, on the hosted runner's four cores.
    - **What fails it.** Any missed mutant fails the run. A mutant that does not
      build is not counted.
    - **Skips.** A skip is written in `.cargo/mutants.toml`, with the reason
@@ -125,7 +135,9 @@ on their platform.
 |--------|-------------|
 | **A coverage floor below 100** | A floor below 100 says which lines may go untested without saying which, and the uncovered ones gather where testing is hardest: the error paths. Those are the paths that post twice or not at all. |
 | **Mutation testing that reports and does not fail** | A report nobody must act on is soon read by nobody. A survivor is a test that would let a bug through, and it is fixed while the change is fresh. |
-| **Mutating the whole workspace on every pull request** | It costs hours that a diff-scoped run does not, for mutants the change did not touch. `main` and the weekly run still mutate everything, so nothing goes unmutated for long. |
+| **Mutating the whole workspace on every pull request** | It costs hours that a diff-scoped run does not, for mutants the change did not touch. The nightly run still mutates everything, so nothing goes unmutated for long. |
+| **Mutating the whole workspace on every push to `main`** | Measured on 2026-11-19: such a run took 1,274 to 1,411 runner-minutes, 1,213 to 1,350 of them in its twelve shards of 125 to 150 minutes each, for about 13,100 mutants, where a pull request's run took 92 to 98. A merge cancelled the run still in progress: of eight runs on `main`, five were cancelled after 5,076 runner-minutes, against 4,064 for the three that finished, while the shards held most of the organisation's runners. The pull request already mutated the same diff. |
+| **Several test binaries per crate, one mutant at a time** | A mutant of `herald-config`, with 30 test binaries, took 33 to 53 seconds to build, where one of `herald-flows`, with one, took 12. Measured on 2026-11-19 on one slice of the whole workspace, `--shard 0/48` (269 mutants, about 16 of them in `herald-config`), on hosted runners: 2,037 seconds with several test binaries per crate, 1,410 with one, and 1,123 with one and `--jobs 2`, each with the same 191 caught and 78 unviable. |
 | **Live destination calls in CI** | They need real credentials in CI, they post to real channels, and they fail when a platform is slow. Recorded fixtures are deterministic, and a re-recording shows the platform's change as a diff. |
 | **Fuzzing with the workspace's lints** | The lints forbid the panics a fuzzer exists to reach. The harness has its own workspace and toolchain, as lemonfiber's does. |
 
