@@ -1,6 +1,6 @@
 # ADR-0015: An app is a source routes name, announcing with hashed tokens scoped to its projects
 
-**Status:** Accepted; an event's kind and its `version` and `prerelease` superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which an app sends any kind the config knows, with its attributes
+**Status:** Accepted; an event's kind and its `version` and `prerelease` superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which an app sends any kind the config knows, with its attributes; extended by [ADR-0064](0064-a-ci-run-s-id-token-is-its-credential.md), under which a CI run's ID token is an app's credential too
 **Date:** 2026-11-05
 
 ## Context

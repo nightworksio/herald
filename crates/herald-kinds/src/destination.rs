@@ -51,6 +51,12 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
     /// Every secret it names.
     fn secret_refs(&self) -> Vec<&SecretRef>;
 
+    /// The secrets it reads beside its credential whenever it is reached,
+    /// in the order [`Self::reach_reading`] is handed them.
+    fn reads(&self) -> Vec<&SecretRef> {
+        Vec::new()
+    }
+
     /// How it answers commands, where it takes any.
     fn answering(&self) -> Option<Answering> {
         None
@@ -120,6 +126,18 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
     /// `secret` and herald's own `base` URL: where `placed` are options of
     /// its kind.
     fn reach(&self, placed: &Placed, base: &str, secret: Secret) -> Option<Reached>;
+
+    /// It, reached as [`Self::reach`] reaches it, with each secret
+    /// [`Self::reads`] names read, in its order, as `read`.
+    fn reach_reading(
+        &self,
+        placed: &Placed,
+        base: &str,
+        (secret, read): (Secret, Vec<Secret>),
+    ) -> Option<Reached> {
+        drop(read);
+        self.reach(placed, base, secret)
+    }
 
     /// How it takes commands, reached with `credential` and its other
     /// secrets read through `secrets`, where it takes any.

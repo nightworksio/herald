@@ -32,7 +32,7 @@ no separate requirements document, and there are no requirement IDs.
 | [0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md) | A release is drafted by the bot, signed by the maintainer, and published after the full gate | Accepted |
 | [0013](0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md) | A webhook delivery is admitted once, released when it fails, and kept for a week | Accepted |
 | [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | herald server answers first and works after, on one task, within limits | Accepted; superseded in part by [0020](0020-an-activitypub-destination-sets-how-many-inboxes-it-delivers-to-at-once.md) |
-| [0015](0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md) | An app is a source routes name, announcing with hashed tokens scoped to its projects | Accepted; superseded in part by [0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md) |
+| [0015](0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md) | An app is a source routes name, announcing with hashed tokens scoped to its projects | Accepted; superseded in part by [0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md); extended by [0064](0064-a-ci-run-s-id-token-is-its-credential.md) |
 | [0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | Commands are carried every way a destination offers, and answered from what herald keeps | Accepted; extended by [0025](0025-routes-and-sources-go-at-once-within-limits-and-a-session-keeps-where-it-stands.md) |
 | [0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md) | herald runs wherever code runs, from one native binary and one wasm module | Accepted; extended by [0024](0024-a-host-is-described-once-and-every-driver-composes-through-one-composition.md) |
 | [0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md) | A kind is data, and an event carries its kind's attributes | Accepted; extended by [0019](0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md), [0051](0051-a-forge-source-announces-its-security-alerts-to-private-places.md) |
@@ -71,7 +71,7 @@ no separate requirements document, and there are no requirement IDs.
 | [0051](0051-a-forge-source-announces-its-security-alerts-to-private-places.md) | A forge source announces its security alerts to private places | Accepted |
 | [0052](0052-a-forge-source-announces-its-pull-requests.md) | A forge source announces its pull requests | Accepted |
 | [0053](0053-a-forge-source-announces-its-issues.md) | A forge source announces its issues | Accepted |
-| [0054](0054-a-peer-pushes-into-a-herald-source-it-is-granted.md) | A peer pushes into a herald source it is granted | Accepted |
+| [0054](0054-a-peer-pushes-into-a-herald-source-it-is-granted.md) | A peer pushes into a herald source it is granted | Accepted; extended by [0064](0064-a-ci-run-s-id-token-is-its-credential.md) |
 | [0055](0055-a-report-announces-a-view-of-open-pull-requests-once-a-window.md) | A report announces a view of open pull requests once a window | Accepted |
 | [0056](0056-a-board-keeps-one-post-of-a-report-and-a-rule-nudges-each-pull-request-past-its-stages.md) | A board keeps one post of a report, and a rule nudges each pull request past its stages | Accepted |
 | [0057](0057-a-view-asks-a-model-only-what-its-rules-cannot-tell-and-keeps-every-answer.md) | A view asks a model only what its rules cannot tell, and keeps every answer | Accepted |
@@ -80,3 +80,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0060](0060-a-static-host-serves-the-feeds-as-a-signed-log.md) | A static host serves the feeds as a signed log | Accepted |
 | [0061](0061-a-view-reads-kept-pull-requests-folded-from-webhooks-and-reconciled-with-a-listing.md) | A view reads kept pull requests, folded from webhooks and reconciled with a listing | Accepted |
 | [0062](0062-a-view-reads-an-owner-s-repositories-by-one-query-over-them.md) | A view reads an owner's repositories by one query over them | Accepted |
+| [0064](0064-a-ci-run-s-id-token-is-its-credential.md) | A CI run's ID token is its credential | Accepted |

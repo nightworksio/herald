@@ -12,6 +12,7 @@ use herald_peers::discovery;
 use herald_peers::keys::Key;
 use herald_peers::multibase::{ed25519_key, ed25519_public};
 
+use super::oidc::Standing;
 use super::{Loader, Value};
 use crate::file::PeerFile;
 use crate::peers::{Peer, Rotation};
@@ -251,7 +252,9 @@ impl Loader<'_> {
 
     /// Each grant checked against the resource it names: a peer's grant
     /// and the source's own must both exist and say the same, or the
-    /// config does not load, naming both places.
+    /// config does not load, naming both places. A name an app stands for,
+    /// of `standing`, is granted by the source alone, and no source grants
+    /// one app two names, which a push could not tell apart (ADR-0064).
     pub(super) fn granted(
         &mut self,
         (sources, spans): (
@@ -259,6 +262,7 @@ impl Loader<'_> {
             &BTreeMap<SourceName, Range<usize>>,
         ),
         peers: &BTreeMap<String, Peer>,
+        standing: &Standing<'_>,
     ) {
         for (name, peer) in peers {
             for (source, grant) in &peer.grants {
@@ -287,15 +291,31 @@ impl Loader<'_> {
         }
         for (source, found) in sources {
             let span = spans.get(source).cloned().unwrap_or_default();
+            let mut apps: BTreeMap<&str, &str> = BTreeMap::new();
             for name in found.grants().into_iter().flat_map(BTreeMap::keys) {
                 let resource = format!("{}{}", Peer::SOURCES, source.as_str());
-                if !peers
+                let at = format!("{resource}.peers.{name}");
+                if let Some(app) = standing.names.get(name.as_str()) {
+                    if let Some(other) = apps.insert(app, name) {
+                        self.error(
+                            &span,
+                            &at,
+                            format!("apps.{app} stands for \"{other}\" too, which {resource} grants as well, so a push of the app's could not tell which it is; grant one name of each app"),
+                        );
+                    }
+                } else if !peers.contains_key(name) {
+                    self.error(
+                        &span,
+                        &at,
+                        format!("there is no peer \"{name}\" in [peers], and no app stands for it; name a table of [peers], or an app's peers"),
+                    );
+                } else if !peers
                     .get(name)
                     .is_some_and(|peer| peer.grants.contains_key(source))
                 {
                     self.error(
                         &span,
-                        &format!("{resource}.peers.{name}"),
+                        &at,
                         format!("[peers.{name}] grants nothing on {resource}; add {{ resource = \"{resource}\", ... }} to its grants, the same as here"),
                     );
                 }

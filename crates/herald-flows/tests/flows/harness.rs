@@ -20,7 +20,7 @@ mod pulls;
 mod refusing;
 mod script;
 
-pub(crate) use script::Script;
+pub(crate) use script::{Script, UNCONNECTED};
 
 pub(crate) const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
 

@@ -3,7 +3,7 @@ use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::{
     AttributeSpec, Duration, Edits, GroupLate, GroupMode, GroupUntil, Inbound, Kind, LateRelease,
-    LinkSpec, Pinning, Prereleases, Rate, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size, Withdraw,
+    LinkSpec, Pinning, Prereleases, Rate, Sandbox, SecretRef, Size, Withdraw,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -11,9 +11,11 @@ use toml::Spanned;
 
 use crate::peers::{Peer, Rotation};
 
+mod apps;
 mod federation;
 mod records;
 
+pub(crate) use apps::{AppFile, OidcFile};
 pub(crate) use federation::{FederationFile, PagesFile};
 pub(crate) use records::{Keep, RecordsFile};
 
@@ -475,64 +477,6 @@ pub(crate) struct GrantFile {
     /// identities up to a '/'. None where absent.
     #[serde(default)]
     pub(crate) namespaces: std::collections::BTreeSet<String>,
-}
-
-/// An app of the HTTP API (ADR-0007).
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[serde(rename = "App")]
-pub(crate) struct AppFile {
-    /// The SHA-256 of each of the app's tokens, written `sha256:` and 64
-    /// lowercase hex digits, as `herald token new` prints it. A token is
-    /// rotated by adding the new one before the old one is removed.
-    #[serde(default)]
-    #[schemars(with = "Vec<TokenHash>")]
-    pub(crate) tokens: Vec<Spanned<String>>,
-    /// The projects it may announce, at least one, each a glob ignoring
-    /// case, such as `"plugin-*"`. A project named with no wildcard is one
-    /// the app announces as; a glob only scopes what it may announce, and
-    /// takes no project from a source or member.
-    #[schemars(length(min = 1), example = AppFile::PROJECTS)]
-    pub(crate) projects: Vec<String>,
-    /// The routes it announces to, each naming the app among its sources;
-    /// every such route where it names none.
-    #[serde(default)]
-    #[schemars(with = "Vec<String>")]
-    pub(crate) routes: Vec<Spanned<String>>,
-}
-
-impl AppFile {
-    /// How a token's SHA-256 is written in `tokens`, before its hex digits.
-    pub(crate) const TOKEN_PREFIX: &str = "sha256:";
-    /// The projects the schema and the loader's errors show as an example.
-    pub(crate) const PROJECTS: [&str; 1] = ["herald"];
-
-    /// The SHA-256 `token` names, where it is written `sha256:` and 64
-    /// lowercase hex digits.
-    pub(crate) fn hash(token: &str) -> Option<&str> {
-        token.strip_prefix(Self::TOKEN_PREFIX).filter(|hash| {
-            hash.len() == SHA256_HEX_DIGITS
-                && hash
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        })
-    }
-}
-
-/// A token's SHA-256, as `[apps.<name>] tokens` writes it.
-struct TokenHash;
-
-impl JsonSchema for TokenHash {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "TokenHash".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "type": "string",
-            "pattern": format!("^{}[0-9a-f]{{{}}}$", AppFile::TOKEN_PREFIX, SHA256_HEX_DIGITS)
-        })
-    }
 }
 
 /// How often a driver that keeps its own schedule polls and keeps house.

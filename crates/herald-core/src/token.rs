@@ -1,4 +1,5 @@
-//! A minted token kept in the store between runs, sealed (ADR-0041).
+//! A minted token kept in the store between runs, sealed (ADR-0041), or
+//! the key set an ID token's issuer publishes, kept as read.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -6,14 +7,15 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 /// A token kept sealed under a key only its minter holds, with when it
-/// expires.
+/// expires; or an issuer's public key set, kept as read, with when it is
+/// read again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeptToken {
     /// What the token is minted for, such as a GitHub App's installation.
     pub name: String,
-    /// The token, sealed, in base64.
+    /// The token sealed, or the key set as read, in base64.
     pub sealed: String,
-    /// When the token expires.
+    /// When the token expires, or the key set is read again.
     pub expires: Timestamp,
 }
 
@@ -28,7 +30,7 @@ impl KeptToken {
         }
     }
 
-    /// The sealed token, where its base64 reads.
+    /// The sealed token or the key set, where its base64 reads.
     #[must_use]
     pub fn sealed_bytes(&self) -> Option<Vec<u8>> {
         STANDARD.decode(&self.sealed).ok()

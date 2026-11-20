@@ -45,14 +45,16 @@ pub(crate) async fn log(
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let peers: Vec<String> = match asked.name {
-        Some(name) if name == AuditDay::STRANGERS || config.peers.contains_key(name) => {
+        Some(name) if name == AuditDay::STRANGERS || audited(config).any(|kept| kept == name) => {
             vec![name.to_owned()]
         }
-        Some(name) => return Err(format!("there is no peer {name} in [peers]")),
-        None => config
-            .peers
-            .keys()
-            .cloned()
+        Some(name) => {
+            return Err(format!(
+                "there is no peer {name} in [peers], and no app stands for it"
+            ));
+        }
+        None => audited(config)
+            .map(str::to_owned)
             .chain([AuditDay::STRANGERS.to_owned()])
             .collect(),
     };
@@ -97,20 +99,49 @@ pub(crate) async fn log(
 }
 
 /// `entry` as one line: when, by whom, what of which resource, answered
-/// what and why.
+/// what and why, and what the ID token it came with said, where it came
+/// with one.
 fn line(entry: &Audited) -> String {
     let by = entry
         .peer
         .as_deref()
         .or(entry.keyid.as_deref())
         .unwrap_or("an unsigned request");
+    let evidence: Vec<String> = entry
+        .evidence
+        .iter()
+        .map(|(claim, value)| format!("{claim}={value}"))
+        .chain(
+            entry
+                .identity
+                .iter()
+                .map(|identity| format!("envelope {identity}")),
+        )
+        .chain(entry.digest.iter().map(|digest| format!("digest {digest}")))
+        .collect();
+    let said = if evidence.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", evidence.join(", "))
+    };
     format!(
-        "{} {by} {} {} {} {}",
+        "{} {by} {} {} {} {}{said}",
         entry.at,
         entry.action.name(),
         entry.resource,
         entry.outcome,
         entry.reason
+    )
+}
+
+/// Each name whose requests the audit keeps: every peer of `config`, and
+/// every name an app stands for (ADR-0064).
+fn audited(config: &Config) -> impl Iterator<Item = &str> {
+    config.peers.keys().map(String::as_str).chain(
+        config
+            .apps
+            .values()
+            .flat_map(|app| app.peers.iter().map(String::as_str)),
     )
 }
 

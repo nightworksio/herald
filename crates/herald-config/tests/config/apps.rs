@@ -241,7 +241,7 @@ fn an_app_that_names_no_project_is_refused_with_how_to_name_one() {
     let error = errors(&with("[apps.ci]\n"));
     assert!(
         error.contains(
-            "apps.ci: missing field `projects`; give it, such as projects = [\"herald\"]"
+            "apps.ci.projects: an app announces only the projects it names; give them, such as projects = [\"herald\"], or the peers it stands for"
         ),
         "{error}"
     );

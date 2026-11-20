@@ -133,7 +133,7 @@ async fn a_host_that_cannot_be_reached_says_why_without_its_url() {
     let base = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
     let url = SecretText::plain(format!("{base}/")).then_secret(Secret::new("HOOK", "hunter2"));
-    let Err(HttpError::Unreachable { reason }) =
+    let Err(HttpError::Unconnected { reason }) =
         http(&base).send(Request::new(Method::Get, url)).await
     else {
         panic!("reached a closed port");
@@ -141,6 +141,29 @@ async fn a_host_that_cannot_be_reached_says_why_without_its_url() {
     assert!(reason.contains("onnect"), "{reason}");
     assert!(!reason.contains("hunter2"), "{reason}");
     assert!(!reason.contains(&base), "{reason}");
+}
+
+#[tokio::test]
+async fn a_host_that_hangs_up_once_connected_may_have_taken_the_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let hung_up = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut read = [0; 1024];
+        let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut read).await;
+        drop(stream);
+    });
+    let sent = http(&base)
+        .send(Request::new(
+            Method::Get,
+            SecretText::plain(format!("{base}/")),
+        ))
+        .await;
+    let Err(error @ HttpError::Unreachable { .. }) = sent else {
+        panic!("{sent:?}");
+    };
+    assert!(!error.unsent());
+    hung_up.await.unwrap();
 }
 
 #[tokio::test]

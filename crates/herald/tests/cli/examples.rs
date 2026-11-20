@@ -171,6 +171,7 @@ fn the_schema_refuses_what_the_loader_refuses() {
         "[server]\nsilence = \"30s\"\naccept_pause = \"250ms\"",
         "[templates.t]\ntitle = \"t\"\nfile = \"t.md.j2\"",
         "[apps.ci]\nprojects = [\"herald\"]",
+        "[apps.ci]\npeers = [\"plugin-ci\"]",
     ];
     for text in taken {
         assert_eq!(mistakes(&schema, text), Vec::<String>::new(), "{text}");

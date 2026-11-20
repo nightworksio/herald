@@ -1,8 +1,9 @@
 //! What doctor names of the peers a config trusts (ADR-0047, ADR-0049),
 //! and what each may do with each resource that grants it anything
-//! (ADR-0054).
+//! (ADR-0054); and of the ID tokens apps take, and the names they stand
+//! for (ADR-0064).
 
-use herald_config::{Config, Rotation};
+use herald_config::{Config, Oidc, Replay, Rotation};
 use herald_peers::multibase::ed25519_public;
 use herald_ports::{Cursors, Published};
 use jiff::Timestamp;
@@ -20,6 +21,55 @@ pub(super) fn signed(config: &Config, notes: &mut Vec<String>) {
         notes.push(format!(
             "peers.{name}: rotation = \"signed\" takes a key set the peer proves with a key trusted for it, so a stolen key of it can hand over to a key of the thief's; rotation = \"manual\" leaves each new key to you."
         ));
+    }
+}
+
+/// Each app's entry taking ID tokens that binds no id a renamed or
+/// re-created repository never inherits, each app taking a token as often
+/// as it comes until it expires, and each name an app stands for that no
+/// herald source grants anything.
+pub(super) fn bound(config: &Config, findings: &mut Findings) {
+    for (app, found) in &config.apps {
+        if !found.oidc.is_empty() && found.replay == Replay::UntilExpiry {
+            if config.store.keeps_deliveries() {
+                findings.notes.push(format!(
+                    "apps.{app}.replay: a token the app takes is taken again as often as it comes until it expires, so whoever captures one pushes or announces with it until then; replay = \"once\" refuses it a second time."
+                ));
+            } else {
+                findings.gaps.push(gap(
+                    "taking each CI run's ID token once",
+                    format!("apps.{app}.replay"),
+                    format!(
+                        "the {} store keeps no deliveries, so a token the app takes is taken again as often as it comes until it expires, and whoever captures one pushes or announces with it until then; choose a store that keeps records",
+                        config.store.kind()
+                    ),
+                ));
+            }
+        }
+        for (index, entry) in found.oidc.iter().enumerate() {
+            if !entry.binds_an_id() {
+                findings.gaps.push(gap(
+                    "binding a CI run by an id its forge never gives another",
+                    format!("apps.{app}.oidc[{index}].claims"),
+                    format!(
+                        "the entry for {} binds a run by names alone, such as its repository's, its owner's or its sub, and none of {} to one id, so a repository renamed or re-created under a name it matches takes its grant; bind one with no wildcard",
+                        entry.issuer,
+                        Oidc::IMMUTABLE.join(", ")
+                    ),
+                ));
+            }
+        }
+        for name in found.peers.iter().filter(|name| {
+            !config
+                .sources
+                .values()
+                .filter_map(|source| source.grants())
+                .any(|grants| grants.contains_key(*name))
+        }) {
+            findings.notes.push(format!(
+                "apps.{app}.peers: no herald source grants \"{name}\" anything, so what a run of the app's pushes as it is refused; grant it in a herald source's peers, or leave it out."
+            ));
+        }
     }
 }
 

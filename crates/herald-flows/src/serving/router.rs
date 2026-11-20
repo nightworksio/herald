@@ -63,7 +63,7 @@ pub fn under<'a>(base: &str, path: &'a str) -> Option<&'a str> {
 /// (ADR-0002). Every webhook and activity is verified and admitted before
 /// it is parsed (ADR-0007, ADR-0013), and its work is left for after the
 /// reply.
-pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: Keyring>(
+pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P: Http, K: Keyring>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
 ) -> Answered {
@@ -89,7 +89,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
 
 /// The reply to `method` on `path`, a path under one of the prefixes the
 /// server routes by: the HTTP API, command endpoints, webhooks and actors.
-async fn prefixed<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: Keyring>(
+async fn prefixed<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P: Http, K: Keyring>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     method: &str,
     path: &str,
@@ -139,7 +139,7 @@ async fn prefixed<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: Key
 
 /// The reply to `method` on `rest`, the path after [`PROJECTS`]: an app's
 /// event posted, or where one stands.
-async fn projects<S: Store, C: Clock, G, V, H, P, K>(
+async fn projects<S: Store, C: Clock, G, V: Verifier, H: Http, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     method: &str,
     rest: &str,

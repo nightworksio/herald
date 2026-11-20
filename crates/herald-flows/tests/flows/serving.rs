@@ -4,9 +4,10 @@ use herald_flows::{
     Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
     answer, busy, prepare, unplaced, unworked, work,
 };
+use herald_ports::Sealing;
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
-use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier, fake_ed25519};
 
 use crate::harness::{Failing, Fault, Script, broken, healthy, keys_in};
 use crate::inbound::{ANA, ANA_KEY, FOLLOW, activity, at, borrowed, document};
@@ -96,10 +97,54 @@ pub(crate) struct World {
     keyring: MemoryKeyring,
     script: Script,
     now: std::cell::Cell<jiff::Timestamp>,
+    sized: bool,
 }
 
 type Served<'a> =
-    Serving<'a, Failing, FakeClock, FakeSigner, FakeVerifier, Script, Script, MemoryKeyring>;
+    Serving<'a, Failing, FakeClock, Signing, FakeVerifier, Script, Script, MemoryKeyring>;
+
+/// The world's signer: the fake one, but where the world signs `sized`,
+/// an Ed25519 key of 32 bytes signs as long as a real key's signature is,
+/// as a peer reading a proof demands.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Signing(bool);
+
+impl Signer for Signing {
+    async fn sign(
+        &self,
+        algorithm: Algorithm,
+        key: &Secret,
+        message: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        let value = key.expose().as_bytes();
+        if self.0 && algorithm == Algorithm::Ed25519 && value.len() == 32 {
+            return Ok(fake_ed25519(value, message));
+        }
+        FakeSigner.sign(algorithm, key, message).await
+    }
+
+    async fn seal(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        plain: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        FakeSigner.seal(key, sealing, plain).await
+    }
+
+    async fn open(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        sealed: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        FakeSigner.open(key, sealing, sealed).await
+    }
+
+    async fn public(&self, algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
+        FakeSigner.public(algorithm, key).await
+    }
+}
 
 impl World {
     pub(crate) fn new(script: Script) -> Self {
@@ -117,7 +162,14 @@ impl World {
             keyring: MemoryKeyring::new(8),
             script,
             now: std::cell::Cell::new(at()),
+            sized: false,
         }
+    }
+
+    /// It signing Ed25519 as long as a real key's signature is.
+    pub(crate) fn sized(mut self) -> Self {
+        self.sized = true;
+        self
     }
 
     /// It answering at `now` from here on.
@@ -141,10 +193,11 @@ impl World {
         act: impl FnOnce(&Served<'_>) -> T,
     ) -> T {
         let clock = FakeClock::at(self.now.get());
+        let signer = Signing(self.sized);
         let ports = Ports {
             store: &self.store,
             clock: &clock,
-            signer: &FakeSigner,
+            signer: &signer,
             budget: herald_flows::Budget::UNBOUNDED,
         };
         let keys = keys_in(&self.keyring);
@@ -836,7 +889,40 @@ mod apps;
 mod discovery;
 mod feeds;
 mod kept;
+pub(crate) mod oidc;
 mod owned;
 mod peered;
 mod pushes;
 mod tagged;
+
+#[test]
+fn commands_on_a_destination_herald_has_none_of_and_work_of_no_delivery_are_answered() {
+    let world = World::new(Script::default());
+    for (method, path) in [
+        ("POST", "/interactions/nobody"),
+        ("GET", "/interactions/nobody"),
+        ("PUT", "/matrix/nobody/transactions/1"),
+    ] {
+        let answered = world.answer(&Inbound {
+            method,
+            path,
+            query: None,
+            headers: &[],
+            body: b"{}",
+        });
+        assert!(said(&answered).0 >= 400, "{method} {path}");
+        assert_eq!(answered.job, None);
+    }
+    let interact = || Job::Interact {
+        destination: herald_core::DestinationName::new("nobody"),
+        asked: Vec::new(),
+    };
+    assert_eq!(
+        world.serving(|serving| pollster::block_on(unworked(serving, &interact()))),
+        Ok(())
+    );
+    let Did::Interacted(interacted) = world.work(interact()) else {
+        panic!("interacted");
+    };
+    assert_eq!(interacted, Vec::new());
+}

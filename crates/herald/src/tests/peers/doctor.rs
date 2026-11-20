@@ -9,7 +9,7 @@ use super::*;
 const REVOKED: [u8; 32] = [7; 32];
 const PINNED: [u8; 32] = [9; 32];
 
-fn federated() -> (Setup, World) {
+pub(super) fn federated() -> (Setup, World) {
     let peers = format!(
         r#"[federation]
 domain = "herald.example"
@@ -33,9 +33,16 @@ inbox = "up.stream"
 kind = "herald-push"
 peer = "quiet"
 inbox = "up"
+credential = "id-token"
 [sources.inbox]
 kind = "herald"
-peers = {{ org = {{ actions = ["push"], until = "2027-01-01T00:00:00Z" }} }}
+peers = {{ org = {{ actions = ["push"], until = "2027-01-01T00:00:00Z" }}, runs-ci = {{ actions = ["push"] }} }}
+[apps.runs]
+oidc = [{{ issuer = "https://issuer.example", claims = {{ repository_id = "42" }} }}]
+peers = ["runs-ci"]
+[apps.api]
+oidc = [{{ issuer = "https://api-issuer.example", audience = "https://herald.example/api", claims = {{ project_id = "7" }} }}]
+projects = ["herald"]
 [sources.pulled]
 kind = "herald"
 peer = "org"
@@ -57,6 +64,11 @@ destination = "mirror"
 id = "quietly"
 sources = ["cli"]
 destination = "quietly"
+[[routes]]
+id = "api"
+sources = ["api"]
+destination = "feed"
+private = false
 "#,
         revoked = ed25519_public(&REVOKED),
         newer = multikey(NEWER),
@@ -68,6 +80,15 @@ destination = "quietly"
         "HERALD_FED_KEY".to_owned(),
         seeded(NEWER).expose().to_owned(),
     );
+    for (name, value) in [
+        (
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "https://actions.example/idtoken",
+        ),
+        ("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "asking"),
+    ] {
+        setup.vars.insert(name.to_owned(), value.to_owned());
+    }
     (setup, world)
 }
 
@@ -115,11 +136,13 @@ fn doctor_shows_the_instance_among_its_peers_as_json() {
             "peer": "org",
             "inbox": "https://herald.peer.example/herald/v1/inbox/up.stream",
             "private": true,
+            "id_token": false,
         }, {
             "name": "quietly",
             "peer": "quiet",
             "inbox": "https://quiet.peer.example/herald/v1/inbox/up",
             "private": false,
+            "id_token": true,
         }])
     );
     assert_eq!(
@@ -132,7 +155,17 @@ fn doctor_shows_the_instance_among_its_peers_as_json() {
     );
     assert_eq!(
         federation["grants"],
-        json!([{ "peer": "org", "source": "inbox", "actions": ["push"], "until": "2027-01-01T00:00:00Z" }])
+        json!([
+            { "peer": "org", "source": "inbox", "actions": ["push"], "until": "2027-01-01T00:00:00Z" },
+            { "peer": "runs-ci", "source": "inbox", "actions": ["push"], "until": null },
+        ])
+    );
+    assert_eq!(
+        federation["runs"],
+        json!([
+            { "app": "api", "issuer": "https://api-issuer.example", "audience": "https://herald.example/api", "peers": [] },
+            { "app": "runs", "issuer": "https://issuer.example", "audience": "https://herald.example", "peers": ["runs-ci"] },
+        ])
     );
     assert_eq!(federation["keep_audit"], 90 * 86_400);
     assert_eq!(federation["pages"], Value::Null);
@@ -202,7 +235,9 @@ fn doctor_shows_the_instance_among_its_peers_as_lines_and_reads_each_peer_online
             ),
             "destinations.feed: the feed https://herald.example/herald/v1/feeds/feed, not served on this layer.".to_owned(),
             "destinations.mirror: pushes to peers.org at https://herald.peer.example/herald/v1/inbox/up.stream, private events too.".to_owned(),
-            "destinations.quietly: pushes to peers.quiet at https://quiet.peer.example/herald/v1/inbox/up, public events alone.".to_owned(),
+            "destinations.quietly: pushes to peers.quiet at https://quiet.peer.example/herald/v1/inbox/up, public events alone, presenting the run's ID token.".to_owned(),
+            "apps.api: takes ID tokens of https://api-issuer.example meant for https://herald.example/api.".to_owned(),
+            "apps.runs: takes ID tokens of https://issuer.example meant for https://herald.example, standing for runs-ci.".to_owned(),
             "sources.inbox: pulls no feed, and takes pushes.".to_owned(),
             "sources.pinned: pulls the feed of https://pinned.example from its static log, taken up to 3d after it was written, and takes no push.".to_owned(),
             "sources.pulled: pulls the feed of peers.org, and takes no push.".to_owned(),

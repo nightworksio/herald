@@ -51,7 +51,10 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
                 "`domain`, `key`, `symbols`, `waits`, `outbox_page`, `deliveries`, `mode`, `block`, `allow`, `followers`, `approve`, `lists`"
             ),
             unknown("herald", "`keep`, `page`, `envelope`"),
-            unknown("herald-push", "`peer`, `inbox`, `envelope`, `waits`"),
+            unknown(
+                "herald-push",
+                "`peer`, `inbox`, `envelope`, `waits`, `credential`, `id_token`, `id_tokens`, `audience`",
+            ),
         ]
     );
 }

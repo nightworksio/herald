@@ -1,6 +1,6 @@
 # ADR-0054: A peer pushes into a herald source it is granted
 
-**Status:** Accepted
+**Status:** Accepted; extended by [ADR-0064](0064-a-ci-run-s-id-token-is-its-credential.md), under which a CI run pushes with its ID token as the name an app stands for
 **Date:** 2026-11-18
 
 ## Context

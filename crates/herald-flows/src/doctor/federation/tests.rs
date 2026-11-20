@@ -12,6 +12,7 @@ fn bare() -> Federation {
         pushes: Vec::new(),
         sources: Vec::new(),
         grants: Vec::new(),
+        runs: Vec::new(),
         keep_audit: SignedDuration::ZERO,
         pages: None,
         routes: Vec::new(),
@@ -32,10 +33,19 @@ fn peer(name: &str) -> PeerShown {
     }
 }
 
+fn run(app: &str) -> RunShown {
+    RunShown {
+        app: app.to_owned(),
+        issuer: "https://issuer.example".to_owned(),
+        audience: "https://herald.example".to_owned(),
+        peers: vec!["plugin-ci".to_owned()],
+    }
+}
+
 #[test]
 fn a_config_takes_part_among_heralds_by_any_one_of_its_parts() {
     assert!(!bare().any());
-    let parts: [fn(&mut Federation); 7] = [
+    let parts: [fn(&mut Federation); 8] = [
         |shown| shown.domain = Some("herald.example".to_owned()),
         |shown| {
             shown.keys.push(OwnKey {
@@ -57,6 +67,7 @@ fn a_config_takes_part_among_heralds_by_any_one_of_its_parts() {
                 peer: "org".to_owned(),
                 inbox: String::new(),
                 private: false,
+                id_token: false,
             });
         },
         |shown| {
@@ -67,6 +78,7 @@ fn a_config_takes_part_among_heralds_by_any_one_of_its_parts() {
                 stale_after: None,
             });
         },
+        |shown| shown.runs.push(run("ci")),
         |shown| {
             shown.pages = Some(herald_config::Pages {
                 url: "https://owner.example".to_owned(),
@@ -101,6 +113,7 @@ fn a_gap_is_federation_s_where_its_key_is_of_one_of_its_parts_on_a_boundary() {
         peer: "org".to_owned(),
         inbox: String::new(),
         private: false,
+        id_token: true,
     });
     shown.sources.push(SourceShown {
         name: "up".to_owned(),
@@ -109,6 +122,7 @@ fn a_gap_is_federation_s_where_its_key_is_of_one_of_its_parts_on_a_boundary() {
         stale_after: None,
     });
     shown.routes.push(2);
+    shown.runs.push(run("ci"));
     for owned in [
         "federation",
         "federation.keys[0]",
@@ -121,6 +135,8 @@ fn a_gap_is_federation_s_where_its_key_is_of_one_of_its_parts_on_a_boundary() {
         "sources.up[0]",
         "routes[2]",
         "routes[2].private",
+        "apps.ci",
+        "apps.ci.oidc[0].claims",
     ] {
         assert!(shown.owns(owned), "{owned}");
     }
@@ -133,6 +149,7 @@ fn a_gap_is_federation_s_where_its_key_is_of_one_of_its_parts_on_a_boundary() {
         "store.kind",
         "routes[0].destination",
         "routes[20].private",
+        "apps.cis",
     ] {
         assert!(!shown.owns(other), "{other}");
     }

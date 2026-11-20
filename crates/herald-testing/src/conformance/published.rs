@@ -185,6 +185,12 @@ fn day_of(peer: &str, day: &str, reason: &str) -> AuditDay {
             resource: "sources.releases".to_owned(),
             outcome: 202,
             reason: reason.to_owned(),
+            evidence: std::collections::BTreeMap::from([(
+                "iss".to_owned(),
+                "https://issuer.example".to_owned(),
+            )]),
+            identity: Some("github.com/1/v1".to_owned()),
+            digest: Some("sha-256=:YWI=:".to_owned()),
         }],
         more: 0,
     }

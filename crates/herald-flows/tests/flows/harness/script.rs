@@ -5,6 +5,10 @@ use std::sync::Mutex;
 
 use herald_ports::{Http, HttpError, Request, Response};
 
+/// The status a script answers with where no connection is made for the
+/// request, its body the transport's reason.
+pub(crate) const UNCONNECTED: u16 = 0;
+
 /// The headers of each answer, in order.
 type Heads = std::sync::Arc<Mutex<VecDeque<Vec<(String, String)>>>>;
 
@@ -98,6 +102,9 @@ impl Http for Script {
             });
         };
         assert!(line.ends_with(&expected), "{line} is not {expected}");
+        if status == UNCONNECTED {
+            return Err(HttpError::Unconnected { reason: body });
+        }
         if body.len() > request.most {
             return Err(HttpError::Unreachable {
                 reason: format!("the response is larger than {} bytes", request.most),

@@ -77,7 +77,7 @@ async fn a_host_is_reached_only_on_the_addresses_it_resolves_to_and_admits() {
     let port = base.rsplit(':').next().unwrap();
     let named = format!("http://localhost:{port}/users/ana");
     let refused = admitting("http", public).send(get(&named)).await;
-    let Err(HttpError::Unreachable { reason }) = refused else {
+    let Err(HttpError::Unconnected { reason }) = refused else {
         panic!("{refused:?}");
     };
     assert!(

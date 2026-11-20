@@ -3,20 +3,25 @@
 //! may send, its signature by a key standing for a peer holds, its nonce
 //! is new and it comes within the peer's rate, and the source grants the
 //! peer `push` now; then taken as a pull takes it, its proof kept in the
-//! source's cursor before it is answered. Nothing of a request is kept
-//! before one of its sender's rates counts it; then it is kept in the
-//! audit of its sender's day, never its body.
+//! source's cursor before it is answered. A push presenting a CI run's ID
+//! token instead stands for the name its app does (ADR-0064). Nothing of a
+//! request is kept before one of its sender's rates counts it; then it is
+//! kept in the audit of its sender's day, never its body.
 
-use herald_config::Federation;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use herald_config::Peer;
+use herald_config::{Config, Federation};
 use herald_core::{
-    Action, AuditDay, Audited, Cursor, Identity, Polled, Rate, Refusing, SourceName, Window, status,
+    Action, AuditDay, Audited, Cursor, Grant, IdToken, Identity, Polled, Rate, Refusing,
+    SourceName, Window, status,
 };
-use herald_kinds::Pulling;
+use herald_kinds::{Pulling, Receive, Trust};
 pub(super) use herald_peers::discovery::INBOX;
 use herald_peers::request::{Request, checked};
 use herald_ports::{
-    Admitted, Algorithm, Cursors, Deliveries, DynVerifier, Erased, Http, Published, Store,
+    Admitted, Algorithm, Cursors, Deliveries, DynVerifier, Erased, Http, Published, Signer, Store,
     Verifier, Versioned, Written,
 };
 use jiff::Timestamp;
@@ -53,7 +58,7 @@ const UNAVAILABLE: &str = "herald cannot take the push now";
 /// What a push was answered, and why.
 #[derive(Debug)]
 enum Verdict {
-    Taken(Option<Box<Job>>, String),
+    Taken(Option<Box<Job>>, String, Option<Identity>),
     Unsigned(String),
     Forbidden(String),
     Large(String),
@@ -75,7 +80,7 @@ impl Verdict {
 
     fn reason(&self) -> &str {
         match self {
-            Self::Taken(_, why)
+            Self::Taken(_, why, _)
             | Self::Unsigned(why)
             | Self::Forbidden(why)
             | Self::Large(why)
@@ -85,7 +90,7 @@ impl Verdict {
     }
 }
 
-/// Who sent a push, as far as its signature tells.
+/// Who sent a push, as far as its signature or ID token tells.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Sender {
     /// No one its signature names.
@@ -95,10 +100,31 @@ enum Sender {
     Key(String),
     /// The peer whose key signed it, the signature holding.
     Peer(String),
-    /// The peer whose key signed it, the signature holding, refused
-    /// before any of its rates counted the request or once past one.
+    /// The peer whose key signed it, or the name an app whose ID token
+    /// it presented stands for, refused before any of its rates counted
+    /// the request or once past one.
     Uncounted(String),
+    /// The name an app stands for, whose ID token it presented.
+    Run(Run),
 }
+
+/// A push presenting a CI run's ID token: the name its app stands for,
+/// the token's issuer as `oidc <issuer>`, what the token said, and the
+/// identity of the envelope it pushed, as taken where it was, and the
+/// digest of its body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Run {
+    peer: String,
+    keyid: String,
+    evidence: BTreeMap<String, String>,
+    identity: Option<String>,
+    digest: String,
+}
+
+/// Who a push is kept in the audit as: a peer or none, the key or
+/// issuer it named, and where it presented an ID token, the run it
+/// presented.
+type By<'r> = (Option<String>, Option<String>, Option<&'r Run>);
 
 /// A push of a peer refused before it is granted.
 #[derive(Debug)]
@@ -111,16 +137,31 @@ enum Refused {
 
 /// The answer to a push into the source `name`, kept in the audit of its
 /// sender's day.
-pub(super) async fn pushed<S: Store, C: herald_ports::Clock, G, V: Verifier, H, P: Http, K>(
+pub(super) async fn pushed<
+    S: Store,
+    C: herald_ports::Clock,
+    G: Signer,
+    V: Verifier,
+    H: Http,
+    P: Http,
+    K,
+>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
     name: &str,
 ) -> Answered {
-    if instance(serving, inbound.host()).is_none() {
+    let Some(here) = instance(serving, inbound.host()) else {
         return missing(NO_INBOX);
-    }
+    };
     let now = serving.ports.clock.now();
-    let (sender, verdict) = judged(serving, inbound, name, now).await;
+    let presented = inbound
+        .header("authorization")
+        .and_then(herald_core::bearer)
+        .filter(|token| IdToken::shaped(token));
+    let (sender, verdict) = match presented {
+        Some(token) => presented::judged(serving, (inbound, &here), (name, token), now).await,
+        None => judged(serving, inbound, name, now).await,
+    };
     let kept = match &sender {
         _ if serving.admission == Admission::Again => Ok(()),
         Sender::Unknown | Sender::Uncounted(_) => Ok(()),
@@ -128,21 +169,39 @@ pub(super) async fn pushed<S: Store, C: herald_ports::Clock, G, V: Verifier, H, 
             let rate = serving.config.federation.stranger_rate;
             match counted(serving, (AuditDay::STRANGERS, rate), now).await {
                 Ok(Counted::Within) => {
-                    audited(serving, ((None, Some(keyid.clone())), name), &verdict, now).await
+                    let by = (None, Some(keyid.clone()), None);
+                    audited(serving, (by, name), &verdict, now).await
                 }
                 Ok(Counted::FirstPast) => {
                     let marker = Verdict::Unsigned(format!(
                         "{}; past the strangers' rate, no more are kept in this window",
                         verdict.reason()
                     ));
-                    audited(serving, ((None, Some(keyid.clone())), name), &marker, now).await
+                    let by = (None, Some(keyid.clone()), None);
+                    audited(serving, (by, name), &marker, now).await
                 }
                 Ok(Counted::Past) => Ok(()),
                 Err(unkept) => Err(unkept.reason().to_owned()),
             }
         }
         Sender::Peer(peer) => {
-            audited(serving, ((Some(peer.clone()), None), name), &verdict, now).await
+            let by = (Some(peer.clone()), None, None);
+            audited(serving, (by, name), &verdict, now).await
+        }
+        Sender::Run(run) => {
+            let taken = match &verdict {
+                Verdict::Taken(_, _, Some(identity)) => Run {
+                    identity: Some(Audited::named(identity.as_str())),
+                    ..run.clone()
+                },
+                _ => run.clone(),
+            };
+            let by = (
+                Some(run.peer.clone()),
+                Some(run.keyid.clone()),
+                Some(&taken),
+            );
+            audited(serving, (by, name), &verdict, now).await
         }
     };
     let status = verdict.status();
@@ -159,7 +218,7 @@ pub(super) async fn pushed<S: Store, C: herald_ports::Clock, G, V: Verifier, H, 
         _ => UNAVAILABLE,
     };
     let job = match verdict {
-        Verdict::Taken(job, _) => job.map(|job| *job),
+        Verdict::Taken(job, ..) => job.map(|job| *job),
         _ => None,
     };
     let refused = match (status == status::ACCEPTED, kept) {
@@ -257,7 +316,7 @@ async fn judged<S: Store, C, G, V: Verifier, H, P: Http, K>(
     match admitted(serving, (peer, kept), (&nonce, live), now).await {
         Ok(()) => (
             Sender::Peer(peer.to_owned()),
-            granted(serving, (peer, name), inbound.body, now).await,
+            signed_in(serving, (peer, name), inbound.body, now).await,
         ),
         Err(Refused::Counted(verdict)) => (Sender::Peer(peer.to_owned()), verdict),
         Err(Refused::Uncounted(verdict)) => (Sender::Uncounted(peer.to_owned()), verdict),
@@ -464,32 +523,72 @@ async fn windowed<S: Store, C, G, V, H, P, K, T>(
     ))
 }
 
-/// What the push `body` of `peer` into the source `name` is answered,
-/// where the source grants the peer `push` now: taken, its proof kept in
-/// the source's cursor first.
-async fn granted<S: Store, C, G, V: Verifier, H, P: Http, K>(
+/// What the signed push `body` of `peer` into the source `name` is
+/// answered, where the source grants the peer `push` now: taken, its proof
+/// held to the keys that stand for the peer and kept in the source's
+/// cursor first.
+async fn signed_in<S: Store, C, G, V: Verifier, H, P: Http, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     (peer, name): (&str, &str),
     body: &[u8],
     now: Timestamp,
 ) -> Verdict {
-    let config = serving.config;
-    let source = SourceName::new(name);
-    let Some((receiver, grant)) = config.sources.get(&source).and_then(|source| {
-        let grant = source.grants()?.get(peer)?.clone();
-        Some((source.receiver()?, grant))
-    }) else {
-        return Verdict::Forbidden("the source grants the peer no push".to_owned());
+    let granting = match grant(serving.config, (peer, name), now) {
+        Ok(granting) => granting,
+        Err(refused) => return refused,
+    };
+    let verifier: &dyn DynVerifier = serving.verifier;
+    let reach = (serving.config, serving.ports.store, serving.public);
+    match pushing(reach, (verifier, now), peer).await {
+        Ok(trust) => granted(serving, (peer, name), granting, (body, &trust), now).await,
+        Err(stop) => unavailable(&stop),
+    }
+}
+
+/// The inbox of the source `name` and what it grants `peer`, where it
+/// grants the peer `push` at `now`.
+///
+/// # Errors
+///
+/// It grants none, or the grant has ended.
+fn grant(
+    config: &Config,
+    (peer, name): (&str, &str),
+    now: Timestamp,
+) -> Result<(Arc<dyn Receive>, Grant), Verdict> {
+    let Some((receiver, grant)) = config
+        .sources
+        .get(&SourceName::new(name))
+        .and_then(|source| {
+            let grant = source.grants()?.get(peer)?.clone();
+            Some((source.receiver()?, grant))
+        })
+    else {
+        return Err(Verdict::Forbidden(
+            "the source grants the peer no push".to_owned(),
+        ));
     };
     if !grant.allows(Action::Push, now) {
-        return Verdict::Forbidden("the peer's grant to push to the source has ended".to_owned());
+        return Err(Verdict::Forbidden(
+            "the peer's grant to push to the source has ended".to_owned(),
+        ));
     }
+    Ok((receiver, grant))
+}
+
+/// What the push `body` of `peer` into the source `name`, whose inbox
+/// `receiver` grants it `grant`, is answered: taken, its proof held to
+/// `trust` and kept in the source's cursor first.
+async fn granted<S: Store, C, G, V: Verifier, H, P: Http, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    (peer, name): (&str, &str),
+    (receiver, grant): (Arc<dyn Receive>, Grant),
+    (body, trust): (&[u8], &Trust),
+    now: Timestamp,
+) -> Verdict {
+    let config = serving.config;
+    let source = SourceName::new(name);
     let verifier: &dyn DynVerifier = serving.verifier;
-    let reach = (config, serving.ports.store, serving.public);
-    let trust = match pushing(reach, (verifier, now), peer).await {
-        Ok(trust) => trust,
-        Err(stop) => return unavailable(&stop),
-    };
     let pulling = Pulling {
         http: serving.public,
         verifier,
@@ -506,7 +605,7 @@ async fn granted<S: Store, C, G, V: Verifier, H, P: Http, K>(
         let cursor = kept.as_ref().map(|kept| &kept.value);
         let polled = match receiver
             .received(
-                (pulling, &trust, cursor),
+                (pulling, trust, cursor),
                 (peer, &grant),
                 (body, serving.admission == Admission::Again),
             )
@@ -516,7 +615,11 @@ async fn granted<S: Store, C, G, V: Verifier, H, P: Http, K>(
             Err(why) => return Verdict::Forbidden(why),
         };
         if polled.proved.is_empty() {
-            return Verdict::Taken(None, "no newer than the proof the source keeps".to_owned());
+            return Verdict::Taken(
+                None,
+                "no newer than the proof the source keeps".to_owned(),
+                None,
+            );
         }
         let next = cursor
             .cloned()
@@ -530,6 +633,7 @@ async fn granted<S: Store, C, G, V: Verifier, H, P: Http, K>(
                 return Verdict::Taken(
                     job(source, &polled, cursor).map(Box::new),
                     "taken".to_owned(),
+                    polled.proved.first().map(|proof| proof.identity.clone()),
                 );
             }
             Ok(Written::Conflict) => {}
@@ -564,14 +668,15 @@ fn unavailable(stop: &Stop) -> Verdict {
 }
 
 /// `verdict` on the push into the source `name` by `peer`, or a request
-/// naming the key `keyid`, kept in the audit of its sender's day.
+/// naming the key `keyid`, with what an ID token it presented said and
+/// what it pushed, kept in the audit of its sender's day.
 ///
 /// # Errors
 ///
 /// The store cannot keep it.
 async fn audited<S: Store, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    ((peer, keyid), name): ((Option<String>, Option<String>), &str),
+    ((peer, keyid, run), name): (By<'_>, &str),
     verdict: &Verdict,
     now: Timestamp,
 ) -> Result<(), String> {
@@ -587,6 +692,9 @@ async fn audited<S: Store, C, G, V, H, P, K>(
         resource: Audited::named(&format!("sources.{name}")),
         outcome: verdict.status(),
         reason: Audited::named(verdict.reason()),
+        evidence: run.map(|run| run.evidence.clone()).unwrap_or_default(),
+        identity: run.and_then(|run| run.identity.clone()),
+        digest: run.map(|run| run.digest.clone()),
     };
     let fresh = AuditDay::of(&owner, now);
     for _ in 0..serving.config.attempts.get() {
@@ -605,3 +713,5 @@ async fn audited<S: Store, C, G, V, H, P, K>(
     }
     Err("the day's audit kept changing".to_owned())
 }
+
+mod presented;

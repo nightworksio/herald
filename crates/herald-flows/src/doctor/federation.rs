@@ -1,12 +1,12 @@
 //! What doctor shows of the instance among other heralds (ADR-0058): its
 //! domain and keys, each peer it trusts, each feed and push it makes, each
-//! herald source it reads into, the grants peers hold, and what of it this
-//! layer cannot serve.
+//! herald source it reads into, the grants peers hold, the ID tokens apps
+//! take (ADR-0064), and what of it this layer cannot serve.
 
 use std::fmt;
 
 use herald_config::{Config, Pages, Peer};
-use herald_core::{Size, itself};
+use herald_core::{Grant, Size, SourceName, itself};
 use herald_keys::ed25519_of;
 use herald_kinds::Peering;
 use herald_peers::discovery::{Instance, inbox_of};
@@ -107,6 +107,22 @@ pub struct PushShown {
     pub inbox: String,
     /// Whether private events go to the peer.
     pub private: bool,
+    /// Whether it presents a CI run's ID token in place of the instance's
+    /// key (ADR-0064).
+    pub id_token: bool,
+}
+
+/// An issuer of ID tokens an app takes, as doctor shows it (ADR-0064).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunShown {
+    /// The app's name.
+    pub app: String,
+    /// The issuer.
+    pub issuer: String,
+    /// What a token's audience must name.
+    pub audience: String,
+    /// The names the app stands for when its runs push.
+    pub peers: Vec<String>,
 }
 
 /// Where a `herald` source reads from.
@@ -164,6 +180,8 @@ pub struct Federation {
     pub sources: Vec<SourceShown>,
     /// What each peer may do with each source.
     pub grants: Vec<GrantShown>,
+    /// Each issuer of ID tokens each app takes.
+    pub runs: Vec<RunShown>,
     /// How long what each peer asked is kept.
     pub keep_audit: SignedDuration,
     /// Where its feeds are written as a static signed log, where they are
@@ -205,6 +223,10 @@ impl Federation {
                 .routes
                 .iter()
                 .any(|index| under(key, &format!("routes[{index}]")))
+            || self
+                .runs
+                .iter()
+                .any(|run| under(key, &format!("apps.{}", run.app)))
     }
 
     /// Whether the config takes any part among other heralds.
@@ -216,6 +238,7 @@ impl Federation {
             || !self.feeds.is_empty()
             || !self.pushes.is_empty()
             || !self.sources.is_empty()
+            || !self.runs.is_empty()
             || self.pages.is_some()
     }
 }
@@ -245,6 +268,7 @@ pub async fn federation<S: Secrets, G: Signer>(
         pushes: pushes(config),
         sources: sources(config),
         grants: grants(config),
+        runs: runs(config),
         keep_audit: config.federation.keep_audit,
         pages: config.federation.pages.clone(),
         routes: Vec::new(),
@@ -332,6 +356,7 @@ fn pushes(config: &Config) -> Vec<PushShown> {
                 peer: pushing.peer.to_owned(),
                 inbox: inbox_of(&peer.url, pushing.inbox),
                 private: peer.private,
+                id_token: pushing.id_token,
             })
         })
         .collect()
@@ -356,17 +381,42 @@ fn sources(config: &Config) -> Vec<SourceShown> {
         .collect()
 }
 
-/// What each peer may do with each source.
+/// What each peer, and each name an app stands for, may do with each
+/// source.
 fn grants(config: &Config) -> Vec<GrantShown> {
+    let shown = |name: &str, source: &SourceName, grant: &Grant| GrantShown {
+        peer: name.to_owned(),
+        source: source.as_str().to_owned(),
+        actions: grant.actions.iter().map(|action| action.name()).collect(),
+        until: grant.until,
+    };
+    let peers = config.peers.iter().flat_map(|(name, peer)| {
+        peer.grants
+            .iter()
+            .map(move |(source, grant)| shown(name, source, grant))
+    });
+    let stood = config.sources.iter().flat_map(|(source, found)| {
+        found
+            .grants()
+            .into_iter()
+            .flatten()
+            .filter(|(name, _)| config.apps.values().any(|app| app.peers.contains(*name)))
+            .map(move |(name, grant)| shown(name, source, grant))
+    });
+    peers.chain(stood).collect()
+}
+
+/// Each issuer of ID tokens each app takes.
+fn runs(config: &Config) -> Vec<RunShown> {
     config
-        .peers
+        .apps
         .iter()
-        .flat_map(|(name, peer)| {
-            peer.grants.iter().map(move |(source, grant)| GrantShown {
-                peer: name.clone(),
-                source: source.as_str().to_owned(),
-                actions: grant.actions.iter().map(|action| action.name()).collect(),
-                until: grant.until,
+        .flat_map(|(app, found)| {
+            found.oidc.iter().map(move |entry| RunShown {
+                app: app.clone(),
+                issuer: entry.issuer.clone(),
+                audience: entry.audience.clone(),
+                peers: found.peers.iter().cloned().collect(),
             })
         })
         .collect()

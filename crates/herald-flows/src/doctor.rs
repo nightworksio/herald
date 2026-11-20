@@ -20,8 +20,8 @@ mod tasks;
 mod views;
 
 pub use federation::{
-    Federation, FeedShown, GrantShown, OwnKey, PeerShown, Pulls, PushShown, Reached, Shown,
-    SourceShown, federation,
+    Federation, FeedShown, GrantShown, OwnKey, PeerShown, Pulls, PushShown, Reached, RunShown,
+    Shown, SourceShown, federation,
 };
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
 pub use online::{kept_tokens, keys, online, secrets};
@@ -829,6 +829,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     views::stated(config, &mut findings.notes);
     tasks::decided(config, here, &mut findings.notes);
     peers::signed(config, &mut findings.notes);
+    peers::bound(config, &mut findings);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);

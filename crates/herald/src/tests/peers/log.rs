@@ -32,6 +32,9 @@ fn entry(at: &str, peer: Option<&str>, outcome: u16) -> Audited {
         resource: "sources.inbox".to_owned(),
         outcome,
         reason: "taken".to_owned(),
+        evidence: std::collections::BTreeMap::new(),
+        identity: None,
+        digest: None,
     }
 }
 
@@ -45,6 +48,43 @@ fn day(peer: &str, day: &str, entries: Vec<Audited>, more: u64) -> AuditDay {
 }
 
 fn audited(setup: &Setup, world: &World) {
+    written(
+        setup,
+        world,
+        vec![
+            day(
+                "org",
+                "2027-01-14",
+                vec![Audited {
+                    keyid: Some("oidc https://issuer.example".to_owned()),
+                    evidence: std::collections::BTreeMap::from([
+                        ("iss".to_owned(), "https://issuer.example".to_owned()),
+                        ("repository_id".to_owned(), "42".to_owned()),
+                    ]),
+                    identity: Some("github.com/1/v1".to_owned()),
+                    digest: Some("sha-256=:YWI=:".to_owned()),
+                    ..entry("2027-01-14T10:00:00Z", Some("org"), 202)
+                }],
+                0,
+            ),
+            day(
+                "org",
+                "2027-01-15",
+                vec![entry("2027-01-15T07:00:00Z", Some("org"), 403)],
+                2,
+            ),
+            day(
+                AuditDay::STRANGERS,
+                "2027-01-15",
+                vec![entry("2027-01-15T06:00:00Z", None, 401)],
+                0,
+            ),
+        ],
+    );
+}
+
+/// The audit `days`, kept in the store `setup` names.
+fn written(setup: &Setup, world: &World, days: Vec<AuditDay>) {
     let config = crate::read(&path_of(setup)).unwrap();
     let connect =
         |_: herald_ports::Base<'_>, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
@@ -61,28 +101,7 @@ fn audited(setup: &Setup, world: &World) {
         )
         .await
         .unwrap();
-        composed
-            .run(Audit(vec![
-                day(
-                    "org",
-                    "2027-01-14",
-                    vec![entry("2027-01-14T10:00:00Z", Some("org"), 202)],
-                    0,
-                ),
-                day(
-                    "org",
-                    "2027-01-15",
-                    vec![entry("2027-01-15T07:00:00Z", Some("org"), 403)],
-                    2,
-                ),
-                day(
-                    AuditDay::STRANGERS,
-                    "2027-01-15",
-                    vec![entry("2027-01-15T06:00:00Z", None, 401)],
-                    0,
-                ),
-            ]))
-            .await;
+        composed.run(Audit(days)).await;
     });
 }
 
@@ -122,7 +141,7 @@ fn each_peer_s_requests_are_shown_newest_first_and_the_busy_days_counted() {
         out,
         "2027-01-15T07:00:00Z org push sources.inbox 403 taken\n\
          2027-01-15T06:00:00Z did:web:stranger.example#key push sources.inbox 401 taken\n\
-         2027-01-14T10:00:00Z org push sources.inbox 202 taken\n\
+         2027-01-14T10:00:00Z org push sources.inbox 202 taken (iss=https://issuer.example, repository_id=42, envelope github.com/1/v1, digest sha-256=:YWI=:)\n\
          2 more requests were counted on busy days but not kept.\n"
     );
     let (_, one) = logged(
@@ -147,7 +166,7 @@ fn each_peer_s_requests_are_shown_newest_first_and_the_busy_days_counted() {
     assert_eq!(read.as_array().unwrap().len(), 1);
     assert_eq!(
         logged(&setup, &world, &["nobody"]).unwrap_err(),
-        "there is no peer nobody in [peers]"
+        "there is no peer nobody in [peers], and no app stands for it"
     );
     assert!(
         logged(&setup, &world, &["--since", "soon"])
@@ -157,4 +176,26 @@ fn each_peer_s_requests_are_shown_newest_first_and_the_busy_days_counted() {
     world.state.lock().unwrap().failing = Some(herald_ports::Method::Get);
     let unread = logged(&setup, &world, &[]).unwrap_err();
     assert!(unread.contains("500"), "{unread}");
+}
+
+#[test]
+fn a_name_an_app_stands_for_is_logged_as_a_peer_is() {
+    let (setup, world) = super::doctor::federated();
+    written(
+        &setup,
+        &world,
+        vec![day(
+            "runs-ci",
+            "2027-01-14",
+            vec![entry("2027-01-14T10:00:00Z", Some("runs-ci"), 202)],
+            0,
+        )],
+    );
+    let (_, one) = logged(&setup, &world, &["runs-ci"]).unwrap();
+    assert_eq!(
+        one,
+        "2027-01-14T10:00:00Z runs-ci push sources.inbox 202 taken\n"
+    );
+    let (_, all) = logged(&setup, &world, &[]).unwrap();
+    assert_eq!(all, one);
 }

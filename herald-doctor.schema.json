@@ -95,6 +95,13 @@
             "$ref": "#/$defs/KeyJson"
           }
         },
+        "runs": {
+          "description": "Each issuer of ID tokens each app takes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunJson"
+          }
+        },
         "sources": {
           "description": "Each `herald` source.",
           "type": "array",
@@ -112,6 +119,7 @@
         "pushes",
         "sources",
         "grants",
+        "runs",
         "keep_audit",
         "pages",
         "gaps"
@@ -373,6 +381,10 @@
       "description": "A `herald-push` destination.",
       "type": "object",
       "properties": {
+        "id_token": {
+          "description": "Whether it presents a CI run's ID token in place of the instance's\nkey.",
+          "type": "boolean"
+        },
         "inbox": {
           "description": "The URL of the inbox it pushes into.",
           "type": "string"
@@ -394,7 +406,39 @@
         "name",
         "peer",
         "inbox",
-        "private"
+        "private",
+        "id_token"
+      ]
+    },
+    "RunJson": {
+      "description": "An issuer of ID tokens an app takes.",
+      "type": "object",
+      "properties": {
+        "app": {
+          "description": "The app's name.",
+          "type": "string"
+        },
+        "audience": {
+          "description": "What a token's audience must name.",
+          "type": "string"
+        },
+        "issuer": {
+          "description": "The issuer.",
+          "type": "string"
+        },
+        "peers": {
+          "description": "The names the app stands for when its runs push.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "app",
+        "issuer",
+        "audience",
+        "peers"
       ]
     },
     "SourceJson": {

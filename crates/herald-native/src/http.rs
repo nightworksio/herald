@@ -214,6 +214,10 @@ pub(crate) fn chain(error: &dyn Error) -> String {
 fn failed(error: reqwest::Error) -> HttpError {
     if error.is_timeout() {
         HttpError::TimedOut
+    } else if error.is_connect() {
+        HttpError::Unconnected {
+            reason: chain(&error.without_url()),
+        }
     } else {
         HttpError::unreachable(chain(&error.without_url()))
     }

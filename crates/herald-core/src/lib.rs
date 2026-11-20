@@ -11,6 +11,7 @@ mod audit;
 mod bounds;
 mod bump;
 mod chunk;
+mod claim_pattern;
 mod credentials;
 mod cursor;
 mod decide;
@@ -24,6 +25,7 @@ mod glob;
 mod grant;
 mod group;
 mod housekeep;
+mod id_token;
 mod inbound;
 mod installation;
 mod interact;
@@ -75,6 +77,7 @@ pub use bounds::{
 };
 pub use bump::{Bump, BumpPattern, Bumper, NotABumpPattern, bumped, read_bump};
 pub use chunk::{Room, chunk, size};
+pub use claim_pattern::ClaimPattern;
 pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, Proof, Tombstone, Unheld, fresh};
 pub use decide::{
@@ -91,6 +94,9 @@ pub use group::{
     GroupMode, GroupUntil, Grouping, Subject, group_identity, shown,
 };
 pub use housekeep::{Chore, Schedule, due, schedules};
+pub use id_token::{
+    IdToken, KeptKeys, KeySet, RsaKey, TokenAlgorithm, Untaken, discovery_of, jwks_uri, same_origin,
+};
 pub use inbound::{
     Addressed, Algorithm, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim,
     bearer, claim, key, same,

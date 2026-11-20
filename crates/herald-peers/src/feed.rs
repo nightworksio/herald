@@ -223,6 +223,20 @@ pub fn identity(envelope: &Value) -> &str {
         .unwrap_or_default()
 }
 
+/// The envelope `body` as made by the instance whose discovery document
+/// is at `discovery`: its path that instance alone, any proof it carries
+/// left for that instance to make.
+///
+/// # Errors
+///
+/// The body is not a JSON object, as the error says.
+pub fn made_at(body: &[u8], discovery: &str) -> Result<Envelope, String> {
+    let mut envelope: Map<String, Value> =
+        serde_json::from_slice(body).map_err(|error| error.to_string())?;
+    envelope.insert("path".to_owned(), json!([discovery]));
+    Ok(Value::Object(envelope))
+}
+
 /// Whether `envelope` is a tombstone.
 #[must_use]
 pub fn withdrawn(envelope: &Value) -> bool {
