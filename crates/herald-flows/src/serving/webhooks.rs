@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use herald_core::{Scheme, SourceName, status};
-use herald_kinds::Hooked;
+use herald_kinds::{Hooked, Source};
 use herald_ports::{Clock, Secret, Store, Verifier};
 
 use super::jobs::{Job, Member};
@@ -31,6 +31,8 @@ const RELISTS: &str = "herald lists the owner's repositories again";
 const FANS: &str = "herald takes the delivery for each source the App reaches";
 /// What an App's delivery no source takes is answered.
 const UNTAKEN: &str = "no source the App reaches takes the delivery";
+/// What a delivery whose change kept mode folds is answered (ADR-0061).
+const FOLDS: &str = "herald keeps the pull request's change";
 
 /// The answer to a delivery whose work is left to `job`, saying `what`
 /// herald does.
@@ -115,6 +117,54 @@ fn job_of(
     }
 }
 
+/// The fold of the change a delivery with `inbound`'s headers and body
+/// makes to the pull requests of `source`, read by `hooking`, where a view
+/// reads the source kept (ADR-0061).
+///
+/// # Errors
+///
+/// Why the delivery could not be read.
+fn fold_of<S: Store, C, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    (source, hooking): (&SourceName, &Source),
+    inbound: &Inbound<'_>,
+    (scheme, verified): (Scheme, &Verified),
+) -> Result<Option<Job>, String> {
+    if !crate::kept::folds((serving.config, serving.ports.store), source) {
+        return Ok(None);
+    }
+    Ok(hooking
+        .folded(inbound.headers, inbound.body)?
+        .map(|folding| Job::Fold {
+            source: source.clone(),
+            folding,
+            scheme,
+            verified: verified.clone(),
+        }))
+}
+
+/// `found`, the work a delivery leaves, with `fold` where there is one,
+/// and what herald says it does; why it does nothing where it leaves no
+/// work at all.
+fn with_fold(
+    found: Result<(Job, &'static str), &'static str>,
+    fold: Option<Job>,
+    (scheme, verified): (Scheme, &Verified),
+) -> Result<(Job, &'static str), &'static str> {
+    match (found, fold) {
+        (found, None) => found,
+        (Err(_), Some(fold)) => Ok((fold, FOLDS)),
+        (Ok((job, what)), Some(fold)) => Ok((
+            Job::Fanned {
+                jobs: vec![job, fold],
+                scheme,
+                verified: verified.clone(),
+            },
+            what,
+        )),
+    }
+}
+
 /// A webhook of the source `name`, verified and admitted, and the release
 /// it publishes left to announce.
 pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
@@ -136,12 +186,18 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         Ok(verified) => verified,
         Err(refused) => return *refused,
     };
-    match hooking.hooked(inbound.headers, inbound.body) {
-        Ok(hooked) => match job_of(source, hooked, (scheme, verified)) {
-            Ok((job, what)) => accepted(job, what),
-            Err(why) => text_reply(status::OK, why),
-        },
-        Err(error) => unread(serving.ports.store, scheme.name, &verified, error).await,
+    let fold = fold_of(serving, (&source, hooking), inbound, (scheme, &verified));
+    match (hooking.hooked(inbound.headers, inbound.body), fold) {
+        (Ok(hooked), Ok(fold)) => {
+            let found = job_of(source, hooked, (scheme, verified.clone()));
+            match with_fold(found, fold, (scheme, &verified)) {
+                Ok((job, what)) => accepted(job, what),
+                Err(why) => text_reply(status::OK, why),
+            }
+        }
+        (Err(error), _) | (_, Err(error)) => {
+            unread(serving.ports.store, scheme.name, &verified, error).await
+        }
     }
 }
 
@@ -181,7 +237,10 @@ pub(super) async fn app_hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         .into_iter()
         .filter_map(|(source, hooking)| {
             let hooked = hooking.hooked(inbound.headers, inbound.body).ok()?;
-            job_of(source.clone(), hooked, (scheme, verified.clone())).ok()
+            let fold = fold_of(serving, (source, hooking), inbound, (scheme, &verified))
+                .unwrap_or_default();
+            let found = job_of(source.clone(), hooked, (scheme, verified.clone()));
+            with_fold(found, fold, (scheme, &verified)).ok()
         })
         .collect();
     match jobs.len() {

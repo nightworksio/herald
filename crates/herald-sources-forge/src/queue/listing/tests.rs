@@ -98,3 +98,38 @@ fn a_page_is_asked_by_its_number_and_reads_within_its_size() {
         })
     ));
 }
+
+#[test]
+fn a_listing_naming_its_repository_s_visibility_keeps_it_apart_and_its_rows_private() {
+    let based = |repo: Value| {
+        let body =
+            json!([{ "number": 5, "title": "Fix", "html_url": "https://codeberg.org/o/r/pulls/5",
+            "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+            "base": { "repo": repo } }])
+            .to_string();
+        page(FORGEJO, body.as_bytes(), 1 << 20, ("r", "o/r", None)).unwrap()
+    };
+    for (repo, named) in [
+        (
+            json!({ "id": 1, "private": false }),
+            Some(Visibility::Public),
+        ),
+        (
+            json!({ "id": 1, "private": true }),
+            Some(Visibility::Private),
+        ),
+        (
+            json!({ "id": 1, "private": false, "internal": true }),
+            Some(Visibility::Internal),
+        ),
+        (
+            json!({ "id": 1, "visibility": "internal", "private": false }),
+            Some(Visibility::Internal),
+        ),
+        (json!({ "id": 1 }), None),
+    ] {
+        let page = based(repo.clone());
+        assert_eq!(page.visibility, named, "{repo}");
+        assert_eq!(page.pulls[0].visibility, Visibility::Private, "{repo}");
+    }
+}

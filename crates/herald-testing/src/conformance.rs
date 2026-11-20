@@ -17,6 +17,7 @@ mod kv;
 mod members;
 mod pending;
 mod published;
+mod pulls;
 mod raced;
 mod sql;
 mod tokens;
@@ -78,6 +79,12 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     }
     if let Some(kept) = store.decisions() {
         decisions(kept).await?;
+    }
+    if let Some(kept) = store.pulls() {
+        let mut checks = Checks::default();
+        pulls::pulls(kept, &mut checks).await?;
+        pulls::reconciled(kept, &mut checks).await?;
+        checks.done()?;
     }
     if let Some(kept) = store.waiting() {
         let mut checks = Checks::default();

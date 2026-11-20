@@ -272,7 +272,7 @@ impl Forge {
     }
 
     /// The name of the event a webhook's `headers` deliver.
-    fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
+    pub(crate) fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
         let names: &[&str] = match self {
             Self::GitHub => &["x-github-event"],
             Self::GitLab => &["x-gitlab-event"],

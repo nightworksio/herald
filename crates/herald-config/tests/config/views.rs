@@ -67,6 +67,10 @@ fn the_built_in_view_reads_every_source_naming_one_repository() {
         [SourceName::new("gate"), SourceName::new("herald")]
     );
     assert_eq!(queue.most, Most::default());
+    assert_eq!(
+        (queue.mode, queue.reconcile),
+        (herald_config::ViewMode::Auto, None)
+    );
     let daily = &config.reports["daily"];
     assert_eq!(daily.view, BUILT_IN_VIEW);
     assert_eq!(daily.schedule, herald_core::ReportSchedule::default());
@@ -100,9 +104,12 @@ rules = { draft = false, approval = false }
 bumps = ["chore: bump {package} to {to}"]
 most_open = 50
 most_pulls = 10
+mode = "kept"
+reconcile = "15m"
 
 [views.forge]
 deciding = "forge"
+mode = "live"
 group_by = "author"
 bots = "only"
 
@@ -134,6 +141,11 @@ zone = "Europe/Amsterdam"
     assert!(mine.view.authors[0].matches("wessel"));
     assert!(mine.view.labels[0].matches("needs-review"));
     assert_eq!(mine.view.stale, SignedDuration::from_hours(72));
+    assert_eq!(mine.mode, herald_config::ViewMode::Kept);
+    assert_eq!(mine.reconcile, Some(SignedDuration::from_mins(15)));
+    assert_eq!(config.views["forge"].mode, herald_config::ViewMode::Live);
+    assert_eq!(config.views["everyone"].mode, herald_config::ViewMode::Auto);
+    assert_eq!(config.views["everyone"].reconcile, None);
     assert!(mine.view.stale_only);
     assert_eq!(mine.view.group_by, GroupBy::Repository);
     assert_eq!(

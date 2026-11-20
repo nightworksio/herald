@@ -6835,6 +6835,10 @@
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
               "$ref": "#/$defs/Keep"
             },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
+              "$ref": "#/$defs/Keep"
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "$ref": "#/$defs/SecretRef"
@@ -6879,6 +6883,10 @@
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
               "$ref": "#/$defs/Keep"
             },
             "key": {
@@ -6932,6 +6940,10 @@
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
               "$ref": "#/$defs/Keep"
             },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
+              "$ref": "#/$defs/Keep"
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "$ref": "#/$defs/SecretRef"
@@ -6974,6 +6986,10 @@
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
               "$ref": "#/$defs/Keep"
             },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
+              "$ref": "#/$defs/Keep"
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "$ref": "#/$defs/SecretRef"
@@ -7014,6 +7030,10 @@
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
               "$ref": "#/$defs/Keep"
             },
             "key": {
@@ -7060,6 +7080,10 @@
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
               "$ref": "#/$defs/Keep"
             },
             "key": {
@@ -7118,6 +7142,10 @@
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
               "$ref": "#/$defs/Keep"
             },
             "key": {
@@ -7182,6 +7210,10 @@
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
               "$ref": "#/$defs/Keep"
             },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
+              "$ref": "#/$defs/Keep"
+            },
             "key": {
               "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
               "$ref": "#/$defs/SecretRef"
@@ -7243,6 +7275,10 @@
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
               "$ref": "#/$defs/Keep"
             },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
+              "$ref": "#/$defs/Keep"
+            },
             "keeps": {
               "description": "What it keeps besides the ledger, cursors, schedules and deliveries:\nany of \"subscriptions\", \"pins\", \"notes\", \"latest\" and \"keys\". Each\nis rewritten with every other record on every write, and counts\nagainst the cache's quota; none where absent.",
               "type": "array",
@@ -7295,6 +7331,10 @@
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
               "$ref": "#/$defs/Keep"
             },
             "key": {
@@ -7690,6 +7730,10 @@
             "type": "string"
           }
         },
+        "mode": {
+          "description": "Where it reads its pull requests: \"auto\" where absent, kept of each\nsource that takes webhooks where the store keeps pull requests and\nlive otherwise; \"live\" from the forge each time; or \"kept\" from the\nrecords the store keeps, folded from webhooks and reconciled with a\nlisting.",
+          "$ref": "#/$defs/ViewMode"
+        },
         "most_open": {
           "description": "The most open pull requests it lists of each repository: 500 where\nabsent.",
           "type": "integer",
@@ -7701,6 +7745,10 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0
+        },
+        "reconcile": {
+          "description": "How long kept mode waits at least before listing a source's open\npull requests again, each page conditional on its last answer; every\nround where absent.",
+          "$ref": "#/$defs/Duration"
         },
         "repositories": {
           "description": "The repositories it shows, by full path, each a glob ignoring case;\nevery one where empty.",
@@ -7740,6 +7788,26 @@
         }
       },
       "additionalProperties": false
+    },
+    "ViewMode": {
+      "description": "Where a view reads its open pull requests (ADR-0061).",
+      "oneOf": [
+        {
+          "description": "Kept, of each source that takes webhooks where the store keeps pull\nrequests; live otherwise.",
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "description": "From the forge, each time the view is read.",
+          "type": "string",
+          "const": "live"
+        },
+        {
+          "description": "From the records the store keeps, folded from each source's webhooks\nand reconciled with a listing.",
+          "type": "string",
+          "const": "kept"
+        }
+      ]
     },
     "Visibility": {
       "description": "Who sees a status.",

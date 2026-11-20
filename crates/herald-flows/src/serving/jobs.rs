@@ -3,7 +3,8 @@
 //! (ADR-0013).
 
 use herald_core::{
-    Asked, DestinationName, Event, Identity, Listing, Origin, Scheme, SourceName, Visibility,
+    Asked, DestinationName, Event, Folding, Identity, Listing, Origin, Scheme, SourceName,
+    Visibility,
 };
 use herald_kinds::Replying;
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Verifier};
@@ -93,6 +94,19 @@ pub enum Job {
         /// The identity to withdraw, and its project.
         withdrawn: Option<(Identity, Option<String>)>,
     },
+    /// A webhook delivery's change of the pull requests of `source`'s
+    /// repository, to fold into the records kept mode keeps; the delivery is
+    /// released where it could not be (ADR-0061).
+    Fold {
+        /// The source the webhook is of.
+        source: SourceName,
+        /// What the delivery says of the pull requests.
+        folding: Folding,
+        /// The scheme it is signed under.
+        scheme: Scheme,
+        /// What its signature names.
+        verified: Verified,
+    },
     /// Commands given on `destination`, each to answer where it says.
     Interact {
         /// The destination they were given on.
@@ -128,8 +142,12 @@ pub enum Did {
     /// Nothing, as the owner's last membership record does not hold the
     /// member the event is of, as this says.
     Withheld(Withheld),
-    /// What each source an App's delivery reached did with it.
+    /// What each source an App's delivery reached did with it, or what
+    /// each job one delivery left did.
     Fanned(Vec<Did>),
+    /// How many kept pull requests a delivery's change moved, or why it
+    /// could not be folded (ADR-0061).
+    Folded(Result<usize, String>),
 }
 
 /// The owner's member a webhook delivery is of (ADR-0030).
@@ -189,6 +207,7 @@ impl Did {
             Self::Interacted(_) => false,
             Self::Withheld(withheld) => matches!(withheld, Withheld::Unread(_)),
             Self::Fanned(each) => each.iter().any(Self::stopped),
+            Self::Folded(folded) => folded.is_err(),
         }
     }
 }
@@ -217,6 +236,9 @@ impl Job {
                 scheme, verified, ..
             }
             | Self::Fanned {
+                scheme, verified, ..
+            }
+            | Self::Fold {
                 scheme, verified, ..
             } => Some((scheme.name, verified)),
             Self::App { verified, .. } => Some((herald_sources_app::ADMITTED, verified)),
@@ -392,6 +414,13 @@ async fn done<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
             event,
             withdrawn,
         } => Did::Announced(pushed(serving, &source, (event, withdrawn), run).await),
+        Job::Fold {
+            source, folding, ..
+        } => Did::Folded(
+            crate::kept::fold(store, &source, &folding)
+                .await
+                .map_err(|error| error.to_string()),
+        ),
         Job::Fanned { jobs, .. } => {
             let mut each = Vec::new();
             for job in jobs {

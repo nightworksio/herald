@@ -144,6 +144,50 @@ impl Pins for Refusing {
     }
 }
 
+impl crate::Pulls for Refusing {
+    async fn pull(
+        &self,
+        _: &herald_core::PullKey,
+    ) -> Result<Option<Versioned<herald_core::KeptPull>>, StoreError> {
+        Err(refused("pull"))
+    }
+
+    async fn pulls_of(
+        &self,
+        _: &herald_core::RepositoryKey,
+    ) -> Result<Vec<Versioned<herald_core::KeptPull>>, StoreError> {
+        Err(refused("pulls_of"))
+    }
+
+    async fn put_pull(
+        &self,
+        _: &herald_core::KeptPull,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_pull"))
+    }
+
+    async fn expire_pulls(&self, _: Timestamp) -> Result<(), StoreError> {
+        Err(refused("expire_pulls"))
+    }
+
+    async fn reconciled(
+        &self,
+        _: &SourceName,
+    ) -> Result<Option<Versioned<herald_core::Reconciled>>, StoreError> {
+        Err(refused("reconciled"))
+    }
+
+    async fn put_reconciled(
+        &self,
+        _: &SourceName,
+        _: &herald_core::Reconciled,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_reconciled"))
+    }
+}
+
 impl crate::Decisions for Refusing {
     async fn decision(&self, _: &Key) -> Result<Option<herald_core::Decided>, StoreError> {
         Err(refused("decision"))
@@ -388,7 +432,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 14]
+            [holding; 15]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -698,6 +742,36 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "known",
         "know",
         "forget_before",
+    ];
+    assert_eq!(refusals, by.map(|by| Some(refused(by))));
+}
+
+#[test]
+fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    let kept = crate::store::tests::kept_pull();
+    let source = SourceName::new("s");
+    let reconciled = herald_core::Reconciled {
+        repository: None,
+        at: None,
+        validators: Vec::new(),
+    };
+    let refusals = [
+        answered(erased.pull(&kept.key)),
+        answered(erased.pulls_of(&kept.key.repository)),
+        answered(erased.put_pull(&kept, None)),
+        answered(erased.expire_pulls(Timestamp::UNIX_EPOCH)),
+        answered(erased.reconciled(&source)),
+        answered(erased.put_reconciled(&source, &reconciled, None)),
+    ];
+    let by = [
+        "pull",
+        "pulls_of",
+        "put_pull",
+        "expire_pulls",
+        "reconciled",
+        "put_reconciled",
     ];
     assert_eq!(refusals, by.map(|by| Some(refused(by))));
 }

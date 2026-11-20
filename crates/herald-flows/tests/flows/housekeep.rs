@@ -480,6 +480,68 @@ fn housekeeping_forgets_decisions_made_longer_ago_than_the_store_keeps_them() {
 }
 
 #[test]
+fn housekeeping_forgets_pull_requests_closed_longer_ago_than_the_store_keeps_them() {
+    let store = healthy();
+    let kept = |number: u64, closed: Option<i64>| {
+        let pull = herald_core::Pull {
+            project: "r".to_owned(),
+            repository: "o/r".to_owned(),
+            visibility: herald_core::Visibility::Public,
+            number,
+            title: "t".to_owned(),
+            url: format!("https://github.com/o/r/pull/{number}"),
+            author: None,
+            bot: false,
+            draft: false,
+            labels: Vec::new(),
+            opened: ago(40),
+            updated: ago(40),
+            review: herald_core::Review::Unasked,
+            reviewers: Vec::new(),
+            checks: herald_core::Checks::Absent,
+            mergeable: herald_core::Mergeable::Unknown,
+            queued: false,
+            forge: None,
+            head: None,
+            unread: false,
+        };
+        let key = herald_core::PullKey {
+            repository: herald_core::RepositoryKey::of(&pull.url, "1").unwrap(),
+            number,
+        };
+        let read = herald_core::KeptPull::read(None, key, pull, ago(40));
+        match closed {
+            Some(days) => read.vanished(ago(days)),
+            None => read,
+        }
+    };
+    let (old, recent, open) = (kept(1, Some(31)), kept(2, Some(29)), kept(3, None));
+    for kept in [&old, &recent, &open] {
+        pollster::block_on(herald_ports::Pulls::put_pull(&store, kept, None)).unwrap();
+    }
+    assert_eq!(
+        kept_for(&store, &Script::default(), &Retention::default()).unwrap(),
+        []
+    );
+    let read = |kept: &herald_core::KeptPull| {
+        pollster::block_on(herald_ports::Pulls::pull(&store, &kept.key))
+            .unwrap()
+            .map(|read| read.value)
+    };
+    assert_eq!(read(&old), None);
+    assert_eq!(read(&recent), Some(recent.clone()));
+    assert_eq!(read(&open), Some(open.clone()));
+    let forever = Retention {
+        pulls: None,
+        ..Retention::default()
+    };
+    let older = kept(4, Some(400));
+    pollster::block_on(herald_ports::Pulls::put_pull(&store, &older, None)).unwrap();
+    assert_eq!(kept_for(&store, &Script::default(), &forever).unwrap(), []);
+    assert_eq!(read(&older), Some(older.clone()));
+}
+
+#[test]
 fn what_cannot_be_expired_stops_housekeeping() {
     let retention = Retention {
         notes: Some(days(7)),
@@ -491,6 +553,7 @@ fn what_cannot_be_expired_stops_housekeeping() {
         Fault::ExpiresNotes,
         Fault::ExpiresAudits,
         Fault::ExpiresDecisions,
+        Fault::ExpiresPulls,
     ] {
         let store = Failing { fault, ..healthy() };
         pollster::block_on(store.put_entry(&claimed("old", 91), None)).unwrap();

@@ -9,6 +9,10 @@ use crate::gitlab::bot;
 /// What GitLab's open merge requests are read as.
 pub(super) const WHAT: &str = "GitLab's open merge requests";
 
+/// The one check GitLab's merge requests are read with: the head's
+/// pipeline.
+pub(crate) const PIPELINE: &str = "pipeline";
+
 /// The path, under a project, of the `number`th page of its open merge
 /// requests, the most recently updated first.
 pub(super) fn path(number: usize) -> String {
@@ -40,6 +44,7 @@ struct Request {
     has_conflicts: bool,
     detailed_merge_status: Option<String>,
     sha: Option<String>,
+    project_id: Option<u64>,
 }
 
 /// What GitLab's detailed merge status says of the reviews and checks.
@@ -53,13 +58,13 @@ fn read_status(status: &str, reviewers: bool) -> (Review, Checks) {
         "mergeable" => (Review::Approved, Checks::Passed),
         "requested_changes" => (Review::ChangesRequested, Checks::Absent),
         "ci_still_running" => (unreviewed, Checks::Pending),
-        "ci_must_pass" => (unreviewed, Checks::Failed(vec!["pipeline".to_owned()])),
+        "ci_must_pass" => (unreviewed, Checks::Failed(vec![PIPELINE.to_owned()])),
         _ => (unreviewed, Checks::Absent),
     }
 }
 
 /// The turn GitLab's detailed merge status maps to.
-fn forge_turn(status: &str) -> Turn {
+pub(crate) fn forge_turn(status: &str) -> Turn {
     match status {
         "mergeable" => Turn::WaitingOnMerge,
         "draft_status" => Turn::Draft,
@@ -127,12 +132,18 @@ pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, 
     let (project, repository, known) = named;
     let requests: Vec<Request> = herald_wire::read(WHAT, parse, body)?;
     let seen = known.unwrap_or(Visibility::Private);
+    let id = requests
+        .iter()
+        .find_map(|request| request.project_id)
+        .map(|id| id.to_string());
     Ok(Page {
         pulls: requests
             .into_iter()
             .map(|request| request.read((project, repository), seen))
             .collect(),
         next: None,
+        repository: id,
+        visibility: None,
     })
 }
 

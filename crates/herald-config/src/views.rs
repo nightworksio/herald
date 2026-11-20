@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use herald_core::{Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View};
 use herald_kinds::Most;
+use jiff::SignedDuration;
 use jiff::civil::Weekday;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -50,6 +51,26 @@ pub struct ViewConfig {
     pub most: Most,
     /// The task that decides each slot its rules leave untold (ADR-0057).
     pub decide: BTreeMap<Slot, String>,
+    /// Where it reads its pull requests (ADR-0061).
+    pub mode: ViewMode,
+    /// How long kept mode waits at least before listing a source's open
+    /// pull requests again; every round where `None`.
+    pub reconcile: Option<SignedDuration>,
+}
+
+/// Where a view reads its open pull requests (ADR-0061).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ViewMode {
+    /// Kept, of each source that takes webhooks where the store keeps pull
+    /// requests; live otherwise.
+    #[default]
+    Auto,
+    /// From the forge, each time the view is read.
+    Live,
+    /// From the records the store keeps, folded from each source's webhooks
+    /// and reconciled with a listing.
+    Kept,
 }
 
 /// A report: the view it shows, and when.
@@ -227,6 +248,16 @@ pub(crate) struct ViewFile {
     #[serde(default)]
     #[schemars(with = "BTreeMap<Slot, String>")]
     pub(crate) decide: BTreeMap<Slot, Spanned<String>>,
+    /// Where it reads its pull requests: "auto" where absent, kept of each
+    /// source that takes webhooks where the store keeps pull requests and
+    /// live otherwise; "live" from the forge each time; or "kept" from the
+    /// records the store keeps, folded from webhooks and reconciled with a
+    /// listing.
+    pub(crate) mode: Option<ViewMode>,
+    /// How long kept mode waits at least before listing a source's open
+    /// pull requests again, each page conditional on its last answer; every
+    /// round where absent.
+    pub(crate) reconcile: Option<Duration>,
 }
 
 /// A day of the week, by its first three letters.

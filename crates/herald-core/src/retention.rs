@@ -16,6 +16,9 @@ pub struct Retention {
     /// How long what a model answered a task is kept after it answered;
     /// for ever where `None` (ADR-0057).
     pub decisions: Option<SignedDuration>,
+    /// How long a pull request is kept after it closed; for ever where
+    /// `None` (ADR-0061).
+    pub pulls: Option<SignedDuration>,
 }
 
 impl Retention {
@@ -25,6 +28,8 @@ impl Retention {
     pub const LEDGER: SignedDuration = SignedDuration::from_hours(90 * 24);
     /// How long a decision is kept by default: 30 days.
     pub const DECISIONS: SignedDuration = SignedDuration::from_hours(30 * 24);
+    /// How long a closed pull request is kept by default: 30 days.
+    pub const PULLS: SignedDuration = SignedDuration::from_hours(30 * 24);
     /// The shortest a delivery's id may be kept: longer than any sender
     /// herald admits from goes on retrying one. Mastodon's sixteen retries
     /// span about two days.
@@ -38,6 +43,7 @@ impl Default for Retention {
             ledger: Some(Self::LEDGER),
             notes: None,
             decisions: Some(Self::DECISIONS),
+            pulls: Some(Self::PULLS),
         }
     }
 }
@@ -54,6 +60,7 @@ mod tests {
         assert_eq!(Retention::LEDGER.as_secs(), 90 * DAY);
         assert_eq!(Retention::LONGEST_RETRY.as_secs(), 3 * DAY);
         assert_eq!(Retention::DECISIONS.as_secs(), 30 * DAY);
+        assert_eq!(Retention::PULLS.as_secs(), 30 * DAY);
         assert_eq!(
             Retention::default(),
             Retention {
@@ -61,6 +68,7 @@ mod tests {
                 ledger: Some(Retention::LEDGER),
                 notes: None,
                 decisions: Some(Retention::DECISIONS),
+                pulls: Some(Retention::PULLS),
             }
         );
     }

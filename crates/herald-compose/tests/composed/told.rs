@@ -214,11 +214,11 @@ fn a_poll_a_webhook_asked_for_says_what_it_found_and_one_left_undone_says_so() {
     let fanned = Job::Fanned {
         jobs: vec![job.clone(), job],
         scheme,
-        verified,
+        verified: verified.clone(),
     };
     assert_eq!(
         told::unworked(&fanned, &Ok(())),
-        "herald stopped before it worked a GitHub App's delivery to 2 sources"
+        "herald stopped before it worked the 2 jobs of one delivery"
     );
     let pushed = Job::Pushed {
         source: SourceName::new("inbox"),
@@ -244,6 +244,33 @@ fn a_poll_a_webhook_asked_for_says_what_it_found_and_one_left_undone_says_so() {
             "mirror: unchanged since the last poll"
         ]
     );
+    let fold = Job::Fold {
+        source: SourceName::new("gate"),
+        folding: herald_core::Folding {
+            repository: herald_core::RepositoryKey {
+                host: "github.com".to_owned(),
+                id: "1".to_owned(),
+            },
+            folded: Vec::new(),
+        },
+        scheme,
+        verified,
+    };
+    assert_eq!(
+        told::unworked(&fold, &Ok(())),
+        "herald stopped before it worked the change to gate's kept pull requests"
+    );
+    assert!(fold.delivery().is_some());
+    assert_eq!(
+        told::worked(&did(Did::Folded(Ok(2)))),
+        ["a webhook's change moved 2 kept pull requests"]
+    );
+    assert_eq!(
+        told::worked(&did(Did::Folded(Err("the store is down".to_owned())))),
+        ["a webhook's change could not be kept: the store is down"]
+    );
+    assert!(Did::Folded(Err(String::new())).stopped());
+    assert!(!Did::Folded(Ok(0)).stopped());
 }
 
 #[test]

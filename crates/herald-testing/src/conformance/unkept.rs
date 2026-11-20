@@ -1,11 +1,11 @@
 use herald_core::{
     Cursor, DestinationName, Entry, RouteId, Schedule, SourceName, State, Subscription,
 };
-use herald_ports::Decisions;
 use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
     Store, StoreError, Subscriptions, Waiting,
 };
+use herald_ports::{Decisions, Pulls};
 
 use super::{Checks, GITHUB, NOON, announced, key};
 
@@ -55,6 +55,50 @@ pub(super) async fn unkept<S: Store>(store: &S, checks: &mut Checks) {
     if store.waiting().is_none() {
         waiting(&store.waiting(), checks).await;
     }
+    if store.pulls().is_none() {
+        pulls(&store.pulls(), checks).await;
+    }
+}
+
+pub(super) async fn pulls(store: &impl Pulls, checks: &mut Checks) {
+    let kept = super::pulls::kept("1", 1, "unkept");
+    let source = SourceName::new("unkept");
+    refused(checks, store.pull(&kept.key).await, Held::Pulls, "pull");
+    refused(
+        checks,
+        store.pulls_of(&kept.key.repository).await,
+        Held::Pulls,
+        "pulls_of",
+    );
+    refused(
+        checks,
+        store.put_pull(&kept, None).await,
+        Held::Pulls,
+        "put_pull",
+    );
+    refused(
+        checks,
+        store.expire_pulls(NOON).await,
+        Held::Pulls,
+        "expire_pulls",
+    );
+    refused(
+        checks,
+        store.reconciled(&source).await,
+        Held::Pulls,
+        "reconciled",
+    );
+    let reconciled = herald_core::Reconciled {
+        repository: None,
+        at: None,
+        validators: Vec::new(),
+    };
+    refused(
+        checks,
+        store.put_reconciled(&source, &reconciled, None).await,
+        Held::Pulls,
+        "put_reconciled",
+    );
 }
 
 pub(super) async fn waiting(store: &impl Waiting, checks: &mut Checks) {

@@ -6,8 +6,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{
-    Cursor, Event, EventsRead, Grant, Kind, Listed, Listing, Origin, Owner, Polled, Reach, RouteId,
-    Scheme, SecretRef, Visibility,
+    Cursor, Event, EventsRead, Folding, Grant, Kind, Listed, Listing, Origin, Owner, Polled, Reach,
+    RouteId, Scheme, SecretRef, Visibility,
 };
 use herald_ports::{Base, Boxed, DynHttp};
 use jiff::{SignedDuration, Timestamp};
@@ -56,6 +56,21 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// Who signs its webhooks, and how, where it takes them (ADR-0007).
     fn scheme(&self) -> Option<Scheme> {
         None
+    }
+
+    /// What the webhook delivery `payload` with `headers` says of the pull
+    /// requests of the repository it reads, for kept mode (ADR-0061):
+    /// nothing where it is of none.
+    ///
+    /// # Errors
+    ///
+    /// Why the delivery could not be read.
+    fn folded(
+        &self,
+        _headers: &[(&str, &str)],
+        _payload: &[u8],
+    ) -> Result<Option<Folding>, String> {
+        Ok(None)
     }
 
     /// What the webhook delivery `payload` with `headers` asks herald to

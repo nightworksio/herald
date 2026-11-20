@@ -13,6 +13,9 @@ mod detail;
 mod github;
 mod gitlab;
 mod listing;
+mod reconcile;
+
+pub(crate) use gitlab::{PIPELINE, forge_turn};
 
 /// The most open pull requests one page lists, on every forge.
 pub const PAGE: usize = 100;
@@ -32,6 +35,15 @@ pub(crate) const FAILED: [&str; 6] = [
     "STARTUP_FAILURE",
     "ERROR",
 ];
+
+/// The associations GitHub names a reviewer by whose review decides, as
+/// its review decision counts them.
+pub(crate) const TRUSTED: [&str; 3] = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/// Whether `state` is one a failed check ends in, ignoring case.
+pub(crate) fn failed(state: &str) -> bool {
+    FAILED.iter().any(|named| named.eq_ignore_ascii_case(state))
+}
 
 /// How a repository's open pull requests are read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,11 +115,23 @@ pub struct Opened<'a> {
 /// the repository's full path, and who may see it where that is known.
 pub(crate) type Named<'a> = (&'a str, &'a str, Option<Visibility>);
 
-/// A page of open pull requests, and where the next begins.
+/// A page of open pull requests, where the next begins, and the forge's
+/// id of their repository and who may see it, where the page names them.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Page {
     pub(crate) pulls: Vec<Pull>,
     pub(crate) next: Option<String>,
+    pub(crate) repository: Option<String>,
+    pub(crate) visibility: Option<Visibility>,
+}
+
+/// Whether a listing on `forge` has a page after `page`: GitHub and GitLab
+/// fill every page but the last, and Forgejo's ends at an empty one.
+fn listed_more(forge: Forge, page: &Page) -> bool {
+    match forge {
+        Forge::GitHub | Forge::GitLab => page.pulls.len() >= PAGE,
+        Forge::Forgejo => !page.pulls.is_empty(),
+    }
 }
 
 impl Opened<'_> {
@@ -194,10 +218,10 @@ impl Opened<'_> {
             let asked = self.request(after.as_deref(), number);
             let body = self.asked(http, asked, what).await?;
             let page = self.read(&body).map_err(Unpolled::unreadable)?;
-            let more = match self.origin.forge() {
-                Forge::GitHub if self.read_path() == ReadPath::Graphql => page.next.is_some(),
-                Forge::GitHub | Forge::GitLab => page.pulls.len() >= PAGE,
-                Forge::Forgejo => !page.pulls.is_empty(),
+            let more = if self.read_path() == ReadPath::Graphql {
+                page.next.is_some()
+            } else {
+                listed_more(self.origin.forge(), &page)
             };
             pulls.extend(page.pulls);
             after = page.next;
@@ -242,24 +266,48 @@ pub struct Queued {
     pub graphql: String,
 }
 
+impl Queued {
+    /// How its open pull requests are listed, at most `most`.
+    const fn asking(&self, most: herald_kinds::Most) -> Opened<'_> {
+        Opened {
+            origin: &self.origin,
+            token: self.token.as_ref(),
+            project: self.project.as_str(),
+            graphql: self.graphql.as_str(),
+            visibility: None,
+            most_open: most.open,
+            most_pulls: most.pulls,
+        }
+    }
+}
+
 impl herald_kinds::Queue for Queued {
     fn opened<'a>(
         &'a self,
         http: &'a dyn DynHttp,
         most: herald_kinds::Most,
     ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
+        Box::pin(async move { self.asking(most).pulls(&Erased(http)).await })
+    }
+
+    fn listed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        most: herald_kinds::Most,
+        validators: &'a [herald_core::Validators],
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::Relisted, Unpolled>> {
+        Box::pin(async move { self.asking(most).relisted(&Erased(http), validators).await })
+    }
+
+    fn completed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        pulls: Vec<Pull>,
+    ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
         Box::pin(async move {
-            Opened {
-                origin: &self.origin,
-                token: self.token.as_ref(),
-                project: &self.project,
-                graphql: &self.graphql,
-                visibility: None,
-                most_open: most.open,
-                most_pulls: most.pulls,
-            }
-            .pulls(&Erased(http))
-            .await
+            self.asking(herald_kinds::Most::default())
+                .completed(&Erased(http), pulls)
+                .await
         })
     }
 }

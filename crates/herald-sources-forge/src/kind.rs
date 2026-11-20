@@ -364,6 +364,21 @@ impl SourceConfig for ForgeSource {
         }))
     }
 
+    fn folded(
+        &self,
+        headers: &[(&str, &str)],
+        payload: &[u8],
+    ) -> Result<Option<herald_core::Folding>, String> {
+        let (Some(name), Some(repository)) = (
+            self.forge.event_named(headers),
+            self.options.repository.as_deref(),
+        ) else {
+            return Ok(None);
+        };
+        crate::folding::folded(self.forge, (name, payload), (named(repository), repository))
+            .map_err(|error| error.to_string())
+    }
+
     fn queue_cost(&self, most: herald_kinds::Most) -> Option<herald_kinds::QueueCost> {
         self.options.repository.as_ref()?;
         let tokened = self.token().is_some() || self.installed().is_some();

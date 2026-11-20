@@ -835,6 +835,7 @@ fn a_webhook_secret_that_is_not_set_stops_the_server_before_it_serves() {
 mod apps;
 mod discovery;
 mod feeds;
+mod kept;
 mod owned;
 mod peered;
 mod pushes;

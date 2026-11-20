@@ -16,6 +16,7 @@ use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
 
 mod pending;
+mod pulls;
 mod refusing;
 mod script;
 
@@ -265,6 +266,14 @@ pub(crate) enum Fault {
     ReadsDecisions,
     WritesDecisions,
     ExpiresDecisions,
+    KeepsNoPulls,
+    ReadsPulls,
+    ListsPulls,
+    WritesPulls,
+    RacesPulls,
+    ExpiresPulls,
+    ReadsReconciles,
+    WritesReconciles,
     OneAtATime,
 }
 
@@ -688,6 +697,7 @@ impl Keeper for Failing {
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             Held::Positions => self.fault != Fault::KeepsNoPositions,
             Held::Decisions => self.fault != Fault::KeepsNoDecisions,
+            Held::Pulls => self.fault != Fault::KeepsNoPulls,
             Held::Pending => self.fault != Fault::KeepsNoPending,
             Held::Published => self.fault != Fault::KeepsNoPublished,
             _ => true,

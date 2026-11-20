@@ -50,6 +50,7 @@ fn a_store_keeps_deliveries_a_week_entries_90_days_and_notes_for_ever_by_default
             ledger: Some(days(90)),
             notes: None,
             decisions: Some(days(30)),
+            pulls: Some(days(30)),
         }
     );
     assert_eq!(config.retention, Retention::default());
@@ -58,7 +59,7 @@ fn a_store_keeps_deliveries_a_week_entries_90_days_and_notes_for_ever_by_default
 #[test]
 fn every_keep_setting_is_read_beside_the_store_s_own_options() {
     let sqlite = config(
-            "kind = \"sqlite\"\npath = \"state.sqlite\"\nkeep_deliveries = \"3d\"\nkeep_ledger = \"forever\"\nkeep_notes = \"2w\"\nkeep_decisions = \"forever\"",
+            "kind = \"sqlite\"\npath = \"state.sqlite\"\nkeep_deliveries = \"3d\"\nkeep_ledger = \"forever\"\nkeep_notes = \"2w\"\nkeep_decisions = \"forever\"\nkeep_pulls = \"60d\"",
         )
         .unwrap();
     assert_eq!(
@@ -68,6 +69,7 @@ fn every_keep_setting_is_read_beside_the_store_s_own_options() {
             ledger: None,
             notes: Some(days(14)),
             decisions: None,
+            pulls: Some(days(60)),
         }
     );
     let Some(options) = sqlite.store.of::<herald_store_sqlite::StoreOptions>() else {

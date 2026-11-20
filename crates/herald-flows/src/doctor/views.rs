@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-use herald_config::{Config, Guard, Report, ViewConfig};
+use herald_config::{Config, Guard, Report, ViewConfig, ViewMode};
 use herald_core::report::UTC;
 use herald_core::stage_name;
 
@@ -56,6 +56,40 @@ pub(super) fn reported(config: &Config, notes: &mut Vec<String>) {
             "The route {} is living, but its destination cannot edit a post, so each window of its report is posted anew.",
             route.route.id.as_str()
         ));
+    }
+}
+
+/// Each note on each view reading a source kept, and each view asking to
+/// read kept of a store that keeps no pull requests (ADR-0061).
+pub(super) fn kept(config: &Config, findings: &mut super::Findings) {
+    let keeps = config.store.keeps_pulls();
+    for (name, view) in &config.views {
+        if view.mode == ViewMode::Kept && !keeps {
+            findings.mistakes.push(format!(
+                "The view {name} reads kept pull requests, and the store keeps none; choose a store that keeps them, or set its mode = \"live\"."
+            ));
+            continue;
+        }
+        let every = view.reconcile.map_or_else(
+            || "every round".to_owned(),
+            |every| format!("at most once every {every:#}"),
+        );
+        for source in &view.sources {
+            if !crate::kept::reads_kept((config, keeps), view, source) {
+                continue;
+            }
+            let mut note = format!(
+                "The view {name} reads {} kept: from the records the store keeps, each webhook delivery's change folded in, its open pull requests listed again {every}, each page conditional on its last answer, and only those that changed read in full",
+                source.as_str()
+            );
+            if !crate::kept::webhooked(config, source) {
+                note.push_str(
+                    "; the source takes no webhooks, so its records move only when it is listed",
+                );
+            }
+            note.push('.');
+            findings.notes.push(note);
+        }
     }
 }
 

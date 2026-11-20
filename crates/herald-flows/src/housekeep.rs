@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use herald_config::Config;
 use herald_core::{DestinationName, Retention, Schedule, Sent, due};
 use herald_ports::{
-    Clock, Decisions, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Schedules,
-    Signer, Store,
+    Clock, Decisions, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Pulls,
+    Schedules, Signer, Store,
 };
 use jiff::{SignedDuration, Timestamp};
 
@@ -190,6 +190,9 @@ async fn expire<S: Store>(
     }
     if let (Some(decisions), Some(kept)) = (store.decisions(), retention.decisions) {
         decisions.expire_decisions(before(kept)).await?;
+    }
+    if let (Some(pulls), Some(kept)) = (store.pulls(), retention.pulls) {
+        pulls.expire_pulls(before(kept)).await?;
     }
     Ok(())
 }

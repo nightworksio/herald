@@ -43,6 +43,12 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         true
     }
 
+    /// Whether it keeps pull requests, so a view may read them kept
+    /// (ADR-0061).
+    fn keeps_pulls(&self) -> bool {
+        true
+    }
+
     /// Whether it keeps each webhook delivery it admits, so a replay is
     /// refused before it reaches a parser (ADR-0013).
     fn keeps_deliveries(&self) -> bool {

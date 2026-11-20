@@ -180,6 +180,25 @@ pub(crate) fn decision(key: &herald_core::Key) -> String {
     format!("{DECISIONS}/{key}.json")
 }
 
+pub(crate) const PULLS: &str = "pulls";
+
+/// Where the pull request keyed `key` is kept: every pull request in one
+/// directory, its key written as one segment, so a repository's pull
+/// requests share the start [`repository_pulls`] gives.
+pub(crate) fn pull(key: &herald_core::PullKey) -> String {
+    format!("{PULLS}/{}.json", segment(&key.to_string()))
+}
+
+/// The start of the path of every pull request of `repository` kept.
+pub(crate) fn repository_pulls(repository: &herald_core::RepositoryKey) -> String {
+    format!("{PULLS}/{}", segment(&format!("{repository}/")))
+}
+
+/// Where the reconcile of `source` stands.
+pub(crate) fn reconciled(source: &SourceName) -> String {
+    format!("reconciled/{}.json", segment(source.as_str()))
+}
+
 pub(crate) fn position(destination: &DestinationName) -> String {
     format!("positions/{}.json", segment(destination.as_str()))
 }

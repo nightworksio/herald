@@ -85,6 +85,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(held(holding.notes()) && held(holding.announcements()));
     assert!(held(holding.inboxes()) && held(holding.positions()));
     assert!(held(holding.waiting()) && held(holding.decisions()));
+    assert!(held(holding.pulls()));
     assert_eq!(Store::skipped(&holding), ["corrupt.json"]);
     assert!(!Store::writes_one_at_a_time(&holding));
     let none = None::<&Unkept>;
@@ -94,6 +95,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(none.notes().is_none() && none.announcements().is_none());
     assert!(none.inboxes().is_none() && none.positions().is_none());
     assert!(none.waiting().is_none() && none.decisions().is_none());
+    assert!(none.pulls().is_none());
 }
 
 #[test]
@@ -465,4 +467,76 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
             naming("cursors")
         );
     }
+}
+
+#[test]
+fn pull_requests_kept_nowhere_answer_unsupported_naming_them() {
+    for unkept in [None, Some(&Unkept)] {
+        let repository = herald_core::RepositoryKey {
+            host: "github.com".to_owned(),
+            id: "1".to_owned(),
+        };
+        let pull = herald_core::PullKey {
+            repository: repository.clone(),
+            number: 1,
+        };
+        let reconciled = herald_core::Reconciled {
+            repository: None,
+            at: None,
+            validators: Vec::new(),
+        };
+        let source = SourceName::new("s");
+        assert_eq!(unsupported(unkept.pull(&pull)), naming("pull requests"));
+        assert_eq!(
+            unsupported(unkept.put_pull(&kept_pull(), None)),
+            naming("pull requests")
+        );
+        assert_eq!(
+            unsupported(unkept.pulls_of(&repository)),
+            naming("pull requests")
+        );
+        assert_eq!(
+            unsupported(unkept.expire_pulls(Timestamp::UNIX_EPOCH)),
+            naming("pull requests")
+        );
+        assert_eq!(
+            unsupported(unkept.reconciled(&source)),
+            naming("pull requests")
+        );
+        assert_eq!(
+            unsupported(unkept.put_reconciled(&source, &reconciled, None)),
+            naming("pull requests")
+        );
+    }
+}
+
+/// A pull request kept as read at the epoch.
+pub(crate) fn kept_pull() -> herald_core::KeptPull {
+    let pull = herald_core::Pull {
+        project: "p".to_owned(),
+        repository: "o/r".to_owned(),
+        visibility: herald_core::Visibility::Public,
+        number: 1,
+        title: "t".to_owned(),
+        url: "https://github.com/o/r/pull/1".to_owned(),
+        author: None,
+        bot: false,
+        draft: false,
+        labels: Vec::new(),
+        opened: Timestamp::UNIX_EPOCH,
+        updated: Timestamp::UNIX_EPOCH,
+        review: herald_core::Review::Unasked,
+        reviewers: Vec::new(),
+        checks: herald_core::Checks::Absent,
+        mergeable: herald_core::Mergeable::Unknown,
+        queued: false,
+        forge: None,
+        head: None,
+        unread: false,
+    };
+    let key = herald_core::PullKey {
+        repository: herald_core::RepositoryKey::of(&pull.url, "1").unwrap(),
+        number: 1,
+    };
+    herald_core::KeptPull::read(None, key, pull, Timestamp::UNIX_EPOCH)
 }

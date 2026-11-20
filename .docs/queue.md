@@ -51,6 +51,8 @@ The view `queue` is built in: every source naming one repository, as
 | `bumps` | its own bump patterns, read before Dependabot's and Renovate's: `{package}`, `{to}` and `*`, ignoring case | none |
 | `most_open` | the most open pull requests it lists of each repository | `500` |
 | `most_pulls` | the most it reads in full where each takes requests of its own | `100` |
+| `mode` | `auto`, `live` or `kept` (below) | `auto` |
+| `reconcile` | the least time between two listings of a source it reads kept | every round |
 
 ### Whose turn it is
 
@@ -90,6 +92,64 @@ mergeability, so without a token no bot batch counts green. On REST, only
 a reviewer GitHub names an owner, member or collaborator, or Forgejo marks
 official, decides a review. `herald doctor` names each report's path and
 the most requests it takes a round.
+
+### Live or kept
+
+A view reads each source live, from the forge each time, or kept, from
+one record per pull request in the store (ADR-0061). `mode = "auto"`
+reads a source kept where the store keeps pull requests and the source
+takes webhooks, its own or its GitHub App's, and live otherwise; `live`
+and `kept` say so for every source. A kept view on a store keeping no
+pull requests, such as `markers`, is a mistake doctor names, and stops
+the view.
+
+A record is keyed by the host of its pages, its repository's id and its
+number. It holds what a view reads, when its draft state, review, checks,
+mergeability, merge queue state and head last changed, each reviewer's
+latest verdict and each check's latest outcome on the head delivered
+since the last full read, and how it closed.
+
+Each webhook delivery about a pull request a kept view reads is folded
+into its record:
+
+| Forge | Deliveries |
+|-------|------------|
+| GitHub | `pull_request` (its merge queue's `enqueued` and `dequeued` too), `pull_request_review`, `pull_request_review_comment`, `issue_comment` on a pull request, `check_run`, `status`, `repository` |
+| GitLab | `Merge Request Hook` (an approval is its actor's), `Pipeline Hook` (the head's one check, `pipeline`), `Note Hook` on a merge request |
+| Forgejo | `pull_request`, `pull_request_approved`, `pull_request_rejected`, `pull_request_comment`, `issue_comment` on a pull request, `status`, `repository` |
+
+A delivery older than the record leaves it as it is. A comment moves only
+the last activity. A review counts as GitHub's does: a change request
+from an owner, member or collaborator outweighs an approval, and a
+verdict of unknown weight, as Forgejo's deliveries give, reads
+`review-unknown`. GitHub's `check_suite` is not folded: its check runs
+carry each outcome. A delivery of another repository is refused.
+
+Each round, or at most once each `reconcile`, kept mode lists the
+source's open pull requests, each page conditional on its last answer.
+Where a page changed, a pull request herald keeps no record of, or whose
+head or last activity differs, which closed, or whose record was never
+read in full, is read in full, and one kept open and no longer listed is
+closed, how unknown. A record whose checks are still running is read in
+full every listing, changed or not, as checks end with no activity of
+their own. Reading in full takes one GraphQL request
+for up to 100 pull requests on GitHub with a token, the listing itself on
+GitLab, and each one's reviews and checks elsewhere, at most
+`most_pulls` a round; the rest are kept as `unknown` and read on a later
+round.
+
+Who may see a kept pull request only narrows without a full read. A
+delivery never widens it: a record a delivery begins is private until it
+is read in full, and a `repository` delivery making a repository private
+narrows every record of it. What a REST listing's `base.repo` names of
+the repository's visibility narrows every record of it and widens none;
+its rows read as private, as live mode reads them. Only a full read
+through GitHub's GraphQL widens a record. GitLab names no project
+visibility, so its records stay private.
+
+`[store] keep_pulls` (`"30d"`) bounds how long a closed pull request is
+kept; housekeeping forgets older ones. `herald doctor` names each source
+a view reads kept, and how often it is listed.
 
 ## Reports
 

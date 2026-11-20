@@ -1,10 +1,10 @@
-use crate::Decisions;
-use herald_core::Decided;
+use crate::{Decisions, Pulls};
 use herald_core::{
     AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
     Membership, PeerKeys, Pending, Publication, PublishedKeys, RouteId, Schedule, SourceName,
     State, Subscription, Window,
 };
+use herald_core::{Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
 use jiff::Timestamp;
 
 use crate::erased::Boxed;
@@ -164,6 +164,42 @@ pub trait DynStore: Sync {
 
     /// [`Decisions::expire_decisions`].
     fn expire_decisions_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>>;
+
+    /// [`Pulls::pull`].
+    fn pull_boxed<'a>(
+        &'a self,
+        key: &'a PullKey,
+    ) -> Boxed<'a, Result<Option<Versioned<KeptPull>>, StoreError>>;
+
+    /// [`Pulls::pulls_of`].
+    fn pulls_of_boxed<'a>(
+        &'a self,
+        repository: &'a RepositoryKey,
+    ) -> Boxed<'a, Result<Vec<Versioned<KeptPull>>, StoreError>>;
+
+    /// [`Pulls::put_pull`].
+    fn put_pull_boxed<'a>(
+        &'a self,
+        kept: &'a KeptPull,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Pulls::expire_pulls`].
+    fn expire_pulls_of_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>>;
+
+    /// [`Pulls::reconciled`].
+    fn reconciled_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+    ) -> Boxed<'a, Result<Option<Versioned<Reconciled>>, StoreError>>;
+
+    /// [`Pulls::put_reconciled`].
+    fn put_reconciled_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        reconciled: &'a Reconciled,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
 
     /// [`Positions::position`].
     fn position_boxed<'a>(
@@ -413,6 +449,7 @@ impl<S: Store + Keyring> DynStore for S {
             Held::Tokens => self.tokens().is_some(),
             Held::Published => self.published().is_some(),
             Held::Decisions => self.decisions().is_some(),
+            Held::Pulls => self.pulls().is_some(),
         }
     }
 
@@ -589,6 +626,52 @@ impl<S: Store + Keyring> DynStore for S {
 
     fn expire_decisions_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>> {
         Box::pin(async move { self.decisions().expire_decisions(before).await })
+    }
+
+    fn pull_boxed<'a>(
+        &'a self,
+        key: &'a PullKey,
+    ) -> Boxed<'a, Result<Option<Versioned<KeptPull>>, StoreError>> {
+        Box::pin(async move { self.pulls().pull(key).await })
+    }
+
+    fn pulls_of_boxed<'a>(
+        &'a self,
+        repository: &'a RepositoryKey,
+    ) -> Boxed<'a, Result<Vec<Versioned<KeptPull>>, StoreError>> {
+        Box::pin(async move { self.pulls().pulls_of(repository).await })
+    }
+
+    fn put_pull_boxed<'a>(
+        &'a self,
+        kept: &'a KeptPull,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.pulls().put_pull(kept, expected).await })
+    }
+
+    fn expire_pulls_of_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>> {
+        Box::pin(async move { self.pulls().expire_pulls(before).await })
+    }
+
+    fn reconciled_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+    ) -> Boxed<'a, Result<Option<Versioned<Reconciled>>, StoreError>> {
+        Box::pin(async move { self.pulls().reconciled(source).await })
+    }
+
+    fn put_reconciled_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        reconciled: &'a Reconciled,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move {
+            self.pulls()
+                .put_reconciled(source, reconciled, expected)
+                .await
+        })
     }
 
     fn position_boxed<'a>(
@@ -868,6 +951,7 @@ impl<S: Store + Keyring> DynStore for S {
 }
 
 mod erased;
+mod pulls;
 
 mod published;
 
