@@ -105,6 +105,8 @@ fn bare(
         forge: None,
         head: None,
         unread: false,
+        base: None,
+        files: None,
     }
 }
 

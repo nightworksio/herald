@@ -55,6 +55,7 @@ struct Request {
     detailed_merge_status: Option<String>,
     sha: Option<String>,
     project_id: Option<u64>,
+    target_branch: Option<String>,
 }
 
 /// What GitLab's detailed merge status says of the reviews and checks.
@@ -131,6 +132,8 @@ impl Request {
             forge: (!status.is_empty()).then(|| (forge_turn(&status), status)),
             head: self.sha,
             unread: false,
+            base: self.target_branch,
+            files: None,
         }
     }
 }

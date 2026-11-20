@@ -22,6 +22,10 @@ const UNMERGEABLE: &str = "GitHub's REST API reads no mergeability, so none of i
 /// over them (ADR-0062).
 const SCOPED: &str = "it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each";
 
+/// What doctor says of a view predicting conflicts (ADR-0063).
+const CONFLICTS: &str =
+    "to predict conflicts it reads the paths each pull request's head changes, at most 100 each,";
+
 /// What doctor says of a view taking who may see a repository from what a
 /// REST listing read without a token states (ADR-0062).
 const STATED: &str = "takes who may see each repository a REST listing reads without a token, on GitHub, GitHub Enterprise Server, GHE.com or Forgejo, from what the listing states, as listed_visibility = true asks; a read with a token, a GitLab listing, a kept record and an owner's rows are seen as before";
@@ -146,6 +150,15 @@ fn watched(
         if cost.scoped {
             note.push_str("; ");
             note.push_str(SCOPED);
+        }
+        if view.conflicts {
+            let _ = match cost.files {
+                0 => write!(note, "; {CONFLICTS} with each pull request"),
+                more => write!(
+                    note,
+                    "; {CONFLICTS} by at most {more} more requests a round"
+                ),
+            };
         }
         note.push('.');
         notes.push(note);

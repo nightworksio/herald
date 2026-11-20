@@ -100,7 +100,12 @@ impl Opened<'_> {
         mut pulls: Vec<Pull>,
     ) -> Result<Vec<Pull>, Unpolled> {
         match self.read_path() {
-            ReadPath::Listing => Ok(pulls),
+            ReadPath::Listing => {
+                for pull in pulls.iter_mut().take(self.most_pulls) {
+                    self.changed(http, pull).await?;
+                }
+                Ok(pulls)
+            }
             ReadPath::Detailed => {
                 for pull in &mut pulls {
                     self.detailed(http, pull).await?;
@@ -115,7 +120,12 @@ impl Opened<'_> {
                     let numbers: Vec<u64> = chunk.iter().map(|pull| pull.number).collect();
                     let request = authorized(
                         self.origin.forge(),
-                        github::numbered_request(self.graphql, self.origin.path(), &numbers, parse),
+                        github::numbered_request(
+                            self.graphql,
+                            self.origin.path(),
+                            &numbers,
+                            self.ask(),
+                        ),
                         self.token,
                     );
                     let body = self.asked(http, request, github::WHAT).await?;

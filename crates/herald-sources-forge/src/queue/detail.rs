@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Checks, Review};
+use herald_core::{Changed, Checks, Review};
 use herald_wire::SourceError;
 use serde::Deserialize;
 
@@ -14,6 +14,9 @@ pub(super) const REVIEWS: &str = "a pull request's reviews";
 
 /// What a head commit's checks are read as.
 pub(super) const CHECKS: &str = "a commit's checks";
+
+/// What the paths a pull request's head changes are read as.
+pub(super) const FILES: &str = "a pull request's changed files";
 
 /// The state a commit status on Forgejo has while it runs.
 const RUNNING: &str = "pending";
@@ -116,6 +119,45 @@ pub(super) fn reviews(
     } else {
         Review::Unasked
     })
+}
+
+/// The path, under a repository on `forge`, of pull request `number`'s
+/// changed files, the first page (ADR-0063).
+pub(super) fn files_path(forge: Forge, number: u64) -> String {
+    let page = forge.api().page;
+    match forge {
+        Forge::GitLab => format!("/merge_requests/{number}/diffs?{page}={PAGE}"),
+        Forge::GitHub | Forge::Forgejo => format!("/pulls/{number}/files?{page}={PAGE}"),
+    }
+}
+
+#[derive(Deserialize)]
+struct File {
+    filename: Option<String>,
+    previous_filename: Option<String>,
+    new_path: Option<String>,
+    old_path: Option<String>,
+}
+
+/// The paths the changed files `body` lists change, or change from, on
+/// any forge, parsing no more than `parse` bytes: whole where the page is
+/// not full (ADR-0063).
+pub(super) fn files(body: &[u8], parse: usize) -> Result<Changed, SourceError> {
+    let listed: Vec<File> = herald_wire::read(FILES, parse, body)?;
+    let whole = listed.len() < PAGE;
+    let paths = listed
+        .into_iter()
+        .flat_map(|file| {
+            [
+                file.filename,
+                file.previous_filename,
+                file.new_path,
+                file.old_path,
+            ]
+        })
+        .flatten()
+        .collect();
+    Ok(Changed { paths, whole })
 }
 
 #[derive(Deserialize)]

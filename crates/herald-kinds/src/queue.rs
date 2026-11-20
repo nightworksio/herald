@@ -53,6 +53,9 @@ pub struct Asked<'a> {
     /// who may see the repository from what the listing states, rather than
     /// taking each pull request as private (ADR-0062).
     pub stated: bool,
+    /// Whether each pull request read in full has the paths its head
+    /// changes read too, for a view predicting conflicts (ADR-0063).
+    pub files: bool,
 }
 
 /// What reading a source's open pull requests costs each round, as doctor
@@ -73,6 +76,9 @@ pub struct QueueCost {
     /// each repository listed on its own past what that query lists
     /// (ADR-0062).
     pub scoped: bool,
+    /// The most requests reading the paths each pull request's head
+    /// changes adds a round, where a view predicts conflicts (ADR-0063).
+    pub files: usize,
 }
 
 /// What a reconcile's listing of a repository's open pull requests found
@@ -169,6 +175,7 @@ mod tests {
         };
         assert_eq!(listed.pulls(), [pull]);
         assert!(!Asked::default().stated);
+        assert!(!Asked::default().files);
         assert_eq!(Asked::default().most, Most::default());
     }
 }

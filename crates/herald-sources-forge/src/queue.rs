@@ -116,6 +116,9 @@ pub struct Opened<'a> {
     /// repository from what the listing states, where its source does not
     /// know, rather than taking each row as private (ADR-0062).
     pub stated: bool,
+    /// Whether each pull request read in full has the paths its head
+    /// changes read too (ADR-0063).
+    pub files: bool,
 }
 
 /// What a page names its pull requests by: the project they are shown as,
@@ -150,12 +153,11 @@ impl Opened<'_> {
 
     /// The request for the page after `after`.
     fn request(&self, after: Option<&str>, number: usize) -> Request {
-        let parse = self.origin.reading().parse;
         let forge = self.origin.forge();
         match self.read_path() {
             ReadPath::Graphql => authorized(
                 forge,
-                github::request(self.graphql, self.origin.path(), after, parse),
+                github::request(self.graphql, self.origin.path(), after, self.ask()),
                 self.token,
             ),
             ReadPath::Listing => self.origin.get(&gitlab::path(number), self.token),
@@ -208,7 +210,31 @@ impl Opened<'_> {
             let body = self.asked(http, asked, detail::CHECKS).await?;
             pull.checks = detail::checks(forge, &body, parse).map_err(Unpolled::unreadable)?;
         }
+        self.changed(http, pull).await
+    }
+
+    /// `pull` with the paths its head changes read, where it reads them.
+    async fn changed(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: &mut Pull,
+    ) -> Result<(), Unpolled> {
+        if self.files {
+            let path = detail::files_path(self.origin.forge(), pull.number);
+            let asked = self.origin.get(&path, self.token);
+            let body = self.asked(http, asked, detail::FILES).await?;
+            let parse = self.origin.reading().parse;
+            pull.files = Some(detail::files(&body, parse).map_err(Unpolled::unreadable)?);
+        }
         Ok(())
+    }
+
+    /// How its GraphQL requests read their answers.
+    const fn ask(&self) -> github::Ask {
+        github::Ask {
+            parse: self.origin.reading().parse,
+            files: self.files,
+        }
     }
 
     /// Its open pull requests, at most `most`, asked through `http` a page
@@ -243,14 +269,22 @@ impl Opened<'_> {
             }
         }
         pulls.truncate(self.most_open);
-        if self.read_path() == ReadPath::Detailed {
-            for (read, pull) in pulls.iter_mut().enumerate() {
-                if read < self.most_pulls {
-                    self.detailed(http, pull).await?;
-                } else {
-                    pull.unread = true;
+        match self.read_path() {
+            ReadPath::Detailed => {
+                for (read, pull) in pulls.iter_mut().enumerate() {
+                    if read < self.most_pulls {
+                        self.detailed(http, pull).await?;
+                    } else {
+                        pull.unread = true;
+                    }
                 }
             }
+            ReadPath::Listing => {
+                for pull in pulls.iter_mut().take(self.most_pulls) {
+                    self.changed(http, pull).await?;
+                }
+            }
+            ReadPath::Graphql => {}
         }
         Ok(pulls)
     }
@@ -291,6 +325,7 @@ impl Queued {
             most_open: asked.most.open,
             most_pulls: asked.most.pulls,
             stated: asked.stated,
+            files: asked.files,
         }
     }
 }
@@ -338,6 +373,18 @@ pub fn cost(forge: Forge, tokened: bool, most: herald_kinds::Most) -> herald_kin
         detailed: matches!(path, ReadPath::Detailed),
         mergeability: !matches!((forge, path), (Forge::GitHub, ReadPath::Detailed)),
         scoped: false,
+        files: files_cost(path, most),
+    }
+}
+
+/// The most requests reading the paths each pull request's head changes
+/// adds a round on `path`, reading at most `most`: none on GitHub's
+/// GraphQL, which reads them with each pull request, and one for each
+/// pull request read in full elsewhere (ADR-0063).
+fn files_cost(path: ReadPath, most: herald_kinds::Most) -> usize {
+    match path {
+        ReadPath::Graphql => 0,
+        ReadPath::Listing | ReadPath::Detailed => most.pulls.min(most.open),
     }
 }
 

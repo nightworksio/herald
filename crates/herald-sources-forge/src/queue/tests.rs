@@ -41,6 +41,7 @@ fn listed(
         most_open,
         most_pulls,
         stated: false,
+        files: false,
     };
     let http = ScriptedHttp::new(answers);
     let erased = Erased(&http as &dyn DynHttp);
@@ -359,6 +360,7 @@ fn stated_rows(forge: Forge, tokened: bool, stated: bool, named: &str) -> Vec<Vi
         most: herald_kinds::Most { open: 1, pulls: 0 },
         scope: None,
         stated,
+        files: false,
     };
     pollster::block_on(herald_kinds::Queue::opened(&queued, &http, asked))
         .unwrap()
@@ -484,6 +486,7 @@ fn a_kept_listing_never_takes_the_visibility_a_tokenless_listing_states() {
         most: herald_kinds::Most { open: 1, pulls: 0 },
         scope: None,
         stated: true,
+        files: false,
     };
     let listed =
         pollster::block_on(herald_kinds::Queue::listed(&queued, &http, asked, &[])).unwrap();
@@ -494,4 +497,96 @@ fn a_kept_listing_never_takes_the_visibility_a_tokenless_listing_states() {
         pulls.iter().map(|pull| pull.visibility).collect::<Vec<_>>(),
         [Visibility::Private]
     );
+}
+
+/// The pull requests a listing of `forge` reads predicting conflicts, at
+/// most one read in full, and the requests it asked.
+fn predicting(forge: Forge, tokened: bool, answers: Vec<Response>) -> (Vec<Pull>, Vec<String>) {
+    let origin = origin(forge);
+    let token = Token::Named(Secret::new("TOKEN", "t"));
+    let opened = Opened {
+        origin: &origin,
+        token: tokened.then_some(&token),
+        project: "r",
+        graphql: "https://api.github.com/graphql",
+        visibility: Some(Visibility::Public),
+        most_open: MOST_OPEN,
+        most_pulls: 1,
+        stated: false,
+        files: true,
+    };
+    let http = ScriptedHttp::new(answers);
+    let pulls = pollster::block_on(opened.pulls(&Erased(&http as &dyn DynHttp))).unwrap();
+    let asked = http.asked().into_iter().map(|(url, _)| url).collect();
+    (pulls, asked)
+}
+
+#[test]
+fn predicting_conflicts_reads_each_pull_request_s_changed_paths_and_branch_up_to_its_most() {
+    let rows = json!([
+        { "number": 1, "title": "t", "html_url": "https://codeberg.org/o/r/pulls/1",
+          "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+          "base": { "ref": "main" } },
+        { "number": 2, "title": "t", "html_url": "https://codeberg.org/o/r/pulls/2",
+          "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z" }
+    ]);
+    let (pulls, asked) = predicting(
+        Forge::Forgejo,
+        false,
+        vec![
+            answer(200, &rows),
+            answer(200, &json!([])),
+            answer(200, &json!([])),
+            answer(200, &json!([{ "filename": "a.rs" }])),
+        ],
+    );
+    assert_eq!(
+        asked.last().unwrap(),
+        "https://codeberg.org/api/v1/repos/o/r/pulls/1/files?limit=100"
+    );
+    let first = pulls.first().unwrap();
+    assert_eq!(first.base.as_deref(), Some("main"));
+    assert_eq!(first.files.as_ref().map(|files| files.paths.len()), Some(1));
+    assert_eq!(pulls.get(1).unwrap().files, None);
+    let requests = json!([
+        { "iid": 1, "title": "t", "web_url": "https://gitlab.com/o/r/-/merge_requests/1",
+          "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+          "target_branch": "main" },
+        { "iid": 2, "title": "t", "web_url": "https://gitlab.com/o/r/-/merge_requests/2",
+          "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z" }
+    ]);
+    let (pulls, asked) = predicting(
+        Forge::GitLab,
+        true,
+        vec![
+            answer(200, &requests),
+            answer(200, &json!([{ "new_path": "a.rs", "old_path": "a.rs" }])),
+        ],
+    );
+    assert_eq!(
+        asked.last().unwrap(),
+        "https://gitlab.com/api/v4/projects/o%2Fr/merge_requests/1/diffs?per_page=100"
+    );
+    assert_eq!(pulls.first().unwrap().base.as_deref(), Some("main"));
+    assert!(pulls.first().unwrap().files.is_some());
+    assert_eq!(pulls.get(1).unwrap().files, None);
+    let (_, asked) = predicting(
+        Forge::GitHub,
+        true,
+        vec![answer(200, &github_page(1..2, None))],
+    );
+    assert_eq!(asked.len(), 1);
+}
+
+#[test]
+fn reading_changed_paths_costs_a_request_a_pull_request_read_in_full_but_on_graphql() {
+    let most = herald_kinds::Most {
+        open: 300,
+        pulls: 20,
+    };
+    assert_eq!(cost(Forge::GitHub, true, most).files, 0);
+    assert_eq!(cost(Forge::GitHub, false, most).files, 20);
+    assert_eq!(cost(Forge::GitLab, true, most).files, 20);
+    let few = herald_kinds::Most { open: 5, pulls: 20 };
+    assert_eq!(cost(Forge::Forgejo, true, few).files, 5);
 }

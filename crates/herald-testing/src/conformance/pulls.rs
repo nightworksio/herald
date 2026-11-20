@@ -38,6 +38,8 @@ pub(super) fn kept(id: &str, number: u64, title: &str) -> KeptPull {
         forge: None,
         head: Some("abc123".to_owned()),
         unread: false,
+        base: None,
+        files: None,
     };
     let key = PullKey {
         repository: repository(id),

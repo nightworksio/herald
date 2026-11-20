@@ -7917,6 +7917,11 @@
             "type": "string"
           }
         },
+        "conflicts": {
+          "description": "Whether it predicts conflicts: it reads the paths each pull\nrequest's head changes, at most 100 each, and each row names the\nopen pull requests of its repository merging into its branch that\nchange a path in common; false where absent. It costs a request a\npull request read in full, but on GitHub with a token, which reads\nthem with each pull request; a kept record keeps them until its head\nmoves.",
+          "type": "boolean",
+          "default": false
+        },
         "decide": {
           "description": "The task that decides each slot its rules leave untold, such as\n`{ turn = \"whose\", priority = \"urgency\" }`; nothing is asked of a\nmodel where absent.",
           "type": "object",

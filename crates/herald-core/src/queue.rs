@@ -1,6 +1,8 @@
 //! A maintainer's queue: the open pull requests a view shows, whose turn
 //! each is, and how long it has waited.
 
+use std::collections::BTreeSet;
+
 use jiff::Timestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -8,12 +10,14 @@ use serde::{Deserialize, Serialize};
 use crate::members::Visibility;
 
 mod kept;
+mod overlap;
 mod view;
 
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
     Reconciled, RepositoryKey, Reviewed, Since, Verdict,
 };
+pub use overlap::overlaps;
 pub use view::{
     Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped, rows,
 };
@@ -166,6 +170,23 @@ pub struct Pull {
     /// Whether it was listed past the most a view reads in full, so its
     /// reviews and checks are not known.
     pub unread: bool,
+    /// The branch it merges into, where the forge names it.
+    #[serde(default)]
+    pub base: Option<String>,
+    /// The paths its head changes, where a view predicting conflicts read
+    /// them (ADR-0063).
+    #[serde(default)]
+    pub files: Option<Changed>,
+}
+
+/// The paths a pull request's head changes, as far as they were read
+/// (ADR-0063).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Changed {
+    /// Each path it changes, or changes from.
+    pub paths: BTreeSet<String>,
+    /// Whether every path it changes was read.
+    pub whole: bool,
 }
 
 /// The rules herald tells whose turn a pull request is by, each of which

@@ -461,3 +461,25 @@ fn a_kept_pull_request_reads_back_as_it_was_written() {
     assert!(written.contains("\"outcome\":\"failed\""));
     assert!(written.contains("\"verdict\":\"changes-requested\""));
 }
+
+#[test]
+fn the_paths_a_head_changes_are_kept_until_its_head_moves() {
+    let mut read = pull();
+    read.files = Some(crate::queue::Changed {
+        paths: ["src/lib.rs".to_owned()].into(),
+        whole: true,
+    });
+    let first = KeptPull::read(None, key(), read.clone(), at(1));
+    let again = KeptPull::read(Some(&first), key(), pull(), at(2));
+    assert_eq!(again.pull.files, read.files);
+    let mut moved = pull();
+    moved.head = Some("def456".to_owned());
+    let elsewhere = KeptPull::read(Some(&first), key(), moved, at(3));
+    assert_eq!(elsewhere.pull.files, None);
+    let pushed = Described {
+        head: Some("def456".to_owned()),
+        ..described(5_000)
+    };
+    let refolded = KeptPull::fold(Some(again), key(), &Folded::Pull(Box::new(pushed))).unwrap();
+    assert_eq!(refolded.pull.files, None);
+}

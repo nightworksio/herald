@@ -56,6 +56,8 @@ impl Repository {
 #[derive(Deserialize)]
 struct Base {
     repo: Option<Repository>,
+    #[serde(rename = "ref")]
+    branch: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -115,6 +117,8 @@ impl Listed {
             forge: None,
             head: self.head.map(|head| head.sha),
             unread: false,
+            base: self.base.and_then(|base| base.branch),
+            files: None,
         }
     }
 }
@@ -170,6 +174,7 @@ pub(super) fn one(
     pull.mergeable = read.mergeable;
     pull.review = read.review;
     pull.reviewers = read.reviewers;
+    pull.base = read.base;
     Ok(())
 }
 

@@ -109,6 +109,9 @@ pub struct Row {
     pub stale: bool,
     /// What a decider settled for it, by slot (ADR-0057).
     pub decided: BTreeMap<Slot, String>,
+    /// The open pull requests of its repository merging into its branch
+    /// whose heads change a path its head changes, by number (ADR-0063).
+    pub overlaps: Vec<u64>,
 }
 
 impl Row {
@@ -225,6 +228,7 @@ impl View {
             waited,
             stale: past,
             decided: BTreeMap::new(),
+            overlaps: Vec::new(),
         })
     }
 
@@ -259,9 +263,16 @@ fn oldest_first(rows: &mut [Row]) {
 /// own rules alone.
 #[must_use]
 pub fn rows(view: &View, pulls: &[Pull], now: Timestamp) -> Vec<Row> {
+    let mut shared = super::overlaps(pulls);
     pulls
         .iter()
         .filter_map(|pull| view.row(pull, now))
+        .map(|mut row| {
+            row.overlaps = shared
+                .remove(&(row.pull.repository.clone(), row.pull.number))
+                .unwrap_or_default();
+            row
+        })
         .collect()
 }
 

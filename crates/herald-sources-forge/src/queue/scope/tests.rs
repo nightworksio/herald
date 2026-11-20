@@ -58,6 +58,7 @@ fn asked(owner: Owner, members: &[Listed], most: Most) -> Asked<'_> {
         most,
         scope: Some(Scope { owner, members }),
         stated: false,
+        files: false,
     }
 }
 
@@ -413,6 +414,8 @@ fn a_kept_completion_reads_each_changed_pull_request_through_its_own_repository(
         forge: None,
         head: None,
         unread: false,
+        base: None,
+        files: None,
     };
     let http = ScriptedHttp::new(Vec::new());
     let read =
@@ -541,6 +544,8 @@ fn pull_of(path: &str) -> Pull {
         forge: None,
         head: None,
         unread: false,
+        base: None,
+        files: None,
     }
 }
 

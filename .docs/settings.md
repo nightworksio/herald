@@ -1992,6 +1992,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.authors` | array of string | The authors it shows, by login, each a glob ignoring case; every one where empty. |
 | `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
+| `views.<name>.conflicts` | boolean | Whether it predicts conflicts: it reads the paths each pull request's head changes, at most 100 each, and each row names the open pull requests of its repository merging into its branch that change a path in common; false where absent. It costs a request a pull request read in full, but on GitHub with a token, which reads them with each pull request; a kept record keeps them until its head moves. |
 | `views.<name>.decide` | table | The task that decides each slot its rules leave untold, such as `{ turn = "whose", priority = "urgency" }`; nothing is asked of a model where absent. |
 | `views.<name>.decide.<name>` | string |  |
 

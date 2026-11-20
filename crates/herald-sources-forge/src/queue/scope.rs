@@ -184,12 +184,13 @@ impl Scoped {
     }
 
     /// How the repository `origin`, shown as `project` and seen by
-    /// `visibility`, is read, at most `most` of it.
+    /// `visibility`, is read, at most `most` of it, each pull request's
+    /// changed paths too where `files` says.
     fn reading<'a>(
         &'a self,
         origin: &'a Origin,
         (project, visibility): (&'a str, herald_core::Visibility),
-        most: Most,
+        (most, files): (Most, bool),
     ) -> Opened<'a> {
         Opened {
             origin,
@@ -200,6 +201,7 @@ impl Scoped {
             most_open: most.open,
             most_pulls: most.pulls,
             stated: false,
+            files,
         }
     }
 
@@ -223,7 +225,7 @@ impl Scoped {
                 open: left,
                 pulls: most.pulls,
             };
-            let opened = self.reading(&origin, (&project, member.visibility), most);
+            let opened = self.reading(&origin, (&project, member.visibility), (most, false));
             pulls.extend(opened.relisted(http, &[]).await?.pulls());
         }
         Ok(Relisted::Listed {
@@ -287,7 +289,8 @@ impl Scoped {
     /// through GitHub's GraphQL a page of them a request, across
     /// repositories; else each one's reviews and checks, and first itself
     /// where its listing named no head, at most `most.pulls` of them and
-    /// the rest read as unknown.
+    /// the rest read as unknown; each one's changed paths too where `files`
+    /// says, on GitLab at most `most.pulls` of them.
     ///
     /// # Errors
     ///
@@ -295,37 +298,42 @@ impl Scoped {
     async fn read_in_full(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
-        most: Most,
+        (most, files): (Most, bool),
         pulls: Vec<Pull>,
     ) -> Result<Vec<Pull>, Unpolled> {
-        match ReadPath::of(self.forge(), self.token.is_some()) {
-            ReadPath::Listing => Ok(pulls),
-            ReadPath::Graphql => self.batched(http, pulls).await,
-            ReadPath::Detailed => {
-                let mut read = Vec::with_capacity(pulls.len());
-                for (place, mut pull) in pulls.into_iter().enumerate() {
-                    if place < most.pulls {
-                        self.detailed(http, &mut pull).await?;
-                    } else {
-                        pull.unread = true;
-                    }
-                    read.push(pull);
-                }
-                Ok(read)
-            }
+        let path = ReadPath::of(self.forge(), self.token.is_some());
+        if path == ReadPath::Graphql {
+            return self.batched(http, pulls, files).await;
         }
+        let mut read = Vec::with_capacity(pulls.len());
+        for (place, mut pull) in pulls.into_iter().enumerate() {
+            if place < most.pulls {
+                self.detailed(http, &mut pull, (path, files)).await?;
+            } else if path == ReadPath::Detailed {
+                pull.unread = true;
+            }
+            read.push(pull);
+        }
+        Ok(read)
     }
 
-    /// `pull` with its head read where its listing named none, then its
-    /// reviews and its head's checks.
+    /// `pull` read further on `path`: its changed paths alone where `files`
+    /// says on GitLab, whose listing read the rest; else its head where its
+    /// listing named none, then its reviews, its head's checks and, where
+    /// `files` says, its changed paths.
     async fn detailed(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         pull: &mut Pull,
+        (path, files): (ReadPath, bool),
     ) -> Result<(), Unpolled> {
         let origin = self.origin(&pull.repository);
         let project = pull.project.clone();
-        let opened = self.reading(&origin, (&project, pull.visibility), Most::default());
+        let reading = (Most::default(), files);
+        let opened = self.reading(&origin, (&project, pull.visibility), reading);
+        if path == ReadPath::Listing {
+            return opened.changed(http, pull).await;
+        }
         if pull.head.is_none() {
             let what = opened.what();
             let request = origin.get(&listing::one_path(pull.number), self.token.as_ref());
@@ -342,9 +350,11 @@ impl Scoped {
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         mut pulls: Vec<Pull>,
+        files: bool,
     ) -> Result<Vec<Pull>, Unpolled> {
         pulls.sort_by(|one, other| one.repository.cmp(&other.repository));
         let parse = self.root.reading().parse;
+        let ask = github::Ask { parse, files };
         let mut read = Vec::with_capacity(pulls.len());
         for chunk in pulls.chunks(PAGE) {
             let mut groups: Vec<(&str, Vec<u64>)> = Vec::new();
@@ -364,7 +374,7 @@ impl Scoped {
             }
             let request = authorized(
                 self.forge(),
-                github::scoped_request(&self.graphql, &groups, parse),
+                github::scoped_request(&self.graphql, &groups, ask),
                 self.token.as_ref(),
             );
             let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
@@ -391,7 +401,8 @@ impl herald_kinds::Queue for Scoped {
             };
             let http = Erased(http);
             let listed = self.relisted(&http, (asked.most, scope), &[]).await?;
-            self.read_in_full(&http, asked.most, listed.pulls()).await
+            self.read_in_full(&http, (asked.most, asked.files), listed.pulls())
+                .await
         })
     }
 
@@ -418,7 +429,10 @@ impl herald_kinds::Queue for Scoped {
         asked: Asked<'a>,
         pulls: Vec<Pull>,
     ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
-        Box::pin(async move { self.read_in_full(&Erased(http), asked.most, pulls).await })
+        Box::pin(async move {
+            self.read_in_full(&Erased(http), (asked.most, asked.files), pulls)
+                .await
+        })
     }
 }
 
@@ -455,6 +469,13 @@ pub(crate) fn scope_cost(forge: Forge, tokened: bool, most: Most) -> herald_kind
         detailed: read == ReadPath::Detailed,
         mergeability: !matches!((forge, read), (Forge::GitHub, ReadPath::Detailed)),
         scoped: true,
+        files: super::files_cost(
+            read,
+            Most {
+                open,
+                pulls: most.pulls,
+            },
+        ),
     }
 }
 

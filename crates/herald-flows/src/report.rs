@@ -69,6 +69,7 @@ async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 members,
             }),
             stated: view.stated,
+            files: view.conflicts,
         };
         let keeps = ports.store.pulls().is_some();
         let http = &Budgeted::new(http, ports.budget, ports.clock);

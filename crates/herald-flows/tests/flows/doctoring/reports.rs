@@ -138,7 +138,8 @@ private = false
 }
 
 #[test]
-fn a_view_of_an_owner_names_its_scope_query_and_one_taking_listed_visibility_says_what_it_widens() {
+fn a_view_names_its_owner_query_what_predicting_conflicts_costs_and_what_listed_visibility_widens()
+{
     let config = loaded(
         r#"version = 1
 [store]
@@ -147,9 +148,20 @@ kind = "sqlite"
 kind = "github"
 owner = "o"
 token = { secret = "HERALD_GITHUB_TOKEN" }
+[sources.fj]
+kind = "forgejo"
+repository = "o/fj"
+api = "https://codeberg.org/api/v1"
 [views.queue]
+sources = ["org"]
 listed_visibility = true
+conflicts = true
+[views.fj]
+sources = ["fj"]
+conflicts = true
 [reports.daily]
+[reports.weekly]
+view = "fj"
 "#,
     );
     let notes = on(&config, &server(), &Here::default()).notes;
@@ -162,7 +174,11 @@ listed_visibility = true
     };
     assert_eq!(
         named("The report daily"),
-        "The report daily reads the view queue of org by search, at most 10 requests a round; it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each."
+        "The report daily reads the view queue of org by search, at most 10 requests a round; it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each; to predict conflicts it reads the paths each pull request's head changes, at most 100 each, with each pull request."
+    );
+    assert_eq!(
+        named("The report weekly"),
+        "The report weekly reads the view fj of fj by rest, at most 205 requests a round; its open pull requests past the first 100 read as unknown; to predict conflicts it reads the paths each pull request's head changes, at most 100 each, by at most 100 more requests a round."
     );
     assert_eq!(
         named("The view queue takes"),

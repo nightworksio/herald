@@ -87,6 +87,8 @@ pub fn sample_boards() -> [Board; 2] {
         forge: None,
         head: Some("0123456789abcdef".to_owned()),
         unread: false,
+        base: None,
+        files: None,
     };
     let bump = Pull {
         number: 2,

@@ -380,9 +380,7 @@ impl<P: Pulls, H: Halting> Reconciling<'_, P, H> {
         let Some((listed, whole)) = listed else {
             let running = kept
                 .values()
-                .filter(|kept| {
-                    kept.value.open() && kept.value.pull.checks == herald_core::Checks::Pending
-                })
+                .filter(|kept| kept.value.open() && self.rereads(&kept.value))
                 .map(|kept| kept.value.pull.clone())
                 .collect();
             return Ok((kept, running, Vec::new()));
@@ -401,10 +399,23 @@ impl<P: Pulls, H: Halting> Reconciling<'_, P, H> {
             .into_iter()
             .filter(|pull| {
                 kept.get(&pull.number)
-                    .is_none_or(|kept| kept.value.stale(pull))
+                    .is_none_or(|kept| kept.value.stale(pull) || self.unread_files(&kept.value))
             })
             .collect();
         Ok((kept, stale, vanished))
+    }
+
+    /// Whether a kept open record is read in full again where nothing
+    /// changed: its checks still run, or the view predicts conflicts and its
+    /// head's changed paths were never read (ADR-0063).
+    fn rereads(&self, kept: &KeptPull) -> bool {
+        kept.pull.checks == herald_core::Checks::Pending || self.unread_files(kept)
+    }
+
+    /// Whether the view predicts conflicts and a kept record's head's
+    /// changed paths were never read.
+    const fn unread_files(&self, kept: &KeptPull) -> bool {
+        self.asked.files && kept.pull.files.is_none()
     }
 
     /// `record` written over `version`; a write another run or delivery
