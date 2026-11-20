@@ -2,7 +2,7 @@
 //! is, from its reviews, checks and mergeability.
 
 use herald_core::{Pull, Visibility};
-use herald_kinds::Unpolled;
+use herald_kinds::{Asked, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Request};
 use herald_wire::answered;
 
@@ -14,6 +14,9 @@ mod github;
 mod gitlab;
 mod listing;
 mod reconcile;
+mod scope;
+
+pub(crate) use scope::{Scoped, scope_cost};
 
 pub(crate) use gitlab::{PIPELINE, forge_turn};
 
@@ -109,6 +112,10 @@ pub struct Opened<'a> {
     /// The most it reads in full, where each takes requests of its own;
     /// those past it read as unknown.
     pub most_pulls: usize,
+    /// Whether a REST listing read without a token takes who may see the
+    /// repository from what the listing states, where its source does not
+    /// know, rather than taking each row as private (ADR-0062).
+    pub stated: bool,
 }
 
 /// What a page names its pull requests by: the project they are shown as,
@@ -217,12 +224,18 @@ impl Opened<'_> {
         for number in 1..=self.most_open.div_ceil(PAGE) {
             let asked = self.request(after.as_deref(), number);
             let body = self.asked(http, asked, what).await?;
-            let page = self.read(&body).map_err(Unpolled::unreadable)?;
+            let mut page = self.read(&body).map_err(Unpolled::unreadable)?;
             let more = if self.read_path() == ReadPath::Graphql {
                 page.next.is_some()
             } else {
                 listed_more(self.origin.forge(), &page)
             };
+            let states = self.stated && self.token.is_none() && self.visibility.is_none();
+            if let Some(stated) = page.visibility.filter(|_| states) {
+                for pull in &mut page.pulls {
+                    pull.visibility = stated;
+                }
+            }
             pulls.extend(page.pulls);
             after = page.next;
             if !more {
@@ -267,48 +280,50 @@ pub struct Queued {
 }
 
 impl Queued {
-    /// How its open pull requests are listed, at most `most`.
-    const fn asking(&self, most: herald_kinds::Most) -> Opened<'_> {
+    /// How its open pull requests are listed, as `asked`.
+    const fn asking(&self, asked: Asked<'_>) -> Opened<'_> {
         Opened {
             origin: &self.origin,
             token: self.token.as_ref(),
             project: self.project.as_str(),
             graphql: self.graphql.as_str(),
             visibility: None,
-            most_open: most.open,
-            most_pulls: most.pulls,
+            most_open: asked.most.open,
+            most_pulls: asked.most.pulls,
+            stated: asked.stated,
         }
     }
 }
 
 impl herald_kinds::Queue for Queued {
+    fn scoped(&self) -> bool {
+        false
+    }
+
     fn opened<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        most: herald_kinds::Most,
+        asked: Asked<'a>,
     ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
-        Box::pin(async move { self.asking(most).pulls(&Erased(http)).await })
+        Box::pin(async move { self.asking(asked).pulls(&Erased(http)).await })
     }
 
     fn listed<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        most: herald_kinds::Most,
+        asked: Asked<'a>,
         validators: &'a [herald_core::Validators],
     ) -> herald_ports::Boxed<'a, Result<herald_kinds::Relisted, Unpolled>> {
-        Box::pin(async move { self.asking(most).relisted(&Erased(http), validators).await })
+        Box::pin(async move { self.asking(asked).relisted(&Erased(http), validators).await })
     }
 
     fn completed<'a>(
         &'a self,
         http: &'a dyn DynHttp,
+        asked: Asked<'a>,
         pulls: Vec<Pull>,
     ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
-        Box::pin(async move {
-            self.asking(herald_kinds::Most::default())
-                .completed(&Erased(http), pulls)
-                .await
-        })
+        Box::pin(async move { self.asking(asked).completed(&Erased(http), pulls).await })
     }
 }
 
@@ -322,6 +337,7 @@ pub fn cost(forge: Forge, tokened: bool, most: herald_kinds::Most) -> herald_kin
         requests: path.most_requests(most.open, most.pulls),
         detailed: matches!(path, ReadPath::Detailed),
         mergeability: !matches!((forge, path), (Forge::GitHub, ReadPath::Detailed)),
+        scoped: false,
     }
 }
 

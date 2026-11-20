@@ -111,6 +111,7 @@ pub(super) async fn reconciled<S: Pulls>(
 ) -> Result<(), StoreError> {
     let (source, other) = (SourceName::new("herald"), SourceName::new("other"));
     let listed = Reconciled {
+        repositories: std::collections::BTreeSet::new(),
         repository: Some(repository("42")),
         at: Some(NOON),
         validators: vec![Validators {

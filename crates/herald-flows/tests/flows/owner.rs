@@ -1,9 +1,7 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use herald_config::{Config, Source, Uses};
 use herald_core::{Listing, Membership, SourceName};
 use herald_flows::{Budget, Remembered, Requests, Stop, Sweep, Swept, poll, prepare};
-use herald_ports::{Cursors, Http, HttpError, Request, Response};
+use herald_ports::Cursors;
 use herald_sources_forge::{ForgeSource, SourceOptions};
 use herald_testing::{FakeClock, FakeSigner};
 use jiff::{SignedDuration, Timestamp};
@@ -88,20 +86,6 @@ fn described(id: u64, name: &str) -> String {
     format!(r#"{{"id":{id},"name":"{name}"}}"#)
 }
 
-/// An `Http` that counts each request on `made` before `script` answers it.
-#[derive(Debug, Clone)]
-struct Counting<'a> {
-    script: Script,
-    made: &'a AtomicUsize,
-}
-
-impl Http for Counting<'_> {
-    async fn send(&self, request: Request) -> Result<Response, HttpError> {
-        self.made.fetch_add(1, Ordering::Relaxed);
-        self.script.send(request).await
-    }
-}
-
 fn polled_within(
     config: &Config,
     store: &Failing,
@@ -111,12 +95,7 @@ fn polled_within(
 ) -> Vec<Swept> {
     let prepared =
         pollster::block_on(prepare(config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
-    let made = AtomicUsize::new(0);
-    let counting = Counting {
-        script: script.clone(),
-        made: &made,
-    };
-    let connected = prepared.connect(|_| Ok::<_, ()>(counting.clone())).unwrap();
+    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(at);
     let ports = herald_flows::Ports {
         store,
@@ -124,8 +103,8 @@ fn polled_within(
         signer: &FakeSigner,
         budget: Budget {
             requests: most.map(|most| Requests {
-                made: &made,
-                from: 0,
+                made: script.made(),
+                from: script.made().load(std::sync::atomic::Ordering::Relaxed),
                 most,
                 spare: 0,
             }),

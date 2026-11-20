@@ -40,6 +40,7 @@ fn listed(
         visibility: Some(Visibility::Public),
         most_open,
         most_pulls,
+        stated: false,
     };
     let http = ScriptedHttp::new(answers);
     let erased = Erased(&http as &dyn DynHttp);
@@ -323,11 +324,103 @@ fn a_queued_repository_reads_its_pulls_through_its_own_path_at_its_most() {
     let pulls = pollster::block_on(herald_kinds::Queue::opened(
         &queued,
         &http,
-        herald_kinds::Most { open: 1, pulls: 0 },
+        Asked {
+            most: herald_kinds::Most { open: 1, pulls: 0 },
+            ..Asked::default()
+        },
     ));
     assert_eq!(numbers(pulls), [1]);
     let asked: Vec<String> = http.asked().into_iter().map(|(url, _)| url).collect();
     assert_eq!(asked, ["https://ghe.example/api/graphql"]);
+    assert!(!herald_kinds::Queue::scoped(&queued));
+}
+
+/// The visibility each row of a live listing of `forge` read with or
+/// without a token, as `stated` asks, where the listing states `named`.
+fn stated_rows(forge: Forge, tokened: bool, stated: bool, named: &str) -> Vec<Visibility> {
+    let queued = Queued {
+        origin: origin(forge),
+        token: tokened.then(|| Token::Named(Secret::new("TOKEN", "t"))),
+        project: "r".to_owned(),
+        graphql: "https://api.github.com/graphql".to_owned(),
+    };
+    let row = json!({
+        "number": 1, "title": "t", "html_url": "https://codeberg.org/o/r/pulls/1",
+        "iid": 1, "web_url": "https://gitlab.com/o/r/-/merge_requests/1",
+        "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+        "base": { "repo": { "id": 42, "visibility": named } }
+    });
+    let http = ScriptedHttp::new(vec![
+        answer(200, &json!([row])),
+        answer(200, &json!([])),
+        answer(200, &json!([])),
+    ]);
+    let asked = Asked {
+        most: herald_kinds::Most { open: 1, pulls: 0 },
+        scope: None,
+        stated,
+    };
+    pollster::block_on(herald_kinds::Queue::opened(&queued, &http, asked))
+        .unwrap()
+        .iter()
+        .map(|pull| pull.visibility)
+        .collect()
+}
+
+#[test]
+fn a_tokenless_rest_listing_s_stated_visibility_is_taken_only_where_the_view_says() {
+    for forge in [Forge::GitHub, Forge::Forgejo] {
+        assert_eq!(
+            stated_rows(forge, false, false, "public"),
+            [Visibility::Private]
+        );
+        assert_eq!(
+            stated_rows(forge, false, true, "public"),
+            [Visibility::Public]
+        );
+        assert_eq!(
+            stated_rows(forge, false, true, "internal"),
+            [Visibility::Internal]
+        );
+    }
+    assert_eq!(
+        stated_rows(Forge::Forgejo, true, true, "public"),
+        [Visibility::Private]
+    );
+    assert_eq!(
+        stated_rows(Forge::GitLab, false, true, "public"),
+        [Visibility::Private]
+    );
+}
+
+#[test]
+fn a_kept_listing_never_takes_the_stated_visibility_for_its_rows() {
+    let queued = Queued {
+        origin: origin(Forge::GitHub),
+        token: None,
+        project: "r".to_owned(),
+        graphql: "https://api.github.com/graphql".to_owned(),
+    };
+    let row = json!({
+        "number": 1, "title": "t", "html_url": "https://github.com/o/r/pull/1",
+        "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+        "base": { "repo": { "id": 42, "visibility": "public" } }
+    });
+    let http = ScriptedHttp::new(vec![answer(200, &json!([row]))]);
+    let asked = Asked {
+        stated: true,
+        ..Asked::default()
+    };
+    let relisted =
+        pollster::block_on(herald_kinds::Queue::listed(&queued, &http, asked, &[])).unwrap();
+    let herald_kinds::Relisted::Listed {
+        pulls, visibility, ..
+    } = relisted
+    else {
+        panic!("{relisted:?}");
+    };
+    assert_eq!(visibility, Some(Visibility::Public));
+    assert_eq!(pulls.first().unwrap().visibility, Visibility::Private);
 }
 
 #[test]
@@ -370,4 +463,35 @@ fn a_pull_request_with_a_reviewer_asked_and_no_review_given_waits_on_review() {
         ],
     );
     assert_eq!(pulls.unwrap()[0].review, Review::Requested);
+}
+
+#[test]
+fn a_kept_listing_never_takes_the_visibility_a_tokenless_listing_states() {
+    let queued = Queued {
+        origin: origin(Forge::GitHub),
+        token: None,
+        project: "r".to_owned(),
+        graphql: "https://api.github.com/graphql".to_owned(),
+    };
+    assert!(!herald_kinds::Queue::scoped(&queued));
+    let row = json!({
+        "number": 1, "title": "t", "html_url": "https://github.com/o/r/pull/1",
+        "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+        "base": { "repo": { "id": 42, "visibility": "public" } }
+    });
+    let http = ScriptedHttp::new(vec![answer(200, &json!([row]))]);
+    let asked = Asked {
+        most: herald_kinds::Most { open: 1, pulls: 0 },
+        scope: None,
+        stated: true,
+    };
+    let listed =
+        pollster::block_on(herald_kinds::Queue::listed(&queued, &http, asked, &[])).unwrap();
+    let herald_kinds::Relisted::Listed { pulls, .. } = listed else {
+        panic!("{listed:?}");
+    };
+    assert_eq!(
+        pulls.iter().map(|pull| pull.visibility).collect::<Vec<_>>(),
+        [Visibility::Private]
+    );
 }

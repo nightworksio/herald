@@ -148,5 +148,30 @@ pub(super) fn page(
     })
 }
 
+/// The path, under a repository, of pull request `number`.
+pub(super) fn one_path(number: u64) -> String {
+    format!("/pulls/{number}")
+}
+
+/// `pull` with what the pull request `body` holds, read as `what` and
+/// parsing no more than `parse` bytes, says of its head, draft,
+/// mergeability and requested reviewers, where a listing that read none
+/// of them found it (ADR-0062).
+pub(super) fn one(
+    what: &'static str,
+    body: &[u8],
+    parse: usize,
+    pull: &mut Pull,
+) -> Result<(), SourceError> {
+    let listed: Listed = herald_wire::read(what, parse, body)?;
+    let read = listed.read(("", ""), Visibility::Private);
+    pull.head = read.head;
+    pull.draft = read.draft;
+    pull.mergeable = read.mergeable;
+    pull.review = read.review;
+    pull.reviewers = read.reviewers;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests;

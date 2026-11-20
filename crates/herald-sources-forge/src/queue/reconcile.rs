@@ -4,7 +4,7 @@
 
 use herald_core::{Pull, Validators};
 use herald_kinds::{Relisted, Unpolled};
-use herald_ports::{DynHttp, Erased, Http as _, Response};
+use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
 use herald_wire::answered;
 
 use super::{PAGE, Page, ReadPath, github, gitlab, listed_more, listing};
@@ -44,22 +44,6 @@ impl Opened<'_> {
         .map_err(Unpolled::unreadable)
     }
 
-    /// The answer to the `number`th page of the listing, asked conditional
-    /// on `kept` where given.
-    async fn listing_answer(
-        &self,
-        http: &Erased<'_, dyn DynHttp + '_>,
-        number: usize,
-        kept: Option<&Validators>,
-    ) -> Result<Response, Unpolled> {
-        let request = self.origin.get(&self.listing_path(number), self.token);
-        let request = match kept {
-            Some(kept) => request.conditional(kept.etag.as_deref(), kept.last_modified.as_deref()),
-            None => request,
-        };
-        http.send(request).await.map_err(Unpolled::unreachable)
-    }
-
     /// Its open pull requests, at most `most_open`, each read as far as its
     /// listing reads it: unchanged where every page `validators` holds is,
     /// and else listed whole, a page already answered in full read once.
@@ -72,43 +56,33 @@ impl Opened<'_> {
         http: &Erased<'_, dyn DynHttp + '_>,
         validators_kept: &[Validators],
     ) -> Result<Relisted, Unpolled> {
-        let pages = self.most_open.div_ceil(PAGE);
-        let mut changed = None;
-        for (index, kept) in validators_kept.iter().take(pages).enumerate() {
-            let answer = self.listing_answer(http, index + 1, Some(kept)).await?;
-            if !Forge::unchanged(&answer) {
-                changed = Some((index + 1, answer));
-                break;
-            }
-        }
-        if changed.is_none() && !validators_kept.is_empty() {
+        let forge = self.origin.forge();
+        let listing = Paged {
+            pages: self.most_open.div_ceil(PAGE),
+            request: &|number| self.origin.get(&self.listing_path(number), self.token),
+            read: &|answer| {
+                let page = self.listing_page(answer)?;
+                let more = listed_more(forge, &page);
+                Ok((page, more))
+            },
+        };
+        let Some((pages, validators)) = listing.relisted(http, validators_kept).await? else {
             return Ok(Relisted::Unchanged);
-        }
+        };
         let mut pulls = Vec::new();
         let mut repository = None;
         let mut visibility = None;
-        let mut kept = Vec::new();
-        for number in 1..=pages {
-            let answer = match changed.take_if(|(at, _)| *at == number) {
-                Some((_, answer)) => answer,
-                None => self.listing_answer(http, number, None).await?,
-            };
-            let page = self.listing_page(&answer)?;
-            kept.push(validators(&answer));
-            let more = listed_more(self.origin.forge(), &page);
+        for page in pages {
             repository = repository.or(page.repository);
             visibility = visibility.or(page.visibility);
             pulls.extend(page.pulls);
-            if !more {
-                break;
-            }
         }
         pulls.truncate(self.most_open);
         Ok(Relisted::Listed {
             pulls,
             repository,
             visibility,
-            validators: kept,
+            validators,
         })
     }
 
@@ -152,6 +126,70 @@ impl Opened<'_> {
                 Ok(read)
             }
         }
+    }
+}
+
+/// A listing a reconcile asks a page at a time, each conditional on what
+/// it was last answered with.
+pub(super) struct Paged<'a, T> {
+    /// The most pages it reads.
+    pub(super) pages: usize,
+    /// The request for the `number`th page.
+    pub(super) request: &'a (dyn Fn(usize) -> Request + Sync),
+    /// The page an answer holds, and whether another follows it.
+    pub(super) read: &'a PageRead<'a, T>,
+}
+
+/// What reads a page of a listing a reconcile asks: the page an answer
+/// holds, and whether another follows it.
+pub(super) type PageRead<'a, T> = dyn Fn(&Response) -> Result<(T, bool), Unpolled> + Sync + 'a;
+
+impl<T> Paged<'_, T> {
+    /// Its pages, asked through `http`: none where every page `kept` holds
+    /// validators for is unchanged, and else each page with the validators
+    /// it was answered with, a page already answered in full read once.
+    ///
+    /// # Errors
+    ///
+    /// Where a page could not be asked or read.
+    pub(super) async fn relisted(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        kept: &[Validators],
+    ) -> Result<Option<(Vec<T>, Vec<Validators>)>, Unpolled> {
+        let mut changed = None;
+        for (index, validators) in kept.iter().take(self.pages).enumerate() {
+            let request = (self.request)(index + 1).conditional(
+                validators.etag.as_deref(),
+                validators.last_modified.as_deref(),
+            );
+            let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
+            if !Forge::unchanged(&answer) {
+                changed = Some((index + 1, answer));
+                break;
+            }
+        }
+        if changed.is_none() && !kept.is_empty() {
+            return Ok(None);
+        }
+        let mut pages = Vec::new();
+        let mut answered = Vec::new();
+        for number in 1..=self.pages {
+            let answer = match changed.take_if(|(at, _)| *at == number) {
+                Some((_, answer)) => answer,
+                None => http
+                    .send((self.request)(number))
+                    .await
+                    .map_err(Unpolled::unreachable)?,
+            };
+            let (page, more) = (self.read)(&answer)?;
+            answered.push(validators(&answer));
+            pages.push(page);
+            if !more {
+                break;
+            }
+        }
+        Ok(Some((pages, answered)))
     }
 }
 

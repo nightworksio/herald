@@ -2,18 +2,19 @@
 //! store keeps, reconciled with a listing when due, and each webhook
 //! delivery's change folded into them (ADR-0061).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::{Config, ViewConfig, ViewMode};
 use herald_core::{
     Folded, Folding, KeptPull, Pull, PullKey, Reconciled, RepositoryKey, SourceName, Visibility,
 };
-use herald_kinds::{Queue, Relisted};
-use herald_ports::{Clock, Http, Pulls, Signer, Store, StoreError, Version, Versioned, Written};
+use herald_kinds::{Asked, Expand, Queue, Relisted, Scope};
+use herald_ports::{Clock, Cursors, Pulls, Signer, Store, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
 use crate::announce::{Ports, Stop};
-use crate::poll::{halted, stored};
+use crate::budget::Halting;
+use crate::poll::stored;
 
 /// Why a view reading kept pull requests could not.
 pub(crate) const UNKEPT: &str = "the view reads kept pull requests, and this store keeps none; choose a store that keeps them, or set the view's `mode` to \"live\"";
@@ -56,15 +57,17 @@ pub(crate) fn folds<S: Store>((config, store): (&Config, &S), source: &SourceNam
         .any(|view| view.sources.contains(source) && reads_kept((config, keeps), view, source))
 }
 
-/// The open pull requests of `source` that `view` reads kept, the most
-/// recently active first and at most `view.most.open`: its listing
+/// The open pull requests of `source` that `view` reads kept, as `asked`,
+/// the most recently active first and at most `view.most.open`: its listing
 /// reconciled first where due, each changed pull request read in full
 /// through `queue` and `http`, at most `view.most.pulls` where `detailed`
-/// says each takes requests of its own.
-pub(crate) async fn kept_pulls<S: Store, C: Clock, G: Signer, H: Http>(
+/// says each takes requests of its own. An owner source's are those of the
+/// repositories `asked.scope` holds, each seen as its membership record
+/// says where that is stricter (ADR-0062).
+pub(crate) async fn kept_pulls<S: Store, C: Clock, G: Signer, H: Halting>(
     ports: &Ports<'_, S, C, G>,
     (source, queue, http): (&SourceName, &dyn Queue, &H),
-    (view, detailed): (&ViewConfig, bool),
+    (view, asked, detailed): (&ViewConfig, Asked<'_>, bool),
 ) -> Result<Vec<Pull>, Stop> {
     let pulls = ports
         .store
@@ -72,35 +75,56 @@ pub(crate) async fn kept_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         .ok_or_else(|| Stop::Store(UNKEPT.to_owned()))?;
     let now = ports.clock.now();
     let mark = pulls.reconciled(source).await.map_err(stored)?;
-    let repository = if Reconciled::due(mark.as_ref().map(|mark| &mark.value), view.reconcile, now)
-    {
-        ports.budget.allows(now, 1)?;
+    let held = if Reconciled::due(mark.as_ref().map(|mark| &mark.value), view.reconcile, now) {
         let reconciling = Reconciling {
             pulls,
             queue,
             http,
-            view,
+            asked,
             detailed,
             now,
         };
         reconciling.reconciled(source, mark).await?
     } else {
-        mark.and_then(|mark| mark.value.repository)
+        mark.map(|mark| mark.value).unwrap_or_default()
     };
-    let Some(repository) = repository else {
-        return Ok(Vec::new());
-    };
-    let mut open: Vec<Pull> = pulls
-        .pulls_of(&repository)
-        .await
-        .map_err(stored)?
-        .into_iter()
-        .filter(|kept| kept.value.open())
-        .map(|kept| kept.value.pull)
-        .collect();
+    let mut open = Vec::new();
+    for (repository, seen) in held_repositories(&held, asked.scope) {
+        let kept = pulls.pulls_of(&repository).await.map_err(stored)?;
+        open.extend(
+            kept.into_iter()
+                .filter(|kept| kept.value.open())
+                .map(|kept| narrowed(kept.value, seen).pull),
+        );
+    }
     open.sort_by_key(|pull| std::cmp::Reverse(pull.updated));
     open.truncate(view.most.open);
     Ok(open)
+}
+
+/// The repositories `held` names that a view reads, each with who its
+/// membership record says may see it where it is an owner's member: its
+/// one repository, or each of the owner's that `scope` still holds.
+fn held_repositories(
+    held: &Reconciled,
+    scope: Option<Scope<'_>>,
+) -> Vec<(RepositoryKey, Option<Visibility>)> {
+    match scope {
+        None => held
+            .repository
+            .clone()
+            .map(|key| (key, None))
+            .into_iter()
+            .collect(),
+        Some(scope) => held
+            .repositories
+            .iter()
+            .filter_map(|key| {
+                let member = scope.members.iter().find(|member| member.id == key.id)?;
+                Some((key.clone(), Some(member.visibility)))
+            })
+            .collect(),
+    }
 }
 
 /// One source's reconcile.
@@ -108,77 +132,243 @@ struct Reconciling<'a, P, H> {
     pulls: &'a P,
     queue: &'a dyn Queue,
     http: &'a H,
-    view: &'a ViewConfig,
+    asked: Asked<'a>,
     detailed: bool,
     now: Timestamp,
 }
 
-impl<P: Pulls, H: Http> Reconciling<'_, P, H> {
-    /// The repository of `source` once its listing, conditional on `mark`,
-    /// is folded into its records: each listed one it keeps none of or
-    /// whose record is stale read in full, each kept one still running its
-    /// checks read again where nothing changed, and each kept open one no
-    /// longer listed closed; where it stands then is kept.
+impl<P: Pulls, H: Halting> Reconciling<'_, P, H> {
+    /// Where the reconcile of `source` stands once its listing, conditional
+    /// on `mark`, is folded into its records: each listed one it keeps none
+    /// of or whose record is stale read in full, each kept one still
+    /// running its checks read again where nothing changed, and each kept
+    /// open one no longer listed closed where the listing was whole; an
+    /// owner's repository its scope no longer holds has each of its records
+    /// closed and is forgotten.
     async fn reconciled(
         &self,
         source: &SourceName,
         mark: Option<Versioned<Reconciled>>,
-    ) -> Result<Option<RepositoryKey>, Stop> {
-        let kept_validators = mark
+    ) -> Result<Reconciled, Stop> {
+        let before = mark
             .as_ref()
-            .map(|mark| mark.value.validators.clone())
+            .map(|mark| mark.value.clone())
             .unwrap_or_default();
-        let known = mark.as_ref().and_then(|mark| mark.value.repository.clone());
         let relisted = self
             .queue
-            .listed(self.http, self.view.most, &kept_validators)
+            .listed(self.http, self.asked, &before.validators)
             .await
-            .map_err(halted)?;
-        let (repository, validators) = match relisted {
-            Relisted::Unchanged => {
-                if let Some(repository) = &known {
-                    self.settled(repository, None, None).await?;
+            .map_err(|unpolled| self.http.halted(unpolled))?;
+        let written = match (relisted, self.asked.scope) {
+            (Relisted::Unchanged, scope) => {
+                let settling = held_repositories(&before, scope)
+                    .into_iter()
+                    .map(|(repository, seen)| (repository, None, seen))
+                    .collect();
+                self.settled(settling).await?;
+                Reconciled {
+                    at: Some(self.now),
+                    ..before
                 }
-                (known, kept_validators)
             }
-            Relisted::Listed {
-                pulls,
-                repository,
-                visibility,
-                validators,
-            } => {
+            (
+                Relisted::Listed {
+                    pulls,
+                    repository,
+                    visibility,
+                    validators,
+                },
+                None,
+            ) => {
+                let whole = pulls.len() < self.asked.most.open;
                 let listed = repository
                     .zip(pulls.first())
                     .and_then(|(id, pull)| RepositoryKey::of(&pull.url, &id))
-                    .or(known);
+                    .or(before.repository);
                 if let Some(repository) = &listed {
-                    self.settled(repository, Some(pulls), visibility).await?;
+                    self.settled(vec![(repository.clone(), Some((pulls, whole)), visibility)])
+                        .await?;
                 }
-                (listed, validators)
+                Reconciled {
+                    repository: listed,
+                    repositories: before.repositories,
+                    at: Some(self.now),
+                    validators,
+                }
             }
-        };
-        let written = Reconciled {
-            repository: repository.clone(),
-            at: Some(self.now),
-            validators,
+            (
+                Relisted::Listed {
+                    pulls, validators, ..
+                },
+                Some(scope),
+            ) => {
+                let held = self.scoped(&before, scope, pulls).await?;
+                Reconciled {
+                    repository: before.repository,
+                    repositories: held,
+                    at: Some(self.now),
+                    validators,
+                }
+            }
         };
         self.pulls
             .put_reconciled(source, &written, mark.map(|mark| mark.version))
             .await
             .map_err(stored)?;
-        Ok(repository)
+        Ok(written)
     }
 
-    /// The records of `repository` brought to `listed`, its open pull
-    /// requests as a listing reads them, or to what they say where nothing
-    /// changed; each record, read or not, narrowed to `seen`, who the
-    /// listing says may see the repository, where it says.
-    async fn settled(
+    /// The repositories of `scope` once `listed`, the open pull requests a
+    /// listing over them read, is folded into their records, each seen as
+    /// its membership record says where that is stricter; those `before`
+    /// kept that the scope no longer holds have their records closed.
+    async fn scoped(
+        &self,
+        before: &Reconciled,
+        scope: Scope<'_>,
+        listed: Vec<Pull>,
+    ) -> Result<BTreeSet<RepositoryKey>, Stop> {
+        let whole = listed.len() < self.asked.most.open;
+        let mut grouped: BTreeMap<RepositoryKey, (Vec<Pull>, Option<Visibility>)> = BTreeMap::new();
+        let mut left = Vec::new();
+        for key in &before.repositories {
+            match scope.members.iter().find(|member| member.id == key.id) {
+                Some(member) => {
+                    grouped.insert(key.clone(), (Vec::new(), Some(member.visibility)));
+                }
+                None => left.push(key.clone()),
+            }
+        }
+        let keyed = listed.into_iter().filter_map(|pull| {
+            let member = scope
+                .members
+                .iter()
+                .find(|member| member.path.eq_ignore_ascii_case(&pull.repository))?;
+            let key = RepositoryKey::of(&pull.url, &member.id)?;
+            Some((key, member.visibility, pull))
+        });
+        for (key, seen, pull) in keyed {
+            grouped
+                .entry(key)
+                .or_insert_with(|| (Vec::new(), Some(seen)))
+                .0
+                .push(pull);
+        }
+        let held = grouped.keys().cloned().collect();
+        let settling = grouped
+            .into_iter()
+            .map(|(key, (pulls, seen))| (key, Some((pulls, whole)), seen))
+            .chain(
+                left.into_iter()
+                    .map(|key| (key, Some((Vec::new(), true)), None)),
+            )
+            .collect();
+        self.settled(settling).await?;
+        Ok(held)
+    }
+
+    /// The records of each repository of `settling` brought to what was
+    /// listed of it, its open pull requests as a listing reads them and
+    /// whether that listing was whole, or to what they say where nothing
+    /// changed; each record, read or not, narrowed to who the listing or a
+    /// membership record says may see the repository, where one says. A
+    /// kept open one a whole listing no longer lists is closed. Those that
+    /// changed are read in full together, at most `most.pulls` where each
+    /// takes requests of its own.
+    async fn settled(&self, settling: Vec<Settling>) -> Result<(), Stop> {
+        let mut planned = Vec::with_capacity(settling.len());
+        let mut stale = Vec::new();
+        let mut owners: Vec<((String, u64), usize)> = Vec::new();
+        for (place, (repository, listed, seen)) in settling.into_iter().enumerate() {
+            let (kept, changed, vanished) = self.planned(&repository, listed).await?;
+            owners.extend(
+                changed
+                    .iter()
+                    .map(|pull| ((pull.repository.clone(), pull.number), place)),
+            );
+            stale.extend(changed);
+            planned.push((repository, kept, vanished, seen));
+        }
+        let most = if self.detailed {
+            self.asked.most.pulls
+        } else {
+            stale.len()
+        };
+        let mut read = stale;
+        let unread = read.split_off(most.min(read.len()));
+        let read = self
+            .queue
+            .completed(self.http, self.asked, read)
+            .await
+            .map_err(|unpolled| self.http.halted(unpolled))?;
+        let mut placed: BTreeMap<(String, u64), Vec<(Pull, bool)>> = BTreeMap::new();
+        for (pull, read) in read
+            .into_iter()
+            .map(|pull| (pull, true))
+            .chain(unread.into_iter().map(|pull| (pull, false)))
+        {
+            placed
+                .entry((pull.repository.clone(), pull.number))
+                .or_default()
+                .push((pull, read));
+        }
+        for (place, (repository, mut kept, vanished, seen)) in planned.into_iter().enumerate() {
+            let mine: Vec<(Pull, bool)> = owners
+                .iter()
+                .filter(|(_, owner)| *owner == place)
+                .filter_map(|(at, _)| placed.remove(at))
+                .flatten()
+                .collect();
+            for (pull, read) in mine {
+                if !read && kept.contains_key(&pull.number) {
+                    continue;
+                }
+                let before = kept.remove(&pull.number);
+                let pull = if read {
+                    pull
+                } else {
+                    Pull {
+                        unread: true,
+                        ..pull
+                    }
+                };
+                let version = before.as_ref().map(|before| before.version);
+                let key = PullKey {
+                    repository: repository.clone(),
+                    number: pull.number,
+                };
+                let record = KeptPull::read(
+                    before.as_ref().map(|before| &before.value),
+                    key,
+                    pull,
+                    self.now,
+                );
+                self.write(&narrowed(record, seen), version).await?;
+            }
+            for before in vanished {
+                let record = before.value.vanished(self.now);
+                self.write(&narrowed(record, seen), Some(before.version))
+                    .await?;
+            }
+            for before in kept.into_values() {
+                let record = narrowed(before.value.clone(), seen);
+                if record != before.value {
+                    self.write(&record, Some(before.version)).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The records of `repository`, the pull requests `listed` names whose
+    /// records are stale or that it keeps none of, or those still running
+    /// their checks where nothing was listed, and the numbers of those kept
+    /// open that a whole listing no longer lists.
+    async fn planned(
         &self,
         repository: &RepositoryKey,
-        listed: Option<Vec<Pull>>,
-        seen: Option<Visibility>,
-    ) -> Result<(), Stop> {
+        listed: Option<(Vec<Pull>, bool)>,
+    ) -> Result<Planned, Stop> {
         let mut kept: BTreeMap<u64, Versioned<KeptPull>> = self
             .pulls
             .pulls_of(repository)
@@ -187,27 +377,7 @@ impl<P: Pulls, H: Http> Reconciling<'_, P, H> {
             .into_iter()
             .map(|kept| (kept.value.key.number, kept))
             .collect();
-        let (stale, vanished): (Vec<Pull>, Vec<Versioned<KeptPull>>) = if let Some(listed) = listed
-        {
-            let numbers: Vec<u64> = listed.iter().map(|pull| pull.number).collect();
-            let gone: Vec<u64> = kept
-                .iter()
-                .filter(|(number, kept)| kept.value.open() && !numbers.contains(number))
-                .map(|(number, _)| *number)
-                .collect();
-            let vanished = gone
-                .iter()
-                .filter_map(|number| kept.remove(number))
-                .collect();
-            let stale = listed
-                .into_iter()
-                .filter(|pull| {
-                    kept.get(&pull.number)
-                        .is_none_or(|kept| kept.value.stale(pull))
-                })
-                .collect();
-            (stale, vanished)
-        } else {
+        let Some((listed, whole)) = listed else {
             let running = kept
                 .values()
                 .filter(|kept| {
@@ -215,55 +385,26 @@ impl<P: Pulls, H: Http> Reconciling<'_, P, H> {
                 })
                 .map(|kept| kept.value.pull.clone())
                 .collect();
-            (running, Vec::new())
+            return Ok((kept, running, Vec::new()));
         };
-        let most = if self.detailed {
-            self.view.most.pulls
-        } else {
-            stale.len()
-        };
-        let mut read = stale;
-        let unread = read.split_off(most.min(read.len()));
-        let read = self
-            .queue
-            .completed(self.http, read)
-            .await
-            .map_err(halted)?;
-        let unread = unread
+        let numbers: Vec<u64> = listed.iter().map(|pull| pull.number).collect();
+        let gone: Vec<u64> = kept
+            .iter()
+            .filter(|(number, kept)| whole && kept.value.open() && !numbers.contains(number))
+            .map(|(number, _)| *number)
+            .collect();
+        let vanished = gone
+            .iter()
+            .filter_map(|number| kept.remove(number))
+            .collect();
+        let stale = listed
             .into_iter()
-            .filter(|pull| !kept.contains_key(&pull.number))
-            .map(|pull| Pull {
-                unread: true,
-                ..pull
+            .filter(|pull| {
+                kept.get(&pull.number)
+                    .is_none_or(|kept| kept.value.stale(pull))
             })
-            .collect::<Vec<Pull>>();
-        for pull in read.into_iter().chain(unread) {
-            let key = PullKey {
-                repository: repository.clone(),
-                number: pull.number,
-            };
-            let before = kept.remove(&pull.number);
-            let version = before.as_ref().map(|before| before.version);
-            let record = KeptPull::read(
-                before.as_ref().map(|before| &before.value),
-                key,
-                pull,
-                self.now,
-            );
-            self.write(&narrowed(record, seen), version).await?;
-        }
-        for before in vanished {
-            let record = before.value.vanished(self.now);
-            self.write(&narrowed(record, seen), Some(before.version))
-                .await?;
-        }
-        for before in kept.into_values() {
-            let record = narrowed(before.value.clone(), seen);
-            if record != before.value {
-                self.write(&record, Some(before.version)).await?;
-            }
-        }
-        Ok(())
+            .collect();
+        Ok((kept, stale, vanished))
     }
 
     /// `record` written over `version`; a write another run or delivery
@@ -273,6 +414,19 @@ impl<P: Pulls, H: Http> Reconciling<'_, P, H> {
         Ok(())
     }
 }
+
+/// A repository whose records a reconcile settles: what its listing found
+/// of it and whether that listing was whole, where it found anything, and
+/// who may see it, where the listing or a membership record says.
+type Settling = (RepositoryKey, Option<(Vec<Pull>, bool)>, Option<Visibility>);
+
+/// A repository's records as a reconcile found them, the pull requests of
+/// it to read in full, and the records to close, taken out of the rest.
+type Planned = (
+    BTreeMap<u64, Versioned<KeptPull>>,
+    Vec<Pull>,
+    Vec<Versioned<KeptPull>>,
+);
 
 /// `record`, seen by `seen` where that is stricter: what a listing says
 /// of who may see a repository narrows each of its records, and never
@@ -287,7 +441,10 @@ fn narrowed(record: KeptPull, seen: Option<Visibility>) -> KeptPull {
 /// `folding`, a webhook delivery's change of the pull requests of one of
 /// `source`'s repositories, folded into the records `store` keeps, and the
 /// repository kept as the source's where it names none yet: how many
-/// records it wrote. A store keeping no pull requests folds nothing.
+/// records it wrote. An owner source, which `owned` names its members'
+/// projects for, folds only a delivery of a member its last membership
+/// record holds and that has not left, each pull request named as the
+/// member's (ADR-0062). A store keeping no pull requests folds nothing.
 ///
 /// # Errors
 ///
@@ -295,35 +452,54 @@ fn narrowed(record: KeptPull, seen: Option<Visibility>) -> KeptPull {
 /// record first each time it was folded.
 pub(crate) async fn fold<S: Store>(
     store: &S,
-    source: &SourceName,
+    (source, owned): (&SourceName, Option<&dyn Expand>),
     folding: &Folding,
 ) -> Result<usize, StoreError> {
     let Some(pulls) = store.pulls() else {
         return Ok(0);
     };
     let repository = &folding.repository;
-    let mark = pulls.reconciled(source).await?;
-    if mark
-        .as_ref()
-        .is_none_or(|mark| mark.value.repository.is_none())
-    {
-        let named = Reconciled {
-            repository: Some(repository.clone()),
-            ..mark.as_ref().map_or(
-                Reconciled {
-                    repository: None,
-                    at: None,
-                    validators: Vec::new(),
-                },
-                |mark| mark.value.clone(),
-            )
+    let mut folded = folding.folded.clone();
+    if let Some(owned) = owned {
+        let Some(member) = store.cursors().member(source, &repository.id).await? else {
+            return Ok(0);
         };
+        if member.value.left.is_some() {
+            return Ok(0);
+        }
+        let project = owned
+            .project(&member.value.repository)
+            .unwrap_or(member.value.repository.name.clone());
+        for said in &mut folded {
+            if let Folded::Pull(described) = said {
+                described.project.clone_from(&project);
+            }
+        }
+    }
+    let mark = pulls.reconciled(source).await?;
+    let before = mark
+        .as_ref()
+        .map(|mark| mark.value.clone())
+        .unwrap_or_default();
+    let named = if owned.is_some() {
+        let mut held = before.repositories.clone();
+        held.insert(repository.clone()).then_some(Reconciled {
+            repositories: held,
+            ..before
+        })
+    } else {
+        before.repository.is_none().then(|| Reconciled {
+            repository: Some(repository.clone()),
+            ..before
+        })
+    };
+    if let Some(named) = named {
         pulls
             .put_reconciled(source, &named, mark.map(|mark| mark.version))
             .await?;
     }
     let mut written = 0;
-    for folded in &folding.folded {
+    for folded in &folded {
         if let Some(number) = folded.number() {
             let key = PullKey {
                 repository: repository.clone(),

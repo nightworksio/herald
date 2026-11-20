@@ -70,6 +70,8 @@ mod reports;
 #[cfg(test)]
 mod revise;
 #[cfg(test)]
+mod scoped;
+#[cfg(test)]
 mod serving;
 #[cfg(test)]
 mod sessions;

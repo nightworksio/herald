@@ -85,6 +85,7 @@ fn a_delivery_names_the_repository_a_listing_did_not_and_keeps_its_validators() 
             repository: None,
             at: None,
             validators: validators.clone(),
+            ..herald_core::Reconciled::default()
         },
         None,
     ))
@@ -145,6 +146,7 @@ fn a_change_that_cannot_be_kept_releases_its_delivery_and_says_why() {
     pollster::block_on(world.store.put_reconciled(
         &SourceName::new("gate"),
         &herald_core::Reconciled {
+            repositories: std::collections::BTreeSet::new(),
             repository: Some(repository()),
             at: None,
             validators: Vec::new(),
@@ -226,4 +228,85 @@ fn a_repository_made_private_hides_every_pull_request_of_it_and_one_made_public_
     };
     assert_eq!(world.work(job), Did::Folded(Ok(0)));
     assert_eq!(seen(), herald_core::Visibility::Private);
+}
+
+/// A world whose source `gate` names the owner `cli`, holding the member
+/// `cli/cli` where `held` says, and since then left where `left` says.
+fn owned(held: bool, left: bool) -> World {
+    let text = config_text().replace(
+        "[sources.gate]\nkind = \"github\"\nrepository = \"cli/cli\"\n",
+        "[sources.gate]\nkind = \"github\"\nowner = \"cli\"\n",
+    );
+    let config = load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
+    let world = World::with(config, Script::default());
+    if held {
+        let membership = herald_core::Membership {
+            repository: herald_core::Listed {
+                id: "1".to_owned(),
+                name: "cli".to_owned(),
+                path: "cli/cli".to_owned(),
+                topics: Vec::new(),
+                properties: std::collections::BTreeMap::new(),
+                visibility: herald_core::Visibility::Public,
+                archived: false,
+                fork: false,
+                template: false,
+                language: None,
+                linked: None,
+            },
+            discovered: at(),
+            left: left.then(at),
+            cursor: None,
+            collides: None,
+            hooked: false,
+        };
+        pollster::block_on(herald_ports::Cursors::put_member(
+            &world.store,
+            &SourceName::new("gate"),
+            &membership,
+            None,
+        ))
+        .unwrap();
+    }
+    world
+}
+
+/// What working the fold the delivery `body` leaves did in `world`.
+fn folded_in(world: &World, body: &str) -> Did {
+    let answered = delivered(world, "pull_request", body);
+    let said = said(&answered);
+    let job = match answered.job {
+        Some(job @ Job::Fold { .. }) => job,
+        Some(Job::Fanned { mut jobs, .. }) => jobs.pop().unwrap(),
+        other => panic!("the change is left to fold: {other:?}, {said:?}"),
+    };
+    world.work(job)
+}
+
+#[test]
+fn an_owner_folds_a_delivery_only_of_a_member_its_membership_record_holds() {
+    assert_eq!(folded_in(&owned(false, false), OPENED), Did::Folded(Ok(0)));
+    assert_eq!(folded_in(&owned(true, true), OPENED), Did::Folded(Ok(0)));
+    let world = owned(true, false);
+    assert_eq!(folded_in(&world, OPENED), Did::Folded(Ok(1)));
+    let key = PullKey {
+        repository: repository(),
+        number: 7,
+    };
+    let kept = pollster::block_on(world.store.pull(&key)).unwrap().unwrap();
+    assert_eq!(kept.value.pull.project, "cli");
+    assert_eq!(kept.value.pull.visibility, herald_core::Visibility::Private);
+    let mark = pollster::block_on(world.store.reconciled(&SourceName::new("gate")))
+        .unwrap()
+        .unwrap();
+    assert_eq!(mark.value.repository, None);
+    assert!(mark.value.repositories.contains(&repository()));
+    let again = OPENED.replace("\"action\":\"opened\"", "\"action\":\"edited\"");
+    assert_eq!(folded_in(&world, &again), Did::Folded(Ok(0)));
 }

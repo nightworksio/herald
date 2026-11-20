@@ -9,12 +9,14 @@ use herald_core::{
     Board, Cursor, Identity, Pull, RouteId, Row, Showing, SourceName, Visibility, grouped,
     report_event,
 };
+use herald_kinds::{Asked, Scope};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
 use jiff::Timestamp;
 
 use crate::announce::{Outcome, Ports, Stop, Within, announce_within};
+use crate::budget::Budgeted;
 use crate::deciding::decided_rows;
-use crate::poll::{Fresh, Remembered, Sweep, Swept, halted, remembered, stored};
+use crate::poll::{Fresh, Remembered, Sweep, Swept, remembered, stored};
 use crate::prepare::Connected;
 
 /// Why a report's view could not be read: a source it names is not one
@@ -55,17 +57,34 @@ async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
             .find(|(source, _)| source.name == *name)
             .and_then(|(source, http)| source.queue.as_ref().map(|queue| (queue, http)))
             .ok_or_else(|| Stop::Source(UNREAD_SOURCE.to_owned()))?;
+        let members = if queue.scoped() {
+            Some(crate::scope::members(ports.store, name).await?)
+        } else {
+            None
+        };
+        let asked = Asked {
+            most: view.most,
+            scope: members.as_ref().map(|(owner, members)| Scope {
+                owner: *owner,
+                members,
+            }),
+            stated: view.stated,
+        };
         let keeps = ports.store.pulls().is_some();
+        let http = &Budgeted::new(http, ports.budget, ports.clock);
         let read = if crate::kept::reads_kept((config, keeps), view, name) {
             let detailed = config
                 .sources
                 .get(name)
                 .and_then(|source| source.queue_cost(view.most))
                 .is_some_and(|cost| cost.detailed);
-            crate::kept::kept_pulls(ports, (name, queue.as_ref(), http), (view, detailed)).await?
+            crate::kept::kept_pulls(ports, (name, queue.as_ref(), http), (view, asked, detailed))
+                .await?
         } else {
-            ports.budget.allows(ports.clock.now(), 1)?;
-            queue.opened(http, view.most).await.map_err(halted)?
+            queue
+                .opened(http, asked)
+                .await
+                .map_err(|unpolled| http.halted(unpolled))?
         };
         pulls.extend(read);
     }

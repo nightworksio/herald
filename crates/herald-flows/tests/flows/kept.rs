@@ -7,6 +7,7 @@ use herald_core::{Board, Checks, PullKey, Reconciled, RepositoryKey, SourceName,
 use herald_flows::{Connected, Ports, Stop, prepare};
 use herald_ports::{Pulls, Response};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use crate::harness::{Failing, Fault, NOON, Script, healthy};
@@ -94,12 +95,22 @@ fn answer(line: &str, status: u16, etag: Option<&str>, body: &Value) -> (String,
 }
 
 fn queued(config: &Config, store: &Failing, script: &Script) -> Result<Board, Stop> {
+    queued_at(config, store, script, NOON)
+}
+
+/// The board of the view `queue` read at `at`.
+fn queued_at(
+    config: &Config,
+    store: &Failing,
+    script: &Script,
+    at: Timestamp,
+) -> Result<Board, Stop> {
     let secrets = FakeSecrets::default()
         .with("HERALD_GITHUB_TOKEN", "ghp_x")
         .with("HERALD_WEBHOOK", "hook-secret");
     let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected: Connected<Script> = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let clock = FakeClock::at(NOON);
+    let clock = FakeClock::at(at);
     let ports = Ports {
         store,
         clock: &clock,
@@ -221,6 +232,7 @@ fn a_reconcile_not_yet_due_reads_the_records_alone_and_one_never_listed_reads_no
     pollster::block_on(store.put_reconciled(
         &SourceName::new("repo"),
         &Reconciled {
+            repositories: std::collections::BTreeSet::new(),
             repository: None,
             at: Some(NOON),
             validators: Vec::new(),
@@ -467,8 +479,142 @@ fn a_tokenless_rest_listing_s_rows_read_private_live_and_kept_whatever_it_names(
             ),
         ])
     };
+    let stated = |mode: &str| {
+        let view = format!("mode = \"{mode}\"\nlisted_visibility = true");
+        visibilities(&queued(&config(&view, false), &healthy(), &script()).unwrap())
+    };
+    assert_eq!(stated("live"), [Visibility::Public]);
+    assert_eq!(stated("kept"), [Visibility::Private]);
     for view in ["mode = \"live\"", "mode = \"kept\""] {
         let board = queued(&config(view, false), &healthy(), &script()).unwrap();
         assert_eq!(visibilities(&board), [Visibility::Private], "{view}");
     }
+}
+
+#[test]
+fn a_listing_holding_as_many_as_the_view_lists_closes_nothing_it_did_not_name() {
+    let config = config("most_open = 2", true);
+    let store = healthy();
+    let first = Script::answered(vec![
+        answer(
+            LISTING,
+            200,
+            Some("\"a\""),
+            &listed(&[
+                (1, "h1", "2026-10-30T11:00:00Z"),
+                (2, "h2", "2026-10-30T11:00:00Z"),
+            ]),
+        ),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[
+                node(1, "h1", "2026-10-30T11:00:00Z", "SUCCESS"),
+                node(2, "h2", "2026-10-30T11:00:00Z", "SUCCESS"),
+            ]),
+        ),
+    ]);
+    queued(&config, &store, &first).unwrap();
+    let full = Script::answered(vec![
+        answer(
+            LISTING,
+            200,
+            Some("\"b\""),
+            &listed(&[
+                (3, "h3", "2026-10-30T12:00:00Z"),
+                (1, "h1", "2026-10-30T11:00:00Z"),
+            ]),
+        ),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[node(3, "h3", "2026-10-30T12:00:00Z", "SUCCESS")]),
+        ),
+    ]);
+    queued(&config, &store, &full).unwrap();
+    let key = PullKey {
+        repository: repository(),
+        number: 2,
+    };
+    let unnamed = pollster::block_on(store.pull(&key)).unwrap().unwrap();
+    assert!(unnamed.value.open());
+}
+
+#[test]
+fn an_unchanged_listing_moves_the_mark_to_when_it_was_asked() {
+    let config = config("", true);
+    let store = healthy();
+    let first = Script::answered(vec![
+        answer(
+            LISTING,
+            200,
+            Some("\"a\""),
+            &listed(&[(1, "h1", "2026-10-30T11:00:00Z")]),
+        ),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[node(1, "h1", "2026-10-30T11:00:00Z", "SUCCESS")]),
+        ),
+    ]);
+    queued(&config, &store, &first).unwrap();
+    let later = NOON
+        .checked_add(jiff::SignedDuration::from_hours(2))
+        .unwrap();
+    let quiet = Script::answered(vec![answer(LISTING, 304, None, &Value::Null)]);
+    queued_at(&config, &store, &quiet, later).unwrap();
+    assert_eq!(quiet.seen().len(), 1);
+    assert_eq!(mark(&store).at, Some(later));
+}
+
+#[test]
+fn a_changed_pull_request_past_the_most_read_in_full_keeps_its_record_as_it_was() {
+    let config = config("most_pulls = 1", false);
+    let store = healthy();
+    let detail = |number: u64, head: &str| {
+        [
+            answer(
+                &format!("/repos/o/r/pulls/{number}/reviews?per_page=100"),
+                200,
+                None,
+                &json!([]),
+            ),
+            answer(
+                &format!("/repos/o/r/commits/{head}/check-runs?per_page=100"),
+                200,
+                None,
+                &json!({ "check_runs": [] }),
+            ),
+        ]
+    };
+    let mut first = vec![answer(
+        LISTING,
+        200,
+        Some("\"a\""),
+        &listed(&[(1, "h1", "2026-10-30T11:00:00Z")]),
+    )];
+    first.extend(detail(1, "h1"));
+    queued(&config, &store, &Script::answered(first)).unwrap();
+    let mut second = vec![answer(
+        LISTING,
+        200,
+        Some("\"b\""),
+        &listed(&[
+            (2, "h2", "2026-10-30T13:00:00Z"),
+            (1, "h9", "2026-10-30T12:00:00Z"),
+        ]),
+    )];
+    second.extend(detail(2, "h2"));
+    let script = Script::answered(second);
+    queued(&config, &store, &script).unwrap();
+    assert_eq!(script.seen().len(), 3);
+    let key = PullKey {
+        repository: repository(),
+        number: 1,
+    };
+    let kept = pollster::block_on(store.pull(&key)).unwrap().unwrap();
+    assert_eq!(kept.value.pull.head.as_deref(), Some("h1"));
 }

@@ -39,6 +39,7 @@ mod report;
 mod room;
 pub mod round;
 mod rules;
+mod scope;
 mod serving;
 mod sessions;
 mod trial;

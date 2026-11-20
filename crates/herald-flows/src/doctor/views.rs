@@ -18,6 +18,25 @@ const TZDB_SIZE: &str =
 /// with no token.
 const UNMERGEABLE: &str = "GitHub's REST API reads no mergeability, so none of its bots' batches counts green; give the source a token to read by GraphQL";
 
+/// What doctor says of a view reading an owner's repositories by one query
+/// over them (ADR-0062).
+const SCOPED: &str = "it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each";
+
+/// What doctor says of a view taking who may see a repository from what a
+/// REST listing read without a token states (ADR-0062).
+const STATED: &str = "takes who may see each repository a REST listing reads without a token, on GitHub, GitHub Enterprise Server, GHE.com or Forgejo, from what the listing states, as listed_visibility = true asks; a read with a token, a GitLab listing, a kept record and an owner's rows are seen as before";
+
+/// Each note on each view that sets `listed_visibility`.
+pub(super) fn stated(config: &Config, notes: &mut Vec<String>) {
+    notes.extend(
+        config
+            .views
+            .iter()
+            .filter(|(_, view)| view.stated)
+            .map(|(name, _)| format!("The view {name} {STATED}.")),
+    );
+}
+
 /// Each note on the reports and rules of `config`.
 pub(super) fn reported(config: &Config, notes: &mut Vec<String>) {
     let reports = config
@@ -123,6 +142,10 @@ fn watched(
         if !cost.mergeability {
             note.push_str("; ");
             note.push_str(UNMERGEABLE);
+        }
+        if cost.scoped {
+            note.push_str("; ");
+            note.push_str(SCOPED);
         }
         note.push('.');
         notes.push(note);

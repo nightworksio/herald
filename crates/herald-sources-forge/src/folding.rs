@@ -83,31 +83,55 @@ impl Said {
 /// what it says of its pull requests.
 pub(crate) type Read = (String, RepositoryKey, Vec<Folded>);
 
+/// What a source whose deliveries are folded is of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Of<'a> {
+    /// One repository, by its full path.
+    Repository(&'a str),
+    /// An owner's repositories, a GitLab group's including its subgroups'
+    /// where it says so (ADR-0062).
+    Owner(&'a str, bool),
+}
+
 /// What the delivery `payload` of the event named `name` on `forge` says
-/// of the pull requests of `repository`, shown as `project`: nothing where
-/// kept mode folds no such event, or the delivery says nothing.
+/// of the pull requests of a repository `of` holds, shown as its name:
+/// nothing where kept mode folds no such event, or the delivery says
+/// nothing.
 ///
 /// # Errors
 ///
-/// When the payload is not the event it is named, or is of another
-/// repository than `repository`.
+/// When the payload is not the event it is named, or is of a repository
+/// `of` does not hold.
 pub(crate) fn folded(
     forge: Forge,
     (name, payload): (&str, &[u8]),
-    (project, repository): (&str, &str),
+    of: Of<'_>,
 ) -> Result<Option<Folding>, SourceError> {
     let Some(delivery) = Delivery::named(forge, name) else {
         return Ok(None);
     };
     let what = FOLDED.on(forge);
-    let (path, key, folded) = match forge {
-        Forge::GitLab => gitlab::folded(what, delivery, payload, project)?,
-        Forge::GitHub | Forge::Forgejo => github::folded(what, delivery, payload, project)?,
+    let (path, key, mut folded) = match forge {
+        Forge::GitLab => gitlab::folded(what, delivery, payload, "")?,
+        Forge::GitHub | Forge::Forgejo => github::folded(what, delivery, payload, "")?,
     };
-    if !path.eq_ignore_ascii_case(repository) {
+    for said in &mut folded {
+        if let Folded::Pull(described) = said {
+            crate::kind::named(&path).clone_into(&mut described.project);
+        }
+    }
+    let (held, holder) = match of {
+        Of::Repository(repository) => (path.eq_ignore_ascii_case(repository), repository),
+        Of::Owner(owner, subgroups) => (
+            path.rsplit_once('/')
+                .is_some_and(|(holder, _)| forge.holds((owner, subgroups), holder)),
+            owner,
+        ),
+    };
+    if !held {
         return Err(SourceError::Unreadable {
             what,
-            reason: format!("it is not of {repository}, the repository its source names"),
+            reason: format!("it is not of a repository {holder}, what its source names, holds"),
         });
     }
     Ok((!folded.is_empty()).then_some(Folding {

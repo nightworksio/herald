@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use herald_ports::{Http, HttpError, Request, Response};
 use jiff::SignedDuration;
 use serde_json::json;
 

@@ -417,9 +417,16 @@ async fn done<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
         Job::Fold {
             source, folding, ..
         } => Did::Folded(
-            crate::kept::fold(store, &source, &folding)
-                .await
-                .map_err(|error| error.to_string()),
+            crate::kept::fold(
+                store,
+                (
+                    &source,
+                    expanded(serving.connected, &source).map(|expand| &**expand),
+                ),
+                &folding,
+            )
+            .await
+            .map_err(|error| error.to_string()),
         ),
         Job::Fanned { jobs, .. } => {
             let mut each = Vec::new();

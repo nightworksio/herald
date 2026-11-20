@@ -1,5 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
+use herald_kinds::Unpolled;
+use herald_ports::{Clock, Http, HttpError, Request, Response};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::announce::Stop;
@@ -68,6 +71,62 @@ impl Budget<'_> {
             }
         }
         Ok(())
+    }
+}
+
+/// An `Http` that starts each send only where a run's budget allows one
+/// more: the one home every read of a forge a run makes goes through,
+/// however many requests it takes (ADR-0062).
+pub(crate) struct Budgeted<'a, H, C> {
+    http: &'a H,
+    budget: Budget<'a>,
+    clock: &'a C,
+    refused: Mutex<Option<Stop>>,
+}
+
+impl<'a, H: Http, C: Clock> Budgeted<'a, H, C> {
+    /// `http`, each send starting only where `budget` allows one at the
+    /// time `clock` tells.
+    pub(crate) const fn new(http: &'a H, budget: Budget<'a>, clock: &'a C) -> Self {
+        Self {
+            http,
+            budget,
+            clock,
+            refused: Mutex::new(None),
+        }
+    }
+
+    /// The stop a read that failed as `unpolled` ends with: the budget's,
+    /// where it refused a send, and else what the forge's answer says.
+    pub(crate) fn halted(&self, unpolled: Unpolled) -> Stop {
+        self.refused
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+            .unwrap_or_else(|| crate::poll::halted(unpolled))
+    }
+}
+
+/// An `Http` that names the stop a read through it ends with.
+pub(crate) trait Halting: Http {
+    /// The stop a read that failed as `unpolled` ends with.
+    fn halted(&self, unpolled: Unpolled) -> Stop;
+}
+
+impl<H: Http, C: Clock> Halting for Budgeted<'_, H, C> {
+    fn halted(&self, unpolled: Unpolled) -> Stop {
+        Budgeted::halted(self, unpolled)
+    }
+}
+
+impl<H: Http, C: Clock> Http for Budgeted<'_, H, C> {
+    async fn send(&self, request: Request) -> Result<Response, HttpError> {
+        if let Err(stop) = self.budget.allows(self.clock.now(), 1) {
+            let reason = format!("{stop:?}");
+            *self.refused.lock().unwrap_or_else(PoisonError::into_inner) = Some(stop);
+            return Err(HttpError::Unreachable { reason });
+        }
+        self.http.send(request).await
     }
 }
 

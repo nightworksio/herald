@@ -58,14 +58,19 @@ fn errors(text: &str) -> String {
 }
 
 #[test]
-fn the_built_in_view_reads_every_source_naming_one_repository() {
+fn the_built_in_view_reads_every_source_naming_a_repository_or_an_owner() {
     let config = loaded(&with("[reports.daily]\n"));
     let queue = &config.views[BUILT_IN_VIEW];
     assert_eq!(queue.view, View::default());
     assert_eq!(
         queue.sources,
-        [SourceName::new("gate"), SourceName::new("herald")]
+        [
+            SourceName::new("gate"),
+            SourceName::new("herald"),
+            SourceName::new("org")
+        ]
     );
+    assert!(!queue.stated);
     assert_eq!(queue.most, Most::default());
     assert_eq!(
         (queue.mode, queue.reconcile),
@@ -106,6 +111,7 @@ most_open = 50
 most_pulls = 10
 mode = "kept"
 reconcile = "15m"
+listed_visibility = true
 
 [views.forge]
 deciding = "forge"
@@ -143,6 +149,8 @@ zone = "Europe/Amsterdam"
     assert_eq!(mine.view.stale, SignedDuration::from_hours(72));
     assert_eq!(mine.mode, herald_config::ViewMode::Kept);
     assert_eq!(mine.reconcile, Some(SignedDuration::from_mins(15)));
+    assert!(mine.stated);
+    assert!(!config.views["forge"].stated);
     assert_eq!(config.views["forge"].mode, herald_config::ViewMode::Live);
     assert_eq!(config.views["everyone"].mode, herald_config::ViewMode::Auto);
     assert_eq!(config.views["everyone"].reconcile, None);
@@ -224,8 +232,12 @@ fn a_view_named_queue_replaces_the_built_in_one() {
 #[test]
 fn every_mistake_in_a_view_or_report_is_named_by_its_key() {
     let error = errors(&with(
-        r#"[views.mine]
-sources = ["org", "nowhere"]
+        r#"[sources.news]
+kind = "feed"
+url = "https://blog.example/feed.xml"
+
+[views.mine]
+sources = ["news", "nowhere"]
 repositories = ["["]
 authors = ["["]
 labels = ["["]
@@ -248,8 +260,8 @@ days = "mon"
 "#,
     ));
     for wanted in [
-        "views.mine.sources: \"org\" names no one repository on a forge, so it lists no pull requests a view reads; the sources a view reads are \"gate\", \"herald\"",
-        "views.mine.sources: \"nowhere\" is no source; the sources a view reads are \"gate\", \"herald\"",
+        "views.mine.sources: \"news\" names no repository or owner on a forge, so it lists no pull requests a view reads; the sources a view reads are \"gate\", \"herald\", \"org\"",
+        "views.mine.sources: \"nowhere\" is no source; the sources a view reads are \"gate\", \"herald\", \"org\"",
         "views.mine.repositories[0]:",
         "views.mine.authors[0]:",
         "views.mine.labels[0]:",

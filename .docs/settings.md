@@ -1947,6 +1947,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 |---------|------|--------------|
 | `views.<name>.group_by` | [GroupBy](#groupby) | What it groups its rows by: "turn" where absent. |
 | `views.<name>.labels` | array of string | The labels, any one of which a pull request it shows carries, each a glob ignoring case; every pull request where empty. |
+| `views.<name>.listed_visibility` | boolean | Whether a live read through a REST listing without a token, as of GitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may see a repository from what the listing states of it, rather than taking each of its rows as private: false where absent. It never widens a kept record, a read with a token, a GitLab listing, or an owner's rows, which its membership record names. |
 | `views.<name>.mode` | [ViewMode](#viewmode) | Where it reads its pull requests: "auto" where absent, kept of each source that takes webhooks where the store keeps pull requests and live otherwise; "live" from the forge each time; or "kept" from the records the store keeps, folded from webhooks and reconciled with a listing. |
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
 | `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
@@ -1960,7 +1961,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.rules.failed` | boolean | One whose check failed waits on its author. |
 | `views.<name>.rules.pending` | boolean | One whose checks are running waits on them. |
 | `views.<name>.rules.queued` | boolean | One in the merge queue waits on the queue. |
-| `views.<name>.sources` | array of string | The sources it reads, each naming one repository on a forge; every such source where absent. |
+| `views.<name>.sources` | array of string | The sources it reads, each naming one repository or an owner on a forge; every such source where absent. |
 | `views.<name>.stale` | [Duration](#duration) | How long one waits with nobody acting before it is stale: "14d" where absent. |
 | `views.<name>.stale_only` | boolean | Whether it shows only the stale. |
 | `views.<name>.states` | array of [Turn](#turn) | The states it shows, every one where empty. |
