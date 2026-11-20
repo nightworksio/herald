@@ -185,3 +185,51 @@ view = "fj"
         "The view queue takes who may see each repository a REST listing reads without a token, on GitHub, GitHub Enterprise Server, GHE.com or Forgejo, from what the listing states, as listed_visibility = true asks; a read with a token, a GitLab listing, a kept record and an owner's rows are seen as before."
     );
 }
+
+#[test]
+fn a_rule_planning_re_runs_names_where_its_plans_go_and_a_source_read_live() {
+    let text = |private: &str| {
+        format!(
+            r#"version = 1
+[store]
+kind = "sqlite"
+[destinations.discord]
+kind = "discord"
+token = {{ secret = "HERALD_DISCORD_TOKEN" }}
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+[views.queue]
+mode = "live"
+[rules.flaky]
+flaky = {{ rerun = true }}
+[[routes]]
+id = "plans"
+sources = ["flaky"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:rerun"
+private = {private}
+"#
+        )
+    };
+    let notes = |private: &str| -> Vec<String> {
+        on(&loaded(&text(private)), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .filter(|note| {
+                note.starts_with("The rule flaky")
+                    && !note.starts_with("The rule flaky reads the view")
+            })
+            .collect()
+    };
+    assert_eq!(
+        notes("true"),
+        [
+            "The rule flaky plans at most 20 re-runs of flaky checks a window, each once a run and head with its evidence and exact call, to its private routes alone; a rule never re-runs. A plan reads the newest 5 failed runs on a head: at most 6 requests on GitHub, one on GitLab, each charged to the run's budget.",
+            "The rule flaky reads graphed live, and only kept records tell a flaky candidate, so none of its checks is one."
+        ]
+    );
+    assert!(notes("false")[0].contains("no private route names it, so its plans reach nobody"));
+}

@@ -234,8 +234,8 @@ impl Loader<'_> {
                 let named = sources.get(&SourceName::new(name));
                 let posted: Vec<Kind> = if others.reports.contains_key(name) {
                     vec![Kind::REPORT]
-                } else if others.rules.contains_key(name) {
-                    vec![Kind::NUDGE]
+                } else if let Some(rule) = others.rules.get(name) {
+                    posted(rule)
                 } else if others.apps.contains_key(name)
                     || named.is_some_and(|source| source.any_kind())
                 {
@@ -707,4 +707,16 @@ fn mentioned(roles: Vec<String>, opt_in: Option<String>) -> Vec<RoleId> {
         .into_iter()
         .map(RoleId::new)
         .collect()
+}
+
+/// The kinds the rule `rule` announces: nudges where it names stages, and
+/// re-run plans where it plans them (ADR-0065).
+fn posted(rule: &Rule) -> Vec<Kind> {
+    [
+        rule.stages.is_some().then_some(Kind::NUDGE),
+        rule.rerun.then_some(Kind::RERUN),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }

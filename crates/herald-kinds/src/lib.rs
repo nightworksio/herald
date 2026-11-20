@@ -31,7 +31,7 @@ pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening,
 pub use placement::{Placed, Placement};
 pub use pulling::{Instance, Origin, Peering, PublicKey, Pull, Pulling, Receive, Trust, Unpulled};
 pub use pushing::{IdTokens, Peered, Presented, Proving, Pushed, Pushing};
-pub use queue::{Asked, MOST_OPEN, MOST_PULLS, Most, Queue, QueueCost, Relisted, Scope};
+pub use queue::{Asked, MOST_OPEN, MOST_PULLS, Most, Plan, Queue, QueueCost, Relisted, Scope};
 pub use reach::{Posts, Probe, Reach, Reached, Signing, UnreadPosts};
 pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};

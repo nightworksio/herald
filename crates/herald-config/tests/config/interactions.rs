@@ -186,7 +186,7 @@ fn interactions_written_wrongly_are_refused_by_key() {
             &bot("template = \"missing\""),
             "channel = \"1566200000000000100\"",
         ),
-        "destinations.discord.interactions.template: no template is named \"missing\"; the templates are \"herald:nudge\", \"herald:queue\", \"t\"",
+        "destinations.discord.interactions.template: no template is named \"missing\"; the templates are \"herald:nudge\", \"herald:queue\", \"herald:rerun\", \"t\"",
     );
     refused(
         &config("markers", &bot(""), "channel = \"1566200000000000100\""),

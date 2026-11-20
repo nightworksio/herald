@@ -7,7 +7,7 @@ use std::fmt;
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
-use super::{Checks, Mergeable, Pull, Review, Turn};
+use super::{Checks, Flip, MOST_FLIPS, Mergeable, Pull, Review, Turn};
 use crate::address::Address;
 use crate::members::Visibility;
 use crate::signal::Validators;
@@ -384,11 +384,22 @@ impl KeptPull {
     /// where its head is the same (ADR-0063).
     #[must_use]
     pub fn read(kept: Option<&Self>, key: PullKey, mut pull: Pull, now: Timestamp) -> Self {
+        let same = kept.filter(|kept| kept.pull.head == pull.head);
         if pull.files.is_none() {
-            pull.files = kept
-                .filter(|kept| kept.pull.head == pull.head)
-                .and_then(|kept| kept.pull.files.clone());
+            pull.files = same.and_then(|kept| kept.pull.files.clone());
         }
+        let mut flips = kept.map(|kept| kept.pull.flips.clone()).unwrap_or_default();
+        flips.append(&mut pull.flips);
+        if let (Some(kept), Checks::Passed, Some(head)) = (same, &pull.checks, &pull.head)
+            && let Checks::Failed(names) = &kept.pull.checks
+        {
+            flips.extend(names.iter().map(|name| Flip {
+                check: name.clone(),
+                head: head.clone(),
+                at: now,
+            }));
+        }
+        pull.flips = latest(flips);
         let since = kept.map_or_else(
             || Since::at(now),
             |kept| kept.since.changed((&kept.pull, &pull), now),
@@ -506,6 +517,14 @@ impl KeptPull {
                     return None;
                 }
                 if kept.checks.get(name).is_none_or(|known| known.at <= *at) {
+                    if *outcome == Outcome::Passed && kept.failed(name) {
+                        kept.pull.flips.push(Flip {
+                            check: name.clone(),
+                            head: head.clone(),
+                            at: *at,
+                        });
+                        kept.pull.flips = latest(std::mem::take(&mut kept.pull.flips));
+                    }
                     let ran = Ran {
                         head: head.clone(),
                         outcome: *outcome,
@@ -550,6 +569,7 @@ impl KeptPull {
             unread: false,
             base: None,
             files: None,
+            flips: Vec::new(),
         };
         let mut kept = Self {
             key,
@@ -612,6 +632,18 @@ impl KeptPull {
         self.since = self.since.changed((&old, &self.pull), at);
     }
 
+    /// Whether the check `name` last said it failed on its head, as a
+    /// delivery or the last read on the same head says.
+    fn failed(&self, name: &str) -> bool {
+        match self.checks.get(name) {
+            Some(ran) => ran.outcome == Outcome::Failed,
+            None => self.read.as_ref().is_some_and(|read| {
+                read.head == self.pull.head
+                    && matches!(&read.checks, Checks::Failed(names) if names.iter().any(|failed| failed == name))
+            }),
+        }
+    }
+
     /// Its last activity, moved to `at` where that is later.
     fn acted(&mut self, at: Timestamp) {
         self.pull.updated = self.pull.updated.max(at);
@@ -634,6 +666,13 @@ impl KeptPull {
         self.pull.checks = checked(&base, &self.checks);
         self.since = self.since.changed((&old, &self.pull), at);
     }
+}
+
+/// The newest [`MOST_FLIPS`] of `flips`, in the order they came.
+fn latest(mut flips: Vec<Flip>) -> Vec<Flip> {
+    let over = flips.len().saturating_sub(MOST_FLIPS);
+    flips.drain(..over);
+    flips
 }
 
 /// Where a source's reconcile stands: the repository it lists, when it

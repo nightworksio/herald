@@ -113,6 +113,8 @@ mode = "kept"
 reconcile = "15m"
 listed_visibility = true
 conflicts = true
+broken_at = 5
+flaky = { window = "3d", least = 2 }
 
 [views.forge]
 deciding = "forge"
@@ -153,6 +155,18 @@ zone = "Europe/Amsterdam"
     assert!(mine.stated);
     assert!(!config.views["forge"].stated);
     assert!(mine.conflicts);
+    assert_eq!(
+        mine.view.triage,
+        herald_core::Triage {
+            broken_at: 5,
+            flaky_window: SignedDuration::from_hours(72),
+            flaky_least: 2
+        }
+    );
+    assert_eq!(
+        config.views["forge"].view.triage,
+        herald_core::Triage::default()
+    );
     assert!(!config.views["forge"].conflicts);
     assert_eq!(config.views["forge"].mode, herald_config::ViewMode::Live);
     assert_eq!(config.views["everyone"].mode, herald_config::ViewMode::Auto);

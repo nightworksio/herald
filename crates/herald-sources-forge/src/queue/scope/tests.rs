@@ -416,6 +416,7 @@ fn a_kept_completion_reads_each_changed_pull_request_through_its_own_repository(
         unread: false,
         base: None,
         files: None,
+        flips: Vec::new(),
     };
     let http = ScriptedHttp::new(Vec::new());
     let read =
@@ -546,6 +547,7 @@ fn pull_of(path: &str) -> Pull {
         unread: false,
         base: None,
         files: None,
+        flips: Vec::new(),
     }
 }
 

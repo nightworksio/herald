@@ -14,6 +14,7 @@ mod github;
 mod gitlab;
 mod listing;
 mod reconcile;
+mod rerun;
 mod scope;
 
 pub(crate) use scope::{Scoped, scope_cost};
@@ -333,6 +334,23 @@ impl Queued {
 impl herald_kinds::Queue for Queued {
     fn scoped(&self) -> bool {
         false
+    }
+
+    fn holds(&self, repository: &str) -> bool {
+        self.origin.path().eq_ignore_ascii_case(repository)
+    }
+
+    fn planned<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (_, head, check): (&'a str, &'a str, &'a str),
+        most: usize,
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::Plan, Unpolled>> {
+        Box::pin(async move {
+            self.asking(Asked::default())
+                .planned(&Erased(http), (head, check), most)
+                .await
+        })
     }
 
     fn opened<'a>(

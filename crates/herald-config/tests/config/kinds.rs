@@ -184,6 +184,7 @@ fn a_declared_kind_is_known_beside_the_kinds_herald_ships() {
             "issue",
             "report",
             "nudge",
+            "rerun",
             "build",
             "deploy"
         ]

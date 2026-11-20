@@ -483,3 +483,53 @@ fn the_paths_a_head_changes_are_kept_until_its_head_moves() {
     let refolded = KeptPull::fold(Some(again), key(), &Folded::Pull(Box::new(pushed))).unwrap();
     assert_eq!(refolded.pull.files, None);
 }
+
+#[test]
+fn a_check_failing_then_passing_on_one_head_is_kept_as_a_flip() {
+    let failed = folded(kept(), &[check("abc123", "test", Outcome::Failed, 3_100)]);
+    let passed = folded(failed, &[check("abc123", "test", Outcome::Passed, 3_200)]);
+    let flips: Vec<(&str, &str)> = passed
+        .pull
+        .flips
+        .iter()
+        .map(|flip| (flip.check.as_str(), flip.head.as_str()))
+        .collect();
+    assert_eq!(flips, [("test", "abc123")]);
+    let again = folded(
+        passed.clone(),
+        &[check("abc123", "test", Outcome::Passed, 3_300)],
+    );
+    assert_eq!(again.pull.flips.len(), 1);
+    let mut read_failed = pull();
+    read_failed.checks = Checks::Failed(vec!["lint".to_owned()]);
+    let first = KeptPull::read(Some(&passed), key(), read_failed, at(3_400));
+    assert_eq!(first.pull.flips.len(), 1);
+    let from_read = folded(
+        first.clone(),
+        &[check("abc123", "lint", Outcome::Passed, 3_500)],
+    );
+    assert_eq!(from_read.pull.flips.len(), 2);
+    let reread = KeptPull::read(Some(&first), key(), pull(), at(3_600));
+    assert_eq!(reread.pull.flips.last().unwrap().check, "lint");
+    let mut moved = pull();
+    moved.head = Some("def456".to_owned());
+    let elsewhere = KeptPull::read(Some(&first), key(), moved, at(3_700));
+    assert_eq!(elsewhere.pull.flips.len(), 1);
+}
+
+#[test]
+fn a_pull_request_keeps_only_its_newest_flips() {
+    let mut kept = kept();
+    for second in 0..30 {
+        kept = folded(
+            kept,
+            &[check("abc123", "test", Outcome::Failed, 3_100 + 2 * second)],
+        );
+        kept = folded(
+            kept,
+            &[check("abc123", "test", Outcome::Passed, 3_101 + 2 * second)],
+        );
+    }
+    assert_eq!(kept.pull.flips.len(), MOST_FLIPS);
+    assert_eq!(kept.pull.flips.last().unwrap().at, at(3_159));
+}

@@ -36,5 +36,6 @@ pub use reference::reference;
 pub use samples::{sample_boards, sample_origin, samples, samples_from};
 pub use schema::schema;
 pub use views::{
-    BUILT_IN_VIEW, NUDGE_TEMPLATE, QUEUE_TEMPLATE, Report, Rule, ViewConfig, ViewMode,
+    BUILT_IN_VIEW, NUDGE_TEMPLATE, QUEUE_TEMPLATE, RERUN_TEMPLATE, Report, Rule, ViewConfig,
+    ViewMode,
 };

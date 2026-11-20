@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-use herald_config::{Config, Guard, Report, ViewConfig, ViewMode};
+use herald_config::{Config, Guard, Report, Rule, ViewConfig, ViewMode};
 use herald_core::report::UTC;
 use herald_core::stage_name;
 
@@ -58,17 +58,21 @@ pub(super) fn reported(config: &Config, notes: &mut Vec<String>) {
         watched(config, (&named, name), (report, view), notes);
     }
     for (name, rule) in &config.rules {
-        let stages: Vec<String> = rule
-            .stages
-            .as_slice()
-            .iter()
-            .map(|stage| stage_name(*stage))
-            .collect();
-        notes.push(format!(
-            "The rule {name} nudges at most {} pull requests a window, once each past {}, naming logins without mentioning anyone.",
-            rule.most,
-            stages.join(", ")
-        ));
+        if let Some(stages) = &rule.stages {
+            let stages: Vec<String> = stages
+                .as_slice()
+                .iter()
+                .map(|stage| stage_name(*stage))
+                .collect();
+            notes.push(format!(
+                "The rule {name} nudges at most {} pull requests a window, once each past {}, naming logins without mentioning anyone.",
+                rule.most,
+                stages.join(", ")
+            ));
+        }
+        if rule.rerun {
+            planning(config, (name, rule), notes);
+        }
     }
     for route in config
         .routes
@@ -80,6 +84,48 @@ pub(super) fn reported(config: &Config, notes: &mut Vec<String>) {
             route.route.id.as_str()
         ));
     }
+}
+
+/// Each note on the rule `name` planning re-runs: what it plans and where
+/// it announces them, a view source read live, which names no flaky
+/// candidate, and a forge that cannot re-run (ADR-0065).
+fn planning(config: &Config, (name, rule): (&str, &Rule), notes: &mut Vec<String>) {
+    let private = config.routes.iter().any(|route| {
+        route.private
+            && route
+                .route
+                .filter
+                .sources
+                .iter()
+                .any(|source| source.as_str() == name)
+    });
+    let reach = if private {
+        "to its private routes alone"
+    } else {
+        "to its private routes, and no private route names it, so its plans reach nobody"
+    };
+    notes.push(format!(
+        "The rule {name} plans at most {} re-runs of flaky checks a window, each once a run and head with its evidence and exact call, {reach}; a rule never re-runs. A plan reads the newest {} failed runs on a head: at most {} requests on GitHub, one on GitLab, each charged to the run's budget.",
+        rule.most,
+        rule.runs,
+        rule.runs + 1
+    ));
+    let keeps = config.store.keeps_pulls();
+    let live = config
+        .views
+        .get(&rule.watch.view)
+        .into_iter()
+        .flat_map(|view| {
+            view.sources
+                .iter()
+                .filter(move |source| !crate::kept::reads_kept((config, keeps), view, source))
+        });
+    notes.extend(live.map(|source| {
+        format!(
+            "The rule {name} reads {} live, and only kept records tell a flaky candidate, so none of its checks is one.",
+            source.as_str()
+        )
+    }));
 }
 
 /// Each note on each view reading a source kept, and each view asking to

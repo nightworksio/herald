@@ -3,7 +3,7 @@
 //! and every mistake named by its key.
 
 use herald_config::{Config, NUDGE_TEMPLATE, QUEUE_TEMPLATE, load};
-use herald_core::{Kind, MOST_NUDGES, Pinning, SourceName, TemplateName};
+use herald_core::{Kind, MOST_NUDGES, MOST_RUNS, Pinning, SourceName, Stages, TemplateName};
 use jiff::SignedDuration;
 use jiff::civil::Time;
 
@@ -74,7 +74,11 @@ template = "herald:nudge"
     let review = &config.rules["review"];
     assert_eq!(review.watch.view, "queue");
     assert_eq!(review.watch.schedule.at, Time::constant(8, 30, 0, 0));
-    assert_eq!(review.stages.as_slice(), [days(2), days(7)]);
+    assert_eq!(
+        review.stages.as_ref().map(Stages::as_slice),
+        Some([days(2), days(7)].as_slice())
+    );
+    assert!(!review.rerun);
     assert_eq!(review.most, 5);
     assert_eq!(config.rules["plain"].most, MOST_NUDGES);
     assert_eq!(
@@ -320,6 +324,54 @@ zone = "Mars/Olympus"
         "boards.taken.id: another route has the id \"taken\"; give each route its own",
         "boards.nowhere.destination: no destination is named \"missing\"",
         "boards.nowhere.zone: there is no time zone \"Mars/Olympus\"",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
+}
+
+#[test]
+fn a_rule_plans_re_runs_of_flaky_checks_and_never_applies_them_itself() {
+    let config = loaded(&with(
+        r#"[rules.flaky]
+flaky = { rerun = true, mode = "plan" }
+
+[rules.both]
+stages = ["2d"]
+flaky = { rerun = true, runs = 2 }
+
+[[routes]]
+id = "plans"
+sources = ["flaky"]
+kinds = ["rerun"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:rerun"
+private = true
+"#,
+    ));
+    let flaky = &config.rules["flaky"];
+    assert_eq!(
+        (flaky.stages.as_ref(), flaky.rerun, flaky.runs),
+        (None, true, MOST_RUNS)
+    );
+    assert_eq!(config.rules["both"].runs, 2);
+    assert!(config.rules["both"].stages.is_some() && config.rules["both"].rerun);
+    assert_eq!(config.routes[0].route.filter.kinds, [Kind::RERUN]);
+    let error = errors(&with(
+        r#"[rules.apply]
+flaky = { rerun = true, mode = "apply" }
+
+[rules.idle]
+flaky = { rerun = false }
+
+[rules.wide]
+flaky = { rerun = true, runs = 101 }
+"#,
+    ));
+    for wanted in [
+        "rules.apply.flaky.mode: a rule only plans a re-run, so mode is \"plan\"; a re-run is made by an operator signed in through the forge, never by a rule on its own",
+        "rules.wide.flaky.runs: a plan reads from 1 to 100 failed runs on a head, such as runs = 5",
+        "rules.idle: a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, or both; this one does neither",
     ] {
         assert!(error.contains(wanted), "{wanted}\n{error}");
     }

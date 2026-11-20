@@ -11,6 +11,7 @@ use crate::members::Visibility;
 
 mod kept;
 mod overlap;
+mod triage;
 mod view;
 
 pub use kept::{
@@ -18,6 +19,7 @@ pub use kept::{
     Reconciled, RepositoryKey, Reviewed, Since, Verdict,
 };
 pub use overlap::overlaps;
+pub use triage::{Failure, Triage};
 pub use view::{
     Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped, rows,
 };
@@ -177,7 +179,26 @@ pub struct Pull {
     /// them (ADR-0063).
     #[serde(default)]
     pub files: Option<Changed>,
+    /// Each time one of its checks failed and then passed on one head,
+    /// the newest last, as kept mode saw it (ADR-0065).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flips: Vec<Flip>,
 }
+
+/// A check that failed and then passed on one head commit: a flaky
+/// candidate (ADR-0065).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Flip {
+    /// The check's name.
+    pub check: String,
+    /// The head commit's sha.
+    pub head: String,
+    /// When it passed.
+    pub at: Timestamp,
+}
+
+/// The most flips a pull request keeps, the oldest dropped first.
+pub const MOST_FLIPS: usize = 20;
 
 /// The paths a pull request's head changes, as far as they were read
 /// (ADR-0063).

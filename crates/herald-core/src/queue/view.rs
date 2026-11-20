@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use jiff::{SignedDuration, Timestamp};
 
-use super::{Pull, Reason, Rules, Turn};
+use super::{Failure, Pull, Reason, Rules, Triage, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::decide::Slot;
 use crate::glob::Glob;
@@ -74,6 +74,8 @@ pub struct View {
     pub rules: Rules,
     /// Its own bump patterns, read before herald's.
     pub bumps: Vec<BumpPattern>,
+    /// How it triages its failing checks (ADR-0065).
+    pub triage: Triage,
 }
 
 impl Default for View {
@@ -90,6 +92,7 @@ impl Default for View {
             deciding: Deciding::default(),
             rules: Rules::default(),
             bumps: Vec::new(),
+            triage: Triage::default(),
         }
     }
 }
@@ -164,6 +167,8 @@ pub struct Board {
     pub counts: Vec<(Turn, usize)>,
     /// How many of those it shows are stale.
     pub stale: usize,
+    /// Each check failing on the pull requests it shows (ADR-0065).
+    pub failures: Vec<Failure>,
 }
 
 impl Board {
@@ -268,6 +273,8 @@ pub fn rows(view: &View, pulls: &[Pull], now: Timestamp) -> Vec<Row> {
         .iter()
         .filter_map(|pull| view.row(pull, now))
         .map(|mut row| {
+            let since = now.checked_sub(view.triage.flaky_window).unwrap_or(now);
+            row.pull.flips.retain(|flip| flip.at >= since);
             row.overlaps = shared
                 .remove(&(row.pull.repository.clone(), row.pull.number))
                 .unwrap_or_default();
@@ -292,6 +299,7 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
         .map(|state| (state, rows.iter().filter(|row| row.state == state).count()))
         .collect();
     let stale = rows.iter().filter(|row| row.stale).count();
+    let failures = view.triage.failures(&rows);
     let mut groups: BTreeMap<(usize, String), Vec<Row>> = BTreeMap::new();
     let mut batches: BTreeMap<Option<Bump>, Vec<Row>> = BTreeMap::new();
     for row in rows {
@@ -340,6 +348,7 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
         batches,
         counts,
         stale,
+        failures,
     }
 }
 

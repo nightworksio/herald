@@ -41,7 +41,9 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
     });
     assert_eq!(
         keys(&value),
-        ["batches", "counts", "groups", "name", "stale", "total"]
+        [
+            "batches", "counts", "failures", "groups", "name", "stale", "total"
+        ]
     );
     assert_eq!(value.get_attr("name").unwrap().to_string(), "queue");
     assert_eq!(value.get_attr("total").unwrap().to_string(), "2");
@@ -118,7 +120,9 @@ fn a_view_as_json_holds_the_keys_a_template_reads() {
     keys.sort();
     assert_eq!(
         keys,
-        ["batches", "counts", "groups", "name", "stale", "total"]
+        [
+            "batches", "counts", "failures", "groups", "name", "stale", "total"
+        ]
     );
     assert_eq!(json["groups"][0]["rows"][0]["number"], 7);
 }
