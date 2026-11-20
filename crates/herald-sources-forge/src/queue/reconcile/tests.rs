@@ -75,6 +75,7 @@ fn relisted(forge: Forge, tokened: bool, kept: &[Validators], answers: Vec<Respo
         most_open: 2 * PAGE,
         most_pulls: MOST_PULLS,
         stated: false,
+        files: false,
     };
     let http = ScriptedHttp::new(answers);
     let answer = pollster::block_on(opened.relisted(&Erased(&http as &dyn DynHttp), kept));
@@ -242,6 +243,8 @@ fn listed_pull(number: u64) -> Pull {
         forge: None,
         head: Some("abc".to_owned()),
         unread: false,
+        base: None,
+        files: None,
     }
 }
 
@@ -268,6 +271,7 @@ fn completed(
         most_open: PAGE,
         most_pulls: MOST_PULLS,
         stated: false,
+        files: false,
     };
     let http = ScriptedHttp::new(answers);
     let read = pollster::block_on(opened.completed(

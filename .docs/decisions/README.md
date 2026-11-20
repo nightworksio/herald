@@ -80,4 +80,5 @@ no separate requirements document, and there are no requirement IDs.
 | [0060](0060-a-static-host-serves-the-feeds-as-a-signed-log.md) | A static host serves the feeds as a signed log | Accepted |
 | [0061](0061-a-view-reads-kept-pull-requests-folded-from-webhooks-and-reconciled-with-a-listing.md) | A view reads kept pull requests, folded from webhooks and reconciled with a listing | Accepted |
 | [0062](0062-a-view-reads-an-owner-s-repositories-by-one-query-over-them.md) | A view reads an owner's repositories by one query over them | Accepted |
+| [0063](0063-a-view-predicts-conflicts-from-the-paths-open-pull-requests-change.md) | A view predicts conflicts from the paths open pull requests change | Accepted |
 | [0064](0064-a-ci-run-s-id-token-is-its-credential.md) | A CI run's ID token is its credential | Accepted |

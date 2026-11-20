@@ -112,6 +112,7 @@ most_pulls = 10
 mode = "kept"
 reconcile = "15m"
 listed_visibility = true
+conflicts = true
 
 [views.forge]
 deciding = "forge"
@@ -151,6 +152,8 @@ zone = "Europe/Amsterdam"
     assert_eq!(mine.reconcile, Some(SignedDuration::from_mins(15)));
     assert!(mine.stated);
     assert!(!config.views["forge"].stated);
+    assert!(mine.conflicts);
+    assert!(!config.views["forge"].conflicts);
     assert_eq!(config.views["forge"].mode, herald_config::ViewMode::Live);
     assert_eq!(config.views["everyone"].mode, herald_config::ViewMode::Auto);
     assert_eq!(config.views["everyone"].reconcile, None);

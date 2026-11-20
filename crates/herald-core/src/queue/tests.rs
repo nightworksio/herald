@@ -22,6 +22,8 @@ pub(crate) fn pull() -> Pull {
         forge: None,
         head: Some("abc123".to_owned()),
         unread: false,
+        base: None,
+        files: None,
     }
 }
 

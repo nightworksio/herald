@@ -218,3 +218,31 @@ fn each_detail_is_asked_by_its_path_and_reads_within_its_size() {
         })
     ));
 }
+
+#[test]
+fn a_pull_request_s_changed_paths_are_read_with_each_path_it_changes_from() {
+    let listed = json!([
+        { "filename": "src/new.rs", "previous_filename": "src/old.rs" },
+        { "new_path": "docs/a.md", "old_path": "docs/a.md" },
+        { "filename": "README.md" }
+    ]);
+    let read = files(listed.to_string().as_bytes(), 1 << 20).unwrap();
+    let paths: Vec<&str> = read.paths.iter().map(String::as_str).collect();
+    assert_eq!(
+        paths,
+        ["README.md", "docs/a.md", "src/new.rs", "src/old.rs"]
+    );
+    assert!(read.whole);
+    let full: Vec<Value> = (0..PAGE)
+        .map(|place| json!({ "filename": format!("f{place}") }))
+        .collect();
+    let partial = files(Value::from(full).to_string().as_bytes(), 1 << 20).unwrap();
+    assert!(!partial.whole);
+    assert!(files(b"{}", 1 << 20).is_err());
+    assert_eq!(
+        files_path(Forge::GitLab, 4),
+        "/merge_requests/4/diffs?per_page=100"
+    );
+    assert_eq!(files_path(Forge::GitHub, 4), "/pulls/4/files?per_page=100");
+    assert_eq!(files_path(Forge::Forgejo, 4), "/pulls/4/files?limit=100");
+}

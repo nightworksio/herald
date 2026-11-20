@@ -132,6 +132,27 @@ private, a GitLab listing, which states none, a kept record (ADR-0061
 decision 5), or an owner's rows, which its membership record names.
 `herald doctor` names each view that sets it.
 
+### Conflicts
+
+`conflicts = true` on a view predicts which open pull requests would
+conflict (ADR-0063). It reads the paths each pull request's head changes,
+at most 100 each, and each row's `overlaps` names the open pull requests
+of its repository merging into the same branch whose heads change a path
+in common, whether the view shows them or not. The forge's own
+`conflict` state still puts a pull request on its author's turn.
+
+| Forge | Changed paths |
+|-------|---------------|
+| GitHub with a token | in the same GraphQL request as each pull request, no request more |
+| GitHub without a token, Forgejo | `pulls/<number>/files`, a request each pull request read in full |
+| GitLab | `merge_requests/<iid>/diffs`, a request each, at most `most_pulls` |
+
+A pull request whose branch or paths were not read overlaps none. Kept
+mode keeps the paths in each record until its head moves, so it reads
+them once a head; a record kept before the view predicted conflicts is
+read in full once. `herald doctor` names what predicting conflicts adds
+to each report's requests.
+
 ### Live or kept
 
 A view reads each source live, from the forge each time, or kept, from
@@ -300,7 +321,7 @@ A route's template reads the board as `view`:
 | `view.counts` | each state with its `count`, as `{ state, count }` |
 | `view.groups` | each group's `name` and `rows` |
 | `view.batches` | each batch's `package`, `to`, `green`, `failing` and `rows` |
-| a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `reviewers` (each asked, or a team's `org/team`), `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale`, `waiting_on` (the logins whose turn it is) |
+| a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `reviewers` (each asked, or a team's `org/team`), `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale`, `waiting_on` (the logins whose turn it is), `overlaps` (the numbers of the open pull requests changing a path it changes, where the view predicts conflicts) |
 
 herald ships `herald:queue`; a `[templates."herald:queue"]` table replaces
 it.

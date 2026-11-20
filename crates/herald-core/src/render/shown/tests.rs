@@ -71,6 +71,7 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
             "labels",
             "number",
             "opened",
+            "overlaps",
             "project",
             "reason",
             "repository",

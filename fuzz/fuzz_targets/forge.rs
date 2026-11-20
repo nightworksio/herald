@@ -493,6 +493,7 @@ fn queued(bytes: &[u8]) {
             };
             let asked = herald_kinds::Asked {
                 most,
+                files: true,
                 ..herald_kinds::Asked::default()
             };
             let Ok(pulls) = pollster::block_on(queue.opened(&http, asked)) else {
@@ -550,6 +551,7 @@ fn scoped(http: &Answering, most: herald_kinds::Most) {
                     members: &members,
                 }),
                 stated: false,
+                files: true,
             };
             let Ok(pulls) = pollster::block_on(queue.opened(http, asked)) else {
                 continue;

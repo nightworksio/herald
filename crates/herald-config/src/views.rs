@@ -61,6 +61,10 @@ pub struct ViewConfig {
     /// who may see a repository from what the listing states, rather than
     /// taking each of its rows as private (ADR-0062).
     pub stated: bool,
+    /// Whether it predicts conflicts: each pull request's changed paths
+    /// read, and each row naming those of its repository and branch that
+    /// change a path in common (ADR-0063).
+    pub conflicts: bool,
 }
 
 /// Where a view reads its open pull requests (ADR-0061).
@@ -271,6 +275,15 @@ pub(crate) struct ViewFile {
     /// owner's rows, which its membership record names.
     #[serde(default)]
     pub(crate) listed_visibility: bool,
+    /// Whether it predicts conflicts: it reads the paths each pull
+    /// request's head changes, at most 100 each, and each row names the
+    /// open pull requests of its repository merging into its branch that
+    /// change a path in common; false where absent. It costs a request a
+    /// pull request read in full, but on GitHub with a token, which reads
+    /// them with each pull request; a kept record keeps them until its head
+    /// moves.
+    #[serde(default)]
+    pub(crate) conflicts: bool,
 }
 
 /// A day of the week, by its first three letters.

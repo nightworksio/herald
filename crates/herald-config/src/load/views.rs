@@ -226,6 +226,7 @@ impl Loader<'_> {
             mode: file.mode.unwrap_or_default(),
             reconcile: file.reconcile.map(|every| every.0),
             stated: file.listed_visibility,
+            conflicts: file.conflicts,
         }
     }
 
@@ -248,6 +249,7 @@ impl Loader<'_> {
                 mode: ViewMode::default(),
                 reconcile: None,
                 stated: false,
+                conflicts: false,
             },
         )]);
         for (name, value) in self.named(value, "views") {

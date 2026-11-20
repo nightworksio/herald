@@ -618,3 +618,71 @@ fn a_changed_pull_request_past_the_most_read_in_full_keeps_its_record_as_it_was(
     let kept = pollster::block_on(store.pull(&key)).unwrap().unwrap();
     assert_eq!(kept.value.pull.head.as_deref(), Some("h1"));
 }
+
+#[test]
+fn a_kept_view_predicting_conflicts_reads_changed_paths_once_a_head_and_names_each_overlap() {
+    const AT: &str = "2026-10-30T11:00:00Z";
+    let store = healthy();
+    let changing = |number: u64, head: &str| {
+        let mut changing = node(number, head, AT, "SUCCESS");
+        changing["baseRefName"] = json!("main");
+        changing["files"] = json!({ "totalCount": 1, "nodes": [{ "path": "src/lib.rs" }] });
+        changing
+    };
+    let listing = listed(&[(1, "h1", AT), (2, "h2", AT)]);
+    let first = Script::answered(vec![
+        answer(LISTING, 200, Some("\"a\""), &listing),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[node(1, "h1", AT, "SUCCESS"), node(2, "h2", AT, "SUCCESS")]),
+        ),
+    ]);
+    queued(&config("", true), &store, &first).unwrap();
+    let predicting = config("conflicts = true", true);
+    let second = Script::answered(vec![
+        answer(LISTING, 304, None, &Value::Null),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[changing(1, "h1"), changing(2, "h2")]),
+        ),
+    ]);
+    let board = queued(&predicting, &store, &second).unwrap();
+    let overlaps: Vec<(u64, Vec<u64>)> = board
+        .groups
+        .iter()
+        .flat_map(|group| &group.rows)
+        .map(|row| (row.pull.number, row.overlaps.clone()))
+        .collect();
+    assert_eq!(overlaps.len(), 2);
+    assert!(overlaps.contains(&(1, vec![2])), "{overlaps:?}");
+    assert!(overlaps.contains(&(2, vec![1])), "{overlaps:?}");
+    let asked = String::from_utf8(second.bodies()[1].clone()).unwrap();
+    assert!(asked.contains("files(first: 100)"), "{asked}");
+    let third = Script::answered(vec![answer(LISTING, 200, Some("\"b\""), &listing)]);
+    queued(&predicting, &store, &third).unwrap();
+    assert_eq!(third.seen().len(), 1);
+    let moved_at = "2026-10-30T12:00:00Z";
+    let mut moved = changing(1, "h3");
+    moved["updatedAt"] = json!(moved_at);
+    let fourth = Script::answered(vec![
+        answer(
+            LISTING,
+            200,
+            Some("\"c\""),
+            &listed(&[(1, "h3", moved_at), (2, "h2", AT)]),
+        ),
+        answer(GRAPHQL, 200, None, &read(&[moved])),
+    ]);
+    queued(&predicting, &store, &fourth).unwrap();
+    assert_eq!(fourth.seen().len(), 2);
+    let key = PullKey {
+        repository: repository(),
+        number: 1,
+    };
+    let read_again = pollster::block_on(store.pull(&key)).unwrap().unwrap();
+    assert_eq!(read_again.value.pull.head.as_deref(), Some("h3"));
+}

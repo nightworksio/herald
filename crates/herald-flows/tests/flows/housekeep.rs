@@ -504,6 +504,8 @@ fn housekeeping_forgets_pull_requests_closed_longer_ago_than_the_store_keeps_the
             forge: None,
             head: None,
             unread: false,
+            base: None,
+            files: None,
         };
         let key = herald_core::PullKey {
             repository: herald_core::RepositoryKey::of(&pull.url, "1").unwrap(),

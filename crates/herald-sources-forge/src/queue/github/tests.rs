@@ -250,7 +250,11 @@ fn an_answer_without_its_repository_or_over_its_size_does_not_read() {
 
 #[test]
 fn a_page_is_asked_of_the_repository_after_its_cursor() {
-    let asked = request("https://ghe.example/api/graphql", "o/r", Some("c1"), 9);
+    let ask = Ask {
+        parse: 9,
+        files: false,
+    };
+    let asked = request("https://ghe.example/api/graphql", "o/r", Some("c1"), ask);
     assert_eq!(asked.url.expose(), "https://ghe.example/api/graphql");
     assert_eq!(asked.most, 9);
     let body: Value = serde_json::from_slice(&asked.body).unwrap();
@@ -261,10 +265,45 @@ fn a_page_is_asked_of_the_repository_after_its_cursor() {
     let query = body["query"].as_str().unwrap();
     assert!(query.contains("pullRequests(states: OPEN, first: 100, after: $after"));
     assert!(query.contains("labels(first: 50)"));
-    let first = request("https://api.github.com/graphql", "o", None, 9);
+    assert!(query.contains("baseRefName"));
+    assert!(!query.contains("files("));
+    let first = request("https://api.github.com/graphql", "o", None, ask);
     let body: Value = serde_json::from_slice(&first.body).unwrap();
     assert_eq!(
         body["variables"],
         json!({ "owner": "o", "name": "", "after": null })
     );
+}
+
+#[test]
+fn a_view_predicting_conflicts_asks_each_pull_request_s_changed_paths_and_its_branch() {
+    let ask = Ask {
+        parse: 9,
+        files: true,
+    };
+    for asked in [
+        request("https://api.github.com/graphql", "o/r", None, ask),
+        numbered_request("https://api.github.com/graphql", "o/r", &[1], ask),
+        scoped_request("https://api.github.com/graphql", &[("o/r", vec![1])], ask),
+    ] {
+        let body: Value = serde_json::from_slice(&asked.body).unwrap();
+        let query = body["query"].as_str().unwrap();
+        assert!(
+            query.contains("files(first: 100) { totalCount nodes { path } }"),
+            "{query}"
+        );
+    }
+    let read = one(&json!({ "baseRefName": "main",
+        "files": { "totalCount": 3, "nodes": [{ "path": "a.rs" }, { "path": "b.rs" }] } }));
+    assert_eq!(read.base.as_deref(), Some("main"));
+    assert_eq!(
+        read.files,
+        Some(Changed {
+            paths: ["a.rs".to_owned(), "b.rs".to_owned()].into(),
+            whole: false
+        })
+    );
+    let whole = one(&json!({ "files": { "totalCount": 1, "nodes": [{ "path": "a.rs" }] } }));
+    assert!(whole.files.unwrap().whole);
+    assert_eq!(one(&json!({})).files, None);
 }

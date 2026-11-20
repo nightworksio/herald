@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use herald_core::{Checks, Mergeable, Pull, Review, Turn, Visibility};
+use herald_core::{Changed, Checks, Mergeable, Pull, Review, Turn, Visibility};
 use herald_ports::Request;
 use herald_wire::SourceError;
 use jiff::Timestamp;
@@ -18,26 +18,44 @@ pub(super) const WHAT: &str = "GitHub's open pull requests";
 /// The most labels and check contexts a pull request is read with.
 const MOST_NAMED: usize = 50;
 
-/// What the query reads of each pull request.
-fn fields() -> String {
+/// The most paths a pull request's head changes it is read with, where a
+/// view predicts conflicts (ADR-0063).
+pub(super) const MOST_FILES: usize = 100;
+
+/// How a request reads its answer: at most `parse` bytes, and each pull
+/// request's changed paths too where `files` says (ADR-0063).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Ask {
+    pub(super) parse: usize,
+    pub(super) files: bool,
+}
+
+/// What the query reads of each pull request, its changed paths too where
+/// `files` says.
+fn fields(files: bool) -> String {
+    let changed = if files {
+        format!(" files(first: {MOST_FILES}) {{ totalCount nodes {{ path }} }}")
+    } else {
+        String::new()
+    };
     format!(
-        "number title url isDraft createdAt updatedAt author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
+        "number title url isDraft createdAt updatedAt baseRefName{changed} author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
     )
 }
 
 /// The query for one page of a repository's open pull requests, the most
 /// recently updated first.
-fn query() -> String {
+fn query(files: bool) -> String {
     format!(
         "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ {} }} }} }} }}",
-        fields()
+        fields(files)
     )
 }
 
 /// The query reading each of a repository's pull requests `numbers` in
 /// full, under an alias holding its place.
-fn numbered_query(numbers: &[u64]) -> String {
-    let fields = fields();
+fn numbered_query(numbers: &[u64], files: bool) -> String {
+    let fields = fields(files);
     let mut pulls = String::new();
     for (place, number) in numbers.iter().enumerate() {
         let _ = write!(
@@ -53,8 +71,8 @@ fn numbered_query(numbers: &[u64]) -> String {
 /// The query reading in full each of the pull requests of each repository
 /// of `groups`, a repository under the alias `r<place>` and each of its
 /// pull requests under `p<place>` (ADR-0062).
-fn scoped_query(groups: &[(&str, Vec<u64>)]) -> String {
-    let fields = fields();
+fn scoped_query(groups: &[(&str, Vec<u64>)], files: bool) -> String {
+    let fields = fields(files);
     let mut declared = Vec::new();
     let mut repositories = String::new();
     for (place, (_, numbers)) in groups.iter().enumerate() {
@@ -76,44 +94,39 @@ fn scoped_query(groups: &[(&str, Vec<u64>)]) -> String {
 
 /// The request reading in full each pull request of each repository of
 /// `groups`, each a repository's full path and its pull requests' numbers,
-/// posted to `endpoint`, reading at most `parse` bytes (ADR-0062).
-pub(super) fn scoped_request(endpoint: &str, groups: &[(&str, Vec<u64>)], parse: usize) -> Request {
+/// posted to `endpoint`, read as `ask` says (ADR-0062).
+pub(super) fn scoped_request(endpoint: &str, groups: &[(&str, Vec<u64>)], ask: Ask) -> Request {
     let mut variables = serde_json::Map::new();
     for (place, (path, _)) in groups.iter().enumerate() {
         let (owner, name) = path.split_once('/').unwrap_or((path, ""));
         variables.insert(format!("o{place}"), json!(owner));
         variables.insert(format!("n{place}"), json!(name));
     }
-    let body = json!({ "query": scoped_query(groups), "variables": variables });
-    posted(endpoint, &body, parse)
+    let body = json!({ "query": scoped_query(groups, ask.files), "variables": variables });
+    posted(endpoint, &body, ask.parse)
 }
 
 /// The request for the page of the repository at `path` after `after`,
-/// posted to `endpoint`, reading at most `parse` bytes.
-pub(super) fn request(endpoint: &str, path: &str, after: Option<&str>, parse: usize) -> Request {
+/// posted to `endpoint`, read as `ask` says.
+pub(super) fn request(endpoint: &str, path: &str, after: Option<&str>, ask: Ask) -> Request {
     let (owner, name) = path.split_once('/').unwrap_or((path, ""));
     let body = json!({
-        "query": query(),
+        "query": query(ask.files),
         "variables": { "owner": owner, "name": name, "after": after },
     });
-    posted(endpoint, &body, parse)
+    posted(endpoint, &body, ask.parse)
 }
 
 /// The request reading each of the pull requests `numbers` of the
-/// repository at `path` in full, posted to `endpoint`, reading at most
-/// `parse` bytes.
-pub(super) fn numbered_request(
-    endpoint: &str,
-    path: &str,
-    numbers: &[u64],
-    parse: usize,
-) -> Request {
+/// repository at `path` in full, posted to `endpoint`, read as `ask`
+/// says.
+pub(super) fn numbered_request(endpoint: &str, path: &str, numbers: &[u64], ask: Ask) -> Request {
     let (owner, name) = path.split_once('/').unwrap_or((path, ""));
     let body = json!({
-        "query": numbered_query(numbers),
+        "query": numbered_query(numbers, ask.files),
         "variables": { "owner": owner, "name": name },
     });
-    posted(endpoint, &body, parse)
+    posted(endpoint, &body, ask.parse)
 }
 
 #[derive(Deserialize)]
@@ -262,6 +275,32 @@ struct Node {
     is_in_merge_queue: bool,
     head_ref_oid: Option<String>,
     commits: Option<Connection<Commit>>,
+    base_ref_name: Option<String>,
+    files: Option<Files>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Files {
+    total_count: usize,
+    #[serde(default)]
+    nodes: Vec<Path>,
+}
+
+#[derive(Deserialize)]
+struct Path {
+    path: String,
+}
+
+impl Files {
+    /// The paths it names, whole where it names every one.
+    fn changed(self) -> Changed {
+        let whole = self.nodes.len() >= self.total_count;
+        Changed {
+            paths: self.nodes.into_iter().map(|file| file.path).collect(),
+            whole,
+        }
+    }
 }
 
 /// What a rollup's `state` says of the checks, with the names of those
@@ -364,6 +403,8 @@ impl Node {
             forge,
             head: self.head_ref_oid,
             unread: false,
+            base: self.base_ref_name,
+            files: self.files.map(Files::changed),
         }
     }
 }

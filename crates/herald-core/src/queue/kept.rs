@@ -380,8 +380,15 @@ impl KeptPull {
     /// `now`: each part that changed took its value `now`, and the verdicts
     /// and checks delivered since the last read give way to it. One listed
     /// past the most a view reads in full is kept as unread.
+    /// Paths its head changes that a read left unread are kept from `kept`
+    /// where its head is the same (ADR-0063).
     #[must_use]
-    pub fn read(kept: Option<&Self>, key: PullKey, pull: Pull, now: Timestamp) -> Self {
+    pub fn read(kept: Option<&Self>, key: PullKey, mut pull: Pull, now: Timestamp) -> Self {
+        if pull.files.is_none() {
+            pull.files = kept
+                .filter(|kept| kept.pull.head == pull.head)
+                .and_then(|kept| kept.pull.files.clone());
+        }
         let since = kept.map_or_else(
             || Since::at(now),
             |kept| kept.since.changed((&kept.pull, &pull), now),
@@ -541,6 +548,8 @@ impl KeptPull {
             forge: None,
             head: described.head.clone(),
             unread: false,
+            base: None,
+            files: None,
         };
         let mut kept = Self {
             key,
@@ -581,6 +590,7 @@ impl KeptPull {
         if described.head.is_some() && described.head != pull.head {
             pull.head.clone_from(&described.head);
             pull.mergeable = Mergeable::Unknown;
+            pull.files = None;
             self.checks.clear();
         }
         pull.mergeable = described.mergeable.unwrap_or(pull.mergeable);

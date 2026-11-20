@@ -442,6 +442,7 @@ fn a_row_waits_on_its_author_its_reviewers_or_nobody_by_its_state() {
             waited: SignedDuration::ZERO,
             stale: false,
             decided: BTreeMap::new(),
+            overlaps: Vec::new(),
         };
         assert_eq!(row.waiting_on(), logins, "{state:?}");
     }
@@ -455,6 +456,30 @@ fn a_row_waits_on_its_author_its_reviewers_or_nobody_by_its_state() {
         waited: SignedDuration::ZERO,
         stale: false,
         decided: BTreeMap::new(),
+        overlaps: Vec::new(),
     };
     assert_eq!(authorless.waiting_on(), Vec::<&str>::new());
+}
+
+#[test]
+fn each_row_names_the_open_pull_requests_changing_a_path_it_changes_even_those_it_hides() {
+    let changing = |number: u64, bot: bool| Pull {
+        number,
+        bot,
+        base: Some("main".to_owned()),
+        files: Some(crate::queue::Changed {
+            paths: ["src/lib.rs".to_owned()].into(),
+            whole: true,
+        }),
+        ..waited(1, number)
+    };
+    let view = View {
+        bots: Bots::Exclude,
+        ..View::default()
+    };
+    let shown = rows(&view, &[changing(1, false), changing(2, true)], now());
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].overlaps, [2]);
+    let alone = rows(&View::default(), &[waited(1, 3)], now());
+    assert_eq!(alone[0].overlaps, Vec::<u64>::new());
 }
