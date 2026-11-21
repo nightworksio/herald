@@ -16,7 +16,21 @@ const QUEUED: &str = "/repos/o/open/actions/runs?status=queued&per_page=100";
 const RUNNING: &str = "/repos/o/open/actions/runs?status=in_progress&per_page=100";
 
 fn config(view: &str) -> Config {
-    let text = r#"version = 1
+    loaded(&text(view))
+}
+
+fn loaded(text: &str) -> Config {
+    load(
+        "herald.toml",
+        text,
+        &|_| Err("no file".to_owned()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+}
+
+fn text(view: &str) -> String {
+    r#"version = 1
 [store]
 kind = "sqlite"
 [destinations.discord]
@@ -45,23 +59,21 @@ channel = "1566200000000000100"
 template = "t"
 private = true
 "#
-    .replace("VIEW", view);
-    load(
-        "herald.toml",
-        &text,
-        &|_| Err("no file".to_owned()),
-        &crate::harness::kinds(),
-    )
-    .unwrap()
+    .replace("VIEW", view)
 }
 
 /// A GraphQL page of `o/open`, seen as `visibility`, with one open pull
 /// request on the head `h1`.
 fn page(visibility: &str) -> String {
+    page_on(visibility, "h1")
+}
+
+/// [`page`], its pull request's head `head`.
+fn page_on(visibility: &str, head: &str) -> String {
     json!({ "data": { "repository": { "visibility": visibility, "pullRequests": { "nodes": [ {
         "number": 1, "title": "Change", "url": "https://github.com/o/open/pull/1",
         "isDraft": false, "createdAt": "2026-10-20T10:00:00Z", "updatedAt": "2026-10-30T11:00:00Z",
-        "headRefOid": "h1",
+        "headRefOid": head,
         "author": { "__typename": "User", "login": "ana" },
         "reviewDecision": "REVIEW_REQUIRED",
         "reviewRequests": { "totalCount": 0, "nodes": [] }
@@ -91,13 +103,24 @@ fn ran_within(
     script: &Script,
     (most, view): (Option<usize>, &str),
 ) -> (Result<Board, Stop>, Vec<herald_flows::Swept>) {
-    let config = config(view);
+    ran_as(
+        script,
+        (&config(view), most),
+        herald_core::Printed::Configured,
+    )
+}
+
+/// As `ran`, read with `config` and printed as `printed` says.
+fn ran_as(
+    script: &Script,
+    (config, most): (&Config, Option<usize>),
+    printed: herald_core::Printed,
+) -> (Result<Board, Stop>, Vec<herald_flows::Swept>) {
     let store = healthy();
     let secrets = FakeSecrets::default()
         .with("HERALD_DISCORD_TOKEN", "hunter2")
         .with("HERALD_GITHUB_TOKEN", "ghp_x");
-    let prepared =
-        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected: Connected<Script> = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
     let ports = Ports {
@@ -115,13 +138,13 @@ fn ran_within(
         },
     };
     let board = pollster::block_on(herald_flows::queue(
-        &config,
+        config,
         &connected,
         &ports,
-        ("ci", herald_core::Printed::Configured),
+        ("ci", printed),
     ));
     let swept = if board.is_ok() && most.is_none() {
-        pollster::block_on(report(&config, &connected, &ports, "r1"))
+        pollster::block_on(report(config, &connected, &ports, "r1"))
     } else {
         Vec::new()
     };
@@ -274,4 +297,58 @@ fn a_scoped_view_whose_capacity_read_fails_shows_the_section_unread_never_clean(
             .reason
             .starts_with("its runs could not be read: ")
     );
+}
+
+#[test]
+fn a_run_on_a_commit_only_another_repository_s_pull_request_is_on_is_superseded_whoever_sees_it() {
+    let config = loaded(
+        &text("")
+            .replace("sources = [\"open\"]\noverviews", "sources = [\"open\", \"mirror\"]\noverviews")
+            .replace(
+                "[views.ci]",
+                "[sources.mirror]\nkind = \"github\"\nrepository = \"o/mirror\"\ntoken = { secret = \"HERALD_GITHUB_TOKEN\" }\n[views.ci]",
+            )
+            .replace("private = true", "private = false"),
+    );
+    let (moved, mirrored) = (page_on("PUBLIC", "h2"), page_on("PRIVATE", "h1"));
+    let (none, running) = (runs(&[]), runs(&[(7, "h1")]));
+    let read = [
+        (GRAPHQL, 200, moved.as_str()),
+        (QUEUED, 200, none.as_str()),
+        (RUNNING, 200, running.as_str()),
+        (GRAPHQL, 200, mirrored.as_str()),
+        (
+            "/repos/o/mirror/actions/runs?status=queued&per_page=100",
+            200,
+            none.as_str(),
+        ),
+        (
+            "/repos/o/mirror/actions/runs?status=in_progress&per_page=100",
+            200,
+            none.as_str(),
+        ),
+    ];
+    for printed in [herald_core::Printed::Withheld, herald_core::Printed::Asked] {
+        let script = Script::answering(&read).then(&read).then(&[POSTED]);
+        let (board, swept) = ran_as(&script, (&config, None), printed);
+        let superseded: Vec<String> = board
+            .unwrap()
+            .overviews
+            .superseded()
+            .into_iter()
+            .map(|run| format!("{}@{}", run.repository, run.sha))
+            .collect();
+        assert_eq!(superseded, ["o/open@h1"], "{printed:?}");
+        assert!(
+            matches!(swept[0].outcome, Sweep::Reported { .. }),
+            "{swept:?}"
+        );
+        let posted = String::from_utf8(script.bodies().last().unwrap().clone())
+            .unwrap()
+            .replace('\\', "");
+        assert!(
+            posted.contains("queued:0 running:1 superseded:1"),
+            "{posted}"
+        );
+    }
 }

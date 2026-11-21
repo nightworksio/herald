@@ -203,7 +203,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         }
         pulls.extend(read);
     }
-    overviews.heads = pulls.iter().filter_map(|pull| pull.head.clone()).collect();
+    overviews.heads = Overviews::heads_of(&pulls);
     Ok(Read {
         pulls,
         overviews,
@@ -286,7 +286,7 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
         _ => None,
     };
     let mut board = grouped(&view.view, decided_rows(flow, view, &pulls).await);
-    board.overviews = printed.overviews(read.overviews);
+    board.overviews = printed.overviews(read.overviews, &pulls);
     board.overviews.advisories = view
         .advisories
         .map(|_| crate::advised::shown(found.as_ref(), surface));

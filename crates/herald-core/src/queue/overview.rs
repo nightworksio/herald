@@ -5,8 +5,8 @@
 
 use jiff::Timestamp;
 
-use super::View;
 use super::advisory::Advised;
+use super::{Pull, View};
 use crate::members::Visibility;
 
 /// The most repositories a view reads capacity of where it reads its
@@ -71,6 +71,15 @@ impl Unread {
     }
 }
 
+/// The commit an open pull request's head is at, in its repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Head {
+    /// The repository the pull request is opened in.
+    pub repository: String,
+    /// The commit.
+    pub sha: String,
+}
+
 /// What a view's overviews found.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Overviews {
@@ -78,8 +87,9 @@ pub struct Overviews {
     pub capacity: Option<Vec<Running>>,
     /// What could not be read.
     pub unread: Vec<Unread>,
-    /// The head of every open pull request the view read.
-    pub heads: Vec<String>,
+    /// The head of every open pull request the view read, in its
+    /// repository.
+    pub heads: Vec<Head>,
     /// The advisories section, as the surface it leaves through is shown
     /// it, where the view shows one.
     pub advisories: Option<Advised>,
@@ -100,6 +110,20 @@ impl Overviews {
         self
     }
 
+    /// The head of each of `pulls` that names one, in its repository.
+    #[must_use]
+    pub fn heads_of(pulls: &[Pull]) -> Vec<Head> {
+        pulls
+            .iter()
+            .filter_map(|pull| {
+                pull.head.as_ref().map(|sha| Head {
+                    repository: pull.repository.clone(),
+                    sha: sha.clone(),
+                })
+            })
+            .collect()
+    }
+
     /// It with `other`'s runs and unread repositories added.
     pub fn merge(&mut self, other: Self) {
         if let Some(runs) = other.capacity {
@@ -109,13 +133,20 @@ impl Overviews {
     }
 
     /// The runs started for a pull request on a commit no open pull
-    /// request's head is: superseded by a newer push, or by its closing.
+    /// request of its own repository has its head at: superseded by a
+    /// newer push, or by its closing. A head in another repository never
+    /// holds a run.
     #[must_use]
     pub fn superseded(&self) -> Vec<&Running> {
         self.capacity
             .iter()
             .flatten()
-            .filter(|run| run.pull && !self.heads.contains(&run.sha))
+            .filter(|run| {
+                run.pull
+                    && !self.heads.iter().any(|head| {
+                        head.sha == run.sha && head.repository.eq_ignore_ascii_case(&run.repository)
+                    })
+            })
             .collect()
     }
 

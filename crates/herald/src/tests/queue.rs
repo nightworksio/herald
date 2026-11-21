@@ -405,3 +405,170 @@ fn a_part_sent_more_than_once_is_listed_once_with_how_many_times() {
         listed.out
     );
 }
+
+/// What of the private repository `acme/secret-plans` no withheld output
+/// may hold: its owner, its name, its pull requests' numbers and titles,
+/// and their heads.
+const SECRET_NAMED: [&str; 6] = [
+    "acme",
+    "secret-plans",
+    "7041",
+    "7042",
+    "Merger plan",
+    "c0ffee",
+];
+
+/// `world`'s store keeping two private pull requests of
+/// `acme/secret-plans` that change one path, the first's check `test`
+/// failing on its head and having failed then passed on it an hour ago,
+/// read now; and its CI runs, a full page queued, one running on a head no
+/// pull request is on, and the failed run 42 on the first head, whose job
+/// `test` failed.
+fn secret_kept(world: &World) {
+    use herald_core::{Changed, Checks, Flip, KeptPull, PullKey, Reconciled, RepositoryKey};
+    use herald_ports::{Pulls as _, Store as _};
+    let now = jiff::Timestamp::now();
+    let ago = now - jiff::SignedDuration::from_hours(1);
+    let key = RepositoryKey {
+        host: "github.com".to_owned(),
+        id: "7".to_owned(),
+    };
+    let store = kept(world);
+    let pulls = store.pulls().unwrap();
+    for (number, flipped) in [(7041, true), (7042, false)] {
+        let head = format!("c0ffee{number}");
+        let (checks, flips) = if flipped {
+            let flip = Flip {
+                check: "test".to_owned(),
+                head: head.clone(),
+                at: ago,
+            };
+            (Checks::Failed(vec!["test".to_owned()]), vec![flip])
+        } else {
+            (Checks::Passed, Vec::new())
+        };
+        let pull = herald_core::Pull {
+            project: "cli".to_owned(),
+            repository: "acme/secret-plans".to_owned(),
+            visibility: herald_core::Visibility::Private,
+            number,
+            title: format!("Merger plan, part {number}"),
+            url: format!("https://github.com/acme/secret-plans/pull/{number}"),
+            author: Some("ana".to_owned()),
+            bot: false,
+            draft: false,
+            labels: Vec::new(),
+            opened: ago,
+            updated: ago,
+            review: herald_core::Review::Approved,
+            reviewers: Vec::new(),
+            checks,
+            mergeable: herald_core::Mergeable::Clean,
+            queued: false,
+            forge: None,
+            head: Some(head),
+            unread: false,
+            base: Some("main".to_owned()),
+            files: Some(Changed {
+                paths: ["src/lib.rs".to_owned()].into(),
+                whole: true,
+            }),
+            flips,
+        };
+        let pulled = PullKey {
+            repository: key.clone(),
+            number,
+        };
+        let record = KeptPull::read(None, pulled, pull, now);
+        pollster::block_on(pulls.put_pull(&record, None)).unwrap();
+    }
+    let mark = Reconciled {
+        repository: Some(key),
+        at: Some(now),
+        ..Reconciled::default()
+    };
+    pollster::block_on(pulls.put_reconciled(&herald_core::SourceName::new("cli"), &mark, None))
+        .unwrap();
+    let runs = |listed: &[(u64, &str)]| {
+        let runs: Vec<_> = listed
+            .iter()
+            .map(|(id, sha)| {
+                json!({ "id": id, "html_url": format!("https://github.com/acme/secret-plans/actions/runs/{id}"),
+                    "head_sha": sha, "event": "pull_request", "created_at": "2026-11-20T10:00:00Z" })
+            })
+            .collect();
+        json!({ "workflow_runs": runs }).to_string()
+    };
+    let full: Vec<(u64, &str)> = (1..=100).map(|id| (id, "c0ffee7041")).collect();
+    let forge = &mut world.state.lock().unwrap().forge;
+    let jobs = json!({ "jobs": [{ "id": 420, "name": "test", "conclusion": "failure" }] });
+    for (asked, listed) in [
+        ("?status=queued&per_page=100", runs(&full)),
+        (
+            "?status=in_progress&per_page=100",
+            runs(&[(101, "c0ffee7040")]),
+        ),
+        (
+            "?head_sha=c0ffee7041&status=failure&per_page=5",
+            runs(&[(42, "c0ffee7041")]),
+        ),
+        ("/42/jobs?filter=latest&per_page=100", jobs.to_string()),
+    ] {
+        forge.insert(
+            format!("/repos/acme/secret-plans/actions/runs{asked}"),
+            (200, listed),
+        );
+    }
+}
+
+#[test]
+fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_are_printed_nowhere_unless_said_private()
+ {
+    let config = CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"acme/secret-plans\"\n",
+    );
+    let setup = setup(&format!(
+        "{config}[views.kept]\nsources = [\"cli\"]\nmode = \"kept\"\nreconcile = \"1d\"\nconflicts = true\noverviews = [\"capacity\"]\n[rules.flaky]\nview = \"kept\"\nflaky = {{ rerun = true }}\nevery = \"1h\"\nat = \"00:00\"\n"
+    ));
+    let world = World::default();
+    secret_kept(&world);
+    let printed = |args: &[&str]| {
+        let run = herald(&setup, &world, args);
+        assert_eq!(run.code, DONE, "{}", run.err);
+        format!("{}{}", run.out, run.err)
+    };
+    let json = printed(&["queue", "kept", "--format", "json", "--private"]);
+    let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        read["groups"][0]["rows"][0]["overlaps"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(read["failures"][0]["pulls"][0]["number"], 7041);
+    assert_eq!(read["overviews"]["capacity"]["queued"], 100);
+    assert_eq!(
+        read["overviews"]["unread"][0]["repository"],
+        "acme/secret-plans"
+    );
+    let said = format!("{json}{}", printed(&["rerun", "flaky", "--private"]));
+    for named in SECRET_NAMED {
+        assert!(said.contains(named), "{named}: {said}");
+    }
+    let table = printed(&["queue", "kept"]);
+    assert_eq!(
+        table.lines().collect::<Vec<_>>(),
+        [
+            "kept: 0 open pull requests, 0 stale",
+            "2 pull requests of private or internal repositories withheld: --private, or [cli] private, prints them",
+        ]
+    );
+    let json = printed(&["queue", "kept", "--format", "json"]);
+    let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(read["withheld_pulls"], 2);
+    let said = format!("{table}{json}{}", printed(&["rerun", "flaky"]));
+    for named in SECRET_NAMED {
+        assert!(!said.contains(named), "{named}: {said}");
+    }
+}

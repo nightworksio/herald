@@ -3,7 +3,7 @@ use jiff::Timestamp;
 use super::*;
 use crate::members::Visibility;
 use crate::queue::tests::pull;
-use crate::queue::{Board, Bots, Failure, Overviews, Running, Unread, View, board};
+use crate::queue::{Board, Bots, Failure, Head, Overviews, Running, Unread, View, board};
 
 fn keys(value: &Value) -> Vec<String> {
     let mut keys: Vec<String> = value
@@ -249,7 +249,12 @@ fn a_view_shows_its_runs_queued_and_running_the_oldest_queued_and_those_supersed
             visibility: Visibility::Private,
             reason: "its runs are unread".to_owned(),
         }],
-        heads: vec!["31".to_owned(), "32".to_owned()],
+        heads: ["31", "32"]
+            .map(|sha| Head {
+                repository: "o/app".to_owned(),
+                sha: sha.to_owned(),
+            })
+            .to_vec(),
         ..Overviews::default()
     };
     let value = view_value(Showing {

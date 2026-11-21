@@ -271,7 +271,7 @@ fn a_private_or_internal_repository_s_rows_are_printed_only_where_the_output_is_
 }
 
 #[test]
-fn the_overviews_printed_keep_only_the_runs_and_unread_repositories_whose_rows_are_printed() {
+fn the_overviews_printed_keep_only_the_runs_unread_repositories_and_heads_whose_rows_are_printed() {
     let run = |repository: &str, visibility| crate::queue::Running {
         repository: repository.to_owned(),
         visibility,
@@ -287,7 +287,7 @@ fn the_overviews_printed_keep_only_the_runs_and_unread_repositories_whose_rows_a
         visibility,
         reason: "refused".to_owned(),
     };
-    let overviews = Overviews {
+    let mut overviews = Overviews {
         capacity: Some(vec![
             run("o/app", Visibility::Public),
             run("o/vault", Visibility::Private),
@@ -298,15 +298,37 @@ fn the_overviews_printed_keep_only_the_runs_and_unread_repositories_whose_rows_a
         ],
         ..Overviews::default()
     };
-    let printed = Printed::Withheld.overviews(overviews.clone());
+    let headed = |repository: &str, visibility, head: &str| {
+        let mut headed = pull(repository, visibility);
+        headed.head = Some(head.to_owned());
+        headed
+    };
+    let pulls = vec![
+        headed("o/app", Visibility::Public, "h-app"),
+        headed("o/vault", Visibility::Private, "h-vault"),
+        pull("o/unheaded", Visibility::Public),
+    ];
+    overviews.heads = Overviews::heads_of(&pulls);
+    let (shown, _) = Printed::Withheld.printed(pulls.clone());
+    let printed = Printed::Withheld.overviews(overviews.clone(), &shown);
     assert_eq!(
         printed.capacity,
         Some(vec![run("o/app", Visibility::Public)])
     );
     assert_eq!(printed.unread, [unread("o/app", Visibility::Public)]);
-    assert_eq!(Printed::Asked.overviews(overviews.clone()), overviews);
     assert_eq!(
-        Printed::Withheld.overviews(Overviews::default()),
+        printed.heads,
+        [crate::queue::Head {
+            repository: "o/app".to_owned(),
+            sha: "h-app".to_owned(),
+        }]
+    );
+    assert_eq!(
+        Printed::Asked.overviews(overviews.clone(), &pulls),
+        overviews
+    );
+    assert_eq!(
+        Printed::Withheld.overviews(Overviews::default(), &[]),
         Overviews::default()
     );
 }

@@ -32,7 +32,16 @@ with their pull requests' titles, authors and failing checks.
 5. **One home.** `herald_core::Printed` (`Withheld`, `Configured`,
    `Asked`) decides, for rows and for advisories: `Printed::of` from the
    flag and the setting, `Printed::prints` per visibility, `advises` for
-   advisories.
+   advisories. The overviews it prints hold only the runs, unread lines
+   and pull request heads of the repositories whose rows it prints.
+6. **A run is superseded within its own repository.** A run is
+   superseded where no open pull request of its own repository has its
+   head at the run's commit (ADR-0066). A head in another repository
+   never holds it, on any surface: before, a public run on a commit that
+   only a private mirror's open pull request was on counted as not
+   superseded, which told a public log or route that a withheld pull
+   request was on that commit. That run now counts as superseded, with
+   the output said private or not, and in a report to a public route.
 
 ## Consequences
 

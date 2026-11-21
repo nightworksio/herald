@@ -175,16 +175,18 @@ impl Printed {
         (shown, withheld.len())
     }
 
-    /// `overviews` as they are printed: the CI runs and the unread
-    /// repositories of those whose rows it prints.
+    /// `overviews` as they are printed beside `shown`, the pull requests it
+    /// prints: the CI runs and the unread repositories of those whose rows
+    /// it prints, and the heads of `shown` alone.
     #[must_use]
-    pub fn overviews(self, mut overviews: Overviews) -> Overviews {
+    pub fn overviews(self, mut overviews: Overviews, shown: &[Pull]) -> Overviews {
         if let Some(runs) = overviews.capacity.as_mut() {
             runs.retain(|run| self.prints(run.visibility));
         }
         overviews
             .unread
             .retain(|unread| self.prints(unread.visibility));
+        overviews.heads = Overviews::heads_of(shown);
         overviews
     }
 }

@@ -19,6 +19,13 @@ fn running(
     }
 }
 
+fn head(repository: &str, sha: &str) -> Head {
+    Head {
+        repository: repository.to_owned(),
+        sha: sha.to_owned(),
+    }
+}
+
 fn overviews() -> Overviews {
     Overviews {
         capacity: Some(vec![
@@ -32,7 +39,7 @@ fn overviews() -> Overviews {
             visibility: Visibility::Private,
             reason: "the token may not read its runs".to_owned(),
         }],
-        heads: vec!["h1".to_owned()],
+        heads: vec![head("o/app", "h1")],
         advisories: None,
     }
 }
@@ -46,6 +53,18 @@ fn a_run_for_a_pull_request_on_no_open_head_is_superseded() {
         .map(|run| run.id.as_str())
         .collect();
     assert_eq!(ids, ["old", "gone"]);
+}
+
+#[test]
+fn only_a_head_in_a_run_s_own_repository_keeps_it_from_being_superseded() {
+    let mut overviews = overviews();
+    overviews.heads = vec![head("o/mirror", "h1"), head("O/App", "old")];
+    let ids: Vec<&str> = overviews
+        .superseded()
+        .into_iter()
+        .map(|run| run.id.as_str())
+        .collect();
+    assert_eq!(ids, ["h1", "gone"]);
 }
 
 #[test]

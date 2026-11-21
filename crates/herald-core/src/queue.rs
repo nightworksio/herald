@@ -27,7 +27,7 @@ pub use kept::{
 };
 pub use overlap::overlaps;
 pub use overview::{
-    CAPACITY_REPOSITORIES, Capacity, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
+    CAPACITY_REPOSITORIES, Capacity, Head, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
 };
 pub use triage::{Failure, Triage};
 pub use view::{

@@ -1,6 +1,6 @@
 # ADR-0066: A view shows its repositories' CI capacity
 
-**Status:** Accepted
+**Status:** Accepted; a run superseded within its own repository, by [ADR-0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md)
 **Date:** 2026-11-20
 
 ## Context
@@ -16,7 +16,8 @@ with the recommended one the default.
 1. **A section of a view.** `[views.<name>] overviews = ["capacity"]`
    shows, beside its rows, the runs queued and running in its
    repositories, the oldest queued, and those superseded: started for a
-   pull request on a commit no open pull request's head is. Templates
+   pull request on a commit no open pull request of the run's own
+   repository has its head at (ADR-0069). Templates
    read it as `view.overviews`.
 2. **Which repositories.** `capacity_from = "shown"`, the default, reads
    the repositories the view shows a pull request of. `"members"` reads
