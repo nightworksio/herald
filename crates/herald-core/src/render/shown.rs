@@ -4,7 +4,7 @@
 use jiff::SignedDuration;
 use minijinja::{Value, context};
 
-use crate::queue::{Batch, Grouped, Row, Showing};
+use crate::queue::{Batch, Failure, Grouped, Row, Showing};
 
 /// How long `waited` is, in its largest whole unit: days, hours or
 /// minutes, as a report and `herald queue` write it.
@@ -69,6 +69,21 @@ fn batch_value(batch: &Batch) -> Value {
     }
 }
 
+fn failure_value(failure: &Failure) -> Value {
+    context! {
+        check => failure.check.as_str(),
+        count => failure.pulls.len(),
+        broken => failure.broken,
+        flips => failure.flips,
+        flaky => failure.flaky,
+        pulls => failure
+            .pulls
+            .iter()
+            .map(|(repository, number)| context! { repository => repository, number => number })
+            .collect::<Vec<_>>(),
+    }
+}
+
 /// `showing` as a template reads it as `view`.
 pub(super) fn view_value(showing: Showing<'_>) -> Value {
     let board = showing.board;
@@ -83,6 +98,7 @@ pub(super) fn view_value(showing: Showing<'_>) -> Value {
             .collect::<Vec<_>>(),
         groups => board.groups.iter().map(group_value).collect::<Vec<_>>(),
         batches => board.batches.iter().map(batch_value).collect::<Vec<_>>(),
+        failures => board.failures.iter().map(failure_value).collect::<Vec<_>>(),
     }
 }
 

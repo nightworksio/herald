@@ -50,6 +50,7 @@ mod queue;
 mod rate;
 mod render;
 pub mod report;
+mod rerun;
 mod retention;
 mod revision;
 mod route;
@@ -115,7 +116,9 @@ pub use kind::{
     PACKAGE_TYPE, PATH, PRERELEASE, PULL_LINK, PULLS, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK,
     SEVERITY, STALE, STATE_REASON, TOOL, TRIGGER, VERSION, VIEW, WORKFLOW, readable, versioned,
 };
-pub use kind::{REASON, REPOSITORY, SPELL, STAGE, TURN, WAITED, WAITING_ON};
+pub use kind::{
+    CALL, CHECK, FLIPS, REASON, REPOSITORY, RUN_ID, SPELL, STAGE, TURN, WAITED, WAITING_ON,
+};
 pub use latest::{Latest, Shown};
 pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
@@ -140,10 +143,10 @@ pub use profile::{
 };
 pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
-    Batch, Board, Bots, Changed, Checks, Closed, Deciding, Described, Folded, Folding, GroupBy,
-    Grouped, KeptPull, Lifecycle, Mergeable, Outcome, Pull, PullKey, Ran, Read, Reason, Reconciled,
-    RepositoryKey, Review, Reviewed, Row, Rules, Showing, Since, Turn, Verdict, View, board,
-    grouped, overlaps, rows,
+    Batch, Board, Bots, Changed, Checks, Closed, Deciding, Described, Failure, Flip, Folded,
+    Folding, GroupBy, Grouped, KeptPull, Lifecycle, MOST_FLIPS, Mergeable, Outcome, Pull, PullKey,
+    Ran, Read, Reason, Reconciled, RepositoryKey, Review, Reviewed, Row, Rules, Showing, Since,
+    Triage, Turn, Verdict, View, board, grouped, overlaps, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{
@@ -153,6 +156,7 @@ pub use render::{
 pub use report::{
     REPORT_PREFIX, ReportSchedule, living_identity, report_event, report_identity, zone,
 };
+pub use rerun::{MOST_RUNS, MOST_RUNS_ALLOWED, RERUN_PREFIX, Rerun, RerunPlan, rerun_event};
 pub use retention::Retention;
 pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,

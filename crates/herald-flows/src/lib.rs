@@ -37,6 +37,7 @@ mod prepare;
 mod preview;
 mod publishing;
 mod report;
+mod reruns;
 mod room;
 pub mod round;
 mod rules;

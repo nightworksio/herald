@@ -491,6 +491,11 @@ fn queued(bytes: &[u8]) {
             let Some(queue) = source.queue(token) else {
                 continue;
             };
+            if let Ok(herald_kinds::Plan::Runs(runs)) =
+                pollster::block_on(queue.planned(&http, ("fuzzer/fuzzed", "h", "test"), herald_core::MOST_RUNS))
+            {
+                assert!(runs.iter().all(|run| run.call.starts_with("POST ")), "{runs:?}");
+            }
             let asked = herald_kinds::Asked {
                 most,
                 files: true,

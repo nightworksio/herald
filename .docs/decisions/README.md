@@ -82,3 +82,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0062](0062-a-view-reads-an-owner-s-repositories-by-one-query-over-them.md) | A view reads an owner's repositories by one query over them | Accepted |
 | [0063](0063-a-view-predicts-conflicts-from-the-paths-open-pull-requests-change.md) | A view predicts conflicts from the paths open pull requests change | Accepted |
 | [0064](0064-a-ci-run-s-id-token-is-its-credential.md) | A CI run's ID token is its credential | Accepted |
+| [0065](0065-a-view-triages-failing-checks-and-a-rule-plans-a-re-run-of-a-flaky-one.md) | A view triages failing checks, and a rule plans a re-run of a flaky one | Accepted |

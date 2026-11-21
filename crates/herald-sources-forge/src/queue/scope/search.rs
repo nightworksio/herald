@@ -107,6 +107,7 @@ fn bare(
         unread: false,
         base: None,
         files: None,
+        flips: Vec::new(),
     }
 }
 

@@ -405,6 +405,7 @@ impl Node {
             unread: false,
             base: self.base_ref_name,
             files: self.files.map(Files::changed),
+            flips: Vec::new(),
         }
     }
 }

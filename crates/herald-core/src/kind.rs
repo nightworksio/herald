@@ -32,12 +32,14 @@ impl Kind {
     pub const REPORT: Self = Self(Cow::Borrowed("report"));
     /// A nudge: an open pull request that waited past a rule's stage.
     pub const NUDGE: Self = Self(Cow::Borrowed("nudge"));
+    /// A rule's plan to re-run a flaky check once (ADR-0065).
+    pub const RERUN: Self = Self(Cow::Borrowed("rerun"));
 
     /// Whether only herald itself announces its events, as a report from a
     /// view or a rule's nudge: no app and no other herald's feed gives one.
     #[must_use]
     pub fn own(&self) -> bool {
-        *self == Self::REPORT || *self == Self::NUDGE
+        *self == Self::REPORT || *self == Self::NUDGE || *self == Self::RERUN
     }
 
     /// The kind named `name`.
@@ -245,6 +247,19 @@ pub const SPELL: &str = "spell";
 pub const REPOSITORY: &str = "repository";
 /// The logins whose turn a nudged pull request is, joined by `, `.
 pub const WAITING_ON: &str = "waiting_on";
+
+/// The attribute naming a re-run plan's check (ADR-0065).
+pub const CHECK: &str = "check";
+
+/// The attribute counting how often a re-run plan's check flipped.
+pub const FLIPS: &str = "flips";
+
+/// The attribute naming the forge's id of the run a re-run plan would
+/// re-run; its page is the [`RUN_LINK`].
+pub const RUN_ID: &str = "run_id";
+
+/// The attribute holding the exact call a re-run plan would make.
+pub const CALL: &str = "call";
 /// Whether a pull request's or an issue's author is a bot or an app.
 pub const BOT: &str = "bot";
 /// The branch a pull request merges into.
@@ -438,6 +453,24 @@ fn nudged() -> BTreeMap<String, AttributeSpec> {
     .collect()
 }
 
+/// The attributes of a re-run plan (ADR-0065).
+fn planned() -> BTreeMap<String, AttributeSpec> {
+    [
+        (RULE, AttributeType::Text, true),
+        (CHECK, AttributeType::Text, true),
+        (HEAD, AttributeType::Text, true),
+        (FLIPS, AttributeType::Number, true),
+        (REPOSITORY, AttributeType::Text, true),
+        (NUMBER, AttributeType::Number, true),
+        (RUN_ID, AttributeType::Text, false),
+        (CALL, AttributeType::Text, false),
+        (REASON, AttributeType::Text, false),
+    ]
+    .into_iter()
+    .map(|(name, ty, required)| (name.to_owned(), AttributeSpec { ty, required }))
+    .collect()
+}
+
 /// The attributes of an alert: a forge's signals', and what the alert is.
 /// None holds what an alert found, such as a secret's value.
 fn alerted() -> BTreeMap<String, AttributeSpec> {
@@ -625,6 +658,13 @@ impl KindSpec {
                 false,
                 buttons(&[PULL_LINK]),
                 nudged(),
+            ),
+            Self::new(
+                Kind::RERUN,
+                "A rule's plan to re-run a flaky check once.",
+                false,
+                buttons(&[PULL_LINK, RUN_LINK]),
+                planned(),
             ),
         ]
     }

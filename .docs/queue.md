@@ -275,8 +275,9 @@ and nudges each open pull request that waited past one of its `stages`:
 
 | Key | What it sets | Where absent |
 |-----|--------------|--------------|
-| `stages` | how long a pull request waits before each nudge, 1 to 16 lengths such as `["2d", "7d"]` | required |
-| `most` | the most pull requests it nudges a window, the longest waiting first; the rest wait for the next window | `20` |
+| `stages` | how long a pull request waits before each nudge, 1 to 16 lengths such as `["2d", "7d"]` | no nudges |
+| `most` | the most pull requests it nudges, and the most re-runs it plans, a window; the rest wait for the next window | `20` |
+| `flaky` | `{ rerun = true }` plans a re-run of each flaky check (below); `mode` is `"plan"`, the only mode a rule takes; `runs` is the most failed runs on a head a plan reads, the newest first, 1 to 100 | no plans; `runs = 5` |
 | `view`, `every`, `at`, `days`, `zone` | as a report's | as a report's |
 
 A pull request's spell of waiting begins when anyone last acted on it, as
@@ -309,6 +310,48 @@ template = "herald:nudge"
 private = true
 ```
 
+A rule names `stages`, `flaky`, or both.
+
+### Check triage and flaky checks
+
+Every board names each check failing on the pull requests it shows, those
+failing on the most first (ADR-0065). Where a check fails on `broken_at`
+of them (`3`) the base they merge into reads as broken. Kept mode records
+each time a check failed and then passed on one head, from a delivery or
+a read of the same head; a check that did so `least` times (`1`) within
+`window` (`"7d"`) across the view's pull requests is a flaky candidate. A
+view reading a source live tells none.
+
+```toml
+[views.ci]
+mode = "kept"
+broken_at = 3
+flaky = { window = "7d", least = 1 }
+```
+
+A rule with `flaky = { rerun = true }` plans a re-run of each flaky check
+failing on its view's pull requests, at most `most` a window. A plan names
+the check, the head it fails on, how often it flipped, and each failed run
+on the head that ran it with the exact call that re-runs its failed jobs.
+A plan reads the newest `runs` failed runs: one request for them and, on
+GitHub, one for each run's jobs. Every request a plan, a view or a
+reconcile makes is charged to the run's budget as it is made, so a host's
+request limit stops the read before the request past it:
+
+| Forge | Runs read | The call |
+|-------|-----------|----------|
+| GitHub | `actions/runs?head_sha=<head>&status=failure`, then each run's jobs | `POST …/actions/runs/<id>/rerun-failed-jobs` |
+| GitLab | `pipelines?sha=<head>&status=failed` | `POST …/pipelines/<id>/retry` |
+| Forgejo | none: it has no API to re-run a run | none; the plan says to re-run it by hand |
+
+The `rerun` event carries `rule`, `check`, `head`, `flips`, `repository`
+and `number`, with `run_id` and `call` where a run can be re-run and
+`reason` where none can, and links the pull request as `pull` and the run
+as `run`. It is announced once a run and head, to the routes naming the
+rule that say `private = true` alone. herald ships `herald:rerun`. A rule
+only plans: `mode = "apply"` is refused, as a re-run is made by an
+operator signed in through the forge, never by a rule on its own.
+
 Reports and rules watching one view read it once a round.
 
 ## Templates
@@ -321,6 +364,7 @@ A route's template reads the board as `view`:
 | `view.counts` | each state with its `count`, as `{ state, count }` |
 | `view.groups` | each group's `name` and `rows` |
 | `view.batches` | each batch's `package`, `to`, `green`, `failing` and `rows` |
+| `view.failures` | each failing check's `check`, `count`, `broken`, `flips`, `flaky` and `pulls`, each `{ repository, number }` |
 | a row | `project`, `repository`, `number`, `title`, `url`, `author`, `bot`, `draft`, `labels`, `reviewers` (each asked, or a team's `org/team`), `opened`, `updated`, `state`, `reason`, `waited` (as `3d`, `5h` or `12m`), `waited_seconds`, `stale`, `waiting_on` (the logins whose turn it is), `overlaps` (the numbers of the open pull requests changing a path it changes, where the view predicts conflicts) |
 
 herald ships `herald:queue`; a `[templates."herald:queue"]` table replaces

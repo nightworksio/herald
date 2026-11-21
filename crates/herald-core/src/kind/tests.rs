@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_ten_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_eleven_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -108,7 +108,8 @@ fn herald_ships_ten_kinds_and_only_releases_and_package_versions_are_versioned()
             ("pull-request", false),
             ("issue", false),
             ("report", false),
-            ("nudge", false)
+            ("nudge", false),
+            ("rerun", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -135,6 +136,7 @@ fn herald_ships_ten_kinds_and_only_releases_and_package_versions_are_versioned()
             Some(&signalled),
             Some(&signalled),
             Some(&signalled),
+            None,
             None,
             None
         ]
@@ -220,7 +222,7 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     assert_eq!(
         private,
         [
-            false, false, false, false, false, true, false, false, false, false
+            false, false, false, false, false, true, false, false, false, false, false
         ]
     );
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
@@ -356,6 +358,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "issue",
             "report",
             "nudge",
+            "rerun",
             "deploy"
         ]
     );
@@ -454,7 +457,7 @@ fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
     assert_eq!(
         own,
         [
-            false, false, false, false, false, false, false, false, true, true
+            false, false, false, false, false, false, false, false, true, true, true
         ]
     );
     assert_eq!(report.links, []);
@@ -498,6 +501,36 @@ fn a_nudge_names_its_rule_stage_and_pull_request_and_links_the_pull_request() {
             ("turn", AttributeType::Text, true),
             ("waited", AttributeType::Text, true),
             ("waiting_on", AttributeType::Text, false)
+        ]
+    );
+}
+
+#[test]
+fn a_rerun_plan_names_its_check_evidence_and_call_and_links_the_pull_request_and_run() {
+    let shipped = KindSpec::shipped();
+    let plan = &shipped[10];
+    assert_eq!(plan.kind, Kind::RERUN);
+    assert_eq!(
+        plan.links,
+        [LinkSpec::named("pull"), LinkSpec::named("run")]
+    );
+    let attributes: Vec<(&str, AttributeType, bool)> = plan
+        .attributes
+        .iter()
+        .map(|(name, spec)| (name.as_str(), spec.ty, spec.required))
+        .collect();
+    assert_eq!(
+        attributes,
+        [
+            ("call", AttributeType::Text, false),
+            ("check", AttributeType::Text, true),
+            ("flips", AttributeType::Number, true),
+            ("head", AttributeType::Text, true),
+            ("number", AttributeType::Number, true),
+            ("reason", AttributeType::Text, false),
+            ("repository", AttributeType::Text, true),
+            ("rule", AttributeType::Text, true),
+            ("run_id", AttributeType::Text, false)
         ]
     );
 }

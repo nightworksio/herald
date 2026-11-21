@@ -390,6 +390,27 @@ impl herald_kinds::Queue for Scoped {
         true
     }
 
+    fn holds(&self, repository: &str) -> bool {
+        repository.rsplit_once('/').is_some_and(|(holder, _)| {
+            self.forge()
+                .holds((&self.owner, self.options.subgroups()), holder)
+        })
+    }
+
+    fn planned<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (repository, head, check): (&'a str, &'a str, &'a str),
+        most: usize,
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::Plan, Unpolled>> {
+        Box::pin(async move {
+            let origin = self.origin(repository);
+            let reading = (Most::default(), false);
+            let opened = self.reading(&origin, ("", herald_core::Visibility::Private), reading);
+            opened.planned(&Erased(http), (head, check), most).await
+        })
+    }
+
     fn opened<'a>(
         &'a self,
         http: &'a dyn DynHttp,

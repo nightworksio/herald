@@ -8,8 +8,9 @@ use std::ops::Range;
 
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
-    Bots, BumpPattern, Deciding, Glob, GroupBy, MOST_NUDGES, MOST_STAGES, ReportSchedule, Rules,
-    Slot, SourceName, Stages, View, zone,
+    Bots, BumpPattern, Deciding, Duration, Glob, GroupBy, MOST_NUDGES, MOST_RUNS,
+    MOST_RUNS_ALLOWED, MOST_STAGES, ReportSchedule, Rules, Slot, SourceName, Stages, Triage, View,
+    zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -21,8 +22,15 @@ use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
     BUILT_IN_VIEW, BotsFile, DecidingFile, DecidingName, GroupByFile, RULE_KEYS, Report,
-    ReportFile, Rule, RuleFile, RulesFile, ViewConfig, ViewFile, ViewMode,
+    ReportFile, RerunMode, Rule, RuleFile, RulesFile, ViewConfig, ViewFile, ViewMode,
 };
+
+/// Why a rule may not re-run a check itself (ADR-0065).
+const APPLIED: &str = "a rule only plans a re-run, so mode is \"plan\"; a re-run is made by an operator signed in through the forge, never by a rule on its own";
+
+/// Why a rule that neither nudges nor plans is refused.
+const RUNS: &str = "a plan reads from 1 to 100 failed runs on a head, such as runs = 5";
+const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, or both; this one does neither";
 
 /// The names of `sources` that list their repositories' open pull requests.
 fn queued(sources: &BTreeMap<SourceName, Source>) -> Vec<SourceName> {
@@ -211,6 +219,21 @@ impl Loader<'_> {
                 .map_or(shipped.deciding, DecidingFile::deciding),
             rules: file.rules.rules(),
             bumps,
+            triage: Triage {
+                broken_at: file
+                    .broken_at
+                    .map_or(shipped.triage.broken_at, NonZeroUsize::get),
+                flaky_window: file
+                    .flaky
+                    .as_ref()
+                    .and_then(|flaky| flaky.window)
+                    .map_or(shipped.triage.flaky_window, |window| window.0),
+                flaky_least: file
+                    .flaky
+                    .as_ref()
+                    .and_then(|flaky| flaky.least)
+                    .map_or(shipped.triage.flaky_least, NonZeroUsize::get),
+            },
         };
         let shipped = Most::default();
         ViewConfig {
@@ -420,21 +443,58 @@ impl Loader<'_> {
         reports
     }
 
-    /// The stages `file` writes at `path`, where they are sound.
-    fn stages(&mut self, file: &RuleFile, path: &str) -> Option<Stages> {
-        let written: Vec<SignedDuration> =
-            file.stages.get_ref().iter().map(|stage| stage.0).collect();
-        let stages = Stages::new(written);
-        if stages.is_none() {
+    /// The stages `stages`, written at `path`, where they are sound.
+    fn stages(&mut self, stages: &Spanned<Vec<Duration>>, path: &str) -> Option<Stages> {
+        let written: Vec<SignedDuration> = stages.get_ref().iter().map(|stage| stage.0).collect();
+        let sound = Stages::new(written);
+        if sound.is_none() {
             self.error(
-                &file.stages.span(),
+                &stages.span(),
                 &format!("{path}.stages"),
                 format!(
                     "a rule names from 1 to {MOST_STAGES} stages, each a whole second or longer and none twice, such as stages = [\"2d\", \"7d\"]"
                 ),
             );
         }
-        stages
+        sound
+    }
+
+    /// Whether the rule `file` writes at `path`, spanning `span`, plans
+    /// re-runs, where it does something at all: it nudges, plans, or both,
+    /// and plans only, a re-run being an operator's (ADR-0065).
+    fn reruns(
+        &mut self,
+        file: &RuleFile,
+        (path, span): (&str, &Range<usize>),
+    ) -> Option<(bool, usize)> {
+        let (rerun, runs) = match &file.flaky {
+            Some(flaky) if flaky.get_ref().mode == Some(RerunMode::Apply) => {
+                self.error(
+                    &flaky.span(),
+                    &format!("{path}.flaky.mode"),
+                    APPLIED.to_owned(),
+                );
+                return None;
+            }
+            Some(flaky) => {
+                let runs = flaky.get_ref().runs.map_or(MOST_RUNS, NonZeroUsize::get);
+                if runs > MOST_RUNS_ALLOWED {
+                    self.error(
+                        &flaky.span(),
+                        &format!("{path}.flaky.runs"),
+                        RUNS.to_owned(),
+                    );
+                    return None;
+                }
+                (flaky.get_ref().rerun, runs)
+            }
+            None => (false, MOST_RUNS),
+        };
+        if file.stages.is_none() && !rerun {
+            self.error(span, path, IDLE.to_owned());
+            return None;
+        }
+        Some((rerun, runs))
     }
 
     /// Each rule of `[rules]`, watching one of `views`, its name one no
@@ -464,16 +524,24 @@ impl Loader<'_> {
             let (Some(file), Some(watch)) = (file, watch) else {
                 continue;
             };
-            let stages = self.stages(&file, &path);
+            let stages = file
+                .stages
+                .as_ref()
+                .map(|stages| self.stages(stages, &path));
+            let rerun = self.reruns(&file, (&path, &span));
             let watch = self.report(&watch, &path, views);
-            if let (true, Some(stages), Some(watch)) = (unshared, stages, watch) {
+            let sound = stages.as_ref().is_none_or(Option::is_some);
+            if let (true, true, Some((rerun, runs)), Some(watch)) = (unshared, sound, rerun, watch)
+            {
                 let most = file.most.map_or(MOST_NUDGES, NonZeroUsize::get);
                 rules.insert(
                     name,
                     Rule {
                         watch,
-                        stages,
+                        stages: stages.flatten(),
                         most,
+                        rerun,
+                        runs,
                     },
                 );
             }

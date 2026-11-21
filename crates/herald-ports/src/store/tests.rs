@@ -536,6 +536,7 @@ pub(crate) fn kept_pull() -> herald_core::KeptPull {
         unread: false,
         base: None,
         files: None,
+        flips: Vec::new(),
     };
     let key = herald_core::PullKey {
         repository: herald_core::RepositoryKey::of(&pull.url, "1").unwrap(),

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Listed, Owner, Pull, Validators, Visibility};
+use herald_core::{Listed, Owner, Pull, Rerun, Validators, Visibility};
 use herald_ports::{Boxed, DynHttp};
 
 use crate::Unpolled;
@@ -101,6 +101,16 @@ pub enum Relisted {
     },
 }
 
+/// What a rule's plan to re-run a check found (ADR-0065).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Plan {
+    /// Each failed run on the head that ran the check, with the exact call
+    /// re-running its failed jobs.
+    Runs(Vec<Rerun>),
+    /// Why no run can be re-run, in plain words.
+    Unplanned(&'static str),
+}
+
 impl Relisted {
     /// The pull requests it listed, none where nothing changed.
     #[must_use]
@@ -134,6 +144,21 @@ pub trait Queue: fmt::Debug + Send + Sync {
         asked: Asked<'a>,
         validators: &'a [Validators],
     ) -> Boxed<'a, Result<Relisted, Unpolled>>;
+
+    /// Whether it reads the repository at the full path `repository`.
+    fn holds(&self, repository: &str) -> bool;
+
+    /// The failed runs on a head of a repository that ran a check, `ran`
+    /// being the repository's full path, the head's sha and the check's
+    /// name, the newest `most` read, each with the exact call re-running
+    /// its failed jobs, asked through `http`; or why none can be re-run
+    /// (ADR-0065).
+    fn planned<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        ran: (&'a str, &'a str, &'a str),
+        most: usize,
+    ) -> Boxed<'a, Result<Plan, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(

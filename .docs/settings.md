@@ -1135,7 +1135,11 @@ The rules routes name among their sources, by name: each a view watched once a w
 | `rules.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `rules.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
 | `rules.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
-| `rules.<name>.most` | integer | The most pull requests it nudges a window, the longest waiting first: 20 where absent; the rest wait for the next window. |
+| `rules.<name>.flaky` | table | Whether it plans a re-run of each flaky check, as `{ rerun = true, mode = "plan" }`: each plan names its evidence and the exact call, announced once a run and head to the rule's private routes. A rule only plans; a re-run is made by an operator signed in through the forge, never by a rule on its own (ADR-0065). |
+| `rules.<name>.flaky.mode` | [RerunMode](#rerunmode) | "plan", the only mode a rule takes: where absent too. |
+| `rules.<name>.flaky.rerun` | boolean | Whether it plans a re-run of each flaky check. |
+| `rules.<name>.flaky.runs` | integer | The most failed runs on one head a plan reads for one check, the newest first, from 1 to 100: 5 where absent. A plan takes one request for them and, on GitHub, one more for each. |
+| `rules.<name>.most` | integer | The most pull requests it nudges a window, the longest waiting first, and the most re-runs it plans: 20 where absent; the rest wait for the next window. |
 | `rules.<name>.stages` | array of [Duration](#duration) | How long an open pull request waits, since anyone last acted on it, before each nudge, such as `["2d", "7d"]`: each fires once a spell of waiting. |
 | `rules.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
 | `rules.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
@@ -1991,6 +1995,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 |---------|------|--------------|
 | `views.<name>.authors` | array of string | The authors it shows, by login, each a glob ignoring case; every one where empty. |
 | `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
+| `views.<name>.broken_at` | integer | How many open pull requests one check fails on before the base they merge into reads as broken: 3 where absent (ADR-0065). |
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
 | `views.<name>.conflicts` | boolean | Whether it predicts conflicts: it reads the paths each pull request's head changes, at most 100 each, and each row names the open pull requests of its repository merging into its branch that change a path in common; false where absent. It costs a request a pull request read in full, but on GitHub with a token, which reads them with each pull request; a kept record keeps them until its head moves. |
 | `views.<name>.decide` | table | The task that decides each slot its rules leave untold, such as `{ turn = "whose", priority = "urgency" }`; nothing is asked of a model where absent. |
@@ -2013,6 +2018,9 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `views.<name>.flaky` | table | What makes a failing check a flaky candidate: failing then passing on one head at `least` times (1 where absent) within `window` ("7d" where absent), as kept records saw it. |
+| `views.<name>.flaky.least` | integer | How many times within the window make a candidate: 1 where absent. |
+| `views.<name>.flaky.window` | [Duration](#duration) | How far back a check failing then passing on one head counts: "7d" where absent. |
 | `views.<name>.group_by` | [GroupBy](#groupby) | What it groups its rows by: "turn" where absent. |
 | `views.<name>.labels` | array of string | The labels, any one of which a pull request it shows carries, each a glob ignoring case; every pull request where empty. |
 | `views.<name>.listed_visibility` | boolean | Whether a live read through a REST listing without a token, as of GitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may see a repository from what the listing states of it, rather than taking each of its rows as private: false where absent. It never widens a kept record, a read with a token, a GitLab listing, or an owner's rows, which its membership record names. |
@@ -2235,6 +2243,10 @@ Who sees herald's answers to `latest` and `changelog`; the answers to `subscribe
 ### RepositoryVisibility
 
 Who may see a repository.
+
+### RerunMode
+
+How a rule acts on a flaky check.
 
 ### Rotation
 

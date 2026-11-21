@@ -28,6 +28,18 @@ pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pul
 /// each batch of bumps.
 pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.{% endif %}";
 
+/// The template herald ships for a rule's re-run plan, which a route names
+/// as `template = "herald:rerun"` and `[templates."herald:rerun"]`
+/// replaces (ADR-0065).
+pub const RERUN_TEMPLATE: &str = "herald:rerun";
+
+/// The title of [`RERUN_TEMPLATE`].
+pub(crate) const RERUN_TITLE: &str = "{{ event.attributes.repository }}#{{ event.attributes.number }}: {{ event.attributes.check }} looks flaky";
+
+/// The body of [`RERUN_TEMPLATE`]: the evidence, then the exact call, or
+/// why none can be made.
+pub(crate) const RERUN_BODY: &str = "{{ event.attributes.check }} failed then passed on one head {{ event.attributes.flips }} times; it fails on {{ event.attributes.head }}. {% if event.attributes.call %}A re-run of run {{ event.attributes.run_id }} would call {{ event.attributes.call }}.{% else %}No re-run can be planned: {{ event.attributes.reason }}.{% endif %}";
+
 /// The template herald ships for a nudge, which a route names as
 /// `template = "herald:nudge"` and `[templates."herald:nudge"]` replaces.
 pub const NUDGE_TEMPLATE: &str = "herald:nudge";
@@ -91,16 +103,24 @@ pub struct Report {
     pub schedule: ReportSchedule,
 }
 
-/// A rule: the view it watches, when it looks, and how long a pull
-/// request waits before each nudge (ADR-0056).
+/// A rule: the view it watches, when it looks, how long a pull request
+/// waits before each nudge (ADR-0056), and whether it plans re-runs of
+/// flaky checks (ADR-0065).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rule {
     /// The view it watches, and when its windows begin.
     pub watch: Report,
-    /// How long a pull request waits before each nudge.
-    pub stages: Stages,
-    /// The most pull requests it nudges a window.
+    /// How long a pull request waits before each nudge, where it nudges.
+    pub stages: Option<Stages>,
+    /// The most pull requests it nudges, and the most re-runs it plans, a
+    /// window.
     pub most: usize,
+    /// Whether it plans a re-run of each flaky check failing on its view's
+    /// pull requests, announced to its private routes.
+    pub rerun: bool,
+    /// The most failed runs on one head a plan reads for one check, the
+    /// newest first.
+    pub runs: usize,
 }
 
 /// What a view does with a bot's pull requests.
@@ -284,6 +304,25 @@ pub(crate) struct ViewFile {
     /// moves.
     #[serde(default)]
     pub(crate) conflicts: bool,
+    /// How many open pull requests one check fails on before the base they
+    /// merge into reads as broken: 3 where absent (ADR-0065).
+    pub(crate) broken_at: Option<NonZeroUsize>,
+    /// What makes a failing check a flaky candidate: failing then passing
+    /// on one head at `least` times (1 where absent) within `window`
+    /// ("7d" where absent), as kept records saw it.
+    pub(crate) flaky: Option<FlakyFile>,
+}
+
+/// What makes a failing check a flaky candidate.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Flaky")]
+pub(crate) struct FlakyFile {
+    /// How far back a check failing then passing on one head counts: "7d"
+    /// where absent.
+    pub(crate) window: Option<Duration>,
+    /// How many times within the window make a candidate: 1 where absent.
+    pub(crate) least: Option<NonZeroUsize>,
 }
 
 /// A day of the week, by its first three letters.
@@ -362,7 +401,7 @@ pub(crate) const REPORT_KEYS: [&str; 5] = ["view", "every", "at", "days", "zone"
 pub(crate) const BOARD_KEYS: [&str; 3] = ["id", "sources", "living"];
 
 /// The keys of `[rules.<name>]` beside a report's.
-pub(crate) const RULE_KEYS: [&str; 2] = ["stages", "most"];
+pub(crate) const RULE_KEYS: [&str; 3] = ["stages", "most", "flaky"];
 
 /// What `[rules.<name>]` writes beside the view it watches and when it
 /// looks, which it writes as a report does.
@@ -373,11 +412,45 @@ pub(crate) struct RuleFile {
     /// How long an open pull request waits, since anyone last acted on
     /// it, before each nudge, such as `["2d", "7d"]`: each fires once a
     /// spell of waiting.
-    #[schemars(with = "Vec<Duration>", length(min = 1, max = herald_core::MOST_STAGES))]
-    pub(crate) stages: Spanned<Vec<Duration>>,
+    #[schemars(with = "Option<Vec<Duration>>", length(min = 1, max = herald_core::MOST_STAGES))]
+    pub(crate) stages: Option<Spanned<Vec<Duration>>>,
     /// The most pull requests it nudges a window, the longest waiting
-    /// first: 20 where absent; the rest wait for the next window.
+    /// first, and the most re-runs it plans: 20 where absent; the rest wait
+    /// for the next window.
     pub(crate) most: Option<std::num::NonZeroUsize>,
+    /// Whether it plans a re-run of each flaky check, as
+    /// `{ rerun = true, mode = "plan" }`: each plan names its evidence and
+    /// the exact call, announced once a run and head to the rule's private
+    /// routes. A rule only plans; a re-run is made by an operator signed in
+    /// through the forge, never by a rule on its own (ADR-0065).
+    #[schemars(with = "Option<FlakyRuleFile>")]
+    pub(crate) flaky: Option<Spanned<FlakyRuleFile>>,
+}
+
+/// What a rule does with a flaky check.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "FlakyRule")]
+pub(crate) struct FlakyRuleFile {
+    /// Whether it plans a re-run of each flaky check.
+    pub(crate) rerun: bool,
+    /// "plan", the only mode a rule takes: where absent too.
+    pub(crate) mode: Option<RerunMode>,
+    /// The most failed runs on one head a plan reads for one check, the
+    /// newest first, from 1 to 100: 5 where absent. A plan takes one
+    /// request for them and, on GitHub, one more for each.
+    #[schemars(range(min = 1, max = herald_core::MOST_RUNS_ALLOWED))]
+    pub(crate) runs: Option<NonZeroUsize>,
+}
+
+/// How a rule acts on a flaky check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RerunMode {
+    /// It announces a plan.
+    Plan,
+    /// It would re-run, which only a signed-in operator does.
+    Apply,
 }
 
 /// `[rules.<name>]`: a view watched once a window, and a nudge for each

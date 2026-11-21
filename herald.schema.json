@@ -2459,6 +2459,48 @@
       },
       "additionalProperties": false
     },
+    "Flaky": {
+      "description": "What makes a failing check a flaky candidate.",
+      "type": "object",
+      "properties": {
+        "least": {
+          "description": "How many times within the window make a candidate: 1 where absent.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "window": {
+          "description": "How far back a check failing then passing on one head counts: \"7d\"\nwhere absent.",
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false
+    },
+    "FlakyRule": {
+      "description": "What a rule does with a flaky check.",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "description": "\"plan\", the only mode a rule takes: where absent too.",
+          "$ref": "#/$defs/RerunMode"
+        },
+        "rerun": {
+          "description": "Whether it plans a re-run of each flaky check.",
+          "type": "boolean"
+        },
+        "runs": {
+          "description": "The most failed runs on one head a plan reads for one check, the\nnewest first, from 1 to 100: 5 where absent. A plan takes one\nrequest for them and, on GitHub, one more for each.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 100,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "rerun"
+      ]
+    },
     "FollowerCaps": {
       "description": "How many may follow each of herald's actors, as `followers` writes it.",
       "type": "object",
@@ -4398,6 +4440,21 @@
         }
       ]
     },
+    "RerunMode": {
+      "description": "How a rule acts on a flaky check.",
+      "oneOf": [
+        {
+          "description": "It announces a plan.",
+          "type": "string",
+          "const": "plan"
+        },
+        {
+          "description": "It would re-run, which only a signed-in operator does.",
+          "type": "string",
+          "const": "apply"
+        }
+      ]
+    },
     "Rotation": {
       "description": "Whether a peer's own signed statement may replace the keys pinned for\nit.",
       "oneOf": [
@@ -4468,8 +4525,12 @@
           "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
           "$ref": "#/$defs/Duration"
         },
+        "flaky": {
+          "description": "Whether it plans a re-run of each flaky check, as\n`{ rerun = true, mode = \"plan\" }`: each plan names its evidence and\nthe exact call, announced once a run and head to the rule's private\nroutes. A rule only plans; a re-run is made by an operator signed in\nthrough the forge, never by a rule on its own (ADR-0065).",
+          "$ref": "#/$defs/FlakyRule"
+        },
         "most": {
-          "description": "The most pull requests it nudges a window, the longest waiting\nfirst: 20 where absent; the rest wait for the next window.",
+          "description": "The most pull requests it nudges a window, the longest waiting\nfirst, and the most re-runs it plans: 20 where absent; the rest wait\nfor the next window.",
           "type": "integer",
           "format": "uint",
           "minimum": 1
@@ -4495,10 +4556,7 @@
           ]
         }
       },
-      "additionalProperties": false,
-      "required": [
-        "stages"
-      ]
+      "additionalProperties": false
     },
     "Rules": {
       "description": "herald's own rules, each on where absent.",
@@ -7909,6 +7967,12 @@
           "description": "What it does with a bot's pull requests: \"batch\" where absent.",
           "$ref": "#/$defs/Bots"
         },
+        "broken_at": {
+          "description": "How many open pull requests one check fails on before the base they\nmerge into reads as broken: 3 where absent (ADR-0065).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
         "bumps": {
           "description": "Its own bump patterns, read before Dependabot's and Renovate's, such\nas \"chore: bump {package} to {to}\".",
           "type": "array",
@@ -7933,6 +7997,10 @@
         "deciding": {
           "description": "What tells whose turn each is: \"herald\" where absent, \"forge\", or\n`{ labels = [{ label = \"...\", state = \"...\" }] }`.",
           "$ref": "#/$defs/Deciding"
+        },
+        "flaky": {
+          "description": "What makes a failing check a flaky candidate: failing then passing\non one head at `least` times (1 where absent) within `window`\n(\"7d\" where absent), as kept records saw it.",
+          "$ref": "#/$defs/Flaky"
         },
         "group_by": {
           "description": "What it groups its rows by: \"turn\" where absent.",
