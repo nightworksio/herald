@@ -5,7 +5,7 @@
 
 use herald_config::{Config, ViewConfig};
 use herald_core::{
-    Advised, Advising, Advisories, Listed, Pull, RouteId, Surface, Unread, Visibility, advises,
+    Advised, Advising, Advisories, Listed, Pull, RouteId, Surface, Unread, Visibility,
 };
 use herald_kinds::{Asked, Scope};
 use herald_ports::{Clock, Http, Signer, Store};
@@ -17,8 +17,8 @@ use crate::prepare::Connected;
 /// Why a source's advisories were not read where this run does not poll it.
 const UNPOLLED: &str = "this run does not poll the source";
 
-/// `routes` parted by the surface `config` makes each, those shown the
-/// section first; each part none of whose routes is left out.
+/// `routes` parted by the surface `config` makes each; each part none of
+/// whose routes is left out.
 pub(crate) fn parted(config: &Config, routes: Vec<RouteId>) -> Vec<(Surface, Vec<RouteId>)> {
     let mut parts: Vec<(Surface, Vec<RouteId>)> = Vec::new();
     for id in routes {
@@ -28,7 +28,6 @@ pub(crate) fn parted(config: &Config, routes: Vec<RouteId>) -> Vec<(Surface, Vec
             None => parts.push((surface, vec![id])),
         }
     }
-    parts.sort_by_key(|(surface, _)| !advises(*surface));
     parts
 }
 

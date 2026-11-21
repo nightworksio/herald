@@ -269,6 +269,30 @@ fn a_listing_stops_at_the_most_and_at_a_page_off_its_api_saying_more_were_open()
 }
 
 #[test]
+fn a_repository_s_listing_that_fills_its_most_with_a_page_left_stops_saying_more() {
+    let alerts: Vec<Value> = (1..=150).map(|number| dependabot(number, None)).collect();
+    let (found, asked) = read(
+        &queued(Forge::GitHub),
+        vec![
+            paged(
+                &json!(alerts),
+                "https://api.github.com/repos/o/r/dependabot/alerts?page=2",
+            ),
+            answer(200, &json!([dependabot(151, None)])),
+            answer(200, &json!([])),
+            answer(200, &json!([])),
+        ],
+        (
+            Asked::default(),
+            &[],
+            advising(AdvisoriesFrom::Owner, (20, 150)),
+        ),
+    );
+    assert_eq!((found.open.len(), found.more), (150, true));
+    assert_eq!(asked.len(), 1);
+}
+
+#[test]
 fn a_listing_reads_no_more_pages_than_its_most_can_fill() {
     let (capped, asked) = read(
         &queued(Forge::GitHub),
