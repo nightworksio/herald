@@ -276,13 +276,13 @@ fn a_report_that_makes_no_event_stops_and_one_with_no_view_read_is_refused() {
         budget: herald_flows::Budget::UNBOUNDED,
     };
     assert_eq!(
-        pollster::block_on(unread(&config, &connected, &ports, "queue")),
+        pollster::block_on(unread(&config, &connected, &ports, ("queue", false))),
         Err(Stop::Source(
             "the view reads a source this run does not poll".to_owned()
         ))
     );
     assert_eq!(
-        pollster::block_on(unread(&config, &connected, &ports, "missing")),
+        pollster::block_on(unread(&config, &connected, &ports, ("missing", false))),
         Err(Stop::Source(
             "no view is named \"missing\"; the views are \"queue\"".to_owned()
         ))
@@ -342,8 +342,13 @@ fn a_view_read_now_is_the_board_of_every_source_it_reads() {
         signer: &FakeSigner,
         budget: herald_flows::Budget::UNBOUNDED,
     };
-    let board =
-        pollster::block_on(herald_flows::queue(&config, &connected, &ports, "queue")).unwrap();
+    let board = pollster::block_on(herald_flows::queue(
+        &config,
+        &connected,
+        &ports,
+        ("queue", false),
+    ))
+    .unwrap();
     assert_eq!(board.total(), 2);
     let repositories: Vec<&str> = board
         .groups

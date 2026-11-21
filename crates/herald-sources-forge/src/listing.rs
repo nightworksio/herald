@@ -45,7 +45,7 @@ impl Asked {
         (cursor, key): (Option<&Cursor>, &str),
     ) -> Result<Self, Unpolled> {
         let kept = cursor.and_then(|cursor| cursor.listings.get(key)).cloned();
-        let request = origin.get(path, token).conditional(
+        let request = origin.get(path, token)?.conditional(
             kept.as_ref().and_then(|kept| kept.etag.as_deref()),
             kept.as_ref().and_then(|kept| kept.last_modified.as_deref()),
         );

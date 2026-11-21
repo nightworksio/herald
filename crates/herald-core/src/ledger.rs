@@ -171,6 +171,13 @@ pub struct Entry {
     /// (ADR-0049).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SourceName>,
+    /// The replacement of its post under way, where one is (ADR-0067).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacing: Option<crate::Replacing>,
+    /// Each part of its post a run sent and never found again, which may
+    /// still show what it showed (ADR-0067).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub strays: Vec<crate::Stray>,
 }
 
 impl Entry {
@@ -187,6 +194,8 @@ impl Entry {
             group: None,
             withdrawn: None,
             source: None,
+            replacing: None,
+            strays: Vec::new(),
         }
     }
 
@@ -329,16 +338,23 @@ impl Entry {
         self
     }
 
-    /// The entry with `step` sent at `at`, its answer not yet recorded.
+    /// The entry with `step` sent, its answer not yet recorded: sent first
+    /// at `at`, or when an earlier send of it went unanswered, so a send
+    /// again goes under the key of the first.
     #[must_use]
     pub fn attempted(self, step: Step, at: Timestamp) -> Self {
+        let at = match self.state(&step) {
+            Some(State::Attempted { at: first }) => *first,
+            _ => at,
+        };
         self.with(step, State::Attempted { at })
     }
 
-    /// The entry with `step` landed, as `facts` say.
+    /// The entry with `step` landed, as `facts` say, and no longer holding
+    /// as a stray a part sent under the key it landed under.
     #[must_use]
     pub fn landed(self, step: Step, facts: Facts) -> Self {
-        self.with(step, State::Landed { facts })
+        self.unstrayed(&step).with(step, State::Landed { facts })
     }
 
     /// What `step` answered, if it landed.
@@ -372,18 +388,6 @@ impl Entry {
         }
     }
 
-    /// What a destination that takes a post once tells the overflow chunk
-    /// `index` apart by: the key and the index, and the revision the entry
-    /// brings its post to where it records one, so a chunk a later revision
-    /// posts again is not taken for one an earlier revision deleted.
-    #[must_use]
-    pub fn chunk_token(&self, index: u32) -> String {
-        match &self.revision {
-            Some(revision) => format!("{}.{index}.{}", self.key, revision.digest),
-            None => format!("{}.{index}", self.key),
-        }
-    }
-
     /// The message the overflow chunk `index` follows: the post's for the
     /// first chunk, else the chunk's before it.
     #[must_use]
@@ -398,13 +402,19 @@ impl Entry {
         let landed = matches!(state, State::Landed { .. });
         self.records
             .retain(|record| record.step != step && !(landed && step.supersedes(&record.step)));
-        if !(landed && matches!(step, Step::Delete(_))) {
-            self.records.push(Record { step, state });
+        let deleted = match step {
+            Step::Delete(part) if landed => Some(part),
+            _ => None,
+        };
+        match (deleted, &mut self.replacing) {
+            (Some(part), Some(replacing)) => replacing.deleting.retain(|left| *left != part),
+            (Some(_), None) => {}
+            (None, _) => self.records.push(Record { step, state }),
         }
         self
     }
 
-    fn state(&self, step: &Step) -> Option<&State> {
+    pub(crate) fn state(&self, step: &Step) -> Option<&State> {
         self.records
             .iter()
             .find(|record| &record.step == step)

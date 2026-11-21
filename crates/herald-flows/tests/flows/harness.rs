@@ -17,6 +17,7 @@ use jiff::Timestamp;
 
 mod pending;
 mod pulls;
+mod recalls;
 mod refusing;
 mod script;
 
@@ -24,8 +25,8 @@ pub(crate) use script::{Script, UNCONNECTED};
 
 pub(crate) const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
 
-pub(crate) fn config(extra: &str) -> Config {
-    let text = format!(
+fn written(extra: &str) -> String {
+    format!(
         r#"version = 1
 [store]
 kind = "sqlite"
@@ -49,10 +50,24 @@ pin = "markers"
 title = "📦 {{{{ event.project }}}} {{{{ event.attributes.version }}}}"
 body = "{{% if event.attributes.version == 'boom' %}}{{{{ nothing.here }}}}{{% endif %}}{{{{ event.body }}}}"
 "#
-    );
+    )
+}
+
+pub(crate) fn config(extra: &str) -> Config {
+    parsed(&written(extra))
+}
+
+/// The config `config` gives, its route saying `private = true` and so
+/// crossposting nothing, since a crosspost is posted where anyone may read
+/// it (ADR-0067).
+pub(crate) fn private_config(extra: &str) -> Config {
+    parsed(&written(extra).replace("crosspost = true\n", "private = true\n"))
+}
+
+fn parsed(text: &str) -> Config {
     load(
         "herald.toml",
-        &text,
+        text,
         &|_| Err("no file".to_owned()),
         &crate::harness::kinds(),
     )
@@ -204,6 +219,14 @@ pub(crate) enum Fault {
     ConflictsPublished,
     /// Reading the static signed log's record fails.
     ReadsPublication,
+    /// The first two writes recording a post a replacement posted as
+    /// landed fail, its landing and the release after it, as where a run
+    /// stops once the post landed and before herald recorded it.
+    LandsReplacedPostOnce,
+    /// The first two writes recording a post's first chunk as landed fail,
+    /// as where a run stops once the chunk landed and before herald
+    /// recorded it.
+    LandsChunkOnce,
     /// Writing the static signed log's record fails.
     WritesPublication,
     /// Writing the static signed log's record conflicts.
@@ -274,7 +297,15 @@ pub(crate) enum Fault {
     ExpiresPulls,
     ReadsReconciles,
     WritesReconciles,
+    KeepsNoRecalls,
+    ReadsRecalls,
+    WritesRecalls,
+    RecallsConflict,
     OneAtATime,
+    /// Every read of a source's members after the first fails.
+    ReadsMembersOnce,
+    /// Every read of a cursor after the first fails.
+    ReadsCursorOnce,
 }
 
 pub(crate) struct Failing {
@@ -331,6 +362,22 @@ impl Inboxes for Failing {
     }
 }
 
+impl Failing {
+    /// Whether this is the first read it counts.
+    fn read_once(&self) -> bool {
+        let mut reads = self.landings.lock().unwrap();
+        *reads += 1;
+        *reads == 1
+    }
+
+    /// Whether this is one of the first two landings it counts.
+    fn landed_once(&self) -> bool {
+        let mut landings = self.landings.lock().unwrap();
+        *landings += 1;
+        *landings <= 2
+    }
+}
+
 impl Ledger for Failing {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         let allowed = match self.fault {
@@ -364,6 +411,21 @@ impl Ledger for Failing {
             (Fault::ClaimConflicts, 1) | (Fault::Writes, 2) => Ok(Written::Conflict),
             (Fault::Releases, _) if entry.lease.is_none() => Err(broken()),
             (Fault::GroupedConflicts, _) if entry.group.is_some() => Ok(Written::Conflict),
+            (Fault::LandsChunkOnce, _)
+                if entry.facts(&Step::Chunk(1)).is_some() && self.landed_once() =>
+            {
+                Err(broken())
+            }
+            (Fault::LandsReplacedPostOnce, _)
+                if entry
+                    .replacing
+                    .as_ref()
+                    .is_some_and(|replacing| replacing.deleting.is_empty())
+                    && entry.facts(&Step::Post).is_some()
+                    && self.landed_once() =>
+            {
+                Err(broken())
+            }
             _ => self.inner.put_entry(entry, expected).await,
         }
     }
@@ -378,7 +440,9 @@ impl Ledger for Failing {
 
 impl Cursors for Failing {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
-        if self.fault == Fault::Cursors {
+        if self.fault == Fault::Cursors
+            || (self.fault == Fault::ReadsCursorOnce && !self.read_once())
+        {
             return Err(broken());
         }
         self.inner.cursor(source).await
@@ -420,7 +484,9 @@ impl Cursors for Failing {
         &self,
         source: &SourceName,
     ) -> Result<Vec<Versioned<herald_core::Membership>>, StoreError> {
-        if self.fault == Fault::ReadsMembers {
+        if self.fault == Fault::ReadsMembers
+            || (self.fault == Fault::ReadsMembersOnce && !self.read_once())
+        {
             return Err(broken());
         }
         self.inner.members(source).await
@@ -698,6 +764,7 @@ impl Keeper for Failing {
             Held::Positions => self.fault != Fault::KeepsNoPositions,
             Held::Decisions => self.fault != Fault::KeepsNoDecisions,
             Held::Pulls => self.fault != Fault::KeepsNoPulls,
+            Held::Recalls => self.fault != Fault::KeepsNoRecalls,
             Held::Pending => self.fault != Fault::KeepsNoPending,
             Held::Published => self.fault != Fault::KeepsNoPublished,
             _ => true,

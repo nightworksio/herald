@@ -228,6 +228,7 @@ fn running<'a, S, C, G, H>(
         lease: config.announce.lease,
         seen: Visibility::Public,
         view: None,
+        advised: false,
     }
 }
 

@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use herald_core::{Profile, SecretRef, Size, Symbols, WaitOptions};
 use herald_kinds::{
-    Bound, Destination, DestinationConfig, Fault, Feeding, Placed, Placement, Reached,
+    Bound, Checking, Destination, DestinationConfig, Fault, Feeding, Placed, Placement, Reached,
 };
 use herald_peers::feed;
 use herald_ports::Secret;
@@ -132,6 +132,14 @@ impl DestinationConfig for FeedOptions {
                 ..self.clone()
             })
         })
+    }
+
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        Some("a herald feed is served to anyone")
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        Checking::Unadvised
     }
 
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {

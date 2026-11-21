@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use herald_core::{ACTOR_FIELDS, ActorName, Sandbox, SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::policy::{Approve, FollowerCaps, Mode, Policy, SharedList, followed_by};
 
@@ -125,7 +125,7 @@ impl ActorOptions {
 }
 
 /// What a route says about herald's actor alone.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ActorRouteOptions {
     /// The actor the route announces as, such as `php-mutation-gate`, which
@@ -145,7 +145,7 @@ pub struct ActorRouteOptions {
 }
 
 /// Who sees an actor's Notes on the timelines. Followers see every Note.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Audience {
     /// Everyone, on the public timelines too.

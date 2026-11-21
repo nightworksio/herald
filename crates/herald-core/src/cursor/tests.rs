@@ -157,6 +157,8 @@ fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators()
             ahead: Vec::new(),
             proved: Vec::new(),
             projects: BTreeMap::new(),
+            advised: Vec::new(),
+            pending: Vec::new(),
         }
     );
     assert_eq!(advanced.validators(Signal::Tag), Some(&tags));
@@ -755,4 +757,22 @@ fn what_a_peer_pushed_leaves_the_place_a_poll_keeps_as_it_was() {
     );
     let unprojected = Cursor::default().received(&pushed, 10);
     assert_eq!(unprojected.project.as_deref(), Some(event("b").project()));
+}
+
+#[test]
+fn a_cursor_written_without_advised_posts_reads_with_none_and_keeps_them_once_written() {
+    let old: Cursor =
+        serde_json::from_str(r#"{"seen":["a"],"etag":null,"last_modified":null}"#).unwrap();
+    assert_eq!(old.advised, []);
+    assert!(!serde_json::to_string(&old).unwrap().contains("advised"));
+    let posted = Cursor {
+        advised: vec![crate::AdvisedPost {
+            route: crate::RouteId::new("team"),
+            destination: crate::DestinationName::new("discord"),
+            placed: r#"{"channel":"1"}"#.to_owned(),
+        }],
+        ..old
+    };
+    let written = serde_json::to_string(&posted).unwrap();
+    assert_eq!(serde_json::from_str::<Cursor>(&written).unwrap(), posted);
 }

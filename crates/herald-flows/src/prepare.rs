@@ -177,6 +177,7 @@ impl From<CryptoError> for PrepareError {
 pub struct PreparedRoute {
     pub(crate) config: RouteConfig,
     pub(crate) reached: Reached,
+    pub(crate) secret: Secret,
     pub(crate) marker_key: Secret,
     pub(crate) derived: bool,
     pub(crate) projects: Option<Projects>,
@@ -674,6 +675,7 @@ fn prepared_routes(
         routes.push(PreparedRoute {
             config: route.clone(),
             reached,
+            secret: destination.secret.clone(),
             marker_key: destination.marker_key.clone(),
             derived: destination.derived,
             projects: Projects::of(config, route),

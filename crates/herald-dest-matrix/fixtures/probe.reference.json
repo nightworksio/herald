@@ -41,6 +41,38 @@
           "state_default": 50
         }
       }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.join_rules/",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "join_rule": "invite"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.history_visibility/",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "history_visibility": "shared"
+        }
+      }
     }
   ]
 }

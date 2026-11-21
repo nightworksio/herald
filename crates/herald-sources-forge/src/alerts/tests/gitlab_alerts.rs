@@ -141,12 +141,12 @@ fn a_vulnerability_is_read_for_what_it_found_where_it_was_found() {
     ] {
         let body = json!({ "data": { "project": { "vulnerabilities": { "nodes": [with(node("DETECTED", 1), &json!({ "webUrl": url }))] } } } });
         let refused = listed(1 << 20, body.to_string().as_bytes()).unwrap_err();
+        let said = refused.to_string();
         assert!(
-            refused
-                .to_string()
-                .contains("is not a vulnerability's page"),
-            "{url}: {refused}"
+            said.contains(super::super::gitlab::UNPAGED),
+            "{url}: {said}"
         );
+        assert!(!said.contains(url), "{url}: {said}");
     }
 }
 

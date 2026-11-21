@@ -117,7 +117,12 @@ fn queued_at(
         signer: &FakeSigner,
         budget: herald_flows::Budget::UNBOUNDED,
     };
-    pollster::block_on(herald_flows::queue(config, &connected, &ports, "queue"))
+    pollster::block_on(herald_flows::queue(
+        config,
+        &connected,
+        &ports,
+        ("queue", false),
+    ))
 }
 
 fn numbers(board: &Board) -> Vec<u64> {

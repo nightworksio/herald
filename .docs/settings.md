@@ -90,6 +90,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.thread.name` | string | The template of the thread's name. |
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.viewers` | array of string | The ids of the roles, and of any member a permission overwrite of their own lets in, expected to view the channel: an advisories section is sent there only where every role but `@everyone` that may view it is listed here, an Administrator role and the bot's own role included, and no member it does not list is let in by an overwrite; the server's owner sees every channel and is not checked (ADR-0067). |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -144,6 +146,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
 | `boards.<name>.visibility` | [Visibility](#visibility) | Who sees each status. |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -193,6 +196,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.thread.name` | string | The template of the thread's name. |
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -244,6 +248,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.thread.name` | string | The template of the thread's name. |
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -296,6 +301,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
 | `boards.<name>.visibility` | [Audience](#audience) | Who sees each Note on the timelines. |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -344,6 +350,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.thread.name` | string | The template of the thread's name. |
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -392,6 +399,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.thread.name` | string | The template of the thread's name. |
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
+| `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
@@ -526,6 +534,7 @@ Slack, by bot token or webhook.
 | `destinations.<name>.interactions.wording` | table | What it says back and how it describes its commands, phrase by phrase, each a template over `project`, `projects`, `named` and `command`; herald's own words for every phrase left out. |
 | `destinations.<name>.interactions.wording.<name>` | string |  |
 | `destinations.<name>.kind` | string |  |
+| `destinations.<name>.org_shared` | [OrgShared](#orgshared) | How a private channel an Enterprise Grid organization shares with its other workspaces counts before an advisories section is sent there: as public, since members of every workspace of the organization may be in it (`public`, where unset), or as private (`private`), where the operator accepts that whole organization as its audience. |
 | `destinations.<name>.pin_lookups` | [PinLookups](#pinlookups) | How many of its own pins it looks up, one request each, as it finds a route's earlier pins, from 1 to 100; 25 where unset. |
 | `destinations.<name>.read_back` | [ReadBack](#readback) | How many pages of its own posts it reads back for their markers, from 1 to 20; 5 where unset. |
 | `destinations.<name>.symbols` | table | The characters its posts write where its markup has none: a task done and to do, a rule and a text list's bullet. |
@@ -840,6 +849,8 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].viewers` | array of string | The ids of the roles, and of any member a permission overwrite of their own lets in, expected to view the channel: an advisories section is sent there only where every role but `@everyone` that may view it is listed here, an Administrator role and the bot's own role included, and no member it does not list is let in by an overwrite; the server's owner sees every channel and is not checked (ADR-0067). |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route to a Mastodon destination
@@ -891,6 +902,7 @@ Which events go where, rendered how.
 | `routes[].title` | integer | The longest title, a status's first line, in characters; 100 where unset. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].visibility` | [Visibility](#visibility) | Who sees each status. |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route to a Matrix destination
@@ -937,6 +949,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route to a Slack destination
@@ -985,6 +998,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route announcing as one of herald's own ActivityPub actors
@@ -1034,6 +1048,7 @@ Which events go where, rendered how.
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].visibility` | [Audience](#audience) | Who sees each Note on the timelines. |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route publishing its events to a feed of herald's own
@@ -1079,6 +1094,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ### `routes[]`: A route pushing its events to a peer's herald source
@@ -1124,6 +1140,7 @@ Which events go where, rendered how.
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
+| `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 
 ## `rules`
@@ -1993,12 +2010,14 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `views.<name>.advisories_from` | [AdvisoriesFromFile](#advisoriesfromfile) | Which repositories its advisories overview reads: "owner", where absent, its organization's or group's own listings, and a user's members one by one, the newest pushed first; "shown", those it shows a pull request of; or "members", its owner's newest pushed. A view that filters its repositories by name reads those it holds one by one, the first by name. A one-repository source reads its repository. |
+| `views.<name>.advisory_repositories` | integer | The most repositories its advisories overview reads one by one: 20 where absent, from 1 to 100. Each costs three requests on GitHub and one on GitLab, and their order one more. |
 | `views.<name>.authors` | array of string | The authors it shows, by login, each a glob ignoring case; every one where empty. |
 | `views.<name>.bots` | [Bots](#bots) | What it does with a bot's pull requests: "batch" where absent. |
 | `views.<name>.broken_at` | integer | How many open pull requests one check fails on before the base they merge into reads as broken: 3 where absent (ADR-0065). |
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
-| `views.<name>.capacity_from` | [CapacityFrom](#capacityfrom) | Which repositories its capacity overview reads: "shown", those it shows a pull request of, where absent; or "members", its owner's newest pushed, at most `capacity_repositories`. |
-| `views.<name>.capacity_repositories` | integer | The most members "members" reads, the newest pushed first: 20 where absent, from 1 to 100. Each costs two requests on GitHub and GitLab and one on Forgejo, and the order one more. |
+| `views.<name>.capacity_from` | [CapacityFrom](#capacityfrom) | Which repositories its capacity overview reads: "shown", those it shows a pull request of, where absent; or "members", its owner's newest pushed, at most `capacity_repositories`, or where it filters its repositories by name the first by name of those it holds. |
+| `views.<name>.capacity_repositories` | integer | The most members "members" reads, the newest pushed first, or the first by name where the view filters its repositories by name: 20 where absent, from 1 to 100. Each costs two requests on GitHub and GitLab and one on Forgejo, and the push order one more. |
 | `views.<name>.conflicts` | boolean | Whether it predicts conflicts: it reads the paths each pull request's head changes, at most 100 each, and each row names the open pull requests of its repository merging into its branch that change a path in common; false where absent. It costs a request a pull request read in full, but on GitHub with a token, which reads them with each pull request; a kept record keeps them until its head moves. |
 | `views.<name>.decide` | table | The task that decides each slot its rules leave untold, such as `{ turn = "whose", priority = "urgency" }`; nothing is asked of a model where absent. |
 | `views.<name>.decide.<name>` | string |  |
@@ -2027,6 +2046,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.labels` | array of string | The labels, any one of which a pull request it shows carries, each a glob ignoring case; every pull request where empty. |
 | `views.<name>.listed_visibility` | boolean | Whether a live read through a REST listing without a token, as of GitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may see a repository from what the listing states of it, rather than taking each of its rows as private: false where absent. It never widens a kept record, a read with a token, a GitLab listing, or an owner's rows, which its membership record names. |
 | `views.<name>.mode` | [ViewMode](#viewmode) | Where it reads its pull requests: "auto" where absent, kept of each source that takes webhooks where the store keeps pull requests and live otherwise; "live" from the forge each time; or "kept" from the records the store keeps, folded from webhooks and reconciled with a listing. |
+| `views.<name>.most_advisories` | integer | The most open advisories its overview reads, a page of 100 a request: 1000 where absent, at most 10000. Past it the section says more were open. |
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
 | `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
 | `views.<name>.overviews` | array of [OverviewName](#overviewname) | The overviews it shows beside its rows, such as `["capacity"]`: none where absent (ADR-0066). |
@@ -2050,6 +2070,10 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 ### Action
 
 What a peer may be granted to do with a resource of this herald.
+
+### AdvisoriesFromFile
+
+Which repositories an advisories overview reads.
 
 ### AlertAction
 
@@ -2194,6 +2218,10 @@ Whom herald's actors federate with.
 ### OneCharacter
 
 One character, as a config writes it.
+
+### OrgShared
+
+How a private channel shared across an Enterprise Grid organization counts before an advisories section is sent there (ADR-0067).
 
 ### OverviewName
 

@@ -6,12 +6,15 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::DestinationName;
-use herald_kinds::{Bound, ConfiguredStore, Destination, StoreKind};
+use herald_kinds::{Bound, Checking, ConfiguredStore, Destination, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 
 use super::Loader;
 use super::route::Read;
-use crate::config::{Doctor, Federation, Guard};
+use crate::config::Federation;
+
+/// Why a route vouches for nothing where it does not say it is private.
+const UNPRIVATELY_VOUCHED: &str = "vouch_unchecked vouches for a route that says private = true; add private = true, or remove vouch_unchecked";
 
 impl Loader<'_> {
     /// Whether every feed is served and proved by `federation` and kept by
@@ -73,26 +76,47 @@ impl Loader<'_> {
         }
     }
 
-    /// Whether no route declared private reaches a feed, which anyone may
-    /// read, where `[doctor] private_to_public` refuses it.
-    pub(super) fn unfed(
+    /// Whether no route declared private posts where anyone may read it,
+    /// as its destination decides for each kind: a feed, a push to a peer
+    /// that takes no private events, herald's own ActivityPub actor, a
+    /// public Mastodon status or a crosspost. No setting widens it; and
+    /// whether each route vouching for its place says `private = true` and
+    /// posts where herald cannot check who may read (ADR-0067).
+    pub(super) fn unaddressed(
         &mut self,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         routes: &[Read],
-        doctor: Doctor,
     ) {
-        if doctor.private_to_public != Guard::Refuse {
-            return;
-        }
-        for read in routes.iter().filter(|read| read.config.private) {
-            let feeds = destinations
-                .get(&read.config.route.destination)
-                .is_some_and(|(destination, _)| destination.feeding().is_some());
-            if feeds {
+        let placed = routes
+            .iter()
+            .filter_map(|read| Some((read, &destinations.get(&read.config.route.destination)?.0)));
+        for (read, destination) in placed {
+            let public = destination.public(&read.config.options, &read.config.route.delivery);
+            if let (true, Some(reason)) = (read.config.private, public) {
                 self.error(
                     &read.id_span,
                     &format!("{}.private", read.path),
-                    "this route is declared private, and a herald feed is served to anyone and takes only public events; route private events elsewhere, or set [doctor] private_to_public = \"warn\"",
+                    format!("this route is declared private, but {reason}; remove private = true, and route private events elsewhere"),
+                );
+            }
+            if !read.config.vouched {
+                continue;
+            }
+            let refused = match destination.checking(&read.config.options) {
+                _ if !read.config.private => Some(UNPRIVATELY_VOUCHED.to_owned()),
+                Checking::Unchecked(_) => None,
+                Checking::Asked { asks, .. } => Some(format!(
+                    "herald asks {asks} before each run's first advisory send, so there is nothing to vouch for; remove vouch_unchecked"
+                )),
+                Checking::Unadvised => Some(
+                    "its kind of destination is never sent an advisories section, so there is nothing to vouch for; remove vouch_unchecked".to_owned(),
+                ),
+            };
+            if let Some(reason) = refused {
+                self.error(
+                    &read.id_span,
+                    &format!("{}.vouch_unchecked", read.path),
+                    reason,
                 );
             }
         }

@@ -9,6 +9,7 @@ use herald_wire::answered;
 use crate::forge::authorized;
 use crate::{Forge, Origin, Token};
 
+pub(crate) mod advisory;
 pub(crate) mod capacity;
 mod detail;
 mod github;
@@ -154,14 +155,14 @@ impl Opened<'_> {
     }
 
     /// The request for the page after `after`.
-    fn request(&self, after: Option<&str>, number: usize) -> Request {
+    fn request(&self, after: Option<&str>, number: usize) -> Result<Request, Unpolled> {
         let forge = self.origin.forge();
         match self.read_path() {
-            ReadPath::Graphql => authorized(
+            ReadPath::Graphql => Ok(authorized(
                 forge,
                 github::request(self.graphql, self.origin.path(), after, self.ask()),
                 self.token,
-            ),
+            )),
             ReadPath::Listing => self.origin.get(&gitlab::path(number), self.token),
             ReadPath::Detailed => self.origin.get(&listing::path(forge, number), self.token),
         }
@@ -200,7 +201,7 @@ impl Opened<'_> {
         let parse = self.origin.reading().parse;
         let asked = self
             .origin
-            .get(&detail::reviews_path(forge, pull.number), self.token);
+            .get(&detail::reviews_path(forge, pull.number), self.token)?;
         let body = self.asked(http, asked, detail::REVIEWS).await?;
         let requested = pull.review == herald_core::Review::Requested;
         pull.review =
@@ -208,7 +209,7 @@ impl Opened<'_> {
         if let Some(sha) = pull.head.as_deref() {
             let asked = self
                 .origin
-                .get(&detail::checks_path(forge, sha), self.token);
+                .get(&detail::checks_path(forge, sha), self.token)?;
             let body = self.asked(http, asked, detail::CHECKS).await?;
             pull.checks = detail::checks(forge, &body, parse).map_err(Unpolled::unreadable)?;
         }
@@ -223,7 +224,7 @@ impl Opened<'_> {
     ) -> Result<(), Unpolled> {
         if self.files {
             let path = detail::files_path(self.origin.forge(), pull.number);
-            let asked = self.origin.get(&path, self.token);
+            let asked = self.origin.get(&path, self.token)?;
             let body = self.asked(http, asked, detail::FILES).await?;
             let parse = self.origin.reading().parse;
             pull.files = Some(detail::files(&body, parse).map_err(Unpolled::unreadable)?);
@@ -250,7 +251,7 @@ impl Opened<'_> {
         let mut pulls = Vec::new();
         let mut after: Option<String> = None;
         for number in 1..=self.most_open.div_ceil(PAGE) {
-            let asked = self.request(after.as_deref(), number);
+            let asked = self.request(after.as_deref(), number)?;
             let body = self.asked(http, asked, what).await?;
             let mut page = self.read(&body).map_err(Unpolled::unreadable)?;
             let more = if self.read_path() == ReadPath::Graphql {
@@ -339,6 +340,24 @@ impl herald_kinds::Queue for Queued {
 
     fn holds(&self, repository: &str) -> bool {
         self.origin.path().eq_ignore_ascii_case(repository)
+    }
+
+    fn advisories<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        _: (Asked<'a>, &'a [&'a str]),
+        (advising, at): (herald_core::Advising, jiff::Timestamp),
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Advisories, Unpolled>> {
+        Box::pin(async move {
+            let reader = advisory::Reader {
+                origin: &self.origin,
+                token: self.token.as_ref(),
+            };
+            let holder = advisory::Holder::Repository(self.origin.path());
+            reader
+                .read(&Erased(http), (holder, &|_| None), (advising.most, at))
+                .await
+        })
     }
 
     fn capacity<'a>(

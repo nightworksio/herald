@@ -4,8 +4,8 @@ use herald_core::{
     Text, WaitOptions,
 };
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, optional,
+    Carried, Checking, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts,
+    Placed, Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, optional,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
@@ -90,6 +90,23 @@ impl DestinationConfig for DestinationOptions {
         })
     }
 
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        None
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        Checking::Asked {
+            asks: crate::audience::ASKS,
+            requests: crate::audience::REQUESTS,
+        }
+    }
+    fn recalled(&self, written: &str) -> Option<Placed> {
+        serde_json::from_str::<RouteOptions>(written)
+            .ok()
+            .filter(|route| route.check().is_ok())
+            .map(Placed::new)
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         placed.of::<RouteOptions>()?;
         Some((matrix::profile(), None))
@@ -134,6 +151,10 @@ impl DestinationConfig for DestinationOptions {
 }
 
 impl Placement for RouteOptions {
+    fn written(&self) -> Option<String> {
+        serde_json::to_string(self).ok()
+    }
+
     fn place(&self) -> Option<&str> {
         Some(&self.room)
     }

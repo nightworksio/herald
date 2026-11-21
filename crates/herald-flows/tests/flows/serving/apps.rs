@@ -282,3 +282,27 @@ fn a_project_and_an_id_are_read_from_their_percent_encoded_path_segments() {
         assert_eq!((code, text.as_str()), (status, body), "{path}");
     }
 }
+
+#[test]
+fn the_app_api_serves_no_board_or_report_so_its_surface_is_never_advised() {
+    assert!(!herald_core::advises(herald_core::Surface::Api));
+    let world = World::new(Script::default());
+    for path in [
+        "/api/projects/herald/views/queue",
+        "/api/projects/herald/reports/daily",
+        "/api/projects/herald/queue",
+        "/api/projects/herald/board",
+        "/api/projects/herald/advisories",
+        "/api/views/queue",
+        "/api/reports/daily",
+        "/herald/v1/views/queue",
+        "/herald/v1/reports/daily",
+    ] {
+        let asked = Inbound {
+            method: "GET",
+            headers: BEARER,
+            ..get(path)
+        };
+        assert_eq!(world.answer(&asked).reply.status, 404, "{path}");
+    }
+}

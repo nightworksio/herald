@@ -61,8 +61,8 @@ fn draft(spec: &KindSpec) -> Draft {
 }
 
 /// The boards every report template is dry-rendered against: one with a
-/// person's pull request waiting on review and a bot's bump, and an empty
-/// one.
+/// person's pull request waiting on review, a bot's bump and an advisory
+/// as a private route is shown it, and an empty one.
 #[must_use]
 pub fn sample_boards() -> [Board; 2] {
     let opened = NOON - jiff::SignedDuration::from_hours(15 * 24);
@@ -100,10 +100,9 @@ pub fn sample_boards() -> [Board; 2] {
         review: Review::Approved,
         ..pull.clone()
     };
-    [
-        board(&View::default(), &[pull, bump], NOON),
-        Board::default(),
-    ]
+    let mut full = board(&View::default(), &[pull, bump], NOON);
+    full.overviews.advisories = Some(herald_core::Advised::sample(NOON));
+    [full, Board::default()]
 }
 
 /// Where a sample event from a forge, registry or app that names one comes
@@ -194,6 +193,11 @@ mod tests {
         let [full, empty] = sample_boards();
         assert_eq!(empty, Board::default());
         let row = &full.groups[0].rows[0];
+        let advised = full.overviews.advisories.as_ref().unwrap().shown().unwrap();
+        assert_eq!(
+            advised.open[0].summary.as_deref(),
+            Some("A sample advisory")
+        );
         assert_eq!(full.groups[0].name, "waiting-on-review");
         assert_eq!(
             (

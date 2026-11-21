@@ -317,6 +317,9 @@ impl Interacting {
             }),
         };
         let drawn: String = digest(&replying.event).chars().take(32).collect();
+        let Ok(room) = crate::request::segment(&replying.room) else {
+            return Vec::new();
+        };
         parts
             .iter()
             .enumerate()
@@ -332,9 +335,8 @@ impl Interacting {
                     object.insert("formatted_body".to_owned(), json!(html));
                 }
                 let url = format!(
-                    "{}{CLIENT}/rooms/{}/send/{MESSAGE}/herald.{drawn}.{index}",
-                    self.homeserver,
-                    unreserved(&replying.room)
+                    "{}{CLIENT}/rooms/{room}/send/{MESSAGE}/herald.{drawn}.{index}",
+                    self.homeserver
                 );
                 self.authorised(Request::new(Method::Put, SecretText::plain(url)))
                     .header("Content-Type", SecretText::plain(media::JSON))

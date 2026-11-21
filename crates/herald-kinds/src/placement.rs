@@ -26,6 +26,13 @@ pub trait Placement: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// The options as its kind writes them to be read back by
+    /// [`crate::DestinationConfig::recalled`], where it edits its posts: where
+    /// a post is, never a secret.
+    fn written(&self) -> Option<String> {
+        None
+    }
+
     /// The one actor the route announces as, where it announces as one.
     fn actor(&self) -> Option<&str> {
         None

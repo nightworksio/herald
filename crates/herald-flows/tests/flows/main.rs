@@ -12,9 +12,15 @@ mod activitypub;
 #[cfg(test)]
 mod actors;
 #[cfg(test)]
+mod advised;
+#[cfg(test)]
+mod advisories;
+#[cfg(test)]
 mod announce;
 #[cfg(test)]
 mod at_once;
+#[cfg(test)]
+mod audiences;
 #[cfg(test)]
 mod boards;
 #[cfg(test)]
@@ -52,6 +58,8 @@ mod mastodon;
 #[cfg(test)]
 mod matrix;
 #[cfg(test)]
+mod orphans;
+#[cfg(test)]
 mod owner;
 #[cfg(test)]
 mod poll;
@@ -68,11 +76,17 @@ mod pulls;
 #[cfg(test)]
 mod pushing;
 #[cfg(test)]
+mod recalled;
+#[cfg(test)]
+mod replaced;
+#[cfg(test)]
 mod reports;
 #[cfg(test)]
 mod revise;
 #[cfg(test)]
 mod scoped;
+#[cfg(test)]
+mod sealed;
 #[cfg(test)]
 mod serving;
 #[cfg(test)]
@@ -81,3 +95,5 @@ mod sessions;
 mod slack;
 #[cfg(test)]
 mod withdraw;
+#[cfg(test)]
+mod withheld;

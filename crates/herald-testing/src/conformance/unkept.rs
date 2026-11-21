@@ -5,7 +5,7 @@ use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
     Store, StoreError, Subscriptions, Waiting,
 };
-use herald_ports::{Decisions, Pulls};
+use herald_ports::{Decisions, Pulls, Recalls};
 
 use super::{Checks, GITHUB, NOON, announced, key};
 
@@ -58,6 +58,20 @@ pub(super) async fn unkept<S: Store>(store: &S, checks: &mut Checks) {
     if store.pulls().is_none() {
         pulls(&store.pulls(), checks).await;
     }
+    if store.recalls().is_none() {
+        recalls(&store.recalls(), checks).await;
+    }
+}
+
+pub(super) async fn recalls(store: &impl Recalls, checks: &mut Checks) {
+    refused(checks, store.advised().await, Held::Recalls, "advised");
+    let named = super::recalls::named(&["unkept"]);
+    refused(
+        checks,
+        store.put_advised(&named, None).await,
+        Held::Recalls,
+        "put_advised",
+    );
 }
 
 pub(super) async fn pulls(store: &impl Pulls, checks: &mut Checks) {

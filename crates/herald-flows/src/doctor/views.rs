@@ -1,14 +1,17 @@
 //! What doctor says of each report and rule: how its view reads each
 //! source and what that costs a round, which routes are shown its private
 //! rows, and where its times are read (ADR-0055); and of each living route
-//! whose destination cannot edit (ADR-0056).
+//! whose destination cannot edit (ADR-0056); and what a view's advisories
+//! cost, the permissions they need, and which routes are sent the
+//! withheld line in their place (ADR-0067).
 
 use std::fmt::Write as _;
 
-use herald_config::{Config, Guard, Report, Rule, ViewConfig, ViewMode};
-use herald_core::Capacity;
+use herald_config::{Config, Guard, Report, RouteConfig, Rule, ViewConfig, ViewMode};
 use herald_core::report::UTC;
 use herald_core::stage_name;
+use herald_core::{Advising, AdvisoriesFrom, Capacity, Surface, View, WITHHELD, advises};
+use herald_kinds::{Checking, UNADVISED};
 
 /// What the time zone database bundled into this build adds to it, as a
 /// report naming a zone reads it.
@@ -25,6 +28,9 @@ const SCOPED: &str = "it reads only the repositories the owner's membership reco
 
 /// What doctor says of a view predicting conflicts (ADR-0063).
 const CAPACITY_PERMISSIONS: &str = "Its token needs Actions: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api with the Reporter role on GitLab, self-managed included, and read access on Forgejo; a repository it may not read is named unread with why, never counted as idle.";
+
+/// What doctor says a view's advisories need of its token (ADR-0067).
+const ADVISORY_PERMISSIONS: &str = "Its token needs Dependabot alerts, Code scanning alerts and Secret scanning alerts: read as a GitHub App or fine-grained token, security_events (and repo for a private repository) as a classic token, and for an organization's own listings to act for an organization owner or security manager (with read:org as a classic token), the same on GitHub Enterprise Server and GHE.com; read_api with the Developer role on GitLab Ultimate, self-managed included. A listing it may not read is named unread with the permission it needs, never shown as clean. Forgejo raises no security alerts, so its repositories are named unread.";
 
 const CONFLICTS: &str =
     "to predict conflicts it reads the paths each pull request's head changes, at most 100 each,";
@@ -167,16 +173,41 @@ pub(super) fn kept(config: &Config, findings: &mut super::Findings) {
 
 /// What doctor says of the view `view`, which the report or rule called
 /// `named` watches, reading capacity of the repositories `capacity` names
-/// (ADR-0066).
-fn capacity_note((named, view): (&str, &str), capacity: Capacity) -> String {
+/// of those `held` holds (ADR-0066).
+fn capacity_note((named, view): (&str, &str), (capacity, held): (Capacity, &View)) -> String {
     let which = match capacity {
         Capacity::Shown => "the repositories it shows a pull request of, so the runs of one with no open pull request are not counted".to_owned(),
+        Capacity::Members { most } if !held.holds_every() => format!(
+            "the first {most} by name of the members it holds, with no request for their order: it filters its repositories by name, so the push times of those it hides choose nothing"
+        ),
         Capacity::Members { most } => format!(
             "its owner's {most} newest pushed members, by one more request for their order (on Forgejo, which lists no push order, the first {most} its membership record keeps)"
         ),
     };
     format!(
         "The {named} shows the view {view}'s capacity of {which}: two requests a repository on GitHub and GitLab, one on Forgejo. {CAPACITY_PERMISSIONS}"
+    )
+}
+
+/// What doctor says of the view `view`, which the report or rule called
+/// `named` watches, reading advisories as `advising` says (ADR-0067).
+fn advisories_note((named, view): (&str, &str), (advising, held): (Advising, &View)) -> String {
+    let (most, repositories) = (advising.most, advising.repositories);
+    let read = advising.within(held);
+    let which = match read.from {
+        AdvisoriesFrom::Members if !held.holds_every() => format!(
+            "the first {repositories} by name of the members it holds, one by one, with no request for their order: it filters its repositories by name, so it never reads its owner's own listings, whose pages count the alerts of the repositories it hides too, nor their push order"
+        ),
+        AdvisoriesFrom::Owner => format!(
+            "its organization's or group's own listings, each advisory kept only where the membership record holds its repository; a GitHub user or GitLab user namespace has none, so its {repositories} newest pushed members are read one by one, by one more request for their order"
+        ),
+        AdvisoriesFrom::Shown => "the repositories it shows a pull request of, so one with no open pull request is not read".to_owned(),
+        AdvisoriesFrom::Members => format!(
+            "its owner's {repositories} newest pushed members, by one more request for their order"
+        ),
+    };
+    format!(
+        "The {named} reads the view {view}'s advisories of {which}; a one-repository source reads its repository. Each repository or owner read costs three requests on GitHub, one a listing, and one on GitLab, and one more for each further page of 100, at most {most} advisories read. They reach only routes that say private = true, and herald queue only with --private, typed each time with no setting or variable for it: in a public CI job's log --private publishes them; before each run's first advisory send, each such route's place is checked as its own note says, by requests charged to the run's budget. {ADVISORY_PERMISSIONS}"
     )
 }
 
@@ -229,7 +260,11 @@ fn watched(
     }
     notes.extend(
         view.capacity
-            .map(|capacity| capacity_note((named, &report.view), capacity)),
+            .map(|capacity| capacity_note((named, &report.view), (capacity, &view.view))),
+    );
+    notes.extend(
+        view.advisories
+            .map(|advising| advisories_note((named, &report.view), (advising, &view.view))),
     );
     if let Some(zone) = report
         .schedule
@@ -241,15 +276,22 @@ fn watched(
             "The {named} reads its times in {zone} from {TZDB_SIZE}."
         ));
     }
-    for route in config.routes.iter().filter(|route| {
-        !route.private
-            && route
+    let naming: Vec<&RouteConfig> = config
+        .routes
+        .iter()
+        .filter(|route| {
+            route
                 .route
                 .filter
                 .sources
                 .iter()
                 .any(|source| source.as_str() == name)
-    }) {
+        })
+        .collect();
+    if view.advisories.is_some() && config.reports.contains_key(name) {
+        advised_notes(config, named, &naming, notes);
+    }
+    for route in naming.into_iter().filter(|route| !route.private) {
         let id = route.route.id.as_str();
         notes.extend(match config.doctor.private_to_public {
             Guard::Refuse => Some(format!(
@@ -262,3 +304,82 @@ fn watched(
         });
     }
 }
+
+/// What doctor says of how herald learns who may read the place of the
+/// private route `id`, which `checking` says and the operator may have
+/// `vouched` for, before the report `named` sends it advisories.
+fn checked_note((id, named): (&str, &str), checking: Checking, vouched: bool) -> String {
+    match checking {
+        Checking::Asked { asks, requests } => format!(
+            "Before each run's first advisory send, herald asks {asks}, by {requests} requests charged to the run's budget, once a run for its place; where anyone more may read it, or herald cannot tell, the route {id} is sent \"{WITHHELD}\" in place of the {named}'s advisories."
+        ),
+        Checking::Unchecked(why) if vouched => format!(
+            "The route {id} is sent the {named}'s advisories on the operator's word alone, as it says vouch_unchecked = true: {why}."
+        ),
+        Checking::Unchecked(why) => format!(
+            "The route {id} says private = true, but {why}; it is sent \"{WITHHELD}\" in place of the {named}'s advisories, unless you vouch for its place with vouch_unchecked = true."
+        ),
+        Checking::Unadvised => format!(
+            "The route {id} is sent \"{WITHHELD}\" in place of the {named}'s advisories: {UNADVISED}."
+        ),
+    }
+}
+
+/// Each note on the routes `naming` the report `named` whose view shows
+/// advisories: each not shown them is sent the withheld line, and two that
+/// post to one place where only one is shown them are flagged, since all
+/// who read the one read the other (ADR-0067).
+fn advised_notes(config: &Config, named: &str, naming: &[&RouteConfig], notes: &mut Vec<String>) {
+    for route in naming {
+        let id = route.route.id.as_str();
+        let surface = config.surface(&route.route.id);
+        if matches!(
+            surface,
+            Surface::Route {
+                private: true,
+                recallable: false
+            }
+        ) {
+            notes.push(format!(
+                "The route {id} says private = true, but its post is not living, so it is sent \"{WITHHELD}\" in place of the {named}'s advisories: a report carries its advisories only in a living post (living = true, on a destination that edits), which herald can always find again to take the section out."
+            ));
+        } else if !advises(surface) {
+            notes.push(format!(
+                "The route {id} is not private, or posts where anyone may read it, so it is sent \"{WITHHELD}\" in place of the {named}'s advisories, whatever [doctor] private_to_public says."
+            ));
+        } else if route.route.delivery.living && !config.store.keeps_recalls() {
+            notes.push(format!(
+                "The route {id} keeps a living post and says private = true, but {}, so it is sent \"{WITHHELD}\" in place of the {named}'s advisories.",
+                crate::recall::UNINDEXED
+            ));
+        } else if let Some(checking) = config
+            .destinations
+            .get(&route.route.destination)
+            .map(|destination| destination.checking(&route.options))
+        {
+            notes.push(checked_note((id, named), checking, route.vouched));
+        }
+    }
+    for (index, shown) in naming.iter().enumerate() {
+        for other in naming.iter().skip(index + 1) {
+            let place = |route: &RouteConfig| {
+                route
+                    .options
+                    .written()
+                    .map(|written| (route.route.destination.clone(), written))
+            };
+            let both = advises(config.surface(&shown.route.id))
+                != advises(config.surface(&other.route.id));
+            if both && place(shown).is_some() && place(shown) == place(other) {
+                notes.push(format!(
+                    "The routes {} and {} post to one place, and only one of them is shown the {named}'s advisories: everyone who reads the other reads them there; give the private one a place of its own.",
+                    shown.route.id.as_str(),
+                    other.route.id.as_str(),
+                ));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

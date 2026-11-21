@@ -21,7 +21,7 @@ mod source;
 mod store;
 
 pub use credential::{Credential, Minted};
-pub use destination::{Carried, Destination, DestinationConfig, UNREAD};
+pub use destination::{Carried, Checking, Destination, DestinationConfig, UNREAD};
 pub use federates::{Activity, Federates, Inboxes};
 pub use feeding::{Fed, Feeding};
 pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said, optional};
@@ -32,7 +32,7 @@ pub use placement::{Placed, Placement};
 pub use pulling::{Instance, Origin, Peering, PublicKey, Pull, Pulling, Receive, Trust, Unpulled};
 pub use pushing::{IdTokens, Peered, Presented, Proving, Pushed, Pushing};
 pub use queue::{Asked, MOST_OPEN, MOST_PULLS, Most, Plan, Queue, QueueCost, Relisted, Scope};
-pub use reach::{Posts, Probe, Reach, Reached, Signing, UnreadPosts};
+pub use reach::{Audience, Posts, Probe, Reach, Reached, Signing, UNADVISED, UnreadPosts};
 pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};
 pub use source::{

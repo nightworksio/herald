@@ -12,6 +12,7 @@ fn bot() -> Discord {
             channel: Some("1566184281406177531".to_owned()),
             forum: false,
             subscribe: None,
+            viewers: Vec::new(),
         },
         None,
     )

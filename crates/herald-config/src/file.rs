@@ -222,6 +222,13 @@ pub(crate) struct RouteFile {
     /// `false` sends them to a public place on purpose (`[doctor]
     /// private_kinds`).
     pub(crate) private: Option<bool>,
+    /// Whether the operator vouches that its place is private where herald
+    /// cannot check who may read it, as for a Discord or Slack route reached
+    /// by a webhook: with `private = true` it is then shown a view's
+    /// advisories on the operator's word, which doctor lists. Refused on a
+    /// route herald checks before each run's first advisory send, and on
+    /// one that posts where anyone may read. False where absent.
+    pub(crate) vouch_unchecked: Option<bool>,
     /// What it does with a Release whose tag it already announced: edits
     /// the tag's post to it, or posts it anew where the destination cannot
     /// edit (`edit`); posts it anew (`post`); or leaves the tag's post
@@ -349,7 +356,7 @@ impl PinFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 18] = [
+pub(crate) const ROUTE_KEYS: [&str; 19] = [
     "id",
     "sources",
     "kinds",
@@ -362,6 +369,7 @@ pub(crate) const ROUTE_KEYS: [&str; 18] = [
     "pin",
     "mentions",
     "private",
+    "vouch_unchecked",
     "late_release",
     "edits",
     "withdraw",

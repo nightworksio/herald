@@ -42,6 +42,18 @@ impl Budget<'_> {
         requests: None,
     };
 
+    /// It, leaving `kept` more of its requests unspent for what follows.
+    #[must_use]
+    pub(crate) fn keeping(self, kept: usize) -> Self {
+        Self {
+            requests: self.requests.map(|requests| Requests {
+                spare: requests.spare.saturating_add(kept),
+                ..requests
+            }),
+            ..self
+        }
+    }
+
     /// Whether `sends` more sends may start at `now`, or else the stop that
     /// hands what is left to the next run.
     pub(crate) fn allows(&self, now: Timestamp, sends: usize) -> Result<(), Stop> {
@@ -74,9 +86,26 @@ impl Budget<'_> {
     }
 }
 
+impl<S, C, G> crate::announce::Ports<'_, S, C, G> {
+    /// The ports, their budget leaving `kept` more of its requests unspent
+    /// for what follows.
+    pub(crate) fn keeping(&self, kept: usize) -> Self {
+        Self {
+            store: self.store,
+            clock: self.clock,
+            signer: self.signer,
+            budget: self.budget.keeping(kept),
+        }
+    }
+}
+
 /// Why an overview's section was left unread where the run's budget ended.
 pub(crate) const BUDGET_ENDED: &str =
     "the run's request budget ended before its runs were read; the next run reads them";
+
+/// Why an advisories section was left unread where the run's budget ended.
+pub(crate) const ADVISORIES_BUDGET_ENDED: &str =
+    "the run's request budget ended before its advisories were read; the next run reads them";
 
 /// An `Http` that starts each send only where a run's budget allows one
 /// more: the one home every read of a forge a run makes goes through,
@@ -104,17 +133,32 @@ impl<'a, H: Http, C: Clock> Budgeted<'a, H, C> {
     /// section unread, in plain words: the run's budget ending leaves the
     /// section unread, never the whole report stopped (ADR-0066).
     pub(crate) fn unread(&self, unpolled: Unpolled) -> String {
+        self.left_unread(unpolled, (BUDGET_ENDED, "runs"))
+    }
+
+    /// Why a read of advisories that failed as `unpolled` left its section
+    /// unread, in the words [`Self::unread`] gives a capacity read
+    /// (ADR-0067).
+    pub(crate) fn unread_advisories(&self, unpolled: Unpolled) -> String {
+        self.left_unread(unpolled, (ADVISORIES_BUDGET_ENDED, "advisories"))
+    }
+
+    /// Why a read of `what` that failed as `unpolled` left it unread:
+    /// `ended` where the run's budget refused a send.
+    fn left_unread(&self, unpolled: Unpolled, (ended, what): (&str, &str)) -> String {
         let refused = self
             .refused
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
         match (refused, unpolled) {
-            (Some(_), _) => BUDGET_ENDED.to_owned(),
+            (Some(_), _) => ended.to_owned(),
             (None, Unpolled::Unreachable(reason)) => {
                 format!("its forge could not be reached: {reason}")
             }
-            (None, Unpolled::Unreadable(reason)) => format!("its runs could not be read: {reason}"),
+            (None, Unpolled::Unreadable(reason)) => {
+                format!("its {what} could not be read: {reason}")
+            }
         }
     }
 

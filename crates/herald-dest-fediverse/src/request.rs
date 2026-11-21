@@ -1,5 +1,5 @@
 use herald_core::media;
-use herald_core::{Announcement, Declined, Entry, NO_PART, Step, unreserved};
+use herald_core::{Announcement, Declined, Entry, NO_PART, Step};
 use herald_ports::{Method, Request, SecretText};
 use serde_json::{Map, Value, json};
 
@@ -57,13 +57,34 @@ fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) 
         .body(Value::Object(body).to_string())
 }
 
+/// The longest status or account id herald takes from a server.
+const ID: usize = 64;
+
+/// Why a recorded status is not used: it is not shaped as an id.
+const MALFORMED_STATUS: Declined = Declined::Malformed("Mastodon status id");
+
+/// `id`, where it is shaped as a Mastodon API server's status or account
+/// id: one to 64 ASCII letters, digits, `-` or `_`, which covers
+/// Mastodon's numbers, the flake ids of Pleroma and Akkoma, and the ULIDs
+/// of `GoToSocial`.
+pub(crate) fn shaped(id: &str) -> Option<&str> {
+    let fits = !id.is_empty()
+        && id.len() <= ID
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+    fits.then_some(id)
+}
+
 /// The status of `part` in the record `entry` keeps, addressed.
 fn statused(mastodon: &Mastodon, entry: &Entry, part: u32) -> Result<SecretText, Declined> {
     let id = entry.part(part).ok_or(NO_PART)?;
+    let id = shaped(id)
+        .and_then(herald_core::segment)
+        .ok_or(MALFORMED_STATUS)?;
     Ok(SecretText::plain(format!(
-        "{}/api/v1/statuses/{}",
-        mastodon.server,
-        unreserved(id)
+        "{}/api/v1/statuses/{id}",
+        mastodon.server
     )))
 }
 
@@ -102,9 +123,13 @@ pub(crate) fn step(
     announcement: &Announcement,
     entry: &Entry,
 ) -> Result<Request, Declined> {
-    let key = announcement.key.to_string();
     match step {
-        Step::Post => Ok(status(mastodon, &text_of(announcement, 0), None, key)),
+        Step::Post => Ok(status(
+            mastodon,
+            &text_of(announcement, 0),
+            None,
+            entry.post_token(),
+        )),
         Step::Chunk(index) => {
             let before = entry
                 .before(*index)

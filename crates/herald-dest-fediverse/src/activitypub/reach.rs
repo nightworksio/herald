@@ -1,8 +1,8 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Federates, Reach, Signing, UnreadPosts};
-use herald_ports::{Base, Boxed, DynHttp, DynMarkers, DynSigner, Erased, HttpError};
+use herald_kinds::{Audience, Federates, Reach, Signing, UNADVISED, UnreadPosts};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, DynSigner, Erased, HttpError, Response};
 
 use super::deliver::ActivityPub;
 
@@ -52,6 +52,18 @@ impl Reach for ActivityPub {
         Box::pin(ready(Ok(Sent::Refused(
             "herald's ActivityPub actor cannot archive or lock a thread".to_owned(),
         ))))
+    }
+
+    fn audience<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(ready(Audience::Public(UNADVISED.to_owned())))
+    }
+
+    fn keeps_edits(&self) -> bool {
+        true
+    }
+
+    fn declines(&self, _: &Response) -> bool {
+        false
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {

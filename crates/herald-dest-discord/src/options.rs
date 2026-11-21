@@ -5,7 +5,7 @@ use crate::discord::DISCORD;
 use crate::interactions::{Interactions, Subscribe, snowflake};
 use crate::look::{ArchiveAfter, Colours, Look};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// How a Discord destination is reached, as `[destinations.*]` writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -60,7 +60,7 @@ impl DestinationOptions {
 
 /// What a route says about Discord alone, beside its crosspost, thread, pin
 /// and mentions.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RouteOptions {
     /// The channel's id. A bot needs one; a webhook posts where it was made.
@@ -71,6 +71,14 @@ pub struct RouteOptions {
     pub forum: bool,
     /// The opt-in role members subscribe to, where the route offers one.
     pub subscribe: Option<Subscribe>,
+    /// The ids of the roles, and of any member a permission overwrite of
+    /// their own lets in, expected to view the channel: an advisories
+    /// section is sent there only where every role but `@everyone` that may
+    /// view it is listed here, an Administrator role and the bot's own role
+    /// included, and no member it does not list is let in by an overwrite;
+    /// the server's owner sees every channel and is not checked (ADR-0067).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub viewers: Vec<String>,
 }
 
 impl RouteOptions {
@@ -78,8 +86,14 @@ impl RouteOptions {
     ///
     /// # Errors
     ///
-    /// When `channel` is not written as Discord writes an id.
+    /// When `channel` or one of `viewers` is not written as Discord writes
+    /// an id.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(viewer) = self.viewers.iter().find(|viewer| !snowflake(viewer)) {
+            return Err(format!(
+                "\"{viewer}\" in viewers is not a role or member id; give its id, 17 to 20 digits, from Copy Role ID or Copy User ID"
+            ));
+        }
         match &self.channel {
             Some(channel) if !snowflake(channel) => Err(format!(
                 "\"{channel}\" is not a channel id; give the channel's id, 17 to 20 digits, from Copy Channel ID"
@@ -93,6 +107,23 @@ impl RouteOptions {
 mod tests {
     use super::*;
     use crate::look::Colour;
+
+    #[test]
+    fn a_route_s_viewers_are_each_an_id_as_discord_writes_one() {
+        let route = |viewers: &[&str]| RouteOptions {
+            channel: Some("1566184281406177531".to_owned()),
+            viewers: viewers.iter().map(|viewer| (*viewer).to_owned()).collect(),
+            ..RouteOptions::default()
+        };
+        assert_eq!(
+            route(&["1566184281406170001", "1566184281406170003"]).check(),
+            Ok(())
+        );
+        assert_eq!(
+            route(&["1566184281406170001", "Mods"]).check(),
+            Err("\"Mods\" in viewers is not a role or member id; give its id, 17 to 20 digits, from Copy Role ID or Copy User ID".to_owned())
+        );
+    }
 
     #[test]
     fn its_posts_look_as_its_colours_and_archive_length_say() {

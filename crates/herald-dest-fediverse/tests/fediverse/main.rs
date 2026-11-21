@@ -5,6 +5,8 @@ mod activitypub;
 #[cfg(test)]
 mod actor;
 #[cfg(test)]
+mod audience;
+#[cfg(test)]
 mod federates;
 #[cfg(test)]
 mod probe;

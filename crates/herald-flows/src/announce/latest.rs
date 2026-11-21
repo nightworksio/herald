@@ -22,6 +22,7 @@ pub(crate) async fn kept_latest<S: Store>(
         Outcome::Sent { steps } => steps.clone(),
         Outcome::AlreadyAnnounced => Vec::new(),
         Outcome::Held { .. }
+        | Outcome::Sealed { .. }
         | Outcome::Gathered { .. }
         | Outcome::Stopped { .. }
         | Outcome::Unedited

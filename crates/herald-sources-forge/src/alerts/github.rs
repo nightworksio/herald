@@ -145,6 +145,12 @@ struct Advisory {
     severity: Option<String>,
 }
 
+/// The repository an owner's listing names an alert of.
+#[derive(Deserialize)]
+struct Owned {
+    full_name: String,
+}
+
 /// An alert, as GitHub describes it for any tool: only what herald reads
 /// of it, so a secret's value is never parsed.
 #[derive(Deserialize)]
@@ -165,6 +171,7 @@ struct Alert {
     security_advisory: Option<Advisory>,
     secret_type: Option<String>,
     secret_type_display_name: Option<String>,
+    repository: Option<Owned>,
 }
 
 impl Alert {
@@ -240,6 +247,7 @@ impl Alert {
             resolution: self.resolution,
             url: self.html_url,
             occurred,
+            repository: self.repository.map(|repository| repository.full_name),
         }
     }
 }
@@ -283,7 +291,7 @@ pub(super) fn delivered(
 
 /// The alerts `scanner` raised in GitHub's listing `body`, parsing no more
 /// than `limit` bytes, each as its state says.
-pub(super) fn listed(
+pub(crate) fn listed(
     scanner: Scanner,
     limit: usize,
     body: &[u8],

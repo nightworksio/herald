@@ -2,7 +2,8 @@ use herald_core::{
     ActorName, KeyForm, Profile, Scheme, SecretRef, Signed, Symbols, WaitOptions, Waits,
 };
 use herald_kinds::{
-    DestinationConfig, DestinationKind, Fault, Inherited, Placed, Placement, Placing, Reached,
+    Checking, DestinationConfig, DestinationKind, Fault, Inherited, Placed, Placement, Placing,
+    Reached,
 };
 use herald_ports::Secret;
 
@@ -48,6 +49,30 @@ impl DestinationConfig for DestinationOptions {
         vec![&self.token]
     }
 
+    fn public(&self, placed: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        let private = placed
+            .of::<RouteOptions>()
+            .is_some_and(|options| options.visibility == crate::options::Visibility::Private);
+        (!private).then_some("its statuses are posted \"public\" or \"unlisted\", which anyone may read; set visibility = \"private\" to post to its followers alone")
+    }
+
+    fn checking(&self, placed: &Placed) -> Checking {
+        match self.public(placed, &herald_core::Delivery::default()) {
+            Some(_) => Checking::Unadvised,
+            None => Checking::Asked {
+                asks: crate::audience::ASKS,
+                requests: crate::audience::REQUESTS,
+            },
+        }
+    }
+
+    fn recalled(&self, written: &str) -> Option<Placed> {
+        serde_json::from_str::<RouteOptions>(written)
+            .ok()
+            .filter(|route| route.check().is_ok())
+            .map(Placed::new)
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         Some((mastodon::profile(placed.of::<RouteOptions>()?), None))
     }
@@ -91,6 +116,21 @@ impl DestinationConfig for ActorOptions {
         Some(&self.domain)
     }
 
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        Some("herald's own ActivityPub actor serves its Notes to anyone who looks")
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        Checking::Unadvised
+    }
+
+    fn recalled(&self, written: &str) -> Option<Placed> {
+        serde_json::from_str::<ActorRouteOptions>(written)
+            .ok()
+            .filter(|route| route.check().is_ok())
+            .map(Placed::new)
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         placed.of::<ActorRouteOptions>()?;
         Some((actor_profile(), None))
@@ -108,9 +148,17 @@ impl DestinationConfig for ActorOptions {
     }
 }
 
-impl Placement for RouteOptions {}
+impl Placement for RouteOptions {
+    fn written(&self) -> Option<String> {
+        serde_json::to_string(self).ok()
+    }
+}
 
 impl Placement for ActorRouteOptions {
+    fn written(&self) -> Option<String> {
+        serde_json::to_string(self).ok()
+    }
+
     fn actor(&self) -> Option<&str> {
         (!ActorName::templated(&self.actor)).then_some(self.actor.as_str())
     }

@@ -4,11 +4,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use herald_config::{Config, Uses};
-use herald_core::{Board, status};
+use herald_core::{Board, RouteId, status};
 use herald_flows::{
-    Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Publishing,
-    Requests, Room, Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer,
-    housekeep_announcing, poll, prepare, publish, queue, refusal, report, unplaced, work,
+    Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Orphaned, Place, Ports,
+    Publishing, Requests, Room, Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked,
+    answer, housekeep_announcing, orphans, orphans_cleared, poll, prepare, publish, queue, refusal,
+    report, unplaced, work,
 };
 use herald_kinds::{GITHUB_REPOSITORY, Opened};
 use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
@@ -254,14 +255,50 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     }
 
     /// The board of the view `view`, its sources' open pull requests read
-    /// now (ADR-0055).
+    /// now (ADR-0055), its advisories shown where `private` says the output
+    /// is private (ADR-0067).
     ///
     /// # Errors
     ///
     /// Where the config has no such view, or a source it reads could not
     /// be read.
-    pub async fn queue(&self, view: &str) -> Result<Board, Stop> {
-        self.through(Admission::Once, self.started(), Queueing(view))
+    pub async fn queue(&self, view: &str, private: bool) -> Result<Board, Stop> {
+        self.through(Admission::Once, self.started(), Queueing(view, private))
+            .await
+    }
+
+    /// Each possibly orphaned part of the living posts of the report
+    /// `report`, of the route `route` alone where it names one, by route,
+    /// with what the operator names back to clear them; or why there are
+    /// none (ADR-0067).
+    ///
+    /// # Errors
+    ///
+    /// Where the report holds no such part, or its records cannot be read.
+    pub async fn orphans(
+        &self,
+        report: &str,
+        route: Option<&RouteId>,
+    ) -> Result<Vec<Orphaned>, String> {
+        self.through(Admission::Once, self.started(), Orphans(report, route))
+            .await
+    }
+
+    /// The possibly orphaned parts of the report `report`'s living post on
+    /// the route `route` dropped, as the operator says they were deleted
+    /// by hand, where they are still the ones `seen` names (ADR-0067).
+    ///
+    /// # Errors
+    ///
+    /// Where the post holds no such part, holds others than `seen` names,
+    /// or its records cannot be read or written, saying whether anything
+    /// was cleared.
+    pub async fn orphans_cleared(
+        &self,
+        report: &str,
+        seen: (&RouteId, &str),
+    ) -> Result<Orphaned, String> {
+        self.through(Admission::Once, self.started(), Cleared(report, seen))
             .await
     }
 
@@ -526,7 +563,7 @@ impl<H: Host> Through<H> for Logging {
     }
 }
 
-struct Queueing<'v>(&'v str);
+struct Queueing<'v>(&'v str, bool);
 
 impl<H: Host> Through<H> for Queueing<'_> {
     type Done = Result<Board, Stop>;
@@ -536,7 +573,41 @@ impl<H: Host> Through<H> for Queueing<'_> {
         serving: &ServingOn<'_, H, S, K>,
         _: &str,
     ) -> Result<Board, Stop> {
-        queue(serving.config, serving.connected, serving.ports, self.0).await
+        queue(
+            serving.config,
+            serving.connected,
+            serving.ports,
+            (self.0, self.1),
+        )
+        .await
+    }
+}
+
+struct Orphans<'r>(&'r str, Option<&'r RouteId>);
+
+impl<H: Host> Through<H> for Orphans<'_> {
+    type Done = Result<Vec<Orphaned>, String>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
+        orphans(serving.ports.store, self.0, self.1).await
+    }
+}
+
+struct Cleared<'r>(&'r str, (&'r RouteId, &'r str));
+
+impl<H: Host> Through<H> for Cleared<'_> {
+    type Done = Result<Orphaned, String>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
+        orphans_cleared(serving.ports.store, self.0, self.1).await
     }
 }
 

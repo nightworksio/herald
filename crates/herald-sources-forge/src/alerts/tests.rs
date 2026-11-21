@@ -45,6 +45,7 @@ fn alert(tool: Tool, action: AlertAction) -> ForgeAlert {
         resolution: None,
         url: format!("{PAGE}/security/code-scanning/3"),
         occurred: "2026-11-18T09:00:00Z".parse().unwrap(),
+        repository: None,
     }
 }
 

@@ -8,9 +8,11 @@ use std::ops::Range;
 
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
-    Bots, BumpPattern, CAPACITY_REPOSITORIES, Capacity, Deciding, Duration, Glob, GroupBy,
-    MOST_CAPACITY_REPOSITORIES, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES,
-    ReportSchedule, Rules, Slot, SourceName, Stages, Triage, View, zone,
+    ADVISORY_REPOSITORIES, Advising, AdvisoriesFrom, Bots, BumpPattern, CAPACITY_REPOSITORIES,
+    Capacity, Deciding, Duration, Glob, GroupBy, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
+    MOST_ADVISORY_REPOSITORIES, MOST_CAPACITY_REPOSITORIES, MOST_NUDGES, MOST_RUNS,
+    MOST_RUNS_ALLOWED, MOST_STAGES, ReportSchedule, Rules, Slot, SourceName, Stages, Triage, View,
+    zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -21,9 +23,9 @@ use super::boards::Boarded;
 use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
-    BUILT_IN_VIEW, BotsFile, CapacityFrom, DecidingFile, DecidingName, GroupByFile, OverviewName,
-    RULE_KEYS, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile, ViewConfig, ViewFile,
-    ViewMode,
+    AdvisoriesFromFile, BUILT_IN_VIEW, BotsFile, CapacityFrom, DecidingFile, DecidingName,
+    GroupByFile, OverviewName, RULE_KEYS, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile,
+    ViewConfig, ViewFile, ViewMode,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -34,6 +36,10 @@ const RUNS: &str = "a plan reads from 1 to 100 failed runs on a head, such as ru
 const CAPACITY_MOST: &str =
     "a capacity overview reads from 1 to 100 repositories, such as capacity_repositories = 20";
 const CAPACITY_UNSHOWN: &str = "capacity_from and capacity_repositories take effect with overviews = [\"capacity\"], which this view does not name";
+const ADVISORY_MOST: &str = "an advisories overview reads from 1 to 100 repositories one by one, such as advisory_repositories = 20";
+const ADVISORIES_MOST: &str =
+    "an advisories overview reads from 1 to 10000 open advisories, such as most_advisories = 1000";
+const ADVISORIES_UNSHOWN: &str = "advisories_from, advisory_repositories and most_advisories take effect with overviews = [\"advisories\"], which this view does not name";
 const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, or both; this one does neither";
 
 /// The names of `sources` that list their repositories' open pull requests.
@@ -198,6 +204,7 @@ impl Loader<'_> {
         (sources, tasks): (&BTreeMap<SourceName, Source>, &BTreeMap<String, Task>),
     ) -> ViewConfig {
         let capacity = self.capacity(&file, (path, span));
+        let advisories = self.advising(&file, (path, span));
         let shipped = View::default();
         let mut bumps = Vec::new();
         for (index, text) in file.bumps.iter().enumerate() {
@@ -256,7 +263,53 @@ impl Loader<'_> {
             stated: file.listed_visibility,
             conflicts: file.conflicts,
             capacity,
+            advisories,
         }
+    }
+
+    /// How the view `file` at `path` reads its advisories, where it shows
+    /// the overview (ADR-0067).
+    fn advising(
+        &mut self,
+        file: &ViewFile,
+        (path, span): (&str, &Range<usize>),
+    ) -> Option<Advising> {
+        let repositories = file
+            .advisory_repositories
+            .map_or(ADVISORY_REPOSITORIES, NonZeroUsize::get);
+        if repositories > MOST_ADVISORY_REPOSITORIES {
+            self.error(
+                span,
+                &format!("{path}.advisory_repositories"),
+                ADVISORY_MOST.to_owned(),
+            );
+        }
+        let most = file
+            .most_advisories
+            .map_or(MOST_ADVISORIES, NonZeroUsize::get);
+        if most > MOST_ADVISORIES_ALLOWED {
+            self.error(
+                span,
+                &format!("{path}.most_advisories"),
+                ADVISORIES_MOST.to_owned(),
+            );
+        }
+        let shown = file.overviews.contains(&OverviewName::Advisories);
+        let set = file.advisories_from.is_some()
+            || file.advisory_repositories.is_some()
+            || file.most_advisories.is_some();
+        if !shown && set {
+            self.error(span, path, ADVISORIES_UNSHOWN.to_owned());
+        }
+        shown.then(|| Advising {
+            from: match file.advisories_from.unwrap_or_default() {
+                AdvisoriesFromFile::Owner => AdvisoriesFrom::Owner,
+                AdvisoriesFromFile::Shown => AdvisoriesFrom::Shown,
+                AdvisoriesFromFile::Members => AdvisoriesFrom::Members,
+            },
+            repositories,
+            most,
+        })
     }
 
     /// Which repositories the view `file` at `path` reads capacity of,
@@ -307,6 +360,7 @@ impl Loader<'_> {
                 stated: false,
                 conflicts: false,
                 capacity: None,
+                advisories: None,
             },
         )]);
         for (name, value) in self.named(value, "views") {

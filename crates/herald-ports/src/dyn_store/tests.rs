@@ -14,6 +14,7 @@ use herald_core::{
 use super::*;
 use crate::erased::Erased;
 use crate::store::Keeper;
+use crate::store::Recalls as _;
 
 const NAMESPACE: &str = "namespace";
 
@@ -185,6 +186,20 @@ impl crate::Pulls for Refusing {
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(refused("put_reconciled"))
+    }
+}
+
+impl crate::Recalls for Refusing {
+    async fn advised(&self) -> Result<Option<Versioned<herald_core::AdvisedReports>>, StoreError> {
+        Err(refused("advised"))
+    }
+
+    async fn put_advised(
+        &self,
+        _: &herald_core::AdvisedReports,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_advised"))
     }
 }
 
@@ -432,7 +447,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 15]
+            [holding; 16]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -801,4 +816,18 @@ fn every_answer_of_an_erased_store_on_held_events_is_the_store_s_own() {
     ];
     let by = ["pending", "every_pending", "put_pending", "drop_pending"];
     assert_eq!(refusals, by.map(|by| Some(refused(by))));
+}
+
+#[test]
+fn an_erased_store_hands_the_names_of_advised_reports_to_the_one_it_erases() {
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    let named = herald_core::AdvisedReports::default();
+    assert_eq!(
+        [
+            answered(erased.advised()),
+            answered(erased.put_advised(&named, None)),
+        ],
+        [Some(refused("advised")), Some(refused("put_advised"))]
+    );
 }

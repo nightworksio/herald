@@ -497,12 +497,12 @@ fn a_poll_finds_the_published_releases_newest_first_with_the_validators() {
 
 #[test]
 fn one_release_is_asked_for_by_its_tag_and_becomes_its_event() {
-    let request = source(None).release_request("v0.12.6", None);
+    let request = source(None).release_request("v0.12.6", None).unwrap();
     assert_eq!(
         request.url.redacted(),
         "https://api.github.com/repos/neovim/neovim/releases/tags/v0.12.6"
     );
-    let odd = source(None).release_request("release/1 2", None);
+    let odd = source(None).release_request("release/1 2", None).unwrap();
     assert_eq!(
         odd.url.redacted(),
         "https://api.github.com/repos/neovim/neovim/releases/tags/release%2F1%202"
@@ -592,7 +592,9 @@ fn the_requests_ask_conditionally_with_herald_s_user_agent() {
         project: None,
         ..Cursor::default()
     };
-    let request = source(None).releases_request(Some(&cursor), Some(&token));
+    let request = source(None)
+        .releases_request(Some(&cursor), Some(&token))
+        .unwrap();
     assert_eq!(
         request.to_string(),
         [
@@ -610,7 +612,7 @@ fn the_requests_ask_conditionally_with_herald_s_user_agent() {
     let enterprise = source(Some("https://ghe.example/api/v3/"));
     assert_eq!(enterprise.api(), "https://ghe.example/api/v3");
     assert_eq!(source(None).api(), "https://api.github.com");
-    let plain = enterprise.releases_request(None, None);
+    let plain = enterprise.releases_request(None, None).unwrap();
     assert_eq!(
         plain.url.redacted(),
         "https://ghe.example/api/v3/repos/neovim/neovim/releases?per_page=30"
@@ -619,12 +621,17 @@ fn the_requests_ask_conditionally_with_herald_s_user_agent() {
     assert_eq!(
         source(Some("https://api.acme.ghe.com"))
             .releases_request(None, None)
+            .unwrap()
             .url
             .redacted(),
         "https://api.acme.ghe.com/repos/neovim/neovim/releases?per_page=30"
     );
     assert_eq!(
-        source(None).repository_request(None).url.redacted(),
+        source(None)
+            .repository_request(None)
+            .unwrap()
+            .url
+            .redacted(),
         "https://api.github.com/repos/neovim/neovim"
     );
 }

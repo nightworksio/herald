@@ -2,7 +2,7 @@ use herald_core::{PinLookups, ReadBack, SecretRef, Symbols, WaitOptions};
 
 use crate::interactions::Interactions;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// How a Matrix destination is reached, as `[destinations.*]` writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -30,7 +30,7 @@ pub struct DestinationOptions {
 }
 
 /// What a route says about Matrix alone.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RouteOptions {
     /// The room's id, such as `!abcdefg:matrix.org`, which the bot has

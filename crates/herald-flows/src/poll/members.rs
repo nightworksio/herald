@@ -211,6 +211,7 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
                         routes: None,
                         reach: Some(&reach),
                         view: None,
+                        advised: &[],
                     },
                     holding,
                 ),
@@ -270,6 +271,8 @@ static JOINED: Cursor = Cursor {
     ahead: Vec::new(),
     proved: Vec::new(),
     projects: std::collections::BTreeMap::new(),
+    advised: Vec::new(),
+    pending: Vec::new(),
 };
 
 /// The members `chunk` polled together through `http`, as one request

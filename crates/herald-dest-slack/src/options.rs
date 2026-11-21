@@ -5,7 +5,7 @@ use crate::slack::SLACK;
 
 use crate::interactions::{Interactions, Subscribe};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// How a Slack destination is reached, as `[destinations.*]` writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -38,6 +38,26 @@ pub struct DestinationOptions {
     /// How long it waits before sending again where Slack answers that it
     /// is unwell or limited and names no wait.
     pub waits: Option<WaitOptions>,
+    /// How a private channel an Enterprise Grid organization shares with
+    /// its other workspaces counts before an advisories section is sent
+    /// there: as public, since members of every workspace of the
+    /// organization may be in it (`public`, where unset), or as private
+    /// (`private`), where the operator accepts that whole organization as
+    /// its audience.
+    pub org_shared: Option<OrgShared>,
+}
+
+/// How a private channel shared across an Enterprise Grid organization
+/// counts before an advisories section is sent there (ADR-0067).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum OrgShared {
+    /// As private: the operator accepts every workspace of the organization
+    /// as its audience.
+    Private,
+    /// As public: members of any workspace of the organization may be in it.
+    #[default]
+    Public,
 }
 
 impl DestinationOptions {
@@ -67,7 +87,7 @@ impl DestinationOptions {
 }
 
 /// What a route says about Slack alone.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RouteOptions {
     /// The channel's id, such as `C0123456789`, which the bot has joined. A

@@ -24,7 +24,9 @@ with the recommended one the default.
    most `capacity_repositories` (20, from 1 to 100), ordered by one
    request: GitHub's `sort=pushed`, GitLab's `order_by=last_activity_at`.
    Forgejo lists no push order, so it takes the first its membership
-   record keeps.
+   record keeps. A view with a `repositories` filter takes the first
+   members it holds by name, with no request for their order, so the
+   push times of the repositories it hides choose nothing (ADR-0067).
 3. **What each forge is asked.** GitHub Actions' runs with
    `status=queued` and `status=in_progress`; GitLab's pipelines with
    `status=pending` and `status=running`; Forgejo's Actions tasks,

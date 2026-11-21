@@ -1,7 +1,7 @@
 //! A GitLab project's packages and its container images' tags
 //! (ADR-0035).
 
-use herald_core::{Address, Cursor, Identity, Visibility, unreserved};
+use herald_core::{Address, Cursor, Identity, Visibility};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
@@ -11,7 +11,7 @@ use super::{
     Asking, CONTAINER, Found, Packaged, container, host_of, packaged, read, seen_packages,
 };
 use crate::Forge;
-use crate::forge::{Repository, validators};
+use crate::forge::{Checked, Repository, validators, whole};
 use crate::owner::next;
 
 /// The key of a project's listing of packages among the validators a
@@ -71,6 +71,7 @@ impl Asking<'_> {
         let page = repository.page.as_deref();
         let host = host_of(page, api.repository)?;
         let owner = path.rsplit_once('/').map_or(path, |(owner, _)| owner);
+        let checked = self.origin.checked()?;
         let mut versions = Vec::new();
         if self.packaging.only_type() != Some(CONTAINER) {
             let only = self
@@ -78,8 +79,7 @@ impl Asking<'_> {
                 .only_type()
                 .map_or_else(String::new, |kind| format!("&package_type={kind}"));
             let held = cursor.and_then(|cursor| cursor.packages.get(LISTING));
-            let request = self
-                .origin
+            let request = checked
                 .get(
                     &format!(
                         "/packages?order_by=created_at&sort=desc&per_page={}{only}",
@@ -131,18 +131,23 @@ impl Asking<'_> {
         }
         if self.packaging.takes_type(CONTAINER) {
             versions.extend(
-                self.images(http, (repository, path, visibility), cursor, found)
-                    .await?,
+                self.images(
+                    (http, &checked),
+                    (repository, path, visibility),
+                    cursor,
+                    found,
+                )
+                .await?,
             );
         }
         Ok(versions)
     }
 
-    /// Each entry of the pages GitLab answers for `path` under the project,
-    /// as many as the source reads.
+    /// Each entry of the pages GitLab answers for `path` under the project
+    /// `checked`, as many as the source reads.
     async fn pages<T: serde::de::DeserializeOwned>(
         &self,
-        http: &Erased<'_, dyn DynHttp + '_>,
+        (http, checked): (&Erased<'_, dyn DynHttp + '_>, &Checked<'_>),
         (what, path): (&'static str, &str),
         listed: &mut usize,
     ) -> Result<Vec<T>, Unpolled> {
@@ -153,7 +158,7 @@ impl Asking<'_> {
                 "{path}?per_page={}&page={number}",
                 self.packaging.listed_page
             );
-            let answer = self.ask(http, self.origin.get(&asked, self.token)).await?;
+            let answer = self.ask(http, checked.get(&asked, self.token)).await?;
             let page: Vec<T> = read(what, self.origin.reading().parse, &answer)?;
             *listed += page.len();
             if *listed > self.packaging.most.get() {
@@ -169,19 +174,24 @@ impl Asking<'_> {
     }
 
     /// The tags of the container images GitLab lists for the project
-    /// `repository`, seen as `visibility` lets them be: each unseen one read
+    /// `repository`, asked under its `checked` base, seen as `visibility`
+    /// lets them be: each unseen one read
     /// in full where the source has seen packages before, and remembered
     /// unread where it has not.
     async fn images(
         &self,
-        http: &Erased<'_, dyn DynHttp + '_>,
+        (http, checked): (&Erased<'_, dyn DynHttp + '_>, &Checked<'_>),
         (repository, path, visibility): (&Repository, &str, Visibility),
         cursor: Option<&Cursor>,
         found: &mut Packaged,
     ) -> Result<Vec<Found>, Unpolled> {
         let mut listed = 0;
         let images: Vec<GitLabImage> = self
-            .pages(http, (IMAGES, "/registry/repositories"), &mut listed)
+            .pages(
+                (http, checked),
+                (IMAGES, "/registry/repositories"),
+                &mut listed,
+            )
             .await?;
         let page = repository.page.as_deref().unwrap_or_default();
         let mut versions = Vec::new();
@@ -195,7 +205,9 @@ impl Asking<'_> {
                 continue;
             }
             let base = format!("/registry/repositories/{}/tags", image.id);
-            let tags: Vec<GitLabTag> = self.pages(http, (TAGS, &base), &mut listed).await?;
+            let tags: Vec<GitLabTag> = self
+                .pages((http, checked), (TAGS, &base), &mut listed)
+                .await?;
             for tag in tags
                 .into_iter()
                 .filter(|tag| !self.packaging.moves(&tag.name))
@@ -208,13 +220,8 @@ impl Asking<'_> {
                     found.unread.push(identity);
                     continue;
                 }
-                let answer = self
-                    .ask(
-                        http,
-                        self.origin
-                            .get(&format!("{base}/{}", unreserved(&tag.name)), self.token),
-                    )
-                    .await?;
+                let tagged = format!("{base}/{}", whole(&tag.name, crate::forge::TAG)?);
+                let answer = self.ask(http, checked.get(&tagged, self.token)).await?;
                 let read: GitLabTag = read(TAG, self.origin.reading().parse, &answer)?;
                 let published = read.created_at.ok_or_else(|| {
                     Unpolled::Unreadable(format!("{TAG} {} has no creation time", tag.name))

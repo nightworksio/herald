@@ -155,7 +155,7 @@ impl Interactions {
 pub const SESSION_DOMAIN: &str = "discord.gg";
 
 /// What a route says about subscribing on Discord.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(rename = "DiscordSubscribe")]
 pub struct Subscribe {
@@ -191,7 +191,7 @@ impl Subscribe {
 }
 
 /// How many digits Discord writes an id in.
-const SNOWFLAKE_DIGITS: std::ops::RangeInclusive<usize> = 17..=20;
+pub(crate) const SNOWFLAKE_DIGITS: std::ops::RangeInclusive<usize> = 17..=20;
 /// How many hex digits an application's Ed25519 public key is written in.
 const PUBLIC_KEY_DIGITS: usize = 64;
 /// The longest name a Discord command takes.

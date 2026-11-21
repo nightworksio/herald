@@ -284,6 +284,19 @@ impl Response {
             .map(|(_, value)| value.as_str())
     }
 
+    /// Whether its `Content-Type` names JSON, its parameters aside.
+    #[must_use]
+    pub fn is_json(&self) -> bool {
+        self.header("content-type").is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case(herald_core::media::JSON)
+        })
+    }
+
     /// Whether the status is a success, `2xx`.
     #[must_use]
     pub fn succeeded(&self) -> bool {
@@ -758,6 +771,22 @@ mod tests {
         };
         assert_eq!(response.header("content-type"), Some("application/json"));
         assert_eq!(response.header("etag"), None);
+    }
+
+    #[test]
+    fn only_a_json_content_type_is_json_whatever_its_parameters() {
+        let typed = |value: Option<&str>| Response {
+            status: 403,
+            headers: value
+                .map(|value| vec![("content-type".to_owned(), value.to_owned())])
+                .unwrap_or_default(),
+            body: b"{}".to_vec(),
+        };
+        assert!(typed(Some("application/json")).is_json());
+        assert!(typed(Some(" Application/JSON ; charset=utf-8")).is_json());
+        assert!(!typed(Some("text/html; charset=utf-8")).is_json());
+        assert!(!typed(Some("application/jsonp")).is_json());
+        assert!(!typed(None).is_json());
     }
 
     #[test]

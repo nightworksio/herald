@@ -133,6 +133,7 @@ fn each_forge_lists_an_organization_and_a_user_at_its_own_api() {
     let url = |forge, owner| {
         owned(forge, &options)
             .page_request(owner, 2, None)
+            .unwrap()
             .url
             .redacted()
     };
@@ -161,7 +162,9 @@ fn each_forge_lists_an_organization_and_a_user_at_its_own_api() {
         "https://forge.example/api/users/lemonfiber/repos?limit=7&page=2"
     );
     let defaults = |forge| {
-        owned(forge, &SourceOptions::default()).page_request(Owner::Organization, 1, Some("\"e\""))
+        owned(forge, &SourceOptions::default())
+            .page_request(Owner::Organization, 1, Some("\"e\""))
+            .unwrap()
     };
     let github = defaults(Forge::GitHub);
     assert!(
@@ -656,6 +659,7 @@ fn a_listing_whose_pages_named_no_etag_is_read_whole_at_once() {
         [(
             source
                 .page_request(Owner::Organization, 1, None)
+                .unwrap()
                 .url
                 .redacted(),
             None
@@ -763,4 +767,17 @@ fn an_owner_s_member_stands_for_its_own_repository() {
             false
         ))
     );
+}
+
+#[test]
+fn an_owner_named_by_a_dot_segment_is_never_asked_for() {
+    for forge in [Forge::GitHub, Forge::GitLab, Forge::Forgejo] {
+        let dotted = Owned::new(forge, ("..", None), &SourceOptions::default(), (None, 0));
+        for owner in [Owner::Organization, Owner::User] {
+            assert!(matches!(
+                dotted.page_request(owner, 1, None),
+                Err(Unpolled::Unreadable(reason)) if reason.contains("dot segment")
+            ));
+        }
+    }
 }

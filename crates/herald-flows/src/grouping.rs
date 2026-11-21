@@ -566,6 +566,7 @@ pub(crate) async fn round<S: Store, C: Clock, G: Signer, H: Http>(
         lease: config.announce.lease,
         seen: strictest(&kept.value),
         view: None,
+        advised: false,
     };
     let outcome = Grouped {
         run: &running,

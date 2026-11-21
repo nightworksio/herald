@@ -1,12 +1,14 @@
 //! A post brought to a new revision: each part replaced by an edit event,
 //! and each chunk no longer needed redacted (ADR-0034).
 
-use herald_core::{Announcement, Declined, Entry, NO_PART, Step, unreserved};
+use herald_core::{Announcement, Declined, Entry, NO_PART, Step, digest};
 use herald_ports::Request;
 use serde_json::{Value, json};
 
 use crate::matrix::Matrix;
-use crate::request::{announcement_content, chunk_content, posted, put, room, sent};
+use crate::request::{
+    announcement_content, chunk_content, event_id, posted, put, room, segment, sent,
+};
 
 /// How Matrix names an event that replaces another.
 const REPLACE: &str = "m.replace";
@@ -16,14 +18,16 @@ const REPLACE: &str = "m.replace";
 const EDIT_FALLBACK: &str = "* ";
 
 /// The edit replacing the event of `part` with what `announcement` now
-/// reads there, sent once per revision whose digest is `revision`.
+/// reads there, sent under a transaction of the revision whose digest is
+/// `revision` and when the edit was sent, so a board back at an earlier
+/// revision is not answered with that revision's earlier edit.
 pub(crate) fn edit(
     matrix: &Matrix,
     (revision, part): (&str, u32),
     announcement: &Announcement,
     entry: &Entry,
 ) -> Result<Request, Declined> {
-    let target = entry.part(part).ok_or(NO_PART)?;
+    let target = entry.part(part).ok_or(NO_PART).and_then(event_id)?;
     let mut content = match part {
         0 => announcement_content(announcement),
         chunk => {
@@ -56,22 +60,31 @@ pub(crate) fn edit(
         "m.relates_to": { "rel_type": REPLACE, "event_id": target },
     });
     let key = announcement.key.to_string();
-    Ok(sent(matrix, &format!("{key}.{revision}.{part}"), &edit))
+    let at = entry
+        .sent_at(&Step::Edit {
+            revision: revision.to_owned(),
+            part,
+        })
+        .map(|at| format!(".{}", at.as_second()))
+        .unwrap_or_default();
+    sent(matrix, &format!("{key}.{revision}.{part}{at}"), &edit)
 }
 
-/// The redaction of the event of the overflow chunk `part`.
+/// The redaction of the event of `part`, sent under a transaction of the
+/// event's own digest, so a homeserver keeping transactions per endpoint
+/// never answers it with the redaction of another event.
 pub(crate) fn redact(
     matrix: &Matrix,
     part: u32,
     key: &str,
     entry: &Entry,
 ) -> Result<Request, Declined> {
-    let target = entry.part(part).ok_or(NO_PART)?;
+    let target = entry.part(part).ok_or(NO_PART).and_then(event_id)?;
     let path = format!(
         "{}/redact/{}/{}",
-        room(matrix),
-        unreserved(target),
-        unreserved(&format!("{key}.redact.{part}"))
+        room(matrix)?,
+        segment(target)?,
+        segment(&format!("{key}.redact.{part}.{}", digest(target)))?
     );
     Ok(put(matrix, &path, &json!({})))
 }

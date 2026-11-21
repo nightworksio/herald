@@ -199,13 +199,23 @@ fn typing_a_project_is_read_as_what_was_typed_in_its_channel() {
         received(&interacting(""), &tokenless_typing),
         Err(UnreadInteraction::NotAnInteraction)
     );
+    for stepping in ["..", "."] {
+        let mut stepped = interaction(4, &json!({ "name": "latest" }));
+        stepped["token"] = json!(stepping);
+        assert_eq!(
+            received(&interacting(""), &stepped),
+            Err(UnreadInteraction::NotAnInteraction)
+        );
+    }
     let mut idless = interaction(4, &json!({ "name": "latest" }));
     idless.as_object_mut().unwrap().remove("id");
     assert_eq!(
         received(&interacting(""), &idless),
         Err(UnreadInteraction::NotAnInteraction)
     );
-    let completing = interacting("").complete(&replying, &["herald".to_owned()]);
+    let completing = interacting("")
+        .complete(&replying, &["herald".to_owned()])
+        .unwrap();
     assert_eq!(
         completing.url.expose(),
         "https://discord.test/api/interactions/900/interaction-token/callback"
@@ -495,7 +505,12 @@ fn an_answer_is_deferred_then_edited_into_place_with_the_rest_followed_up() {
         id: "900".to_owned(),
         token: Secret::new("the interaction's token", "tok"),
     };
-    let defer = interacting.defer(&replying, false);
+    let dotted = Replying {
+        id: "..".to_owned(),
+        token: Secret::new("the interaction's token", "tok"),
+    };
+    assert_eq!(interacting.defer(&dotted, false), None);
+    let defer = interacting.defer(&replying, false).unwrap();
     assert_eq!(defer.method, Method::Post);
     assert_eq!(
         defer.url.expose(),

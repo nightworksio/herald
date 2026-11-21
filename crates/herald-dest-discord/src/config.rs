@@ -5,8 +5,8 @@ use herald_core::{
     Signed, Symbols, Text, WaitOptions,
 };
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, UNREAD,
+    Carried, Checking, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts,
+    Placed, Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, UNREAD,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
@@ -126,6 +126,29 @@ impl DestinationConfig for DestinationOptions {
         }))))
     }
 
+    fn public(&self, _: &Placed, delivery: &herald_core::Delivery) -> Option<&'static str> {
+        delivery
+            .crosspost
+            .then_some("it crossposts each post to every server following the channel")
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        match self.token {
+            Some(_) => Checking::Asked {
+                asks: crate::audience::ASKS,
+                requests: crate::audience::REQUESTS,
+            },
+            None => Checking::Unchecked(crate::audience::UNCHECKED),
+        }
+    }
+
+    fn recalled(&self, written: &str) -> Option<Placed> {
+        serde_json::from_str::<RouteOptions>(written)
+            .ok()
+            .filter(|route| route.check().is_ok())
+            .map(Placed::new)
+    }
+
     fn unread_why(&self) -> &'static str {
         if self.token.is_some() {
             "a forum's posts are not read back"
@@ -136,6 +159,10 @@ impl DestinationConfig for DestinationOptions {
 }
 
 impl Placement for RouteOptions {
+    fn written(&self) -> Option<String> {
+        serde_json::to_string(self).ok()
+    }
+
     fn threads_each_post(&self) -> bool {
         self.forum
     }
@@ -262,7 +289,7 @@ impl Interacts for Interacting {
         let public = Self::answering(self)
             .replies
             .public(asked.command, asked.share);
-        Some(self.defer(replying, public))
+        self.defer(replying, public)
     }
 
     fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
@@ -304,7 +331,7 @@ impl Interacts for Interacting {
     fn complete(&self, replying: &Replying, projects: &[String]) -> Option<Request> {
         replying
             .of::<interact::Replying>()
-            .map(|replying| Self::complete(self, replying, projects))
+            .and_then(|replying| Self::complete(self, replying, projects))
     }
 
     fn gives_roles(&self) -> bool {

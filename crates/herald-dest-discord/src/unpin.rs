@@ -1,12 +1,12 @@
 use herald_core::status;
-use herald_core::{Announcement, Entry, Facts, Marker, Sent, unreserved};
+use herald_core::{Announcement, Declined, Entry, Facts, Marker, Sent, unreserved};
 use herald_ports::{Http, HttpError};
 use serde_json::Value;
 
 use crate::discord::Discord;
 use crate::markers::{author, marks};
 use crate::read::{failure, id, json};
-use crate::request::{PINNED, channel, get, posted, unpin, webhook_cannot};
+use crate::request::{PINNED, channel, get, path, posted, unpin, webhook_cannot};
 
 /// What is said where Discord names no user for the bot's token.
 pub(crate) const UNNAMED: &str = "Discord did not say which user the bot is";
@@ -19,8 +19,16 @@ const GONE: u16 = status::NOT_FOUND;
 /// An answer read, a reason to stop with, or no answer at all.
 type ApiAnswer<T> = Result<Result<T, Sent>, HttpError>;
 
-async fn read<H: Http>(discord: &Discord, http: &H, path: &str) -> ApiAnswer<Value> {
-    let response = http.send(get(discord, path)).await?;
+async fn read<H: Http>(
+    discord: &Discord,
+    http: &H,
+    path: Result<String, Declined>,
+) -> ApiAnswer<Value> {
+    let path = match path {
+        Ok(path) => path,
+        Err(declined) => return Ok(Err(Sent::Refused(declined.to_string()))),
+    };
+    let response = http.send(get(discord, &path)).await?;
     Ok(failure(&response, discord.waits).map_or_else(|| Ok(json(&response)), Err))
 }
 
@@ -35,7 +43,7 @@ async fn bot<H: Http>(discord: &Discord, http: &H) -> ApiAnswer<String> {
     if let Some(bot) = discord.bot.get() {
         return Ok(Ok(bot.clone()));
     }
-    let user = match read(discord, http, "/users/@me").await? {
+    let user = match read(discord, http, Ok("/users/@me".to_owned())).await? {
         Ok(user) => user,
         Err(sent) => return Ok(Err(sent)),
     };
@@ -54,16 +62,13 @@ async fn pinned_messages<H: Http>(
     let mut routed_pins = Vec::new();
     let mut before = None;
     for _ in 0..discord.read_back.get() {
-        let path = before.as_deref().map_or_else(
-            || format!("/channels/{channel}/messages/pins?limit={PINS}"),
-            |at| {
-                format!(
-                    "/channels/{channel}/messages/pins?limit={PINS}&before={}",
-                    unreserved(at)
-                )
-            },
-        );
-        let pins = match read(discord, http, &path).await? {
+        let listed = path(&["channels", channel, "messages", "pins"]).map(|pins| {
+            before.as_deref().map_or_else(
+                || format!("{pins}?limit={PINS}"),
+                |at| format!("{pins}?limit={PINS}&before={}", unreserved(at)),
+            )
+        });
+        let pins = match read(discord, http, listed).await? {
             Ok(pins) => pins,
             Err(sent) => return Ok(Err(sent)),
         };
@@ -98,7 +103,7 @@ async fn pinned_posts<H: Http>(
     bot: &str,
     route: &Marker,
 ) -> ApiAnswer<Vec<String>> {
-    let channel = match read(discord, http, &format!("/channels/{forum}")).await? {
+    let channel = match read(discord, http, path(&["channels", forum])).await? {
         Ok(channel) => channel,
         Err(sent) => return Ok(Err(sent)),
     };
@@ -107,7 +112,7 @@ async fn pinned_posts<H: Http>(
             "Discord did not say which server the forum {forum} is in"
         ))));
     };
-    let active = match read(discord, http, &format!("/guilds/{guild}/threads/active")).await? {
+    let active = match read(discord, http, path(&["guilds", guild, "threads", "active"])).await? {
         Ok(active) => active,
         Err(sent) => return Ok(Err(sent)),
     };
@@ -132,8 +137,8 @@ async fn pinned_posts<H: Http>(
     }
     let mut posts = Vec::new();
     for post in candidates {
-        let path = format!("/channels/{post}/messages/{post}");
-        match read(discord, http, &path).await? {
+        let message = path(&["channels", &post, "messages", &post]);
+        match read(discord, http, message).await? {
             Ok(message) if routed(&message, bot, route) => posts.push(post),
             Ok(_) => {}
             Err(sent) => return Ok(Err(sent)),
@@ -187,7 +192,11 @@ pub(crate) async fn unpinned<H: Http>(
         },
     };
     for message in stale.iter().filter(|message| **message != current) {
-        let response = http.send(unpin(discord, channel, message)).await?;
+        let unpinning = match unpin(discord, channel, message) {
+            Ok(unpinning) => unpinning,
+            Err(declined) => return Ok(Sent::Refused(declined.to_string())),
+        };
+        let response = http.send(unpinning).await?;
         if response.status == GONE {
             continue;
         }

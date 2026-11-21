@@ -5,12 +5,13 @@ use herald_core::{
     WaitOptions, Waits,
 };
 use herald_kinds::{
-    Destination, DestinationConfig, DestinationKind, Fault, IdTokens, Peered, Placed, Placement,
-    Placing, Proving, Pushed, Pushing, Reach, Reached, Signing, UnreadPosts,
+    Audience, Checking, Destination, DestinationConfig, DestinationKind, Fault, IdTokens, Peered,
+    Placed, Placement, Placing, Proving, Pushed, Pushing, Reach, Reached, Signing, UNADVISED,
+    UnreadPosts,
 };
 use herald_peers::discovery::inbox_of;
 use herald_peers::feed;
-use herald_ports::{Base, Boxed, DynHttp, DynMarkers, HttpError, Secret};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, HttpError, Response, Secret};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -304,6 +305,15 @@ impl DestinationConfig for PushOptions {
         }))
     }
 
+    fn public(&self, _: &Placed, _: &herald_core::Delivery) -> Option<&'static str> {
+        let private = self.peered.as_ref().is_some_and(|peered| peered.private);
+        (!private).then_some("its push goes to a peer that takes no private events; set private = true on the peer in [peers] if it may take them")
+    }
+
+    fn checking(&self, _: &Placed) -> Checking {
+        Checking::Unadvised
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         placed.of::<PushRouteOptions>()?;
         Some((profile(), None))
@@ -414,6 +424,18 @@ impl Reach for Push {
         _: &'a str,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
         Box::pin(ready(Ok(Sent::Refused(UNSENT.to_owned()))))
+    }
+
+    fn audience<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(ready(Audience::Public(UNADVISED.to_owned())))
+    }
+
+    fn keeps_edits(&self) -> bool {
+        false
+    }
+
+    fn declines(&self, _: &Response) -> bool {
+        false
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {

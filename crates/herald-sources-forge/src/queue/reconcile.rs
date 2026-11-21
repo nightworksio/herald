@@ -145,7 +145,7 @@ pub(super) struct Paged<'a, T> {
     /// The most pages it reads.
     pub(super) pages: usize,
     /// The request for the `number`th page.
-    pub(super) request: &'a (dyn Fn(usize) -> Request + Sync),
+    pub(super) request: &'a (dyn Fn(usize) -> Result<Request, Unpolled> + Sync),
     /// The page an answer holds, and whether another follows it.
     pub(super) read: &'a PageRead<'a, T>,
 }
@@ -169,7 +169,7 @@ impl<T> Paged<'_, T> {
     ) -> Result<Option<(Vec<T>, Vec<Validators>)>, Unpolled> {
         let mut changed = None;
         for (index, validators) in kept.iter().take(self.pages).enumerate() {
-            let request = (self.request)(index + 1).conditional(
+            let request = (self.request)(index + 1)?.conditional(
                 validators.etag.as_deref(),
                 validators.last_modified.as_deref(),
             );
@@ -188,7 +188,7 @@ impl<T> Paged<'_, T> {
             let answer = match changed.take_if(|(at, _)| *at == number) {
                 Some((_, answer)) => answer,
                 None => http
-                    .send((self.request)(number))
+                    .send((self.request)(number)?)
                     .await
                     .map_err(Unpolled::unreachable)?,
             };

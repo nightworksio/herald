@@ -16,7 +16,7 @@ use crate::file::TemplateFile;
 use crate::samples::{sample_boards, samples_from};
 use crate::views::{
     BUILT_IN_VIEW, NUDGE_BODY, NUDGE_TEMPLATE, NUDGE_TITLE, QUEUE_BODY, QUEUE_TEMPLATE,
-    QUEUE_TITLE, RERUN_BODY, RERUN_TEMPLATE, RERUN_TITLE,
+    QUEUE_TITLE, RECALL_TEMPLATE, RECALL_TEXT, RERUN_BODY, RERUN_TEMPLATE, RERUN_TITLE,
 };
 
 /// A template's sources, with where each is written.
@@ -36,6 +36,14 @@ impl Loader<'_> {
         for (name, value) in self.named(value, "templates") {
             let path = format!("templates.{name}");
             let span = value.span();
+            if name == RECALL_TEMPLATE {
+                self.error(
+                    &span,
+                    &path,
+                    format!("{RECALL_TEMPLATE} is herald's own fixed line and cannot be replaced; name your template otherwise"),
+                );
+                continue;
+            }
             let Some(template) = self.typed::<TemplateFile>(value, &path) else {
                 continue;
             };
@@ -80,6 +88,7 @@ impl Loader<'_> {
             (QUEUE_TEMPLATE, QUEUE_TITLE, QUEUE_BODY),
             (NUDGE_TEMPLATE, NUDGE_TITLE, NUDGE_BODY),
             (RERUN_TEMPLATE, RERUN_TITLE, RERUN_BODY),
+            (RECALL_TEMPLATE, RECALL_TEXT, RECALL_TEXT),
         ];
         for (name, title, body) in shipped {
             templates

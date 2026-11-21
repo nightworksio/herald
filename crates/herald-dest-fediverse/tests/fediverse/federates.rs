@@ -135,6 +135,20 @@ fn a_route_to_mastodon_or_an_actor_is_refused_for_what_it_writes_wrongly() {
 }
 
 #[test]
+fn a_recalled_place_is_checked_as_a_route_s_is_and_a_tampered_one_reaches_nothing() {
+    use herald_kinds::Placement as _;
+    let written = RouteOptions::default().written().unwrap();
+    assert!(mastodon().recalled(&written).is_some());
+    let tampered = r#"{"language":"English"}"#;
+    assert!(mastodon().recalled(tampered).is_none());
+    let written = route("gate").written().unwrap();
+    assert!(actor().recalled(&written).is_some());
+    let tampered = written.replace("gate", "-gate/../x");
+    assert!(actor().recalled(&tampered).is_none());
+    assert!(actor().recalled("not json").is_none());
+}
+
+#[test]
 fn an_actor_reads_as_one_of_herald_s_own_signing_with_its_key() {
     let options = actor();
     assert_eq!(options.kind(), ACTIVITYPUB);

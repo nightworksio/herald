@@ -2,7 +2,7 @@
 
 use super::{
     Announcements, Cursors, Decisions, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions,
-    Published, Pulls, Schedules, Store, Subscriptions, Tokens, Waiting,
+    Published, Pulls, Recalls, Schedules, Store, Subscriptions, Tokens, Waiting,
 };
 
 /// A store holding every kind of record it keeps itself, and saying which
@@ -20,6 +20,7 @@ pub trait Keeper:
     + Positions
     + Decisions
     + Pulls
+    + Recalls
     + Waiting
     + Tokens
     + Published
@@ -55,6 +56,7 @@ impl<K: Keeper> Store for K {
     type Published = Self;
     type Decisions = Self;
     type Pulls = Self;
+    type Recalls = Self;
 
     fn ledger(&self) -> Option<&Self> {
         self.holds(Held::Ledger).then_some(self)
@@ -102,6 +104,10 @@ impl<K: Keeper> Store for K {
 
     fn pulls(&self) -> Option<&Self> {
         self.holds(Held::Pulls).then_some(self)
+    }
+
+    fn recalls(&self) -> Option<&Self> {
+        self.holds(Held::Recalls).then_some(self)
     }
 
     fn waiting(&self) -> Option<&Self> {

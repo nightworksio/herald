@@ -22,6 +22,7 @@ fn bot(forum: bool) -> Discord {
             channel: Some(CHANNEL.to_owned()),
             forum,
             subscribe: None,
+            viewers: Vec::new(),
         },
         None,
     )
@@ -277,4 +278,42 @@ fn a_bot_s_chunk_posted_again_by_a_later_revision_carries_a_nonce_of_its_own() {
     assert_eq!(nonce(&posted), json!("5b96fb84465ead32a076c69d8"));
     assert_ne!(nonce(&revised), nonce(&posted));
     assert_eq!(nonce(&revised).as_str().map(str::len), Some(25));
+}
+
+#[test]
+fn a_recorded_id_that_is_no_snowflake_is_never_sent_to() {
+    for id in ["..", ".", "%2e%2e", "1/2", "1?x=2"] {
+        let message = Entry::new(announcement().key)
+            .landed(Step::Post, sent(id))
+            .landed(Step::Chunk(1), sent(id));
+        let threaded = Entry::new(announcement().key)
+            .landed(Step::Post, sent(POST))
+            .landed(Step::Chunk(1), sent(CHUNK))
+            .landed(
+                Step::OpenThread,
+                Facts {
+                    thread: Some(id.to_owned()),
+                    ..Facts::default()
+                },
+            );
+        for (discord, step, entry) in [
+            (bot(false), edit(0), &message),
+            (bot(false), Step::Delete(1), &message),
+            (bot(false), Step::Pin, &message),
+            (webhook(), edit(0), &message),
+            (bot(false), Step::Rename("r2".to_owned()), &threaded),
+            (bot(false), Step::Delete(1), &threaded),
+            (webhook(), edit(1), &threaded),
+            (bot(false), Step::Chunk(2), &threaded),
+        ] {
+            let refused = discord
+                .request(&step, &announcement(), &delivery(), entry)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                refused.contains("not an id the platform gives"),
+                "{id} {step:?}: {refused}"
+            );
+        }
+    }
 }

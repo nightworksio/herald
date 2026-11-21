@@ -89,6 +89,18 @@ impl Reach for Plain {
         Box::pin(ready(Ok(Sent::Refused(format!("{chore:?} {thread}")))))
     }
 
+    fn audience<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(ready(Audience::Public(UNADVISED.to_owned())))
+    }
+
+    fn keeps_edits(&self) -> bool {
+        false
+    }
+
+    fn declines(&self, _: &Response) -> bool {
+        false
+    }
+
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(UnreadPosts("plain reads nothing back"))
     }
@@ -126,6 +138,18 @@ impl Reach for Other {
         _: &'a str,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
         Box::pin(ready(Ok(Sent::Refused(String::new()))))
+    }
+
+    fn audience<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(ready(Audience::Public(UNADVISED.to_owned())))
+    }
+
+    fn keeps_edits(&self) -> bool {
+        false
+    }
+
+    fn declines(&self, _: &Response) -> bool {
+        false
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
@@ -334,4 +358,22 @@ fn a_destination_reads_back_what_landed_or_says_why_it_cannot() {
         pollster::block_on(other.read(&Silent).threads(&marker)),
         Ok(Vec::new())
     );
+}
+
+#[test]
+fn an_audience_withholds_a_section_unless_herald_checked_it_private() {
+    assert_eq!(Audience::Private.withheld(), None);
+    for withheld in [
+        Audience::Public("open".to_owned()),
+        Audience::Unread("unread".to_owned()),
+    ] {
+        assert!(withheld.withheld().is_some_and(|why| !why.is_empty()));
+    }
+    for reached in [
+        Reached::new(Plain("https://plain.example")),
+        Reached::new(Other),
+    ] {
+        let audience = pollster::block_on(reached.audience(&Silent));
+        assert_eq!(audience.withheld(), Some(UNADVISED));
+    }
 }

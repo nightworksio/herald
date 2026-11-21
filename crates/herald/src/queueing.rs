@@ -7,7 +7,7 @@ use std::io::Write;
 use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
-use herald_core::{Board, Row, Showing, view_json, waited};
+use herald_core::{Advisories, Board, Row, Showing, WITHHELD, view_json, waited};
 
 use super::cli::QueueFormat;
 use super::output::say;
@@ -61,6 +61,45 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         ));
         lines.extend(batch.rows.iter().map(line));
     }
+    match board
+        .overviews
+        .advisories
+        .as_ref()
+        .map(|advised| advised.shown())
+    {
+        Some(Some(found)) => lines.extend(advised(found)),
+        Some(None) => lines.push(WITHHELD.to_owned()),
+        None => {}
+    }
+    lines
+}
+
+/// The advisories `found` holds as lines of a table: each open one, those
+/// past the most read, and each listing that could not be read.
+fn advised(found: &Advisories) -> Vec<String> {
+    let more = if found.more { ", more not read" } else { "" };
+    let mut lines = vec![format!("advisories ({}{more})", found.open.len())];
+    lines.extend(found.open.iter().map(|advisory| {
+        let severity = advisory
+            .severity
+            .as_ref()
+            .map_or_else(String::new, |severity| format!(" {severity}"));
+        format!(
+            "  {} {}{severity}: {}, {}, {} old  {}",
+            advisory.repository,
+            advisory.tool,
+            advisory.summary.as_deref().unwrap_or("unnamed"),
+            advisory.state,
+            waited(found.at.duration_since(advisory.opened)),
+            advisory.url
+        )
+    }));
+    lines.extend(
+        found
+            .unread
+            .iter()
+            .map(|unread| format!("  {} unread, because {}", unread.repository, unread.reason)),
+    );
     lines
 }
 
@@ -68,7 +107,7 @@ pub(crate) async fn queueing(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    (view, format): (Option<&str>, QueueFormat),
+    (view, format, private): (Option<&str>, QueueFormat, bool),
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let view = view.unwrap_or(BUILT_IN_VIEW);
@@ -81,7 +120,10 @@ pub(crate) async fn queueing(
         "queue",
     )
     .await?;
-    let board = composed.queue(view).await.map_err(|stop| why(&stop))?;
+    let board = composed
+        .queue(view, private)
+        .await
+        .map_err(|stop| why(&stop))?;
     match format {
         QueueFormat::Json => say(
             out,

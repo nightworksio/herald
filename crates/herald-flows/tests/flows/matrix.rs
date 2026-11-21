@@ -49,7 +49,10 @@ fn token() -> FakeSecrets {
 
 fn sent() -> String {
     let key = Key::derive(&RouteId::new("roomed"), &Identity::new("github.com/1/v1"));
-    format!("/rooms/%21releases%3Amatrix.example/send/m.room.message/{key}")
+    format!(
+        "/rooms/%21releases%3Amatrix.example/send/m.room.message/{key}.{}",
+        crate::harness::NOON.as_second()
+    )
 }
 
 fn subscribed(store: &Failing) {
@@ -136,7 +139,8 @@ fn subscribers_past_the_announcement_s_room_are_mentioned_in_a_message_after_it(
             steps: vec![Step::Post, Step::Chunk(1)]
         }
     );
-    assert!(script.seen()[1].contains(&format!("{posted}.1.")));
+    let (key, _) = posted.rsplit_once('.').unwrap();
+    assert!(script.seen()[1].contains(&format!("{key}.1.")));
     let bodies = script.bodies();
     let first = mentioned(&bodies[0]).as_array().unwrap().len();
     let rest = mentioned(&bodies[1]).as_array().unwrap().len();

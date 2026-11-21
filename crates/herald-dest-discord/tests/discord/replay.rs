@@ -1,6 +1,7 @@
 //! Discord against its fixtures: each step's request as the fixture holds
 //! it, and each answer read back into what the ledger records.
 
+mod dotted;
 mod revise;
 
 use herald_core::{
@@ -40,6 +41,7 @@ fn bot(channel: &str, forum: bool) -> Discord {
             channel: Some(channel.to_owned()),
             forum,
             subscribe: None,
+            viewers: Vec::new(),
         },
         None,
     )
@@ -55,6 +57,7 @@ fn webhook(forum: bool) -> Discord {
             channel: None,
             forum,
             subscribe: None,
+            viewers: Vec::new(),
         },
         None,
     )
@@ -917,6 +920,7 @@ mod subscribing {
                 channel: Some("100".to_owned()),
                 forum: false,
                 subscribe,
+                viewers: Vec::new(),
             },
             None,
         );

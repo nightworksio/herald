@@ -89,11 +89,34 @@ fn a_member_file_on_the_forge_is_asked_raw_at_its_reference_on_each_forge() {
         ),
     ] {
         let source = filed(forge, reference);
-        let request = source.file.as_ref().unwrap().origin.file_request(
-            ("30-repos/repos list.toml", reference),
-            source.token.as_ref(),
-            Some("\"f1\""),
-        );
+        let request = source
+            .file
+            .as_ref()
+            .unwrap()
+            .origin
+            .file_request(
+                ("30-repos/repos list.toml", reference),
+                source.token.as_ref(),
+                Some("\"f1\""),
+            )
+            .unwrap();
+        let origin = &source.file.as_ref().unwrap().origin;
+        for named in ["a/../b", ".", "a//b"] {
+            let refused = origin
+                .file_request((named, reference), None, None)
+                .unwrap_err();
+            assert!(
+                format!("{refused:?}").contains("names nothing in a URL path"),
+                "{refused:?}"
+            );
+        }
+        for sha in ["..", ".", ""] {
+            assert!(origin.tag_request(sha, None).is_err());
+            assert!(origin.reference_request(sha, None).is_err());
+            assert!(origin.release_request(sha, None).is_err());
+            assert!(origin.commit_request(sha, None).is_err());
+            assert!(origin.tag_object_request(sha, None).is_err());
+        }
         assert_eq!(request.url.redacted(), url);
         let headers: Vec<(&str, String)> = request
             .headers

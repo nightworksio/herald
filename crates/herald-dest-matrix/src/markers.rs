@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::matrix::Matrix;
 use crate::read::{failure, json, text};
-use crate::request::{MARKER, MESSAGE, THREAD, get, pinned, pins};
+use crate::request::{MARKER, MESSAGE, Room, THREAD, get, pinned, pins, room};
 
 /// The most events read back from a room's timeline.
 const PAGE: u8 = 100;
@@ -32,24 +32,29 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
         }
     }
 
-    /// The room's recent messages that herald's own account sent, newest
-    /// first, read back page by page until a page holds one `sought`, or
-    /// none is left.
-    async fn own(&self, sought: impl Fn(&Value) -> bool) -> Result<Vec<Value>, MarkersError> {
+    /// The room's checked path, and its recent messages that herald's own
+    /// account sent, newest first, read back page by page until a page
+    /// holds one `sought`, or none is left.
+    async fn own(
+        &self,
+        sought: impl Fn(&Value) -> bool,
+    ) -> Result<(Room, Vec<Value>), MarkersError> {
         let herald = self
             .matrix
             .account(&self.http)
             .await?
             .map_err(MarkersError::unlanded)?;
-        let room = unreserved(&self.matrix.route.room);
+        let room = room(self.matrix).map_err(|declined| MarkersError::Unreadable {
+            reason: declined.to_string(),
+        })?;
         let mut own = Vec::new();
         let mut from: Option<String> = None;
         for _ in 0..self.matrix.read_back.get() {
             let path = from.as_deref().map_or_else(
-                || format!("/rooms/{room}/messages?dir=b&limit={PAGE}"),
+                || format!("{room}/messages?dir=b&limit={PAGE}"),
                 |from| {
                     format!(
-                        "/rooms/{room}/messages?dir=b&limit={PAGE}&from={}",
+                        "{room}/messages?dir=b&limit={PAGE}&from={}",
                         unreserved(from)
                     )
                 },
@@ -73,7 +78,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
                 break;
             }
         }
-        Ok(own)
+        Ok((room, own))
     }
 }
 
@@ -106,7 +111,7 @@ impl<H: Http> Markers for MatrixMarkers<'_, H> {
     }
 
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
-        let events = self.own(|event| carries(event, marker)).await?;
+        let (place, events) = self.own(|event| carries(event, marker)).await?;
         let Some(post) = events.iter().find(|event| carries(event, marker)) else {
             return Ok(None);
         };
@@ -122,7 +127,7 @@ impl<H: Http> Markers for MatrixMarkers<'_, H> {
         for (index, reply) in (1..).zip(replies) {
             entry = entry.landed(Step::Chunk(index), landed(reply));
         }
-        let response = self.http.send(pinned(self.matrix)).await?;
+        let response = self.http.send(pinned(self.matrix, &place)).await?;
         let held = pins(&response, self.matrix.waits).map_err(MarkersError::unlanded)?;
         if held.iter().any(|pinned| pinned == root) {
             entry = entry

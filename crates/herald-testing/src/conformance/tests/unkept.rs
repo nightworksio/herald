@@ -88,3 +88,25 @@ fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
     pollster::block_on(crate::conformance::unkept::pulls(&store, &mut checks));
     probed(checks, "pull");
 }
+
+#[test]
+fn every_method_of_recalls_a_store_keeps_none_of_is_probed() {
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::recalls(
+        &Option::<&FakeStore>::None,
+        &mut checks,
+    ));
+    assert_eq!(checks.done(), Ok(()));
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::recalls(
+        &FakeStore::default(),
+        &mut checks,
+    ));
+    assert_eq!(
+        checks.0,
+        [
+            "advised was not refused as unsupported by a store keeping none of its kind",
+            "put_advised was not refused as unsupported by a store keeping none of its kind",
+        ]
+    );
+}

@@ -26,12 +26,17 @@ use crate::acting::acting;
 use crate::budget::Budget;
 use crate::grouping::Grouped;
 
+mod heard;
 mod latest;
 mod pushing;
+mod replacing;
+mod sealing;
 mod withdrawing;
 
 use crate::prepare::{Connected, PreparedRoute};
+use heard::Heard;
 pub(crate) use latest::kept_latest;
+pub(crate) use sealing::sealed;
 pub(crate) use withdrawing::{Asked, undeletable};
 
 /// The ports an announcement goes through, beside each route's `Http`.
@@ -86,6 +91,15 @@ pub enum Outcome {
         /// When its hold lapses.
         until: Timestamp,
     },
+    /// It went to a route a view's advisories section was sent to: sent,
+    /// or stopped where `stopped` says, how many steps it took, whether the
+    /// post changed and why it stopped untold, so nothing a run says tells
+    /// the section's size, when it changed or what the destination answered
+    /// (ADR-0067).
+    Sealed {
+        /// Whether it stopped; the next run sends what remains.
+        stopped: bool,
+    },
     /// The run stopped part-way; the next run sends what remains.
     Stopped {
         /// The steps this run landed.
@@ -137,6 +151,10 @@ pub(crate) struct Run<'a, S, C, G, H> {
     pub(crate) seen: Visibility,
     /// The view the event reports, where it is a report.
     pub(crate) view: Option<Showing<'a>>,
+    /// Whether the route is or was sent a view's advisories section: its
+    /// living post is then deleted and posted anew where its destination
+    /// keeps what an edit replaced (ADR-0067).
+    pub(crate) advised: bool,
 }
 
 impl<S, C, G, H> Clone for Run<'_, S, C, G, H> {
@@ -150,6 +168,7 @@ impl<S, C, G, H> Clone for Run<'_, S, C, G, H> {
             lease: self.lease,
             seen: self.seen,
             view: self.view,
+            advised: self.advised,
         }
     }
 }
@@ -261,10 +280,7 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
         progress: &mut Progress,
     ) -> Result<(), Stop> {
         let route = &self.route.config.route;
-        if verify_first
-            && self.route.reached.profile().features.reads_back
-            && let Some(facts) = self.read_back(step, announcement, progress).await?
-        {
+        if verify_first && let Some(facts) = self.read_back(step, announcement, progress).await? {
             return self.landed(step, facts, progress).await;
         }
         if *step == Step::Unpin && route.delivery.pin == Some(Pinning::Store) {
@@ -279,16 +295,18 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
                 return self.landed(step, Facts::default(), progress).await;
             }
         }
+        let first = progress.entry.sent_at(step).is_none();
         progress.entry = progress
             .entry
             .clone()
             .attempted(step.clone(), self.ports.clock.now());
         self.write(progress).await?;
+        let heard = Heard::new(self.http);
         let sent = self
             .route
             .reached
             .send(
-                self.http,
+                &heard,
                 Signing {
                     signer: self.ports.signer,
                     now: self.ports.clock.now(),
@@ -306,7 +324,12 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
                 self.landed(step, facts, progress).await
             }
             Sent::RetryAfter(after) => Err(Stop::RetryAfter(after)),
-            Sent::Refused(reason) => Err(Stop::Refused(reason)),
+            Sent::Refused(reason) => {
+                if first && heard.declined(|answer| self.route.reached.declines(answer)) {
+                    progress.entry = progress.entry.clone().refused(step);
+                }
+                Err(Stop::Refused(reason))
+            }
         }
     }
 
@@ -319,16 +342,26 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
         progress: &Progress,
     ) -> Result<Option<Facts>, Stop> {
         let found = self
-            .route
+            .found(&progress.entry.key, &announcement.marks.announcement)
+            .await?;
+        Ok(found.as_ref().and_then(|found| found.facts(step)).cloned())
+    }
+
+    /// What the route's own posts marked `marker` show of the announcement
+    /// `key`, where its destination reads them back.
+    async fn found(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, Stop> {
+        if !self.route.reached.profile().features.reads_back {
+            return Ok(None);
+        }
+        self.route
             .reached
             .read(self.http)
-            .entry(&progress.entry.key, &announcement.marks.announcement)
+            .entry(key, marker)
             .await
             .map_err(|error| match error {
                 MarkersError::RetryAfter { after } => Stop::RetryAfter(after),
                 MarkersError::Unreadable { .. } => Stop::Unread(error.to_string()),
-            })?;
-        Ok(found.as_ref().and_then(|found| found.facts(step)).cloned())
+            })
     }
 
     /// Keeps the Note the route's actor published with `step`, where it is
@@ -470,8 +503,9 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
                 Ok(prepared) => prepared,
                 Err(reason) => return Ok(stopped(reason)),
             };
+        let marker = announcement.marks.announcement.clone();
         let (planned, mut progress) = match self
-            .claimed(key, &wanted, (&revision, parts, subject), repost)
+            .claimed(key, &wanted, (&revision, parts, subject), (repost, &marker))
             .await
         {
             Ok(claimed) => claimed,
@@ -520,7 +554,7 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
         key: Key,
         wanted: &[Step],
         (revision, parts, subject): (&Revision, u32, Subject<'_>),
-        repost: Option<R>,
+        (repost, marker): (Option<R>, &Marker),
     ) -> Result<(Vec<Planned>, Progress), Claim<R>> {
         let edited = subject.group.is_none() && subject.event.edited();
         let now = self.ports.clock.now();
@@ -540,6 +574,21 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
         }
         let edits = self.route.reached.profile().features.edits;
         let delivery = &self.route.config.route.delivery;
+        let replaces = self.advised && delivery.living && self.route.reached.keeps_edits();
+        if replaces
+            && entry.is_some_and(|entry| {
+                entry.replacing.is_some()
+                    || entry
+                        .revision
+                        .as_ref()
+                        .is_some_and(|shown| shown.digest != revision.digest)
+            })
+            && let Some(record) = record.clone()
+        {
+            return self
+                .replacing(record, (wanted, revision), (subject.event.source(), marker))
+                .await;
+        }
         let revising = entry.map(|entry| {
             let revised = if subject.group.is_some() || delivery.living {
                 regrouped(entry, revision, edits)
@@ -626,6 +675,9 @@ impl<'a, S: Store, C: Clock, G: Signer, H: Http> Run<'a, S, C, G, H> {
     /// otherwise.
     async fn released(&self, stop: Option<Unlanded>, mut progress: Progress) -> Outcome {
         progress.entry = progress.entry.clone().released();
+        if stop.is_none() {
+            progress.entry = progress.entry.clone().settled();
+        }
         let released = self.write(&mut progress).await;
         match (stop, released) {
             (Some((remaining, reason)), _) => Outcome::Stopped {
@@ -733,6 +785,10 @@ pub struct Within<'a> {
     pub reach: Option<&'a Reach>,
     /// The view it reports, where it is a report (ADR-0055).
     pub view: Option<Showing<'a>>,
+    /// The routes that are or were sent its view's advisories section: a
+    /// living post of one is deleted and posted anew where its destination
+    /// keeps what an edit replaced, and what it did is sealed (ADR-0067).
+    pub advised: &'a [RouteId],
 }
 
 impl<'a> Within<'a> {
@@ -743,6 +799,7 @@ impl<'a> Within<'a> {
             routes: Some(routes),
             reach: None,
             view: None,
+            advised: &[],
         }
     }
 }
@@ -826,6 +883,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             lease: config.announce.lease,
             seen,
             view: within.view,
+            advised: within.advised.contains(&route.config.route.id),
         };
         if event.withdrawn() {
             let released = (event.identity(), Some(event.project()));
@@ -872,6 +930,11 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
                 )
                 .await
             }
+        };
+        let outcome = if within.advised.contains(id) {
+            sealed(outcome)
+        } else {
+            outcome
         };
         announced.push(Announced {
             route: id.clone(),

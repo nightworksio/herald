@@ -1,14 +1,59 @@
 use herald_core::media;
 use herald_core::{
     Announcement, Button, Chore, Declined, Delivery, Entry, Phrase, Step, Wording, digest,
+    unreserved,
 };
 use herald_ports::{Credential, Method, Request, Secret, SecretText};
 use serde_json::{Map, Value, json};
 
 use crate::discord::{DISCORD, Discord};
 use crate::interact::subscribe_button;
-use crate::interactions::Subscribe;
+use crate::interactions::{SNOWFLAKE_DIGITS, Subscribe};
 use crate::revise;
+
+/// The path of `segments` under Discord's API, each through the one
+/// segment encoder: the one place herald writes a Discord path, so no id
+/// read from the config, the store or an answer reaches another path
+/// (ADR-0067).
+///
+/// # Errors
+///
+/// Where a segment is empty, `.` or `..`: the step is declined.
+pub(crate) fn path(segments: &[&str]) -> Result<String, Declined> {
+    segments
+        .iter()
+        .try_fold(String::new(), |mut path, segment| {
+            path.push('/');
+            path.push_str(&Declined::segment(segment, UNNAMED)?);
+            Ok(path)
+        })
+}
+
+/// What a segment of a Discord path is called where it names nothing.
+const UNNAMED: &str = "Discord id in the request's path";
+
+/// Why a recorded message is not used: it is not digits alone.
+const MALFORMED_MESSAGE: Declined = Declined::Malformed("Discord message id");
+/// Why a recorded thread is not used: it is not digits alone.
+const MALFORMED_THREAD: Declined = Declined::Malformed("Discord thread id");
+
+/// Whether `id`, recorded from Discord's own answer, can name one segment
+/// of a Discord path: digits alone, no longer than a snowflake.
+fn numeric(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= *SNOWFLAKE_DIGITS.end()
+        && id.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// The message id `id` recorded, where it is digits alone.
+pub(crate) fn recorded(id: &str) -> Result<&str, Declined> {
+    numeric(id).then_some(id).ok_or(MALFORMED_MESSAGE)
+}
+
+/// The URL of `segments` under the API root `api`.
+pub(crate) fn endpoint(api: &str, segments: &[&str]) -> Result<SecretText, Declined> {
+    Ok(SecretText::plain(format!("{api}{}", path(segments)?)))
+}
 
 /// The flag of a forum post pinned to the top of its forum.
 pub(crate) const PINNED: u64 = 2;
@@ -216,14 +261,19 @@ pub(crate) fn posted(entry: &Entry) -> Result<&str, Declined> {
     entry
         .message(&Step::Post)
         .ok_or(Declined::Missing("the announcement's message"))
+        .and_then(recorded)
 }
 
-pub(crate) fn thread(entry: &Entry) -> Option<&str> {
+/// The thread `entry` records, where it records one; refused where it is
+/// not digits alone, rather than posting outside it.
+pub(crate) fn thread(entry: &Entry) -> Result<Option<&str>, Declined> {
     [Step::OpenThread, Step::Post]
         .iter()
         .filter_map(|step| entry.facts(step))
         .find_map(|facts| facts.thread.as_deref())
         .filter(|thread| !thread.is_empty())
+        .map(|thread| numeric(thread).then_some(thread).ok_or(MALFORMED_THREAD))
+        .transpose()
 }
 
 pub(crate) fn step(
@@ -262,10 +312,9 @@ fn webhook(
             ))
         }
         Step::Chunk(index) => {
-            let target = match thread(entry) {
-                Some(thread) => {
-                    SecretText::secret(url.clone()).then(format!("?wait=true&thread_id={thread}"))
-                }
+            let target = match thread(entry)? {
+                Some(thread) => SecretText::secret(url.clone())
+                    .then(format!("?wait=true&thread_id={}", unreserved(thread))),
                 None => SecretText::secret(url.clone()).then("?wait=true"),
             };
             Ok(json(
@@ -299,21 +348,22 @@ fn bot(
     let api = &discord.api;
     let bot = discord.credential.bot();
     match step {
-        Step::Post => Ok(bot_post(discord, channel, announcement, delivery)),
+        Step::Post => bot_post(discord, channel, announcement, delivery),
         Step::Crosspost => {
             let message = posted(entry)?;
-            let url = SecretText::plain(format!(
-                "{api}/channels/{channel}/messages/{message}/crosspost"
-            ));
+            let url = endpoint(
+                api,
+                &["channels", channel, "messages", message, "crosspost"],
+            )?;
             Ok(bare(Method::Post, url, bot))
         }
         Step::OpenThread => {
             let message = posted(entry)?;
-            Ok(open_thread(discord, channel, message, announcement))
+            open_thread(discord, channel, message, announcement)
         }
         Step::Chunk(index) => {
-            let target = thread(entry).unwrap_or(channel);
-            let url = SecretText::plain(format!("{api}/channels/{target}/messages"));
+            let target = thread(entry)?.unwrap_or(channel);
+            let url = endpoint(api, &["channels", target, "messages"])?;
             Ok(json(
                 Method::Post,
                 url,
@@ -321,14 +371,14 @@ fn bot(
                 chunk(announcement, *index, Some(entry)).to_string(),
             ))
         }
-        Step::Pin => Ok(pin(discord, channel, posted(entry)?)),
+        Step::Pin => pin(discord, channel, posted(entry)?),
         Step::Unpin => {
             posted(entry)?;
             let earlier = announcement
                 .replaces
                 .as_deref()
                 .ok_or(Declined::Missing("the route's earlier pin"))?;
-            Ok(unpin(discord, channel, earlier))
+            unpin(discord, channel, earlier)
         }
         Step::Edit { part, .. } => {
             revise::bot_edit(discord, channel, *part, announcement, delivery, entry)
@@ -346,7 +396,7 @@ fn bot_post(
     channel: &str,
     announcement: &Announcement,
     delivery: &Delivery,
-) -> Request {
+) -> Result<Request, Declined> {
     let api = &discord.api;
     let bot = discord.credential.bot();
     let subscribe = discord.route.subscribe.as_ref();
@@ -357,16 +407,16 @@ fn bot_post(
             "auto_archive_duration": discord.look.archive_after.minutes(),
             "message": message(discord, announcement, delivery, false, subscribe),
         });
-        return json(
+        return Ok(json(
             Method::Post,
-            SecretText::plain(format!("{api}/channels/{channel}/threads")),
+            endpoint(api, &["channels", channel, "threads"])?,
             bot,
             body.to_string(),
-        );
+        ));
     }
-    let url = SecretText::plain(format!("{api}/channels/{channel}/messages"));
+    let url = endpoint(api, &["channels", channel, "messages"])?;
     let body = message(discord, announcement, delivery, true, subscribe);
-    json(Method::Post, url, bot, body.to_string())
+    Ok(json(Method::Post, url, bot, body.to_string()))
 }
 
 /// The bot's thread opened from the message `message` in `channel`, named
@@ -376,38 +426,36 @@ fn open_thread(
     channel: &str,
     message: &str,
     announcement: &Announcement,
-) -> Request {
+) -> Result<Request, Declined> {
     let api = &discord.api;
     let name = thread_name(announcement);
     let body =
         json!({ "name": name, "auto_archive_duration": discord.look.archive_after.minutes() });
-    let url = SecretText::plain(format!(
-        "{api}/channels/{channel}/messages/{message}/threads"
-    ));
-    json(
+    let url = endpoint(api, &["channels", channel, "messages", message, "threads"])?;
+    Ok(json(
         Method::Post,
         url,
         discord.credential.bot(),
         body.to_string(),
-    )
+    ))
 }
 
 /// The bot's pin of the message `message` in `channel`, or of the post
 /// `message` in a forum.
-fn pin(discord: &Discord, channel: &str, message: &str) -> Request {
+fn pin(discord: &Discord, channel: &str, message: &str) -> Result<Request, Declined> {
     let api = &discord.api;
     let bot = discord.credential.bot();
     if discord.route.forum {
-        let url = SecretText::plain(format!("{api}/channels/{message}"));
-        return json(
+        let url = endpoint(api, &["channels", message])?;
+        return Ok(json(
             Method::Patch,
             url,
             bot,
             json!({ "flags": PINNED }).to_string(),
-        );
+        ));
     }
-    let url = SecretText::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
-    bare(Method::Put, url, bot)
+    let url = endpoint(api, &["channels", channel, "messages", "pins", message])?;
+    Ok(bare(Method::Put, url, bot))
 }
 
 /// The route's channel, which a bot needs.
@@ -429,15 +477,20 @@ pub(crate) fn get(discord: &Discord, path: &str) -> Request {
     )
 }
 
-pub(crate) fn unpin(discord: &Discord, channel: &str, message: &str) -> Request {
+pub(crate) fn unpin(discord: &Discord, channel: &str, message: &str) -> Result<Request, Declined> {
     let api = &discord.api;
     let bot = discord.credential.bot();
     if discord.route.forum {
-        let url = SecretText::plain(format!("{api}/channels/{message}"));
-        return json(Method::Patch, url, bot, json!({ "flags": 0 }).to_string());
+        let url = endpoint(api, &["channels", message])?;
+        return Ok(json(
+            Method::Patch,
+            url,
+            bot,
+            json!({ "flags": 0 }).to_string(),
+        ));
     }
-    let url = format!("{api}/channels/{channel}/messages/pins/{message}");
-    bare(Method::Delete, SecretText::plain(url), bot)
+    let url = endpoint(api, &["channels", channel, "messages", "pins", message])?;
+    Ok(bare(Method::Delete, url, bot))
 }
 
 pub(crate) fn chore(
@@ -455,16 +508,9 @@ pub(crate) fn chore(
             json!({ "archived": true }),
         ],
     };
-    let url = format!("{}/channels/{thread}", discord.api);
+    let url = endpoint(&discord.api, &["channels", thread])?;
     Ok(bodies
         .iter()
-        .map(|body| {
-            json(
-                Method::Patch,
-                SecretText::plain(url.clone()),
-                Some(bot),
-                body.to_string(),
-            )
-        })
+        .map(|body| json(Method::Patch, url.clone(), Some(bot), body.to_string()))
         .collect())
 }

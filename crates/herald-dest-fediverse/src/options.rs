@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// How a Mastodon destination is reached, as `[destinations.*]` writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -26,7 +26,7 @@ pub struct DestinationOptions {
 }
 
 /// Who sees a status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Visibility {
     /// Everyone, on the public timelines too.
@@ -51,7 +51,7 @@ impl Visibility {
 }
 
 /// What a route says about Mastodon alone.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RouteOptions {
     /// Who sees each status.

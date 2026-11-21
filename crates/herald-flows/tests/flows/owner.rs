@@ -33,7 +33,11 @@ fn owned(change: impl FnOnce(&mut SourceOptions)) -> Config {
 /// The harness config with `extra` on its route, its source made the owner
 /// `nightworksio`'s, and changed by `change`.
 pub(crate) fn owned_in(extra: &str, change: impl FnOnce(&mut SourceOptions)) -> Config {
-    let mut config = config(extra);
+    owning(config(extra), change)
+}
+
+/// `config` reading an owner, its options changed by `change`.
+pub(crate) fn owning(mut config: Config, change: impl FnOnce(&mut SourceOptions)) -> Config {
     if let Some(source) = config.sources.values_mut().next()
         && let Some(mut forged) = source.of::<ForgeSource>().cloned()
     {

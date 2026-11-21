@@ -48,6 +48,10 @@ impl StoreConfig for MarkersOptions {
         false
     }
 
+    fn keeps_recalls(&self) -> bool {
+        false
+    }
+
     fn keeps_tokens(&self) -> bool {
         false
     }
@@ -84,5 +88,6 @@ mod tests {
         assert!(!options.keeps_tokens());
         assert!(!options.keeps_decisions());
         assert!(!options.keeps_pulls());
+        assert!(!options.keeps_recalls());
     }
 }

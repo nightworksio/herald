@@ -1,6 +1,8 @@
 use std::fmt;
 
-use herald_core::{Capacity, Listed, Overviews, Owner, Pull, Rerun, Validators, Visibility};
+use herald_core::{
+    Advising, Advisories, Capacity, Listed, Overviews, Owner, Pull, Rerun, Validators, Visibility,
+};
 use herald_ports::{Boxed, DynHttp};
 
 use crate::Unpolled;
@@ -39,6 +41,10 @@ pub struct Scope<'a> {
     /// Each repository its selection takes, as its membership record holds
     /// it: what names each pull request's project and who may see it.
     pub members: &'a [Listed],
+    /// Whether the view holds only some of them, filtering the others out
+    /// by name: its overviews then read its members in name order, never
+    /// in an order the members it hides take part in (ADR-0067).
+    pub narrowed: bool,
 }
 
 /// How a view asks a source for its open pull requests.
@@ -171,6 +177,18 @@ pub trait Queue: fmt::Debug + Send + Sync {
         read: (Asked<'a>, &'a [&'a str]),
         capacity: Capacity,
     ) -> Boxed<'a, Result<Overviews, Unpolled>>;
+
+    /// The open security advisories of the repositories `advising` names,
+    /// `read` being how the view asks and the repositories it shows a pull
+    /// request of, `advising` how it reads them and when; each listing it could not read named in
+    /// `Advisories::unread` with the permission it needs, never left out as
+    /// if clean (ADR-0067).
+    fn advisories<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        read: (Asked<'a>, &'a [&'a str]),
+        advising: (Advising, jiff::Timestamp),
+    ) -> Boxed<'a, Result<Advisories, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(

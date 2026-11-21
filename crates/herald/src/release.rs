@@ -149,14 +149,18 @@ pub(super) async fn tagged(
         return tag_event().await;
     }
     let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
-    let answer = asked(origin.release_request(tag, token)).await?;
+    let said = |unpolled| match unpolled {
+        Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason) => reason,
+    };
+    let request = origin.release_request(tag, token).map_err(said)?;
+    let answer = asked(request).await?;
     if answer.status == herald_core::status::NOT_FOUND && signals.takes(Signal::Tag) {
         return tag_event().await;
     }
     let repository = if let Some(repository) = known {
         repository
     } else {
-        let described = asked(origin.repository_request(token)).await?;
+        let described = asked(origin.repository_request(token).map_err(said)?).await?;
         forge
             .repository(&described)
             .map_err(|error| error.to_string())?

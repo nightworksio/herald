@@ -304,6 +304,15 @@ impl SourceOptions {
         for (key, written) in [("branches", &runs.branches), ("workflows", &runs.workflows)] {
             globs(written).map_err(|error| format!("runs.{key}: {error}"))?;
         }
+        if let Some(branch) = runs.branches.iter().find(|branch| {
+            branch
+                .split('/')
+                .any(|part| herald_core::segment(part).is_none())
+        }) {
+            return Err(format!(
+                "runs.branches: \"{branch}\" holds an empty part, '.' or '..', which names no branch in a URL path; give the branch's own name"
+            ));
+        }
         Ok(())
     }
 }

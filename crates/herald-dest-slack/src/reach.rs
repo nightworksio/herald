@@ -1,12 +1,14 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Probe, Reach, Signing};
-use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError};
+use herald_kinds::{Audience, Probe, Reach, Signing};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
+use serde_json::Value;
 
 use crate::markers::SlackMarkers;
+use crate::read::{json, text};
 use crate::request::cannot;
-use crate::slack::Slack;
+use crate::slack::{Slack, UNSETTLED};
 
 impl Reach for Slack {
     fn profile(&self) -> Profile {
@@ -42,6 +44,20 @@ impl Reach for Slack {
 
     fn posts<'a>(&'a self, http: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(SlackMarkers::new(self, Erased(http)))
+    }
+
+    fn audience<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Audience> {
+        Box::pin(async move { crate::audience::audience(self, &Erased(http)).await })
+    }
+
+    fn keeps_edits(&self) -> bool {
+        false
+    }
+
+    fn declines(&self, answer: &Response) -> bool {
+        let said = json(answer);
+        said.get("ok").and_then(Value::as_bool) == Some(false)
+            && text(&said, "error").is_some_and(|error| !UNSETTLED.contains(&error))
     }
 
     fn probe<'a>(&'a self, http: &'a dyn DynHttp, delivery: &'a Delivery) -> Boxed<'a, Vec<Probe>> {

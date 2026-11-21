@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use herald_core::{
     Cursor, EventsRead, Glob, Listed, Listing, Owner, Polled, ProjectName, Selection, Signal,
-    status, unreserved,
+    status,
 };
 use herald_kinds::{
     Changed, Expand, Expanded, Poll, Registered, Registering, Rounded, Unlisted, Unpolled,
@@ -14,7 +14,7 @@ use herald_ports::{
 use herald_wire::{Reading, SourceError, answered};
 use jiff::SignedDuration;
 
-use crate::forge::{api_of, authorized};
+use crate::forge::{OWNER, api_of, authorized, whole};
 use crate::graphql::{Asking, polled_together};
 use crate::kind::projected;
 use crate::packages::{self, OwnerPackages, PackageList, Packaging, merged, seen_packages};
@@ -127,12 +127,16 @@ impl Owned {
                 etag: None,
             });
         };
-        let answer = http
-            .send(file.origin.file_request(
+        let asked = file
+            .origin
+            .file_request(
                 (&file.path, file.reference.as_deref()),
                 self.token.as_ref(),
                 etag,
-            ))
+            )
+            .map_err(Unlisted::Failed)?;
+        let answer = http
+            .send(asked)
             .await
             .map_err(|error| Unlisted::Failed(Unpolled::unreachable(error)))?;
         if etag.is_some() && Forge::unchanged(&answer) {
@@ -342,9 +346,15 @@ impl Owned {
     }
 
     /// The request for page `number` of the owner's repositories, as an
-    /// `owner`, conditional on `etag` where there is one.
-    pub(crate) fn page_request(&self, owner: Owner, number: usize, etag: Option<&str>) -> Request {
-        let (api, name, page) = (&self.api, &self.owner, self.page);
+    /// `owner`, conditional on `etag` where there is one; or why the owner's
+    /// name names nothing.
+    pub(crate) fn page_request(
+        &self,
+        owner: Owner,
+        number: usize,
+        etag: Option<&str>,
+    ) -> Result<Request, Unpolled> {
+        let (api, name, page) = (&self.api, whole(&self.owner, OWNER)?, self.page);
         let sized = self.forge.api().page;
         let url = match (self.forge, owner) {
             (Forge::GitHub, Owner::Organization) => format!(
@@ -354,8 +364,7 @@ impl Owned {
                 "{api}/users/{name}/repos?type=owner&sort=full_name&direction=asc&{sized}={page}&page={number}"
             ),
             (Forge::GitLab, Owner::Organization) => format!(
-                "{api}/groups/{}/projects?include_subgroups={}&with_shared=false&order_by=id&sort=asc&{sized}={page}&page={number}",
-                unreserved(name),
+                "{api}/groups/{name}/projects?include_subgroups={}&with_shared=false&order_by=id&sort=asc&{sized}={page}&page={number}",
                 self.subgroups
             ),
             (Forge::GitLab, Owner::User) => format!(
@@ -370,11 +379,11 @@ impl Owned {
         };
         let request =
             Request::new(Method::Get, SecretText::plain(url)).at_most(self.reading().parse);
-        authorized(
+        Ok(authorized(
             self.forge,
             request.conditional(etag, None),
             self.token.as_ref(),
-        )
+        ))
     }
 
     /// The repositories one page of the listing names.
@@ -428,7 +437,10 @@ impl Owned {
                 .cloned()
                 .flatten();
             let answer = http
-                .send(self.page_request(owner, number, etag.as_deref()))
+                .send(
+                    self.page_request(owner, number, etag.as_deref())
+                        .map_err(Unlisted::Failed)?,
+                )
                 .await
                 .map_err(|error| Unlisted::Failed(Unpolled::unreachable(error)))?;
             if answer.status == status::NOT_FOUND

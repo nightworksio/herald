@@ -4,7 +4,11 @@
 use jiff::SignedDuration;
 use minijinja::{Value, context};
 
-use crate::queue::{Batch, Failure, Grouped, Overviews, Row, Running, Showing};
+use std::collections::BTreeMap;
+
+use crate::queue::{
+    Advisories, Advisory, Batch, Failure, Grouped, Overviews, Row, Running, Showing,
+};
 
 /// How long `waited` is, in its largest whole unit: days, hours or
 /// minutes, as a report and `herald queue` write it.
@@ -94,8 +98,40 @@ fn run_value(run: &Running) -> Value {
     }
 }
 
+fn unread_value(unread: &crate::queue::Unread) -> Value {
+    context! {
+        repository => unread.repository.as_str(),
+        reason => unread.reason.as_str(),
+    }
+}
+
+fn advisory_value(advisory: &Advisory, at: jiff::Timestamp) -> Value {
+    context! {
+        repository => advisory.repository.as_str(),
+        tool => advisory.tool.as_str(),
+        severity => advisory.severity.as_deref(),
+        summary => advisory.summary.as_deref(),
+        state => advisory.state.as_str(),
+        url => advisory.url.as_str(),
+        opened => advisory.opened.to_string(),
+        age => waited(at.duration_since(advisory.opened)),
+    }
+}
+
+/// The advisories section as a private surface is shown it (ADR-0067).
+fn advisories_value(found: &Advisories) -> Value {
+    context! {
+        count => found.open.len(),
+        more => found.more,
+        open => found.open.iter().map(|advisory| advisory_value(advisory, found.at)).collect::<Vec<_>>(),
+        unread => found.unread.iter().map(unread_value).collect::<Vec<_>>(),
+    }
+}
+
 /// The overviews `overviews` holds, `capacity` absent where the view
-/// shows none (ADR-0066).
+/// shows none (ADR-0066); `advisories` present only where its surface was
+/// shown them, and `withheld`, the one line said in their place, only
+/// where it was not (ADR-0067).
 fn overviews_value(overviews: &Overviews) -> Value {
     let capacity = overviews.capacity.as_ref().map(|runs| {
         let queued: Vec<&Running> = runs.iter().filter(|run| run.queued).collect();
@@ -106,20 +142,21 @@ fn overviews_value(overviews: &Overviews) -> Value {
             superseded => overviews.superseded().into_iter().map(run_value).collect::<Vec<_>>(),
         }
     });
-    let unread: Vec<Value> = overviews
-        .unread
-        .iter()
-        .map(|unread| {
-            context! {
-                repository => unread.repository.as_str(),
-                reason => unread.reason.as_str(),
-            }
-        })
-        .collect();
-    context! {
-        capacity => capacity,
-        unread => unread,
+    let unread: Vec<Value> = overviews.unread.iter().map(unread_value).collect();
+    let mut keys = BTreeMap::from([
+        ("capacity", Value::from(capacity)),
+        ("unread", Value::from(unread)),
+    ]);
+    match overviews.advisories.as_ref().map(|advised| advised.shown()) {
+        Some(Some(found)) => {
+            keys.insert("advisories", advisories_value(found));
+        }
+        Some(None) => {
+            keys.insert("withheld", Value::from(crate::queue::WITHHELD));
+        }
+        None => {}
     }
+    Value::from(keys)
 }
 
 /// `showing` as a template reads it as `view`.

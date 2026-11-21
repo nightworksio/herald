@@ -459,3 +459,30 @@ fn a_sync_taken_up_again_starts_where_the_last_left_off_and_skips_what_was_given
     assert!(matches!(effects[3], Effect::Asked(..)), "{effects:?}");
     assert_eq!(session.position(), Some("s2"));
 }
+
+#[test]
+fn a_recalled_place_is_checked_as_a_route_s_is_and_a_tampered_one_reaches_nothing() {
+    let options = options(None);
+    let written = route(ROOM).written().unwrap();
+    assert_eq!(options.recalled(&written).unwrap().place(), Some(ROOM));
+    for tampered in [r##"{"room":"#alias:matrix.example"}"##, "not json"] {
+        assert!(options.recalled(tampered).is_none(), "{tampered}");
+    }
+}
+
+#[test]
+fn a_room_is_never_public_by_its_kind_and_its_audience_is_asked_in_at_most_seven_requests() {
+    let placed = Placed::new(route("!abcdefg:matrix.example"));
+    let options = options(None);
+    assert_eq!(
+        options.public(&placed, &herald_core::Delivery::default()),
+        None
+    );
+    assert_eq!(
+        options.checking(&placed),
+        Checking::Asked {
+            asks: crate::ASKS,
+            requests: 7
+        }
+    );
+}

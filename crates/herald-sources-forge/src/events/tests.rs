@@ -293,3 +293,21 @@ fn a_forgejo_owner_s_activity_feed_names_the_members_that_published_a_release_or
         Err(Unpolled::Unreadable(reason)) if reason.starts_with("Forgejo's activity feed")
     ));
 }
+
+#[test]
+fn an_owner_named_by_a_dot_segment_has_no_events_asked() {
+    let asking = Asking {
+        forge: Forge::GitHub,
+        paged: GITHUB_PAGED,
+        api: "https://api.github.com",
+        name: "..",
+        owner: Owner::Organization,
+        token: None,
+        parse: 1 << 20,
+        tags: false,
+    };
+    assert!(matches!(
+        asking.request(1, None),
+        Err(Unpolled::Unreadable(reason)) if reason.contains("dot segment")
+    ));
+}

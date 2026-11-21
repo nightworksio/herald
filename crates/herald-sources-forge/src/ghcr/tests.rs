@@ -628,3 +628,26 @@ fn a_ghcr_source_s_settings_and_answers_reach_what_it_announces() {
         Some("Tue, 29 Sep 2026 19:21:45 GMT")
     );
 }
+
+#[test]
+fn an_owner_or_image_named_by_a_dot_segment_is_never_asked_for() {
+    let dotted = images(&GhcrOptions {
+        owner: "..".to_owned(),
+        ..options()
+    });
+    let quiet = ScriptedHttp::new(Vec::new());
+    assert!(matches!(
+        listed(&dotted, &quiet),
+        Err(Unlisted::Failed(Unpolled::Unreadable(_)))
+    ));
+    assert_eq!(quiet.asked().len(), 0);
+    let source = images(&options());
+    let http = ScriptedHttp::new(vec![answer(200, &json!([image(1, "..", "public", None)]))]);
+    let taken = members(listed(&source, &http).unwrap());
+    let none = ScriptedHttp::new(Vec::new());
+    assert!(matches!(
+        polled(&source.member(&taken[0]), &none, None),
+        Err(Unpolled::Unreadable(_))
+    ));
+    assert_eq!(none.asked().len(), 0);
+}

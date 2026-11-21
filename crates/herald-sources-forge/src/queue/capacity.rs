@@ -239,7 +239,7 @@ impl Opened<'_> {
         };
         let mut overviews = Overviews::default();
         for (listing, queued, page) in &listings {
-            let asked = self.origin.get(listing, self.token);
+            let asked = self.origin.get(listing, self.token)?;
             let answer = http.send(asked).await.map_err(Unpolled::unreachable)?;
             let refused = match (self.origin.forge(), answer.status) {
                 (Forge::Forgejo, 404) => Some(FORGEJO_UNLISTED),

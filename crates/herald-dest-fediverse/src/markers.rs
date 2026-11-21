@@ -41,9 +41,12 @@ impl<'a, H: Http> MastodonMarkers<'a, H> {
             return Ok(account.clone());
         }
         let account = self.read("/api/v1/accounts/verify_credentials").await?;
-        let herald = text(&account, "id").ok_or_else(|| MarkersError::Unreadable {
-            reason: "Mastodon did not say which account the token is".to_owned(),
-        })?;
+        let herald = text(&account, "id")
+            .filter(|id| crate::request::shaped(id).is_some())
+            .and_then(|id| herald_core::segment(&id))
+            .ok_or_else(|| MarkersError::Unreadable {
+                reason: "Mastodon did not say which account the token is".to_owned(),
+            })?;
         Ok(self.mastodon.account.learn(herald).clone())
     }
 

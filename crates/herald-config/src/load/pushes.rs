@@ -12,8 +12,7 @@ use herald_kinds::{ConfiguredStore, Destination, Peered, Presented, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 
 use super::Loader;
-use super::route::Read;
-use crate::config::{Doctor, Federation, Guard};
+use crate::config::Federation;
 use crate::peers::Peer;
 
 impl Loader<'_> {
@@ -82,35 +81,6 @@ impl Loader<'_> {
                 presented: presented.clone(),
             }) {
                 *destination = peered;
-            }
-        }
-    }
-
-    /// Whether no route declared private reaches a push to a peer that
-    /// takes no private events, where `[doctor] private_to_public` refuses
-    /// it.
-    pub(super) fn unpushed(
-        &mut self,
-        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
-        peers: &BTreeMap<String, Peer>,
-        routes: &[Read],
-        doctor: Doctor,
-    ) {
-        if doctor.private_to_public != Guard::Refuse {
-            return;
-        }
-        for read in routes.iter().filter(|read| read.config.private) {
-            let refused = destinations
-                .get(&read.config.route.destination)
-                .and_then(|(destination, _)| destination.pushing())
-                .and_then(|pushing| peers.get(pushing.peer))
-                .is_some_and(|peer| !peer.private);
-            if refused {
-                self.error(
-                    &read.id_span,
-                    &format!("{}.private", read.path),
-                    "this route is declared private, and its push goes to a peer that takes no private events; set private = true on the peer in [peers] if it may take them, route private events elsewhere, or set [doctor] private_to_public = \"warn\"",
-                );
             }
         }
     }

@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::discord::Discord;
 use crate::read::{failure, json, owned};
-use crate::request::{channel, get, webhook_cannot};
+use crate::request::{channel, get, path, webhook_cannot};
 
 /// The most messages Discord lists in one page.
 const PAGE: u8 = 100;
@@ -70,14 +70,14 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
         let mut own = Vec::new();
         let mut before: Option<String> = None;
         for _ in 0..self.discord.read_back.get() {
+            let messages = path(&["channels", channel, "messages"]).map_err(|declined| {
+                MarkersError::Unreadable {
+                    reason: declined.to_string(),
+                }
+            })?;
             let path = before.as_deref().map_or_else(
-                || format!("/channels/{channel}/messages?limit={PAGE}"),
-                |id| {
-                    format!(
-                        "/channels/{channel}/messages?limit={PAGE}&before={}",
-                        unreserved(id)
-                    )
-                },
+                || format!("{messages}?limit={PAGE}"),
+                |id| format!("{messages}?limit={PAGE}&before={}", unreserved(id)),
             );
             let page = self.read(&path).await?;
             let listed = page.as_array().map(Vec::as_slice).unwrap_or_default();

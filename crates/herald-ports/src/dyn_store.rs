@@ -17,7 +17,7 @@ use crate::store::{
 
 /// [`Store`] and [`Keyring`] as one trait object: every store that is both
 /// is one.
-pub trait DynStore: Sync {
+pub trait DynStore: DynRecalls + Sync {
     /// Whether it holds records of `held`.
     fn holds(&self, held: Held) -> bool;
 
@@ -450,6 +450,7 @@ impl<S: Store + Keyring> DynStore for S {
             Held::Published => self.published().is_some(),
             Held::Decisions => self.decisions().is_some(),
             Held::Pulls => self.pulls().is_some(),
+            Held::Recalls => self.recalls().is_some(),
         }
     }
 
@@ -952,6 +953,9 @@ impl<S: Store + Keyring> DynStore for S {
 
 mod erased;
 mod pulls;
+mod recalls;
+
+pub use recalls::DynRecalls;
 
 mod published;
 

@@ -49,6 +49,13 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         true
     }
 
+    /// Whether it keeps the names of the reports whose living posts were
+    /// sent advisories, so herald can edit each section out once its route
+    /// no longer receives one (ADR-0067).
+    fn keeps_recalls(&self) -> bool {
+        true
+    }
+
     /// Whether it keeps each webhook delivery it admits, so a replay is
     /// refused before it reaches a parser (ADR-0013).
     fn keeps_deliveries(&self) -> bool {

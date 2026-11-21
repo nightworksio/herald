@@ -22,6 +22,9 @@ pub(crate) const LISTED: &str = "GitLab's vulnerabilities";
 const PAGED: &str = "/-/security/vulnerabilities/";
 /// What a vulnerability's GraphQL listing asks of each.
 const FIELDS: &str = "title state severity reportType detectedAt confirmedAt resolvedAt dismissedAt updatedAt webUrl primaryIdentifier { name } location { ... on VulnerabilityLocationSast { file } ... on VulnerabilityLocationSecretDetection { file } ... on VulnerabilityLocationDependencyScanning { file dependency { package { name } } } ... on VulnerabilityLocationContainerScanning { image dependency { package { name } } } }";
+/// What an overview's listing asks of each vulnerability: what it is, never
+/// where it was found, so no secret's file is ever asked (ADR-0067).
+pub(crate) const OPENED_FIELDS: &str = "title state severity reportType detectedAt confirmedAt resolvedAt dismissedAt updatedAt webUrl primaryIdentifier { name } location { ... on VulnerabilityLocationDependencyScanning { dependency { package { name } } } ... on VulnerabilityLocationContainerScanning { dependency { package { name } } } }";
 
 /// The tool GitLab's report type `name` is read as.
 fn tool_of(name: &str) -> Tool {
@@ -75,6 +78,13 @@ struct Identifier {
     name: String,
 }
 
+/// The project a group's listing names a vulnerability of.
+#[derive(Deserialize)]
+struct Project {
+    #[serde(rename = "fullPath")]
+    full_path: String,
+}
+
 /// A vulnerability, as GitLab's webhook and its GraphQL API describe it.
 #[derive(Deserialize)]
 struct Vulnerability {
@@ -100,7 +110,13 @@ struct Vulnerability {
     #[serde(rename = "primaryIdentifier")]
     primary: Option<Identifier>,
     location: Option<Location>,
+    project: Option<Project>,
 }
+
+/// Why a vulnerability is not read where its page is not one: the page is
+/// never quoted, as a group's listing may name a project no audience may
+/// see (ADR-0067).
+pub(super) const UNPAGED: &str = "a vulnerability's web address is not a vulnerability's page";
 
 /// The project page and number a vulnerability's page `url` names.
 fn paged(what: &'static str, url: &str) -> Result<(String, u64), SourceError> {
@@ -109,7 +125,7 @@ fn paged(what: &'static str, url: &str) -> Result<(String, u64), SourceError> {
         .filter(|(page, _)| Address::parse(page).is_some())
         .ok_or_else(|| SourceError::Unreadable {
             what,
-            reason: format!("{url} is not a vulnerability's page"),
+            reason: UNPAGED.to_owned(),
         })
 }
 
@@ -149,6 +165,7 @@ impl Vulnerability {
             resolution: None,
             url: self.url,
             occurred,
+            repository: self.project.map(|project| project.full_path),
         })
     }
 }
@@ -272,4 +289,100 @@ pub(super) fn listed(limit: usize, body: &[u8]) -> Result<Vec<ForgeAlert>, Sourc
         }
     }
     Ok(alerts)
+}
+
+/// A page of open vulnerabilities, and the cursor of the next where one
+/// follows.
+pub(crate) type OpenedPage = (Vec<ForgeAlert>, Option<String>);
+
+/// What GitLab's listing of open vulnerabilities is read as.
+pub(crate) const OPENED: &str = "GitLab's open vulnerabilities";
+
+/// The request asking GitLab's GraphQL API at `endpoint` for a page of
+/// `page` vulnerabilities detected or confirmed in the project at `path`,
+/// or in the group there with its projects' paths where `group` says,
+/// after `after`, carrying `token`, reading at most `parse` bytes.
+pub(crate) fn opened_listing(
+    endpoint: &str,
+    (group, path, token): (bool, &str, Option<&Token>),
+    (after, page, parse): (Option<&str>, usize, usize),
+) -> Request {
+    let (holder, project) = if group {
+        ("group", " project { fullPath }")
+    } else {
+        ("project", "")
+    };
+    let query = format!(
+        "query($path: ID!, $page: Int!, $after: String) {{ {holder}(fullPath: $path) {{ vulnerabilities(first: $page, after: $after, state: [DETECTED, CONFIRMED], sort: detected_desc) {{ nodes {{ {OPENED_FIELDS}{project} }} pageInfo {{ hasNextPage endCursor }} }} }} }}"
+    );
+    let body =
+        json!({ "query": query, "variables": { "path": path, "page": page, "after": after } });
+    authorized(
+        Forge::GitLab,
+        crate::graphql::posted(endpoint, &body, parse),
+        token,
+    )
+}
+
+/// Where a page of a listing ends.
+#[derive(Deserialize)]
+struct PageInfo {
+    #[serde(rename = "hasNextPage")]
+    more: bool,
+    #[serde(rename = "endCursor")]
+    end: Option<String>,
+}
+
+/// A page of open vulnerabilities.
+#[derive(Deserialize)]
+struct Opened {
+    nodes: Vec<Vulnerability>,
+    #[serde(rename = "pageInfo")]
+    page: PageInfo,
+}
+
+/// A project or group, as a listing of its open vulnerabilities names it.
+#[derive(Deserialize)]
+struct Holder {
+    vulnerabilities: Option<Opened>,
+}
+
+/// What a listing of open vulnerabilities holds.
+#[derive(Deserialize)]
+struct OpenedData {
+    project: Option<Holder>,
+    group: Option<Holder>,
+}
+
+/// A listing of open vulnerabilities, as GitLab's GraphQL API answers it.
+#[derive(Deserialize)]
+struct OpenedEnvelope {
+    data: Option<OpenedData>,
+}
+
+/// The open vulnerabilities GitLab's GraphQL page `body` holds, parsing no
+/// more than `limit` bytes, and the cursor of the next page where one
+/// follows; none where GitLab answered no vulnerabilities, as it does for
+/// a token that may not read them or an instance without Ultimate.
+///
+/// # Errors
+///
+/// Where the body is no listing, or a vulnerability's page names none.
+pub(crate) fn opened(limit: usize, body: &[u8]) -> Result<Option<OpenedPage>, SourceError> {
+    let envelope: OpenedEnvelope = herald_wire::read(OPENED, limit, body)?;
+    let Some(listed) = envelope
+        .data
+        .and_then(|data| data.project.or(data.group))
+        .and_then(|holder| holder.vulnerabilities)
+    else {
+        return Ok(None);
+    };
+    let mut alerts = Vec::new();
+    for vulnerability in listed.nodes {
+        if let Some(action) = action_of(&vulnerability.state) {
+            alerts.push(vulnerability.read(OPENED, action)?);
+        }
+    }
+    let next = listed.page.end.filter(|_| listed.page.more);
+    Ok(Some((alerts, next)))
 }

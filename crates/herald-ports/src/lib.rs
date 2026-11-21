@@ -27,7 +27,7 @@ mod timer;
 pub use clock::Clock;
 pub use credential::Credential;
 pub use crypto::{CryptoError, Sealing, Signer, Verifier};
-pub use dyn_store::DynStore;
+pub use dyn_store::{DynRecalls, DynStore};
 pub use erased::{
     Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, DynVerifier, Erased, Owned,
 };
@@ -45,7 +45,7 @@ pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, EXACT_INTEGER, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{
     Admitted, Announcements, Cursors, Decisions, Deliveries, Held, Inboxes, Keeper, Keeping,
-    Ledger, Notes, Outboxed, Pins, Positions, Published, Pulls, Schedules, Store, StoreError,
-    Subscriptions, Tokens, Unkept, Version, Versioned, Waiting, Written,
+    Ledger, Notes, Outboxed, Pins, Positions, Published, Pulls, Recalls, Schedules, Store,
+    StoreError, Subscriptions, Tokens, Unkept, Version, Versioned, Waiting, Written,
 };
 pub use timer::Timer;

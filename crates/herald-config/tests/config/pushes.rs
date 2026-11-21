@@ -136,7 +136,7 @@ fn a_push_needs_the_federation_s_keys_a_peer_and_a_store_that_keeps_records() {
 fn a_route_declared_private_pushes_only_to_a_peer_taking_private_events() {
     let closed = sqlite(&format!("{FEDERATION}{}{PUSH}", peer("")), "private = true").unwrap_err();
     assert!(
-            closed.contains("routes[0].private: this route is declared private, and its push goes to a peer that takes no private events"),
+            closed.contains("routes[0].private: this route is declared private, but its push goes to a peer that takes no private events"),
             "{closed}"
         );
     let open = sqlite(
@@ -145,6 +145,10 @@ fn a_route_declared_private_pushes_only_to_a_peer_taking_private_events() {
     )
     .unwrap();
     assert!(pushed(&open).1);
+    assert_eq!(
+        open.surface(&open.routes[0].route.id),
+        herald_core::Surface::Push
+    );
     let warned = sqlite(
         &format!(
             "{FEDERATION}{}{PUSH}[doctor]\nprivate_to_public = \"warn\"\n",
@@ -152,5 +156,5 @@ fn a_route_declared_private_pushes_only_to_a_peer_taking_private_events() {
         ),
         "private = true",
     );
-    assert!(warned.is_ok(), "{warned:?}");
+    assert!(warned.is_err(), "{warned:?}");
 }

@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use herald_core::{Cursor, Owner, Visibility, unreserved};
+use herald_core::{Cursor, Owner, Visibility};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
@@ -11,9 +11,12 @@ use serde::Deserialize;
 
 use super::{Asking, CONTAINER, Found, Linked, Packaged, container, host_of, packaged, read};
 use crate::Forge;
-use crate::forge::validators;
+use crate::forge::{OWNER, validators, whole};
 use crate::options::GITHUB_PACKAGE_TYPES;
 use crate::owner::{named, next};
+
+/// What a request names a package.
+const PACKAGE_NAME: &str = "package name";
 
 /// How Forgejo names an owner any signed-in user may see.
 const LIMITED: &str = "limited";
@@ -142,7 +145,7 @@ impl Asking<'_> {
         (login, account): (&str, Owner),
         only: Option<&str>,
     ) -> Result<OwnerPackages, Unpolled> {
-        let name = unreserved(login);
+        let name = whole(login, OWNER)?;
         let mut owned = OwnerPackages {
             base: match (self.origin.forge(), account) {
                 (Forge::Forgejo, _) => format!("/packages/{name}"),
@@ -379,7 +382,7 @@ impl Asking<'_> {
             let path = format!(
                 "{}/{kind}/{}/versions?per_page={}",
                 owned.base,
-                unreserved(name),
+                whole(name, PACKAGE_NAME)?,
                 self.origin.reading().page
             );
             let held = cursor.and_then(|cursor| cursor.packages.get(&key));
