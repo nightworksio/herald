@@ -479,6 +479,14 @@ named there, with its pull requests' titles and authors. A view's
 advisories are printed only with `--private`, whatever `[cli] private`
 says, as from a route that is not private.
 
+A read that fails stops `herald queue` and `herald rerun`. Its error
+names only the configured source and the kind of failure, such as
+`the source "work" could not be read: its forge could not be reached;
+--private, or [cli] private, prints why`. The forge's, the transport's
+or the store's own words can name a repository's path, its numeric id
+or a pull request, so they are printed only with `--private` or
+`[cli] private`.
+
 ## `herald rerun`
 
 ```sh

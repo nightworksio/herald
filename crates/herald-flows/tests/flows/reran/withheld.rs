@@ -302,3 +302,48 @@ fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_name_it_now
         assert!(!said.contains(named), "{named}: {said}");
     }
 }
+
+#[test]
+fn a_read_or_a_plan_that_fails_is_said_in_full_only_where_the_output_is_said_private() {
+    let config = config(TOKEN_WRITE);
+    let (flaky, unreconciled) = (healthy(), healthy());
+    crate::boards::flaky_seen(&flaky, "Change", herald_core::Visibility::Public);
+    let clock = FakeClock::at(NOON);
+    let said = |store: &crate::harness::Failing, answers: &[(&str, u16, &str)], printed| {
+        let ports = Ports {
+            store,
+            clock: &clock,
+            signer: &FakeSigner,
+            budget: Budget::UNBOUNDED,
+        };
+        let script = Script::answering(answers);
+        let prepared =
+            pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+        let connected: Connected<Script> =
+            prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+        pollster::block_on(rerun_plans((&config, &connected, &ports), (None, printed)))
+    };
+    let short = |kind: &str| {
+        format!(
+            "the source \"open\" could not be read: {kind}; {}",
+            herald_flows::UNSAID_FAILURE
+        )
+    };
+    let planned: &[(&str, u16, &str)] = &[(super::RUNS, 404, "{}")];
+    assert_eq!(
+        said(&flaky, planned, Printed::Withheld),
+        Err(herald_flows::Stop::Source(short(
+            "its forge's answer could not be read"
+        )))
+    );
+    let full = format!("{:?}", said(&flaky, planned, Printed::Configured));
+    assert!(full.contains("answered with 404"), "{full}");
+    assert_eq!(
+        said(&unreconciled, &[], Printed::Withheld),
+        Err(herald_flows::Stop::Unreachable(short(
+            "its forge could not be reached"
+        )))
+    );
+    let full = format!("{:?}", said(&unreconciled, &[], Printed::Asked));
+    assert!(full.contains("nothing scripted"), "{full}");
+}

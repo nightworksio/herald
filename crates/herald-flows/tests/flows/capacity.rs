@@ -352,3 +352,28 @@ fn a_run_on_a_commit_only_another_repository_s_pull_request_is_on_is_superseded_
         );
     }
 }
+
+#[test]
+fn a_read_that_fails_is_said_in_full_only_where_the_output_is_said_private() {
+    let config = config("");
+    let said = |printed| {
+        let script = Script::answering(&[(GRAPHQL, 500, "{}")]);
+        match ran_as(&script, (&config, Some(10)), printed).0 {
+            Err(Stop::Source(said)) => said,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(
+        said(herald_core::Printed::Withheld),
+        format!(
+            "the source \"open\" could not be read: its forge's answer could not be read; {}",
+            herald_flows::UNSAID_FAILURE
+        )
+    );
+    for printed in [
+        herald_core::Printed::Configured,
+        herald_core::Printed::Asked,
+    ] {
+        assert!(said(printed).contains("answered with 500"), "{printed:?}");
+    }
+}

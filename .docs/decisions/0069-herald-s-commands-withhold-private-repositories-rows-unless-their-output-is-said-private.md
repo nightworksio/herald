@@ -43,6 +43,18 @@ with their pull requests' titles, authors and failing checks.
    request was on that commit. That run now counts as superseded, with
    the output said private or not, and in a report to a public route.
 
+7. **A read that fails names its source alone.** Where a read stops
+   `herald queue` or `herald rerun` (its pull requests, its scope, its
+   kept records or a plan's runs), the error says only the configured
+   source and the kind of stop, unless the output is said private by
+   either way:
+   `the source "work" could not be read: its forge could not be reached;
+   --private, or [cli] private, prints why`. The short form is built
+   from the kind of stop, never from its text, so a forge's, a
+   transport's or a store's words, which can hold a repository's path,
+   its numeric id or a pull request's number, reach no public log on any
+   runtime. `Printed::prints_failures` decides it.
+
 ## Consequences
 
 - An operator who reads a private repository at a terminal says

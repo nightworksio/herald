@@ -10,6 +10,7 @@ use herald_ports::{Clock, Http, Signer, Store};
 
 use crate::announce::{Ports, Stop, Within, announce_within};
 use crate::budget::Budgeted;
+use crate::halted::Halted;
 use crate::poll::Fresh;
 use crate::prepare::Connected;
 
@@ -71,7 +72,7 @@ pub(crate) async fn plans<'b, S: Store, C: Clock, G: Signer, H: Http>(
     (connected, ports): (&Connected<H>, &Ports<'_, S, C, G>),
     rule: &Rule,
     (view, shown): (&ViewConfig, &'b Board),
-) -> Result<Vec<Planning<'b>>, Stop> {
+) -> Result<Vec<Planning<'b>>, Halted> {
     let flaky: Vec<(&str, usize)> = shown
         .failures
         .iter()
@@ -118,7 +119,7 @@ pub(crate) async fn plans<'b, S: Store, C: Clock, G: Signer, H: Http>(
         let plan = queue
             .planned(http, (&pull.repository, head, check), rule.runs)
             .await
-            .map_err(|unpolled| http.halted(unpolled))?;
+            .map_err(|unpolled| Halted::of(source, http.halted(unpolled)))?;
         planned.push(Planning {
             pull,
             head,
@@ -147,7 +148,10 @@ pub(crate) async fn planned<S: Store, C: Clock, G: Signer, H: Http>(
     let routes = private_routes(config, name);
     let source = SourceName::new(name);
     let mut announced = Vec::new();
-    for planning in plans((connected, ports), rule, (view, shown)).await? {
+    let plans = plans((connected, ports), rule, (view, shown))
+        .await
+        .map_err(|halted| halted.stop)?;
+    for planning in plans {
         for run_of in planning.runs() {
             let planned = RerunPlan {
                 pull: planning.pull,

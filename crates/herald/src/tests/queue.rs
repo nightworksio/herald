@@ -572,3 +572,27 @@ fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_are_printed
         assert!(!said.contains(named), "{named}: {said}");
     }
 }
+
+#[test]
+fn a_read_that_fails_names_only_its_source_unless_the_output_is_said_private() {
+    let setup = setup(&viewed());
+    let world = World::default();
+    world
+        .state
+        .lock()
+        .unwrap()
+        .forge
+        .insert(LISTED.to_owned(), (500, "{}".to_owned()));
+    let short = herald(&setup, &world, &["queue", "mine"]);
+    assert_eq!(short.code, STOPPED);
+    assert_eq!(
+        short.err.trim(),
+        format!(
+            "the source \"cli\" could not be read: its forge's answer could not be read; {}",
+            herald_flows::UNSAID_FAILURE
+        )
+    );
+    let full = herald(&setup, &world, &["queue", "mine", "--private"]);
+    assert_eq!(full.code, STOPPED);
+    assert!(full.err.contains("answered with 500"), "{}", full.err);
+}

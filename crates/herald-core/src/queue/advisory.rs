@@ -158,6 +158,14 @@ impl Printed {
         }
     }
 
+    /// Whether a read that stopped the command is said in full, naming
+    /// whatever its forge, its transport or the store named: only where
+    /// the operator said the output is private.
+    #[must_use]
+    pub const fn prints_failures(self) -> bool {
+        !matches!(self, Self::Withheld)
+    }
+
     /// Whether the rows of a repository seen as `visibility` are printed:
     /// a public one's always, a private or internal one's only where the
     /// operator said the output is private.

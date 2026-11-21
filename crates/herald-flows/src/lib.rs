@@ -30,6 +30,7 @@ mod deciding;
 mod doctor;
 mod follows;
 mod grouping;
+mod halted;
 mod housekeep;
 mod installations;
 mod kept;
@@ -69,6 +70,7 @@ pub use doctor::{
     recalls, secrets, shared, unserved,
 };
 pub use follows::{FollowError, Followed, followed};
+pub use halted::UNSAID_FAILURE;
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
 pub use installations::AHEAD as MINTED_AHEAD;

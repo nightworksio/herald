@@ -264,6 +264,10 @@ fn a_private_or_internal_repository_s_rows_are_printed_only_where_the_output_is_
         pull("o/vault", Visibility::Private),
         pull("o/inner", Visibility::Internal),
     ];
+    assert_eq!(
+        [Printed::Withheld, Printed::Configured, Printed::Asked].map(Printed::prints_failures),
+        [false, true, true]
+    );
     let (shown, withheld) = Printed::Withheld.printed(pulls.clone());
     assert_eq!(shown, [pull("o/app", Visibility::Public)]);
     assert_eq!(withheld, 2);
