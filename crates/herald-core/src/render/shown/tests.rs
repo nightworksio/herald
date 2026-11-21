@@ -75,6 +75,7 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
     assert_eq!(
         keys(&row),
         [
+            "areas",
             "author",
             "bot",
             "decided",

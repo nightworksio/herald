@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::members::Visibility;
 
 mod advisory;
+mod area;
 mod kept;
 mod overlap;
 mod overview;
@@ -20,6 +21,9 @@ pub use advisory::{
     ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
     AdvisoriesFrom, Advisory, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
     MOST_ADVISORY_REPOSITORIES, Printed, RECALLED, Surface, WITHHELD, advises,
+};
+pub use area::{
+    Areas, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS,
 };
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
@@ -189,6 +193,10 @@ pub struct Pull {
     /// them (ADR-0063).
     #[serde(default)]
     pub files: Option<Changed>,
+    /// The areas its changed paths fall in, by its source's areas, as the
+    /// view reading it named them (ADR-0071).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub areas: Vec<String>,
     /// Each time one of its checks failed and then passed on one head,
     /// the newest last, as kept mode saw it (ADR-0065).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

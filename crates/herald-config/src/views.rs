@@ -165,6 +165,9 @@ pub(crate) enum GroupByFile {
     Repository,
     /// The author.
     Author,
+    /// Each area its changed paths fall in, a row in each of its areas'
+    /// groups and one in none in a group of its own (ADR-0071).
+    Area,
     /// Nothing: one group.
     Nothing,
 }
@@ -262,6 +265,11 @@ pub(crate) struct ViewFile {
     /// glob ignoring case; every pull request where empty.
     #[serde(default)]
     pub(crate) labels: Vec<String>,
+    /// The areas, any one of which a pull request it shows falls in, by
+    /// name, each a glob ignoring case that matches an area one of its
+    /// sources names; every pull request where empty (ADR-0071).
+    #[serde(default)]
+    pub(crate) areas: Vec<String>,
     /// How long one waits with nobody acting before it is stale: "14d"
     /// where absent.
     pub(crate) stale: Option<Duration>,

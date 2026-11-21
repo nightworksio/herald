@@ -506,6 +506,7 @@ fn housekeeping_forgets_pull_requests_closed_longer_ago_than_the_store_keeps_the
             unread: false,
             base: None,
             files: None,
+            areas: Vec::new(),
             flips: Vec::new(),
         };
         let key = herald_core::PullKey {

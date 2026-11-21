@@ -569,6 +569,7 @@ impl KeptPull {
             unread: false,
             base: None,
             files: None,
+            areas: Vec::new(),
             flips: Vec::new(),
         };
         let mut kept = Self {

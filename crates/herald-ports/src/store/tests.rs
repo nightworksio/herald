@@ -550,6 +550,7 @@ pub(crate) fn kept_pull() -> herald_core::KeptPull {
         unread: false,
         base: None,
         files: None,
+        areas: Vec::new(),
         flips: Vec::new(),
     };
     let key = herald_core::PullKey {

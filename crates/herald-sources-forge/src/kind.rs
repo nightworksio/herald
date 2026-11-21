@@ -424,6 +424,14 @@ impl SourceConfig for ForgeSource {
         crate::folding::folded(self.forge, (name, payload), of).map_err(|error| error.to_string())
     }
 
+    fn areas(&self, repository: &str) -> Option<&herald_core::Areas> {
+        self.options.areas_of(named(repository))
+    }
+
+    fn area_names(&self) -> std::collections::BTreeSet<String> {
+        self.options.area_names()
+    }
+
     fn queue_cost(&self, most: herald_kinds::Most) -> Option<herald_kinds::QueueCost> {
         let tokened = self.token().is_some() || self.installed().is_some();
         if self.options.owner.is_some() {

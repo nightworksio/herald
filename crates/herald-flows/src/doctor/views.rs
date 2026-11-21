@@ -32,8 +32,7 @@ const CAPACITY_PERMISSIONS: &str = "Its token needs Actions: read as a GitHub Ap
 /// What doctor says a view's advisories need of its token (ADR-0067).
 const ADVISORY_PERMISSIONS: &str = "Its token needs Dependabot alerts, Code scanning alerts and Secret scanning alerts: read as a GitHub App or fine-grained token, security_events (and repo for a private repository) as a classic token, and for an organization's own listings to act for an organization owner or security manager (with read:org as a classic token), the same on GitHub Enterprise Server and GHE.com; read_api with the Developer role on GitLab Ultimate, self-managed included. A listing it may not read is named unread with the permission it needs, never shown as clean. Forgejo raises no security alerts, so its repositories are named unread.";
 
-const CONFLICTS: &str =
-    "to predict conflicts it reads the paths each pull request's head changes, at most 100 each,";
+const PATHS: &str = "it reads the paths each pull request's head changes, at most 100 each,";
 
 /// What doctor says of a view taking who may see a repository from what a
 /// REST listing read without a token states (ADR-0062).
@@ -259,9 +258,10 @@ fn watched(
 ) {
     let costs = view.sources.iter().filter_map(|source| {
         let options = config.sources.get(source)?;
-        Some((source, options.queue_cost(view.most)?))
+        let zoned = !options.area_names().is_empty();
+        Some((source, options.queue_cost(view.most)?, zoned))
     });
-    for (source, cost) in costs {
+    for (source, cost, zoned) in costs {
         let mut note = format!(
             "The {named} reads the view {} of {} by {}, at most {} requests a round",
             report.view,
@@ -284,12 +284,18 @@ fn watched(
             note.push_str("; ");
             note.push_str(SCOPED);
         }
-        if view.conflicts {
+        let reading = match (view.conflicts, zoned) {
+            (true, false) => Some("to predict conflicts"),
+            (true, true) => Some("to predict conflicts and name each one's areas"),
+            (false, true) => Some("to name each pull request's areas"),
+            (false, false) => None,
+        };
+        if let Some(reading) = reading {
             let _ = match cost.files {
-                0 => write!(note, "; {CONFLICTS} with each pull request"),
+                0 => write!(note, "; {reading} {PATHS} with each pull request"),
                 more => write!(
                     note,
-                    "; {CONFLICTS} by at most {more} more requests a round"
+                    "; {reading} {PATHS} by at most {more} more requests a round"
                 ),
             };
         }

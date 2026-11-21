@@ -188,6 +188,7 @@ fn kept_secret(store: &Failing) {
                 paths: ["src/lib.rs".to_owned()].into(),
                 whole: true,
             }),
+            areas: Vec::new(),
             flips,
         };
         let pulled = PullKey {

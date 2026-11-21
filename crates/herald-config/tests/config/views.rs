@@ -3,7 +3,7 @@
 //! every mistake in them named by key.
 
 use herald_config::{BUILT_IN_VIEW, Config, QUEUE_TEMPLATE, load};
-use herald_core::{Bots, Deciding, GroupBy, Kind, Rules, SourceName, Turn, View};
+use herald_core::{Bots, Deciding, Glob, GroupBy, Kind, Rules, SourceName, Turn, View};
 use herald_kinds::Most;
 use jiff::SignedDuration;
 use jiff::civil::{Time, Weekday};
@@ -405,4 +405,39 @@ fn a_report_is_its_route_s_source_and_no_app_or_peer_s_kind() {
         error.contains("it does not render a sample report event"),
         "{error}"
     );
+}
+
+const AREAS: &str = r#"[sources.site]
+kind = "github"
+repository = "nightworksio/site"
+
+[sources.site.areas]
+web = ["web/**"]
+docs = ["*.md"]
+"#;
+
+#[test]
+fn a_view_narrows_and_groups_by_the_areas_its_sources_name() {
+    let config = loaded(&with(&format!(
+        "{AREAS}\n[views.web]\nsources = [\"site\"]\nareas = [\"WEB\", \"d*\"]\ngroup_by = \"area\"\n\n[reports.daily]\nview = \"web\"\n"
+    )));
+    let web = &config.views["web"];
+    assert_eq!(web.view.group_by, GroupBy::Area);
+    let areas: Vec<&str> = web.view.areas.iter().map(Glob::as_str).collect();
+    assert_eq!(areas, ["WEB", "d*"]);
+    assert_eq!(config.views[BUILT_IN_VIEW].view.areas, Vec::<Glob>::new());
+}
+
+#[test]
+fn a_view_s_area_matching_none_its_sources_name_is_refused() {
+    let error = errors(&with(&format!(
+        "{AREAS}\n[views.web]\nsources = [\"site\"]\nareas = [\"web\", \"api\"]\n\n[views.bare]\nsources = [\"gate\"]\nareas = [\"web\"]\n\n[reports.daily]\n"
+    )));
+    for wanted in [
+        "views.web.areas[1]: \"api\" matches no area the view's sources name; the areas are \"docs\", \"web\"",
+        "views.bare.areas[0]: \"web\" matches no area the view's sources name; they name none; give a source an areas table",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
+    assert!(!error.contains("views.web.areas[0]"), "{error}");
 }

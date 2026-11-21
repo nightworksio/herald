@@ -364,6 +364,54 @@ fn rows_group_by_repository_author_or_nothing() {
 }
 
 #[test]
+fn rows_group_under_each_of_their_areas_and_a_view_narrows_by_area() {
+    let pulls = [
+        Pull {
+            areas: vec!["api".to_owned(), "web".to_owned()],
+            ..waited(1, 1)
+        },
+        Pull {
+            areas: vec!["docs".to_owned()],
+            ..waited(2, 2)
+        },
+        waited(3, 3),
+    ];
+    let grouped = |group_by: GroupBy, areas: &[&str]| {
+        let board = board_of(
+            &View {
+                group_by,
+                areas: globs(areas),
+                ..View::default()
+            },
+            &pulls,
+        );
+        let names: Vec<String> = names(&board).into_iter().map(str::to_owned).collect();
+        (names, numbers(&board), board.total())
+    };
+    assert_eq!(
+        grouped(GroupBy::Area, &[]),
+        (
+            vec![
+                String::new(),
+                "api".to_owned(),
+                "docs".to_owned(),
+                "web".to_owned()
+            ],
+            vec![vec![3], vec![1], vec![2], vec![1]],
+            3
+        )
+    );
+    assert_eq!(
+        grouped(GroupBy::Nothing, &["W*", "docs"]),
+        (vec![String::new()], vec![vec![2, 1]], 2)
+    );
+    assert_eq!(
+        grouped(GroupBy::Area, &["none"]),
+        (Vec::new(), Vec::new(), 0)
+    );
+}
+
+#[test]
 fn the_forge_or_labels_tell_whose_turn_where_a_view_says() {
     let pulls = [
         Pull {

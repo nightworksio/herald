@@ -6,8 +6,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{
-    Cursor, Event, EventsRead, Folding, Grant, Kind, Listed, Listing, Origin, Owner, Polled, Reach,
-    RouteId, Scheme, SecretRef, Visibility,
+    Areas, Cursor, Event, EventsRead, Folding, Grant, Kind, Listed, Listing, Origin, Owner, Polled,
+    Reach, RouteId, Scheme, SecretRef, Visibility,
 };
 use herald_ports::{Base, Boxed, DynHttp};
 use jiff::{SignedDuration, Timestamp};
@@ -256,6 +256,18 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// round, where [`SourceConfig::queue`] reads them.
     fn queue_cost(&self, _most: Most) -> Option<QueueCost> {
         None
+    }
+
+    /// The areas it names the paths of the repository at the full path
+    /// `repository` by: the narrowest override's that sets them, or its
+    /// own; none where it names none (ADR-0071).
+    fn areas(&self, _repository: &str) -> Option<&Areas> {
+        None
+    }
+
+    /// The name of each area it or one of its overrides names (ADR-0071).
+    fn area_names(&self) -> BTreeSet<String> {
+        BTreeSet::new()
     }
 
     /// What polls it, reading with `token` where it has one, and watching

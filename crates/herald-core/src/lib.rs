@@ -145,13 +145,14 @@ pub use profile::{
 pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
     ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
-    AdvisoriesFrom, Advisory, Batch, Board, Bots, CAPACITY_REPOSITORIES, Capacity, Changed, Checks,
-    Closed, Deciding, Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, Head, KeptPull,
-    Lifecycle, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
-    MOST_ADVISORY_REPOSITORIES, MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome,
-    Overviews, Printed, Pull, PullKey, RECALLED, Ran, Read, Reason, Reconciled, RepositoryKey,
-    Review, Reviewed, Row, Rules, Running, Showing, Since, Surface, Triage, Turn, Unread, Verdict,
-    View, WITHHELD, advises, board, grouped, overlaps, rows,
+    AdvisoriesFrom, Advisory, Areas, Batch, Board, Bots, CAPACITY_REPOSITORIES, Capacity, Changed,
+    Checks, Closed, Deciding, Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, Head,
+    KeptPull, Lifecycle, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
+    MOST_ADVISORY_REPOSITORIES, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH,
+    MOST_AREAS, MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome, Overviews, Printed,
+    Pull, PullKey, RECALLED, Ran, Read, Reason, Reconciled, RepositoryKey, Review, Reviewed, Row,
+    Rules, Running, Showing, Since, Surface, Triage, Turn, Unread, Verdict, View, WITHHELD,
+    advises, board, grouped, overlaps, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{

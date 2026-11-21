@@ -44,6 +44,7 @@ fn row_value(row: &Row) -> Value {
         waited_seconds => row.waited.as_secs(),
         stale => row.stale,
         overlaps => row.overlaps.clone(),
+        areas => pull.areas.clone(),
         decided => row
             .decided
             .iter()

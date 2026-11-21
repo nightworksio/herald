@@ -119,6 +119,7 @@ impl Listed {
             unread: false,
             base: self.base.and_then(|base| base.branch),
             files: None,
+            areas: Vec::new(),
             flips: Vec::new(),
         }
     }

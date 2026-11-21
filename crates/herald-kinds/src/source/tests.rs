@@ -772,6 +772,8 @@ fn a_pull_reaches_its_feed_s_origin_alone_and_checks_nothing_of_its_own() {
     assert!(!plain.any_kind());
     assert!(plain.queue(None).is_none());
     assert_eq!(plain.queue_cost(crate::Most::default()), None);
+    assert_eq!(plain.areas("o/r"), None);
+    assert_eq!(plain.area_names(), std::collections::BTreeSet::new());
     assert_eq!(
         crate::Most::default(),
         crate::Most {

@@ -229,6 +229,7 @@ fn pull(repository: &str, visibility: Visibility) -> Pull {
         unread: false,
         base: None,
         files: None,
+        areas: Vec::new(),
         flips: Vec::new(),
     }
 }
