@@ -1455,6 +1455,21 @@
         }
       ]
     },
+    "CapacityFrom": {
+      "description": "Which repositories a capacity overview reads.",
+      "oneOf": [
+        {
+          "description": "Those the view shows a pull request of.",
+          "type": "string",
+          "const": "shown"
+        },
+        {
+          "description": "Its owner's members, the newest pushed first.",
+          "type": "string",
+          "const": "members"
+        }
+      ]
+    },
     "Colour": {
       "description": "A colour, written \"#rrggbb\".",
       "type": "string",
@@ -3962,6 +3977,16 @@
         }
       },
       "additionalProperties": false
+    },
+    "OverviewName": {
+      "description": "An overview a view shows beside its rows.",
+      "oneOf": [
+        {
+          "description": "Its repositories' CI runs queued and running, and those superseded.",
+          "type": "string",
+          "const": "capacity"
+        }
+      ]
     },
     "PackageVisibility": {
       "description": "Who may see a package's version where its own visibility and its\nrepository's differ.",
@@ -7981,6 +8006,17 @@
             "type": "string"
           }
         },
+        "capacity_from": {
+          "description": "Which repositories its capacity overview reads: \"shown\", those it\nshows a pull request of, where absent; or \"members\", its owner's\nnewest pushed, at most `capacity_repositories`.",
+          "$ref": "#/$defs/CapacityFrom"
+        },
+        "capacity_repositories": {
+          "description": "The most members \"members\" reads, the newest pushed first: 20 where\nabsent, from 1 to 100. Each costs two requests on GitHub and GitLab\nand one on Forgejo, and the order one more.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 100,
+          "minimum": 1
+        },
         "conflicts": {
           "description": "Whether it predicts conflicts: it reads the paths each pull\nrequest's head changes, at most 100 each, and each row names the\nopen pull requests of its repository merging into its branch that\nchange a path in common; false where absent. It costs a request a\npull request read in full, but on GitHub with a token, which reads\nthem with each pull request; a kept record keeps them until its head\nmoves.",
           "type": "boolean",
@@ -8034,6 +8070,13 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0
+        },
+        "overviews": {
+          "description": "The overviews it shows beside its rows, such as `[\"capacity\"]`: none\nwhere absent (ADR-0066).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OverviewName"
+          }
         },
         "reconcile": {
           "description": "How long kept mode waits at least before listing a source's open\npull requests again, each page conditional on its last answer; every\nround where absent.",

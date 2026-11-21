@@ -9,6 +9,7 @@ use herald_wire::answered;
 use crate::forge::authorized;
 use crate::{Forge, Origin, Token};
 
+pub(crate) mod capacity;
 mod detail;
 mod github;
 mod gitlab;
@@ -338,6 +339,24 @@ impl herald_kinds::Queue for Queued {
 
     fn holds(&self, repository: &str) -> bool {
         self.origin.path().eq_ignore_ascii_case(repository)
+    }
+
+    fn capacity<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (_, shown): (Asked<'a>, &'a [&'a str]),
+        capacity: herald_core::Capacity,
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Overviews, Unpolled>> {
+        Box::pin(async move {
+            let unshown = capacity == herald_core::Capacity::Shown
+                && !shown.iter().any(|path| self.holds(path));
+            if unshown {
+                return Ok(capacity::counted(Vec::new()));
+            }
+            self.asking(Asked::default())
+                .capacity(&Erased(http), herald_core::Visibility::Private)
+                .await
+        })
     }
 
     fn planned<'a>(

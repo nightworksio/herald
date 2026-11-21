@@ -233,3 +233,44 @@ private = {private}
     );
     assert!(notes("false")[0].contains("no private route names it, so its plans reach nobody"));
 }
+
+#[test]
+fn a_view_showing_capacity_names_what_it_reads_what_it_costs_and_what_its_token_needs() {
+    let text = |extra: &str| {
+        format!(
+            r#"version = 1
+[store]
+kind = "sqlite"
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+[views.queue]
+overviews = ["capacity"]
+{extra}
+[reports.daily]
+"#
+        )
+    };
+    let note = |extra: &str| -> String {
+        on(&loaded(&text(extra)), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .find(|note| note.contains("capacity of"))
+            .unwrap()
+    };
+    let shown = note("");
+    assert!(
+        shown.starts_with("The report daily shows the view queue's capacity of the repositories it shows a pull request of, so the runs of one with no open pull request are not counted: two requests a repository on GitHub and GitLab, one on Forgejo."),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("Actions: read") && shown.contains("never counted as idle"),
+        "{shown}"
+    );
+    let members = note("capacity_from = \"members\"\ncapacity_repositories = 7");
+    assert!(
+        members.contains("its owner's 7 newest pushed members"),
+        "{members}"
+    );
+}

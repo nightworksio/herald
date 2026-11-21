@@ -114,7 +114,12 @@ fn answer(line: &str, status: u16, etag: Option<&str>, body: &Value) -> (String,
 /// The search finding `app#1`, `vault#2` and `gone#3`, then GraphQL
 /// reading the first two.
 fn searched() -> Script {
-    Script::answered(vec![
+    Script::answered(searched_answers())
+}
+
+/// The answers `searched` gives.
+fn searched_answers() -> Vec<(String, Response)> {
+    vec![
         answer(
             SEARCH,
             200,
@@ -131,7 +136,7 @@ fn searched() -> Script {
                 "r1": { "visibility": "PUBLIC", "p0": node(2, "vault") }
             } }),
         ),
-    ])
+    ]
 }
 
 fn queued(config: &Config, store: &Failing, script: &Script) -> Result<Board, Stop> {
@@ -387,4 +392,39 @@ fn a_whole_owner_listing_closes_what_it_no_longer_names_and_keeps_what_it_names_
         .unwrap()
         .unwrap();
     assert!(!vault.value.open());
+}
+
+#[test]
+fn a_view_scoped_to_one_repository_reads_and_names_nothing_of_another_s_ci() {
+    let none = json!({ "workflow_runs": [] });
+    let app = |status: &str| {
+        answer(
+            &format!("/repos/o/app/actions/runs?status={status}&per_page=100"),
+            200,
+            None,
+            &none,
+        )
+    };
+    for (from, ordered) in [("shown", false), ("members", true)] {
+        let config = config(&format!(
+            "mode = \"live\"\nrepositories = [\"o/app\"]\noverviews = [\"capacity\"]\ncapacity_from = \"{from}\""
+        ));
+        let store = healthy();
+        listed(&store);
+        let mut answers = searched_answers();
+        if ordered {
+            answers.push(answer(
+                "/orgs/o/repos?sort=pushed&direction=desc&per_page=20",
+                200,
+                None,
+                &json!([{ "full_name": "o/vault" }, { "full_name": "o/app" }]),
+            ));
+        }
+        answers.extend([app("queued"), app("in_progress")]);
+        let script = Script::answered(answers);
+        let board = queued(&config, &store, &script).unwrap();
+        assert_eq!(board.overviews.capacity, Some(Vec::new()), "{from}");
+        assert_eq!(board.overviews.unread, [], "{from}");
+        assert_eq!(script.seen().len(), 4 + usize::from(ordered), "{from}");
+    }
 }

@@ -11,6 +11,7 @@ use crate::members::Visibility;
 
 mod kept;
 mod overlap;
+mod overview;
 mod triage;
 mod view;
 
@@ -19,6 +20,9 @@ pub use kept::{
     Reconciled, RepositoryKey, Reviewed, Since, Verdict,
 };
 pub use overlap::overlaps;
+pub use overview::{
+    CAPACITY_REPOSITORIES, Capacity, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
+};
 pub use triage::{Failure, Triage};
 pub use view::{
     Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped, rows,

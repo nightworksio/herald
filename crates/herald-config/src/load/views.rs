@@ -8,9 +8,9 @@ use std::ops::Range;
 
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
-    Bots, BumpPattern, Deciding, Duration, Glob, GroupBy, MOST_NUDGES, MOST_RUNS,
-    MOST_RUNS_ALLOWED, MOST_STAGES, ReportSchedule, Rules, Slot, SourceName, Stages, Triage, View,
-    zone,
+    Bots, BumpPattern, CAPACITY_REPOSITORIES, Capacity, Deciding, Duration, Glob, GroupBy,
+    MOST_CAPACITY_REPOSITORIES, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES,
+    ReportSchedule, Rules, Slot, SourceName, Stages, Triage, View, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -21,8 +21,9 @@ use super::boards::Boarded;
 use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
-    BUILT_IN_VIEW, BotsFile, DecidingFile, DecidingName, GroupByFile, RULE_KEYS, Report,
-    ReportFile, RerunMode, Rule, RuleFile, RulesFile, ViewConfig, ViewFile, ViewMode,
+    BUILT_IN_VIEW, BotsFile, CapacityFrom, DecidingFile, DecidingName, GroupByFile, OverviewName,
+    RULE_KEYS, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile, ViewConfig, ViewFile,
+    ViewMode,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -30,6 +31,9 @@ const APPLIED: &str = "a rule only plans a re-run, so mode is \"plan\"; a re-run
 
 /// Why a rule that neither nudges nor plans is refused.
 const RUNS: &str = "a plan reads from 1 to 100 failed runs on a head, such as runs = 5";
+const CAPACITY_MOST: &str =
+    "a capacity overview reads from 1 to 100 repositories, such as capacity_repositories = 20";
+const CAPACITY_UNSHOWN: &str = "capacity_from and capacity_repositories take effect with overviews = [\"capacity\"], which this view does not name";
 const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, or both; this one does neither";
 
 /// The names of `sources` that list their repositories' open pull requests.
@@ -193,6 +197,7 @@ impl Loader<'_> {
         (path, span): (&str, &Range<usize>),
         (sources, tasks): (&BTreeMap<SourceName, Source>, &BTreeMap<String, Task>),
     ) -> ViewConfig {
+        let capacity = self.capacity(&file, (path, span));
         let shipped = View::default();
         let mut bumps = Vec::new();
         for (index, text) in file.bumps.iter().enumerate() {
@@ -250,7 +255,35 @@ impl Loader<'_> {
             reconcile: file.reconcile.map(|every| every.0),
             stated: file.listed_visibility,
             conflicts: file.conflicts,
+            capacity,
         }
+    }
+
+    /// Which repositories the view `file` at `path` reads capacity of,
+    /// where it shows the overview.
+    fn capacity(
+        &mut self,
+        file: &ViewFile,
+        (path, span): (&str, &Range<usize>),
+    ) -> Option<Capacity> {
+        let most = file
+            .capacity_repositories
+            .map_or(CAPACITY_REPOSITORIES, NonZeroUsize::get);
+        if most > MOST_CAPACITY_REPOSITORIES {
+            self.error(
+                span,
+                &format!("{path}.capacity_repositories"),
+                CAPACITY_MOST.to_owned(),
+            );
+        }
+        let shown = file.overviews.contains(&OverviewName::Capacity);
+        if !shown && (file.capacity_from.is_some() || file.capacity_repositories.is_some()) {
+            self.error(span, path, CAPACITY_UNSHOWN.to_owned());
+        }
+        shown.then(|| match file.capacity_from.unwrap_or_default() {
+            CapacityFrom::Shown => Capacity::Shown,
+            CapacityFrom::Members => Capacity::Members { most },
+        })
     }
 
     /// Each view of `[views]`, and the built-in `queue` over every source
@@ -273,6 +306,7 @@ impl Loader<'_> {
                 reconcile: None,
                 stated: false,
                 conflicts: false,
+                capacity: None,
             },
         )]);
         for (name, value) in self.named(value, "views") {

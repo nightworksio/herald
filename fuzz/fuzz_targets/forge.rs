@@ -496,6 +496,16 @@ fn queued(bytes: &[u8]) {
             {
                 assert!(runs.iter().all(|run| run.call.starts_with("POST ")), "{runs:?}");
             }
+            if let Ok(counted) = pollster::block_on(queue.capacity(
+                &http,
+                (herald_kinds::Asked::default(), &["fuzzer/fuzzed"]),
+                herald_core::Capacity::Shown,
+            )) {
+                assert!(
+                    counted.capacity.iter().flatten().all(|run| run.repository == "fuzzer/fuzzed"),
+                    "{counted:?}"
+                );
+            }
             let asked = herald_kinds::Asked {
                 most,
                 files: true,

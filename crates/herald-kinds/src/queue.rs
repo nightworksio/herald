@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Listed, Owner, Pull, Rerun, Validators, Visibility};
+use herald_core::{Capacity, Listed, Overviews, Owner, Pull, Rerun, Validators, Visibility};
 use herald_ports::{Boxed, DynHttp};
 
 use crate::Unpolled;
@@ -159,6 +159,18 @@ pub trait Queue: fmt::Debug + Send + Sync {
         ran: (&'a str, &'a str, &'a str),
         most: usize,
     ) -> Boxed<'a, Result<Plan, Unpolled>>;
+
+    /// The queued and running CI of the repositories `capacity` names,
+    /// `read` being how the view asks and the repositories it shows a pull
+    /// request of: those shown, or the members its scope holds; each
+    /// repository it could not read named in `Overviews::unread` with why,
+    /// never left out as if idle (ADR-0066).
+    fn capacity<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        read: (Asked<'a>, &'a [&'a str]),
+        capacity: Capacity,
+    ) -> Boxed<'a, Result<Overviews, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(

@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Board, Cursor, Identity, Pull, RouteId, Row, Showing, SourceName, Visibility, grouped,
-    report_event,
+    Board, Cursor, Identity, Listed, Overviews, Pull, RouteId, Row, Showing, SourceName, Unread,
+    Visibility, grouped, report_event,
 };
 use herald_kinds::{Asked, Scope};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -23,33 +23,66 @@ use crate::prepare::Connected;
 /// this run reads.
 const UNREAD_SOURCE: &str = "the view reads a source this run does not poll";
 
-/// The open pull requests each view a round read, by the view's name, so
-/// a report and a rule watching one view read it once a round.
-pub(crate) type Reads = BTreeMap<String, Vec<Pull>>;
+/// What each view a round read, by the view's name, so a report and a rule
+/// watching one view read it once a round.
+pub(crate) type Reads = BTreeMap<String, Read>;
 
-/// The open pull requests of the view `name`, read once a round into
-/// `reads`.
+/// What one read of a view found: its open pull requests, and its
+/// overviews (ADR-0066).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Read {
+    pub(crate) pulls: Vec<Pull>,
+    pub(crate) overviews: Overviews,
+}
+
+impl Read {
+    /// Who may see the strictest of what it holds.
+    fn strictest(&self) -> Visibility {
+        let runs = self
+            .overviews
+            .capacity
+            .iter()
+            .flatten()
+            .map(|run| run.visibility);
+        let unread = self.overviews.unread.iter().map(|unread| unread.visibility);
+        self.pulls
+            .iter()
+            .map(|pull| pull.visibility)
+            .chain(runs)
+            .chain(unread)
+            .max()
+            .unwrap_or(Visibility::Public)
+    }
+}
+
+/// The open pull requests and overviews of the view `name`, read once a
+/// round into `reads`.
 pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (name, view): (&str, &ViewConfig),
     reads: &mut Reads,
-) -> Result<Vec<Pull>, Stop> {
-    if let Some(pulls) = reads.get(name) {
-        return Ok(pulls.clone());
+) -> Result<Read, Stop> {
+    if let Some(read) = reads.get(name) {
+        return Ok(read.clone());
     }
-    let pulls = read_pulls(flow, view).await?;
-    reads.insert(name.to_owned(), pulls.clone());
-    Ok(pulls)
+    let read = read_pulls(flow, view).await?;
+    reads.insert(name.to_owned(), read.clone());
+    Ok(read)
 }
 
 /// The open pull requests of every source `view` reads, live or kept as
-/// the view and the store say (ADR-0061), the first that could not be
-/// read stopping it.
+/// the view and the store say (ADR-0061), and the overviews it shows
+/// (ADR-0066); the first source that could not be read, and the run's
+/// budget, stopping it.
 async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
-) -> Result<Vec<Pull>, Stop> {
+) -> Result<Read, Stop> {
     let mut pulls = Vec::new();
+    let mut overviews = Overviews {
+        capacity: view.capacity.map(|_| Vec::new()),
+        ..Overviews::default()
+    };
     for name in &view.sources {
         let (queue, http) = connected
             .sources
@@ -87,9 +120,74 @@ async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .await
                 .map_err(|unpolled| http.halted(unpolled))?
         };
+        if let Some(capacity) = view.capacity {
+            let shown = herald_core::rows(&view.view, &read, ports.clock.now());
+            let mut shown: Vec<&str> = shown
+                .iter()
+                .map(|row| row.pull.repository.as_str())
+                .collect();
+            shown.sort_unstable();
+            shown.dedup();
+            let held: Vec<Listed> = members
+                .iter()
+                .flat_map(|(_, members)| members)
+                .filter(|member| view.view.holds(&member.path))
+                .cloned()
+                .collect();
+            let asked = Asked {
+                scope: members.as_ref().map(|(owner, _)| Scope {
+                    owner: *owner,
+                    members: &held,
+                }),
+                ..asked
+            };
+            let counted = match queue.capacity(http, (asked, &shown), capacity).await {
+                Ok(counted) => counted,
+                Err(unpolled) => unread_source(name, http.unread(unpolled)),
+            };
+            let sourced = |path: &str| queue.holds(path);
+            overviews.merge(seen_as_rows(counted, &read).within(&view.view, sourced));
+        }
         pulls.extend(read);
     }
-    Ok(pulls)
+    overviews.heads = pulls.iter().filter_map(|pull| pull.head.clone()).collect();
+    Ok(Read { pulls, overviews })
+}
+
+/// What a capacity read of `source` that failed for `reason` shows: the
+/// source named unread with why, seen as private.
+fn unread_source(source: &SourceName, reason: String) -> Overviews {
+    Overviews {
+        unread: vec![Unread {
+            repository: source.as_str().to_owned(),
+            visibility: Visibility::Private,
+            reason,
+        }],
+        ..Overviews::default()
+    }
+}
+
+/// `counted` with each run and unread repository seen as the rows of
+/// `pulls` of its repository are, and as the forge said where none is:
+/// as its membership record holds it, or as private.
+fn seen_as_rows(mut counted: Overviews, pulls: &[Pull]) -> Overviews {
+    let seen = |repository: &str| {
+        pulls
+            .iter()
+            .find(|pull| pull.repository.eq_ignore_ascii_case(repository))
+            .map(|pull| pull.visibility)
+    };
+    for run in counted.capacity.iter_mut().flatten() {
+        if let Some(visibility) = seen(&run.repository) {
+            run.visibility = visibility;
+        }
+    }
+    for unread in &mut counted.unread {
+        if let Some(visibility) = seen(&unread.repository) {
+            unread.visibility = visibility;
+        }
+    }
+    counted
 }
 
 /// The board of the view `name`, its sources' open pull requests read now
@@ -119,8 +217,10 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     };
     let flow = (config, connected, ports);
     crate::poll::minting(flow, |_| true).await;
-    let pulls = read_pulls(flow, view).await?;
-    Ok(grouped(&view.view, decided_rows(flow, view, &pulls).await))
+    let read = read_pulls(flow, view).await?;
+    let mut board = grouped(&view.view, decided_rows(flow, view, &read.pulls).await);
+    board.overviews = read.overviews;
+    Ok(board)
 }
 
 /// What one announcement of a report shows: the pull requests, who may see
@@ -128,6 +228,7 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
 /// one living post of it.
 struct Part<'a> {
     view: &'a ViewConfig,
+    overviews: &'a Overviews,
     rows: &'a [Row],
     visibility: Visibility,
     routes: &'a [RouteId],
@@ -142,7 +243,8 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     part: Part<'_>,
     run: &str,
 ) -> Result<Fresh, Stop> {
-    let shown = grouped(&part.view.view, part.rows.to_vec());
+    let mut shown = grouped(&part.view.view, part.rows.to_vec());
+    shown.overviews = part.overviews.seen_by(part.visibility);
     let event = report_event((name, &report.view), &shown, start, part.living)
         .map_err(|problem| Stop::Source(problem.to_string()))?
         .seen_as(part.visibility);
@@ -308,17 +410,13 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
     let view = config.views.get(&report.view)?;
-    let pulls = match view_pulls(flow, (&report.view, view), reads).await {
-        Ok(pulls) => pulls,
+    let read = match view_pulls(flow, (&report.view, view), reads).await {
+        Ok(read) => read,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
-    let strictest = pulls
-        .iter()
-        .map(|pull| pull.visibility)
-        .max()
-        .unwrap_or(Visibility::Public);
+    let strictest = read.strictest();
     let private = crate::poll::bounded(config, strictest);
-    let decided = decided_rows(flow, view, &pulls).await;
+    let decided = decided_rows(flow, view, &read.pulls).await;
     let mut announced = Vec::new();
     for (shown, visibility, routes, living) in audiences(
         (config, name),
@@ -328,6 +426,7 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
     ) {
         let part = Part {
             view,
+            overviews: &read.overviews,
             rows: &shown,
             visibility,
             routes: &routes,
@@ -340,7 +439,7 @@ async fn reported_one<S: Store, C: Clock, G: Signer, H: Http>(
     }
     let cursor = settled(flow.2, (name, identity), record.as_ref(), &announced).await;
     Some(Sweep::Reported {
-        pulls: pulls.len(),
+        pulls: read.pulls.len(),
         announced,
         cursor,
     })
