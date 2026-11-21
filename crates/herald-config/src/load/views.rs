@@ -68,6 +68,7 @@ impl GroupByFile {
             Self::Turn => GroupBy::Turn,
             Self::Repository => GroupBy::Repository,
             Self::Author => GroupBy::Author,
+            Self::Area => GroupBy::Area,
             Self::Nothing => GroupBy::Nothing,
         }
     }
@@ -156,6 +157,40 @@ impl Loader<'_> {
         read
     }
 
+    /// Refuses each of `areas`, the area globs the view at `path` narrows
+    /// by, that matches no area one of `read`, the sources it reads, names
+    /// (ADR-0071).
+    fn known_areas(
+        &mut self,
+        areas: &[Glob],
+        (path, span): (&str, &Range<usize>),
+        (read, sources): (&[SourceName], &BTreeMap<SourceName, Source>),
+    ) {
+        let named: BTreeSet<String> = read
+            .iter()
+            .filter_map(|name| sources.get(name))
+            .flat_map(|source| source.area_names())
+            .collect();
+        let listed: Vec<&str> = named.iter().map(String::as_str).collect();
+        let known = if listed.is_empty() {
+            "they name none; give a source an areas table".to_owned()
+        } else {
+            format!("the areas are {}", list(&listed))
+        };
+        for (index, glob) in areas.iter().enumerate() {
+            if !named.iter().any(|name| glob.matches(name)) {
+                self.error(
+                    span,
+                    &format!("{path}.areas[{index}]"),
+                    format!(
+                        "\"{}\" matches no area the view's sources name; {known}",
+                        glob.as_str()
+                    ),
+                );
+            }
+        }
+    }
+
     /// The task of `tasks` deciding each slot `decide` names, at `path`,
     /// where it offers options the slot may settle on.
     fn deciding(
@@ -221,6 +256,7 @@ impl Loader<'_> {
             repositories: self.globs(&file.repositories, (&format!("{path}.repositories"), span)),
             authors: self.globs(&file.authors, (&format!("{path}.authors"), span)),
             labels: self.globs(&file.labels, (&format!("{path}.labels"), span)),
+            areas: self.globs(&file.areas, (&format!("{path}.areas"), span)),
             stale: file.stale.map_or(shipped.stale, |stale| stale.0),
             stale_only: file.stale_only,
             group_by: file
@@ -248,10 +284,12 @@ impl Loader<'_> {
             },
         };
         let shipped = Most::default();
+        let read = self.view_sources(file.sources, path, sources);
+        self.known_areas(&view.areas, (path, span), (&read, sources));
         ViewConfig {
             view,
             decide: self.deciding(file.decide, path, tasks),
-            sources: self.view_sources(file.sources, path, sources),
+            sources: read,
             most: Most {
                 open: file
                     .most_open

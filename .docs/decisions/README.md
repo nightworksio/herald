@@ -88,3 +88,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0068](0068-an-operator-signed-in-at-the-forge-re-runs-a-planned-job-once.md) | An operator signed in at the forge re-runs a planned job once | Accepted |
 | [0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md) | herald's commands withhold private repositories' rows unless their output is said private | Accepted |
 | [0070](0070-the-nightly-run-mutates-what-changed-and-the-weekly-run-everything.md) | The nightly run mutates what changed, and the weekly run everything | Accepted |
+| [0071](0071-a-source-names-its-repositories-areas-by-path-globs.md) | A source names its repositories' areas by path globs | Accepted |

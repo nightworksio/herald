@@ -24,6 +24,7 @@ pub(crate) fn pull() -> Pull {
         unread: false,
         base: None,
         files: None,
+        areas: Vec::new(),
         flips: Vec::new(),
     }
 }

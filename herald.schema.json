@@ -2769,6 +2769,11 @@
           "const": "author"
         },
         {
+          "description": "Each area its changed paths fall in, a row in each of its areas'\ngroups and one in none in a group of its own (ADR-0071).",
+          "type": "string",
+          "const": "area"
+        },
+        {
           "description": "Nothing: one group.",
           "type": "string",
           "const": "nothing"
@@ -4073,6 +4078,16 @@
       "description": "What an owner source makes of the repositories one glob names.",
       "type": "object",
       "properties": {
+        "areas": {
+          "description": "Their areas, as the source's `areas` writes them, in place of the\nsource's; the source's where absent (ADR-0071).",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
         "prerelease": {
           "description": "How a pre-release of theirs is told, as the source's `prerelease`\nwrites it; the source's where absent.",
           "$ref": "#/$defs/PrereleaseRule"
@@ -5399,6 +5414,16 @@
               "type": "boolean",
               "default": false
             },
+            "areas": {
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
             "backfill": {
               "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
@@ -5719,6 +5744,16 @@
               "type": "boolean",
               "default": false
             },
+            "areas": {
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
             "backfill": {
               "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
@@ -6038,6 +6073,16 @@
               "description": "Whether archived repositories are taken.",
               "type": "boolean",
               "default": false
+            },
+            "areas": {
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             },
             "backfill": {
               "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
@@ -8196,6 +8241,14 @@
           "format": "uint",
           "maximum": 100,
           "minimum": 1
+        },
+        "areas": {
+          "description": "The areas, any one of which a pull request it shows falls in, by\nname, each a glob ignoring case that matches an area one of its\nsources names; every pull request where empty (ADR-0071).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         },
         "authors": {
           "description": "The authors it shows, by login, each a glob ignoring case; every one\nwhere empty.",

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::{SignedDuration, Timestamp};
 
@@ -6,6 +6,7 @@ use super::{Failure, Overviews, Pull, Reason, Rules, Triage, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::decide::Slot;
 use crate::glob::Glob;
+use crate::nudge::pull_identity;
 
 /// What a view does with a bot's pull requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -44,6 +45,9 @@ pub enum GroupBy {
     Repository,
     /// The author.
     Author,
+    /// Each area its changed paths fall in, one group for each, and one
+    /// named by no area for those in none (ADR-0071).
+    Area,
     /// Nothing: one group.
     Nothing,
 }
@@ -62,6 +66,9 @@ pub struct View {
     /// The labels, any one of which a pull request shown carries, every
     /// pull request where empty.
     pub labels: Vec<Glob>,
+    /// The areas, any one of which a pull request shown falls in, every
+    /// pull request where empty (ADR-0071).
+    pub areas: Vec<Glob>,
     /// How long one waits with nobody acting before it is stale.
     pub stale: SignedDuration,
     /// Whether it shows only the stale.
@@ -86,6 +93,7 @@ impl Default for View {
             repositories: Vec::new(),
             authors: Vec::new(),
             labels: Vec::new(),
+            areas: Vec::new(),
             stale: SignedDuration::from_hours(14 * 24),
             stale_only: false,
             group_by: GroupBy::default(),
@@ -136,8 +144,9 @@ impl Row {
 /// The rows that share what a view groups by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grouped {
-    /// What they share: a state's name, a repository's full path, or an
-    /// author's login, empty where the forge names none.
+    /// What they share: a state's name, a repository's full path, an
+    /// author's login or an area's name, empty where the forge names no
+    /// author or the rows fall in no area.
     pub name: String,
     /// The rows, oldest first.
     pub rows: Vec<Row>,
@@ -177,6 +186,21 @@ pub struct Board {
 }
 
 impl Board {
+    /// Each row it shows once, its groups' and then its batches', in their
+    /// order: a row grouped under several areas is taken where it first
+    /// shows, so whatever acts on or counts its rows acts on each pull
+    /// request once (ADR-0071).
+    #[must_use]
+    pub fn distinct_rows(&self) -> Vec<&Row> {
+        let mut seen = BTreeSet::new();
+        self.groups
+            .iter()
+            .flat_map(|group| &group.rows)
+            .chain(self.batches.iter().flat_map(|batch| &batch.rows))
+            .filter(|row| seen.insert(pull_identity(&row.pull)))
+            .collect()
+    }
+
     /// How many pull requests it shows, grouped and batched.
     #[must_use]
     pub fn total(&self) -> usize {
@@ -234,6 +258,7 @@ impl View {
             && named(&self.authors, pull.author.as_deref().unwrap_or_default())
             && (self.labels.is_empty()
                 || pull.labels.iter().any(|label| named(&self.labels, label)))
+            && (self.areas.is_empty() || pull.areas.iter().any(|area| named(&self.areas, area)))
     }
 
     /// `pull` as a row at `now`, where the view shows it.
@@ -257,13 +282,15 @@ impl View {
         })
     }
 
-    /// What a row is grouped under.
-    fn group_of(&self, row: &Row) -> String {
+    /// What a row is grouped under: each of its areas where the view
+    /// groups by area, and one name otherwise.
+    fn groups_of(&self, row: &Row) -> Vec<String> {
         match self.group_by {
-            GroupBy::Turn => row.state.name().to_owned(),
-            GroupBy::Repository => row.pull.repository.clone(),
-            GroupBy::Author => row.pull.author.clone().unwrap_or_default(),
-            GroupBy::Nothing => String::new(),
+            GroupBy::Turn => vec![row.state.name().to_owned()],
+            GroupBy::Repository => vec![row.pull.repository.clone()],
+            GroupBy::Author => vec![row.pull.author.clone().unwrap_or_default()],
+            GroupBy::Area if !row.pull.areas.is_empty() => row.pull.areas.clone(),
+            GroupBy::Area | GroupBy::Nothing => vec![String::new()],
         }
     }
 
@@ -338,10 +365,9 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
         } else {
             0
         };
-        groups
-            .entry((order, view.group_of(&row)))
-            .or_default()
-            .push(row);
+        for name in view.groups_of(&row) {
+            groups.entry((order, name)).or_default().push(row.clone());
+        }
     }
     let groups = groups
         .into_iter()

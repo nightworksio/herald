@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Duration, Glob, Prefer, PrereleaseRule, SecretRef, Signal, Size, Visibility, path_of_names,
-    web_url,
+    Areas, Duration, Glob, Prefer, PrereleaseRule, SecretRef, Signal, Size, Visibility,
+    path_of_names, web_url,
 };
 use herald_wire::{PARSE_LIMIT, Reading};
 
@@ -51,6 +51,10 @@ pub struct Override {
     /// Whether `routes` are the only routes their events reach, leaving out
     /// the routes that name the source; false where absent.
     pub routes_only: Option<bool>,
+    /// Their areas, as the source's `areas` writes them, in place of the
+    /// source's; the source's where absent (ADR-0071).
+    #[schemars(with = "Option<BTreeMap<String, Vec<String>>>")]
+    pub areas: Option<Areas>,
 }
 
 /// A forge source's options in `herald.toml` (ADR-0006, ADR-0029, ADR-0030).
@@ -185,6 +189,16 @@ pub struct SourceOptions {
     /// narrowest that sets a key gives it.
     #[serde(default)]
     pub repositories: BTreeMap<String, Override>,
+    /// The areas of its repositories, each a name and the path globs, as
+    /// `include` writes them, any of which a changed path falls in it by,
+    /// such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas
+    /// and 1000 globs, each name and glob at most 128 and 256 characters,
+    /// a path over 1024 falling in none. A view reading the source reads
+    /// the paths each pull request's head changes, as one predicting
+    /// conflicts does, and each row names its areas; none where absent
+    /// (ADR-0071).
+    #[schemars(with = "Option<BTreeMap<String, Vec<String>>>")]
+    pub areas: Option<Areas>,
     /// How an owner source finds the repositories that join or leave it:
     /// listing the owner each round ("list"), or only where it holds no
     /// listing, its selection changed or a delivery said the owner's
@@ -322,14 +336,19 @@ const fn sets_routes_only(chosen: &Override) -> bool {
     chosen.routes_only.is_some()
 }
 
+const fn sets_areas(chosen: &Override) -> bool {
+    chosen.areas.is_some()
+}
+
 /// Each key of an override that the narrowest glob naming a repository
 /// gives it, and whether an override sets it.
-const OVERRIDDEN: [(&str, Sets); 5] = [
+const OVERRIDDEN: [(&str, Sets); 6] = [
     ("project", sets_project),
     ("signals", sets_signals),
     ("prerelease", sets_prerelease),
     ("routes", sets_routes),
     ("routes_only", sets_routes_only),
+    ("areas", sets_areas),
 ];
 
 /// Two of `globs` as narrow as each other that could both name one

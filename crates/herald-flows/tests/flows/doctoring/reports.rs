@@ -138,8 +138,8 @@ private = false
 }
 
 #[test]
-fn a_view_names_its_owner_query_what_predicting_conflicts_costs_and_what_listed_visibility_widens()
-{
+fn a_view_names_its_owner_query_what_predicting_conflicts_and_naming_areas_cost_and_what_listed_visibility_widens()
+ {
     let config = loaded(
         r#"version = 1
 [store]
@@ -152,6 +152,8 @@ token = { secret = "HERALD_GITHUB_TOKEN" }
 kind = "forgejo"
 repository = "o/fj"
 api = "https://codeberg.org/api/v1"
+[sources.fj.areas]
+web = ["web/**"]
 [views.queue]
 sources = ["org"]
 listed_visibility = true
@@ -159,9 +161,13 @@ conflicts = true
 [views.fj]
 sources = ["fj"]
 conflicts = true
+[views.zoned]
+sources = ["fj"]
 [reports.daily]
 [reports.weekly]
 view = "fj"
+[reports.monthly]
+view = "zoned"
 "#,
     );
     let notes = on(&config, &server(), &Here::default()).notes;
@@ -178,7 +184,11 @@ view = "fj"
     );
     assert_eq!(
         named("The report weekly"),
-        "The report weekly reads the view fj of fj by rest, at most 205 requests a round; its open pull requests past the first 100 read as unknown; to predict conflicts it reads the paths each pull request's head changes, at most 100 each, by at most 100 more requests a round."
+        "The report weekly reads the view fj of fj by rest, at most 205 requests a round; its open pull requests past the first 100 read as unknown; to predict conflicts and name each one's areas it reads the paths each pull request's head changes, at most 100 each, by at most 100 more requests a round."
+    );
+    assert_eq!(
+        named("The report monthly"),
+        "The report monthly reads the view zoned of fj by rest, at most 205 requests a round; its open pull requests past the first 100 read as unknown; to name each pull request's areas it reads the paths each pull request's head changes, at most 100 each, by at most 100 more requests a round."
     );
     assert_eq!(
         named("The view queue takes"),

@@ -40,6 +40,7 @@ pub(super) fn kept(id: &str, number: u64, title: &str) -> KeptPull {
         unread: false,
         base: None,
         files: None,
+        areas: Vec::new(),
         flips: Vec::new(),
     };
     let key = PullKey {

@@ -1,8 +1,10 @@
 //! What an owner source's overrides give each repository a glob names.
 
-use herald_core::{Glob, Reach, RouteId};
+use std::collections::BTreeSet;
 
-use super::{Override, Sets, SourceOptions, sets_routes, sets_routes_only};
+use herald_core::{Areas, Glob, Reach, RouteId};
+
+use super::{Override, Sets, SourceOptions, sets_areas, sets_routes, sets_routes_only};
 
 impl SourceOptions {
     /// The override of the narrowest glob of `repositories` naming the
@@ -48,6 +50,30 @@ impl SourceOptions {
                     .flatten()
                     .map(move |route| (format!("repositories.\"{glob}\".routes"), route.clone()))
             })
+            .collect()
+    }
+
+    /// The areas of the repository named `name`, its path's last part: the
+    /// narrowest override's that sets them, or the source's (ADR-0071).
+    #[must_use]
+    pub fn areas_of(&self, name: &str) -> Option<&Areas> {
+        self.narrowest(name, sets_areas)
+            .and_then(|chosen| chosen.areas.as_ref())
+            .or(self.areas.as_ref())
+    }
+
+    /// The name of each area the source or one of its overrides names.
+    #[must_use]
+    pub fn area_names(&self) -> BTreeSet<String> {
+        self.areas
+            .iter()
+            .chain(
+                self.repositories
+                    .values()
+                    .filter_map(|chosen| chosen.areas.as_ref()),
+            )
+            .flat_map(Areas::names)
+            .map(str::to_owned)
             .collect()
     }
 }

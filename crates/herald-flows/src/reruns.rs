@@ -79,11 +79,7 @@ pub(crate) async fn plans<'b, S: Store, C: Clock, G: Signer, H: Http>(
         .filter(|failure| failure.flaky)
         .map(|failure| (failure.check.as_str(), failure.flips))
         .collect();
-    let rows = shown
-        .groups
-        .iter()
-        .flat_map(|group| &group.rows)
-        .chain(shown.batches.iter().flat_map(|batch| &batch.rows));
+    let rows = shown.distinct_rows().into_iter();
     let reading = |repository: &str| {
         connected
             .sources

@@ -409,14 +409,19 @@ fn a_part_sent_more_than_once_is_listed_once_with_how_many_times() {
 /// What of the private repository `acme/secret-plans` no withheld output
 /// may hold: its owner, its name, its pull requests' numbers and titles,
 /// and their heads.
-const SECRET_NAMED: [&str; 6] = [
+const SECRET_NAMED: [&str; 7] = [
     "acme",
+    "merger-launch",
     "secret-plans",
     "7041",
     "7042",
     "Merger plan",
     "c0ffee",
 ];
+
+/// The path both of `secret_kept`'s pull requests change, which no output
+/// prints.
+const SECRET_PATH: &str = "plans/merger/launch.md";
 
 /// `world`'s store keeping two private pull requests of
 /// `acme/secret-plans` that change one path, the first's check `test`
@@ -470,9 +475,10 @@ fn secret_kept(world: &World) {
             unread: false,
             base: Some("main".to_owned()),
             files: Some(Changed {
-                paths: ["src/lib.rs".to_owned()].into(),
+                paths: [SECRET_PATH.to_owned()].into(),
                 whole: true,
             }),
+            areas: Vec::new(),
             flips,
         };
         let pulled = PullKey {
@@ -522,14 +528,14 @@ fn secret_kept(world: &World) {
 }
 
 #[test]
-fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_are_printed_nowhere_unless_said_private()
+fn a_private_repository_s_areas_conflicts_flaky_check_runs_and_unread_line_are_printed_nowhere_unless_said_private()
  {
     let config = CONFIG.replace(
         "repository = \"cli/cli\"\n",
         "repository = \"acme/secret-plans\"\n",
     );
     let setup = setup(&format!(
-        "{config}[views.kept]\nsources = [\"cli\"]\nmode = \"kept\"\nreconcile = \"1d\"\nconflicts = true\noverviews = [\"capacity\"]\n[rules.flaky]\nview = \"kept\"\nflaky = {{ rerun = true }}\nevery = \"1h\"\nat = \"00:00\"\n"
+        "{config}[sources.cli.areas]\nmerger-launch = [\"plans/**\"]\n[views.kept]\nsources = [\"cli\"]\nmode = \"kept\"\nreconcile = \"1d\"\nconflicts = true\noverviews = [\"capacity\"]\n[rules.flaky]\nview = \"kept\"\nflaky = {{ rerun = true }}\nevery = \"1h\"\nat = \"00:00\"\n"
     ));
     let world = World::default();
     secret_kept(&world);
@@ -546,16 +552,25 @@ fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_are_printed
             .map(Vec::len),
         Some(1)
     );
+    assert_eq!(
+        read["groups"][0]["rows"][0]["areas"],
+        json!(["merger-launch"])
+    );
     assert_eq!(read["failures"][0]["pulls"][0]["number"], 7041);
     assert_eq!(read["overviews"]["capacity"]["queued"], 100);
     assert_eq!(
         read["overviews"]["unread"][0]["repository"],
         "acme/secret-plans"
     );
-    let said = format!("{json}{}", printed(&["rerun", "flaky", "--private"]));
+    let said = format!(
+        "{json}{}{}",
+        printed(&["rerun", "flaky", "--private"]),
+        printed(&["queue", "kept", "--private"])
+    );
     for named in SECRET_NAMED {
         assert!(said.contains(named), "{named}: {said}");
     }
+    assert!(!said.contains(SECRET_PATH), "{said}");
     let table = printed(&["queue", "kept"]);
     assert_eq!(
         table.lines().collect::<Vec<_>>(),
@@ -568,7 +583,7 @@ fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_are_printed
     let read: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(read["withheld_pulls"], 2);
     let said = format!("{table}{json}{}", printed(&["rerun", "flaky"]));
-    for named in SECRET_NAMED {
+    for named in SECRET_NAMED.iter().chain([&SECRET_PATH]) {
         assert!(!said.contains(named), "{named}: {said}");
     }
 }

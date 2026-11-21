@@ -283,6 +283,7 @@ fn flaky_seen(world: &World, visibility: herald_core::Visibility) {
         unread: false,
         base: None,
         files: None,
+        areas: Vec::new(),
         flips: vec![Flip {
             check: "test".to_owned(),
             head: "h1".to_owned(),

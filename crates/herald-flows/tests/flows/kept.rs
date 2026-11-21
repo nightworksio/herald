@@ -691,3 +691,50 @@ fn a_kept_view_predicting_conflicts_reads_changed_paths_once_a_head_and_names_ea
     let read_again = pollster::block_on(store.pull(&key)).unwrap().unwrap();
     assert_eq!(read_again.value.pull.head.as_deref(), Some("h3"));
 }
+
+#[test]
+fn a_view_reading_a_source_naming_areas_reads_changed_paths_and_names_each_row_s_areas() {
+    const AT: &str = "2026-10-30T11:00:00Z";
+    let store = healthy();
+    let changing = |number: u64, path: &str| {
+        let mut changing = node(number, &format!("h{number}"), AT, "SUCCESS");
+        changing["baseRefName"] = json!("main");
+        changing["files"] = json!({ "totalCount": 1, "nodes": [{ "path": path }] });
+        changing
+    };
+    let zoned = config(
+        "group_by = \"area\"\n[sources.repo.areas]\nlib = [\"src/**\"]\ndocs = [\"*.md\"]",
+        true,
+    );
+    let script = Script::answered(vec![
+        answer(
+            LISTING,
+            200,
+            Some("\"a\""),
+            &listed(&[(1, "h1", AT), (2, "h2", AT)]),
+        ),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[changing(1, "src/lib.rs"), changing(2, "Cargo.lock")]),
+        ),
+    ]);
+    let board = queued(&zoned, &store, &script).unwrap();
+    let grouped: Vec<(&str, u64, Vec<String>)> = board
+        .groups
+        .iter()
+        .flat_map(|group| {
+            group
+                .rows
+                .iter()
+                .map(|row| (group.name.as_str(), row.pull.number, row.pull.areas.clone()))
+        })
+        .collect();
+    assert_eq!(
+        grouped,
+        [("", 2, Vec::new()), ("lib", 1, vec!["lib".to_owned()])]
+    );
+    let asked = String::from_utf8(script.bodies()[1].clone()).unwrap();
+    assert!(asked.contains("files(first: 100)"), "{asked}");
+}

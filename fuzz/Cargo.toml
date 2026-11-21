@@ -137,3 +137,10 @@ path = "fuzz_targets/id_token.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "areas"
+path = "fuzz_targets/areas.rs"
+test = false
+doc = false
+bench = false

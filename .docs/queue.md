@@ -43,9 +43,10 @@ The view `queue` is built in: every source naming one repository, as
 | `states` | the states it shows | every state |
 | `bots` | `include`, `exclude`, `only`, or `batch`: a bot's pull requests gathered into batches of the same bump across repositories | `batch` |
 | `repositories`, `authors`, `labels` | globs, ignoring case, of the full path, the author's login, and any one label | every one |
+| `areas` | globs, ignoring case, of any one area its sources name (below) | every one |
 | `stale` | how long one waits with nobody acting before it is stale | `"14d"` |
 | `stale_only` | whether it shows only the stale | `false` |
-| `group_by` | `turn`, `repository`, `author` or `nothing` | `turn` |
+| `group_by` | `turn`, `repository`, `author`, `area` or `nothing` | `turn` |
 | `deciding` | `herald`, `forge`, or `{ labels = [{ label = "…", state = "…" }] }` | `herald` |
 | `rules.*` | each of herald's rules, switched off by `false` | each on |
 | `bumps` | its own bump patterns, read before Dependabot's and Renovate's: `{package}`, `{to}` and `*`, ignoring case | none |
@@ -152,6 +153,31 @@ mode keeps the paths in each record until its head moves, so it reads
 them once a head; a record kept before the view predicted conflicts is
 read in full once. `herald doctor` names what predicting conflicts adds
 to each report's requests.
+
+### Areas
+
+A source names the areas of its repositories by path globs (ADR-0071):
+
+```toml
+[sources.monorepo]
+kind = "github"
+repository = "acme/monorepo"
+
+[sources.monorepo.areas]
+web = ["web/**", "packages/ui/**"]
+docs = ["docs/**", "*.md"]
+```
+
+An owner's override, `[sources.<name>.repositories."<glob>".areas]`,
+gives the repositories it names their own areas. A view reading such a
+source reads the paths each pull request's head changes, as predicting
+conflicts does, and each row's `areas` names the areas one of its paths
+falls in. A view's `areas = ["web"]` shows only pull requests in one of
+them, each glob matching an area its sources name, and
+`group_by = "area"` groups rows by area, a pull request in several
+areas in each of their groups. A table holds at most 200 areas and 1000
+globs; a changed path longer than 1024 characters falls in no area. A
+private repository's areas are withheld with its rows.
 
 ### Live or kept
 

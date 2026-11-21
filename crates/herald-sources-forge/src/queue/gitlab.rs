@@ -134,6 +134,7 @@ impl Request {
             unread: false,
             base: self.target_branch,
             files: None,
+            areas: Vec::new(),
             flips: Vec::new(),
         }
     }

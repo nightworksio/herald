@@ -115,10 +115,8 @@ pub struct Nudge<'a> {
 #[must_use]
 pub fn nudges<'a>(board: &'a Board, stages: &Stages, most: usize) -> Vec<Nudge<'a>> {
     let mut nudged: Vec<Nudge<'a>> = board
-        .groups
-        .iter()
-        .flat_map(|group| &group.rows)
-        .chain(board.batches.iter().flat_map(|batch| &batch.rows))
+        .distinct_rows()
+        .into_iter()
         .filter_map(|row| stages.reached(row.waited).map(|stage| Nudge { row, stage }))
         .collect();
     nudged.sort_by(|left, right| {

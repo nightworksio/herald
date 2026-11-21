@@ -15,11 +15,16 @@ use super::stores::composed;
 use super::{Connect, DONE};
 
 /// `row` on one line: the pull request, whose turn it is and why, how long
-/// it waited, and its title.
+/// it waited, its areas, and its title.
 fn line(row: &Row) -> String {
     let stale = if row.stale { ", stale" } else { "" };
+    let areas = if row.pull.areas.is_empty() {
+        String::new()
+    } else {
+        format!(", in {}", row.pull.areas.join(", "))
+    };
     format!(
-        "  {}#{}  {}: {}, waited {}{stale}  {}",
+        "  {}#{}  {}: {}, waited {}{stale}{areas}  {}",
         row.pull.repository,
         row.pull.number,
         row.state.name(),
