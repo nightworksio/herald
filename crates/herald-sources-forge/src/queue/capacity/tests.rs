@@ -140,6 +140,34 @@ fn gitlab_counts_pending_and_running_pipelines_and_forgejo_its_waiting_and_runni
 }
 
 #[test]
+fn a_listing_that_fills_its_page_is_named_as_holding_more_than_it_counts() {
+    let task = |id: usize| {
+        json!({ "id": id, "url": format!("https://codeberg.org/o/r/actions/runs/{id}"),
+            "head_sha": "h1", "event": "push", "status": "running",
+            "created_at": "2026-11-20T10:00:00Z" })
+    };
+    let page = |count: usize| {
+        answer(
+            200,
+            &json!({ "workflow_runs": (1..=count).map(task).collect::<Vec<_>>() }),
+        )
+    };
+    let (full, _) = counted(&queued(Forge::Forgejo), vec![page(FORGEJO_PAGE)], ONE);
+    let reasons: Vec<String> = full
+        .unread
+        .iter()
+        .map(|unread| unread.reason.clone())
+        .collect();
+    assert_eq!(
+        reasons,
+        [format!("{MORE} 50 of its runs; only those 50 are counted")]
+    );
+    assert_eq!(full.capacity.map(|runs| runs.len()), Some(FORGEJO_PAGE));
+    let (short, _) = counted(&queued(Forge::Forgejo), vec![page(FORGEJO_PAGE - 1)], ONE);
+    assert_eq!(short.unread, []);
+}
+
+#[test]
 fn a_repository_whose_runs_are_refused_is_named_unread_with_the_permission_it_needs() {
     for (forge, status, reason) in [
         (Forge::GitHub, 403, GITHUB_REFUSED),

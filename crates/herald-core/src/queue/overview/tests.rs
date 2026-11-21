@@ -90,3 +90,19 @@ fn a_view_shows_only_the_runs_and_unread_repositories_of_the_repositories_it_hol
     };
     assert_eq!(failed.within(&view, repository).unread.len(), 1);
 }
+
+#[test]
+fn merged_overviews_hold_the_runs_and_unread_repositories_of_both() {
+    let mut merged = Overviews::default();
+    merged.merge(Overviews {
+        capacity: None,
+        ..overviews()
+    });
+    assert_eq!((merged.capacity.as_ref(), merged.unread.len()), (None, 1));
+    merged.merge(overviews());
+    merged.merge(overviews());
+    assert_eq!(
+        (merged.capacity.map(|runs| runs.len()), merged.unread.len()),
+        (Some(8), 3)
+    );
+}

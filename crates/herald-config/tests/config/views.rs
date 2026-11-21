@@ -272,6 +272,15 @@ fn a_view_shows_the_capacity_of_the_repositories_it_shows_where_it_names_no_othe
             most: herald_core::CAPACITY_REPOSITORIES
         })
     );
+    let most = loaded(&with(
+        "[views.ci]\noverviews = [\"capacity\"]\ncapacity_from = \"members\"\ncapacity_repositories = 100\n\n[reports.daily]\n",
+    ));
+    assert_eq!(
+        most.views["ci"].capacity,
+        Some(herald_core::Capacity::Members {
+            most: herald_core::MOST_CAPACITY_REPOSITORIES
+        })
+    );
     let error = errors(&with(
         "[views.wide]\noverviews = [\"capacity\"]\ncapacity_repositories = 101\n\n[views.unshown]\ncapacity_from = \"members\"\n\n[views.odd]\noverviews = [\"weather\"]\n",
     ));

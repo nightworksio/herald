@@ -1,8 +1,9 @@
 use jiff::Timestamp;
 
 use super::*;
+use crate::members::Visibility;
 use crate::queue::tests::pull;
-use crate::queue::{Board, Bots, Failure, View, board};
+use crate::queue::{Board, Bots, Failure, Overviews, Running, Unread, View, board};
 
 fn keys(value: &Value) -> Vec<String> {
     let mut keys: Vec<String> = value
@@ -208,5 +209,100 @@ fn a_failing_check_shows_its_name_count_state_and_the_pull_requests_it_fails_on(
             pull.get_attr("number").unwrap().to_string()
         ),
         ("o/app".to_owned(), "9".to_owned())
+    );
+}
+
+fn ran(id: &str, (queued, second): (bool, i64)) -> Running {
+    Running {
+        repository: "o/app".to_owned(),
+        visibility: Visibility::Public,
+        id: id.to_owned(),
+        url: format!("https://github.com/o/app/actions/runs/{id}"),
+        sha: id.to_owned(),
+        pull: true,
+        queued,
+        created: Timestamp::from_second(second).unwrap(),
+    }
+}
+
+#[test]
+fn a_view_shows_its_runs_queued_and_running_the_oldest_queued_and_those_superseded() {
+    let mut board = shown();
+    let unread = |value: &Value| value.get_attr("overviews").unwrap().get_attr("unread");
+    let none = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let overviews = none.get_attr("overviews").unwrap();
+    assert!(overviews.get_attr("capacity").unwrap().is_none());
+    assert_eq!(unread(&none).unwrap().len(), Some(0));
+    board.overviews = Overviews {
+        capacity: Some(vec![
+            ran("31", (true, 2_000)),
+            ran("32", (true, 1_000)),
+            ran("33", (false, 500)),
+        ]),
+        unread: vec![Unread {
+            repository: "o/vault".to_owned(),
+            visibility: Visibility::Private,
+            reason: "its runs are unread".to_owned(),
+        }],
+        heads: vec!["31".to_owned(), "32".to_owned()],
+    };
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let capacity = value
+        .get_attr("overviews")
+        .unwrap()
+        .get_attr("capacity")
+        .unwrap();
+    assert_eq!(
+        keys(&capacity),
+        ["oldest_queued", "queued", "running", "superseded"]
+    );
+    let read: Vec<String> = ["queued", "running", "oldest_queued"]
+        .iter()
+        .map(|key| capacity.get_attr(key).unwrap().to_string())
+        .collect();
+    assert_eq!(
+        read,
+        [
+            "2",
+            "1",
+            &Timestamp::from_second(1_000).unwrap().to_string()
+        ]
+    );
+    let superseded = capacity
+        .get_attr("superseded")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert_eq!(
+        keys(&superseded),
+        ["created", "id", "repository", "sha", "url"]
+    );
+    let shown: Vec<String> = ["id", "sha", "repository", "url", "created"]
+        .iter()
+        .map(|key| superseded.get_attr(key).unwrap().to_string())
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            "33",
+            "33",
+            "o/app",
+            "https://github.com/o/app/actions/runs/33",
+            &Timestamp::from_second(500).unwrap().to_string()
+        ]
+    );
+    let unread = unread(&value).unwrap().get_item_by_index(0).unwrap();
+    assert_eq!(
+        (
+            unread.get_attr("repository").unwrap().to_string(),
+            unread.get_attr("reason").unwrap().to_string()
+        ),
+        ("o/vault".to_owned(), "its runs are unread".to_owned())
     );
 }
