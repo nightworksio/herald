@@ -7,8 +7,8 @@
 use herald_config::{Config, RECALL_TEMPLATE, RouteConfig};
 use herald_core::{
     AdvisedPost, AdvisedReports, Board, Cursor, Delivery, Identity, Key, MOST_ADVISED_REPORTS,
-    Profile, Route, RouteId, Showing, SourceName, Step, TemplateName, Visibility, advises,
-    living_identity, report_event,
+    Route, RouteId, Showing, SourceName, Step, TemplateName, Visibility, advises, living_identity,
+    report_event,
 };
 use herald_ports::{Clock, Cursors, Http, Ledger, Recalls, Signer, Store, Versioned, Written};
 
@@ -154,15 +154,15 @@ pub(crate) async fn recorded<S: Store, C: Clock, G: Signer>(
         .map(|record| record.value.clone())
         .unwrap_or_default();
     let recalls = ports.store.recalls();
-    if advised.is_empty() {
-        return Ok(record);
-    }
+    let asked = !advised.is_empty();
     let fresh: Vec<AdvisedPost> = advised
         .into_iter()
         .filter(|post| !cursor.advised.contains(post))
         .collect();
     if fresh.is_empty() {
-        indexed(&recalls, name, false).await?;
+        if asked {
+            indexed(&recalls, name, false).await?;
+        }
         return Ok(record);
     }
     cursor.advised.extend(fresh);
@@ -203,7 +203,7 @@ fn recalling<'c, H>(
         .get(&post.destination)
         .ok_or(UNCONFIGURED)?;
     let placed = destination.recalled(&post.placed).ok_or(UNPLACED)?;
-    let (profile, _) = destination.profile(&placed).ok_or(UNPLACED)?;
+    let (mut profile, _) = destination.profile(&placed).ok_or(UNPLACED)?;
     if !profile.features.edits {
         return Err(UNEDITABLE);
     }
@@ -215,6 +215,7 @@ fn recalling<'c, H>(
     let reached = destination
         .reach(&placed, &borrowed.base, borrowed.secret.clone())
         .ok_or(UNPLACED)?;
+    profile.symbols = destination.symbols();
     let config = RouteConfig {
         route: Route {
             id: post.route.clone(),
@@ -227,10 +228,7 @@ fn recalling<'c, H>(
             },
         },
         options: placed,
-        profile: Profile {
-            symbols: destination.symbols(),
-            ..profile
-        },
+        profile,
         private: true,
         vouched: false,
         stated: true,
@@ -240,8 +238,14 @@ fn recalling<'c, H>(
         PreparedRoute {
             config,
             reached,
+            secret: borrowed.secret.clone(),
+            marker_key: borrowed.marker_key.clone(),
+            derived: borrowed.derived,
             projects: None,
-            ..borrowed.clone()
+            domain: borrowed.domain.clone(),
+            base: borrowed.base.clone(),
+            attempts: borrowed.attempts,
+            signed_for: borrowed.signed_for,
         },
         http,
     ))

@@ -175,6 +175,24 @@ fn a_report_whose_name_renders_no_title_stops_before_any_post() {
         "{swept:?}"
     );
     assert_eq!(posted(&shown), Vec::<String>::new());
+    let viewable = (
+        CHANNEL_READ.0,
+        200,
+        r#"{"id":"1566200000000000100","type":0,"guild_id":"1566200000000000900","permission_overwrites":[]}"#,
+    );
+    let unshown =
+        Script::answering(&[(GRAPHQL, 200, &page), viewable, GUILD_READ, ONBOARDING_READ]);
+    let swept = round(&blank(true), (&healthy(), &unshown), (NOON, None));
+    assert!(
+        matches!(stopped(&swept)[..], [Stop::Source(_)]),
+        "{swept:?}"
+    );
+    assert_eq!(posted(&unshown), Vec::<String>::new());
+    assert!(
+        unshown.seen().iter().all(|line| !line.contains("/alerts?")),
+        "{:?}",
+        unshown.seen()
+    );
 }
 
 #[test]

@@ -5,9 +5,9 @@
 use herald_core::{Declined, Delivery, Entry, Facts, Sent, Step};
 use herald_dest_matrix::{Matrix, MatrixMarkers, RouteOptions};
 use herald_kinds::{Probe, Reach};
-use herald_ports::{Markers, Response, Secret};
-use herald_testing::ScriptedHttp;
+use herald_ports::{Markers, Response, Secret, USER_AGENT};
 use herald_testing::sample::{announcement, marker};
+use herald_testing::{Fixture, Replay, ScriptedHttp};
 use serde_json::{Value, json};
 
 const DOTTED: &str = "the Matrix id in the request's path is empty or a dot segment, which names nothing in a URL path, so this step is not taken";
@@ -40,10 +40,32 @@ fn posted(event: &str) -> Entry {
     )
 }
 
-fn sent(matrix: &Matrix, answers: Vec<Response>, step: &Step, entry: &Entry) -> (Sent, usize) {
-    let http = ScriptedHttp::new(answers);
+/// A replay of `exchanges` alone, refusing any other request.
+fn replay(exchanges: &Value) -> Replay {
+    Replay::of(Fixture::from_json(&json!({ "exchanges": exchanges }).to_string()).unwrap())
+}
+
+/// The homeserver's answer naming herald's own account.
+fn whoami_exchange() -> Value {
+    json!({
+        "request": {
+            "method": "GET",
+            "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+            "headers": {
+                "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+                "User-Agent": USER_AGENT
+            }
+        },
+        "response": { "status": 200, "body": { "user_id": "@herald:matrix.example" } }
+    })
+}
+
+/// What `step` of `entry` sends through a replay asking nothing, and
+/// whether it asked nothing.
+fn sent(matrix: &Matrix, step: &Step, entry: &Entry) -> (Sent, Result<(), String>) {
+    let http = replay(&json!([]));
     let sent = pollster::block_on(matrix.send(&http, step, &announcement(), entry)).unwrap();
-    (sent, http.asked().len())
+    (sent, http.finish())
 }
 
 fn whoami() -> Response {
@@ -53,20 +75,11 @@ fn whoami() -> Response {
 #[test]
 fn a_dotted_room_is_pinned_unpinned_redacted_or_read_back_with_no_request() {
     let dotted = matrix("..");
-    let refused = (Sent::Refused(DOTTED.to_owned()), 0);
-    assert_eq!(
-        sent(&dotted, Vec::new(), &Step::Pin, &posted("$post")),
-        refused
-    );
-    assert_eq!(
-        sent(&dotted, Vec::new(), &Step::Unpin, &posted("$post")),
-        refused
-    );
+    let refused = (Sent::Refused(DOTTED.to_owned()), Ok(()));
+    assert_eq!(sent(&dotted, &Step::Pin, &posted("$post")), refused);
+    assert_eq!(sent(&dotted, &Step::Unpin, &posted("$post")), refused);
     let pinned = posted("$post").landed(Step::Pin, Facts::default());
-    assert_eq!(
-        sent(&dotted, Vec::new(), &Step::Delete(0), &pinned),
-        refused
-    );
+    assert_eq!(sent(&dotted, &Step::Delete(0), &pinned), refused);
     assert_eq!(
         dotted
             .request(&Step::Pin, &announcement(), &posted("$post"))
@@ -74,7 +87,7 @@ fn a_dotted_room_is_pinned_unpinned_redacted_or_read_back_with_no_request() {
             .to_string(),
         DOTTED
     );
-    let http = ScriptedHttp::new(vec![whoami()]);
+    let http = replay(&json!([whoami_exchange()]));
     let read = pollster::block_on(
         MatrixMarkers::new(&dotted, &http).entry(&announcement().key, &marker()),
     );
@@ -82,7 +95,7 @@ fn a_dotted_room_is_pinned_unpinned_redacted_or_read_back_with_no_request() {
         read.unwrap_err().to_string(),
         format!("the destination's posts could not be read: {DOTTED}")
     );
-    assert_eq!(http.asked().len(), 1);
+    assert_eq!(http.finish(), Ok(()));
     let checking = ScriptedHttp::new(vec![whoami()]);
     let probes = pollster::block_on(dotted.probe(&checking, &Delivery::default()));
     assert_eq!(
