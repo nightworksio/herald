@@ -309,48 +309,101 @@ async fn after_closing(sql: &NativePostgres) -> Result<Vec<herald_ports::Changed
     panic!("the closed connection was never seen");
 }
 
-#[tokio::test]
-async fn a_connection_the_database_closed_is_made_again_or_said_why_not() {
-    let Some(url) = url() else {
-        return;
-    };
+fn ended(role: &str) -> String {
+    format!(
+        "SELECT count(pg_terminate_backend(pid, 10000)) FROM pg_stat_activity WHERE usename = '{role}'"
+    )
+}
+
+fn refused(role: &str) -> Result<Vec<herald_ports::Changed>, SqlError> {
+    Err(SqlError::Unavailable {
+        reason: format!(
+            "the connection closed (db error: FATAL: terminating connection due to administrator command) and could not be made again: role \"{role}\" is not permitted to log in"
+        ),
+    })
+}
+
+async fn reconnecting(role: &str) -> Option<(NativePostgres, NativePostgres)> {
+    let url = url()?;
     let admin = NativePostgres::connect(&Secret::new(URL, url.clone()), TIMEOUTS)
         .await
         .unwrap();
-    ran(&admin, "DROP ROLE IF EXISTS herald_reconnecting")
+    ran(&admin, &format!("DROP ROLE IF EXISTS {role}"))
         .await
         .unwrap();
-    ran(&admin, "CREATE ROLE herald_reconnecting LOGIN")
+    ran(&admin, &format!("CREATE ROLE {role} LOGIN"))
         .await
         .unwrap();
-    let reconnecting = Secret::new(URL, as_role(&url, "herald_reconnecting"));
-    let sql = NativePostgres::connect(&reconnecting, TIMEOUTS)
+    let sql = NativePostgres::connect(&Secret::new(URL, as_role(&url, role)), TIMEOUTS)
         .await
         .unwrap();
-    let ended = "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE usename = 'herald_reconnecting'";
-    ran(&admin, ended).await.unwrap();
+    Some((admin, sql))
+}
+
+async fn dropped(admin: &NativePostgres, sql: NativePostgres, role: &str) {
+    drop(sql);
+    ran(admin, &ended(role)).await.unwrap();
+    ran(admin, &format!("DROP ROLE {role}")).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_connection_the_database_closed_between_statements_is_made_again_or_said_why_not() {
+    let role = "herald_reconnecting";
+    let Some((admin, sql)) = reconnecting(role).await else {
+        return;
+    };
+    ran(&admin, &ended(role)).await.unwrap();
     assert_eq!(
         after_closing(&sql).await.unwrap()[0].rows,
         [[Value::Integer(1)]]
     );
-    ran(&admin, "ALTER ROLE herald_reconnecting NOLOGIN")
+    ran(&admin, &format!("ALTER ROLE {role} NOLOGIN"))
         .await
         .unwrap();
-    ran(&admin, ended).await.unwrap();
-    let Err(SqlError::Unavailable { reason }) = after_closing(&sql).await else {
-        panic!("a role that may not log in cannot connect again");
-    };
-    assert_eq!(
-        reason,
-        "the connection closed (db error: FATAL: terminating connection due to administrator command) and could not be made again: role \"herald_reconnecting\" is not permitted to log in"
-    );
-    ran(&admin, "ALTER ROLE herald_reconnecting LOGIN")
+    ran(&admin, &ended(role)).await.unwrap();
+    for _ in 0..2 {
+        assert_eq!(after_closing(&sql).await, refused(role));
+    }
+    ran(&admin, &format!("ALTER ROLE {role} LOGIN"))
         .await
         .unwrap();
     assert!(ran(&sql, "SELECT 1").await.is_ok());
-    drop(sql);
-    ran(&admin, ended).await.unwrap();
-    ran(&admin, "DROP ROLE herald_reconnecting").await.unwrap();
+    dropped(&admin, sql, role).await;
+}
+
+#[tokio::test]
+async fn a_connection_the_database_closed_during_a_statement_is_said_why_as_between_statements() {
+    let role = "herald_interrupted";
+    let Some((admin, sql)) = reconnecting(role).await else {
+        return;
+    };
+    ran(&admin, &format!("ALTER ROLE {role} NOLOGIN"))
+        .await
+        .unwrap();
+    let sleeping = format!(
+        "SELECT count(*) FROM pg_stat_activity WHERE usename = '{role}' AND wait_event = 'PgSleep'"
+    );
+    let (statement, ()) = tokio::join!(ran(&sql, "SELECT pg_sleep(20)::text"), async {
+        for _ in 0..500 {
+            if ran(&admin, &sleeping).await.unwrap()[0].rows == [[Value::Integer(1)]] {
+                ran(&admin, &ended(role)).await.unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("the statement never ran");
+    });
+    assert_eq!(
+        statement,
+        Err(SqlError::Unavailable {
+            reason: "terminating connection due to administrator command".to_owned()
+        })
+    );
+    assert_eq!(after_closing(&sql).await, refused(role));
+    ran(&admin, &format!("ALTER ROLE {role} LOGIN"))
+        .await
+        .unwrap();
+    dropped(&admin, sql, role).await;
 }
 
 #[tokio::test]
