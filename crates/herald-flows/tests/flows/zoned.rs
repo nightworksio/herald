@@ -37,13 +37,16 @@ kind = "github"
 repository = "o/r"
 signals = ["pull-request"]
 token = {{ secret = "HERALD_FORGE_TOKEN" }}
+[sources.plain]
+kind = "github"
+repository = "p/q"
 [sources.gate.areas]
 web = ["web/**"]
 docs = ["docs/**"]
 secret = ["secret/**"]
 [[routes]]
 id = "web"
-sources = ["gate"]
+sources = ["gate", "plain"]
 destination = "discord"
 channel = "1566200000000000100"
 template = "t"
@@ -87,7 +90,18 @@ body = "zone {{% if event.origin.areas %}}{{{{ event.origin.areas | join(' ') }}
 }
 
 fn event(visibility: Visibility) -> Event {
+    committed(visibility, Some("c0ffee"))
+}
+
+fn committed(visibility: Visibility, commit: Option<&str>) -> Event {
     let text = |value: &str| Attribute::Text(value.to_owned());
+    let mut attributes = BTreeMap::from([
+        (SIGNAL.to_owned(), text(Signal::PullRequest.name())),
+        (NUMBER.to_owned(), Attribute::Number(4.into())),
+    ]);
+    if let Some(commit) = commit {
+        attributes.insert(COMMIT.to_owned(), text(commit));
+    }
     Event::normalise(Draft {
         identity: "github.com/1/pull/4/opened".to_owned(),
         kind: Kind::PULL_REQUEST,
@@ -98,11 +112,7 @@ fn event(visibility: Visibility) -> Event {
             PULL_LINK.to_owned(),
             "https://github.com/o/r/pull/4".to_owned(),
         )]),
-        attributes: BTreeMap::from([
-            (SIGNAL.to_owned(), text(Signal::PullRequest.name())),
-            (NUMBER.to_owned(), Attribute::Number(4.into())),
-            (COMMIT.to_owned(), text("c0ffee")),
-        ]),
+        attributes,
         occurred: NOON,
     })
     .unwrap()
@@ -161,6 +171,16 @@ fn kept(store: &Failing, head: &str, paths: &[&str], whole: bool) {
 /// The routes of `config` that announce `event` through `script`, each
 /// with the areas its post names.
 fn announced(config: &Config, store: &Failing, script: &Script, event: &Event) -> Vec<String> {
+    announced_from(config, (store, script), "gate", event)
+}
+
+/// [`announced`], `event` coming from the source `source`.
+fn announced_from(
+    config: &Config,
+    (store, script): (&Failing, &Script),
+    source: &str,
+    event: &Event,
+) -> Vec<String> {
     let secrets = secrets().with("HERALD_FORGE_TOKEN", "t");
     let prepared =
         pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Serves)).unwrap();
@@ -175,7 +195,7 @@ fn announced(config: &Config, store: &Failing, script: &Script, event: &Event) -
         config,
         &connected,
         &ports,
-        &SourceName::new("gate"),
+        &SourceName::new(source),
         event,
         "r1",
     ));
@@ -296,4 +316,29 @@ fn a_private_repository_s_areas_reach_only_the_routes_said_private() {
         .map(|body| String::from_utf8(body).unwrap())
         .collect();
     assert_eq!(posted.len(), 1, "{posted:?}");
+}
+
+#[test]
+fn an_event_naming_no_head_or_from_a_source_naming_no_areas_falls_in_none() {
+    let config = config("");
+    let store = healthy();
+    kept(&store, "c0ffee", &["web/index.html"], true);
+    assert_eq!(
+        announced(
+            &config,
+            &store,
+            &posting(),
+            &committed(Visibility::Public, None)
+        ),
+        ["all none"]
+    );
+    assert_eq!(
+        announced_from(
+            &config,
+            (&store, &posting()),
+            "plain",
+            &event(Visibility::Public)
+        ),
+        Vec::<String>::new()
+    );
 }
