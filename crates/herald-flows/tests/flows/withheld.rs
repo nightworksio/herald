@@ -168,8 +168,9 @@ fn a_report_whose_name_renders_no_title_stops_before_any_post() {
         matches!(stopped(&swept)[..], [Stop::Source(_)]),
         "{swept:?}"
     );
+    let store = healthy();
     let shown = Script::answering(&answers((&page, &open), &[]));
-    let swept = round(&blank(true), (&healthy(), &shown), (NOON, None));
+    let swept = round(&blank(true), (&store, &shown), (NOON, None));
     assert!(
         matches!(stopped(&swept)[..], [Stop::Source(_)]),
         "{swept:?}"
@@ -182,9 +183,10 @@ fn a_report_whose_name_renders_no_title_stops_before_any_post() {
     );
     let unshown =
         Script::answering(&[(GRAPHQL, 200, &page), viewable, GUILD_READ, ONBOARDING_READ]);
-    let swept = round(&blank(true), (&healthy(), &unshown), (NOON, None));
+    let swept = round(&blank(true), (&store, &unshown), (NOON, None));
     assert!(
-        matches!(stopped(&swept)[..], [Stop::Source(_)]),
+        swept.iter().any(|swept| swept.source.as_str() == " "
+            && matches!(swept.outcome, Sweep::Stopped(Stop::Source(_)))),
         "{swept:?}"
     );
     assert_eq!(posted(&unshown), Vec::<String>::new());

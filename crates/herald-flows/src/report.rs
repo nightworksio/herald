@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Advised, AdvisedPost, Advisories, Board, Cursor, Identity, Listed, Overviews, Pull, RouteId,
-    Row, Showing, SourceName, Surface, Unread, Visibility, advises, grouped, report_event, steps,
+    Advised, Advisories, Board, Cursor, Identity, Listed, Overviews, Pull, RouteId, Row, Showing,
+    SourceName, Surface, Unread, Visibility, advises, grouped, report_event, steps,
 };
 use herald_kinds::{Asked, Queue, Scope};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -19,6 +19,7 @@ use crate::budget::Budgeted;
 use crate::deciding::decided_rows;
 use crate::poll::{Fresh, Remembered, Sweep, Swept, remembered, stored};
 use crate::prepare::Connected;
+use crate::recall::Recording;
 
 /// Why a report's view could not be read: a source it names is not one
 /// this run reads.
@@ -683,18 +684,20 @@ async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
             Err(stop) => return Sweep::Stopped(stop),
         }
     }
-    if !begun.advised.is_empty() {
-        let read = view_pulls(flow, (&begun.report.view, begun.view, Some(kept)), reads).await;
-        if let Ok(read) = read {
-            begun.read.advisories = read.advisories;
-        }
-        let recording: Vec<AdvisedPost> = begun
+    let recording = Recording::of(
+        begun
             .advised
             .iter()
             .flat_map(|(_, _, routes, _, _)| routes)
             .filter_map(|id| config.routes.iter().find(|route| route.route.id == *id))
             .map(crate::recall::post_of)
-            .collect();
+            .collect(),
+    );
+    if let Some(recording) = recording {
+        let read = view_pulls(flow, (&begun.report.view, begun.view, Some(kept)), reads).await;
+        if let Ok(read) = read {
+            begun.read.advisories = read.advisories;
+        }
         let recorded = match crate::recall::recorded(ports, name, record.clone(), recording).await {
             Ok(written) => {
                 record = written;

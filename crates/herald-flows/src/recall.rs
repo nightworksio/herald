@@ -133,6 +133,18 @@ pub(crate) fn post_of(route: &RouteConfig) -> AdvisedPost {
     }
 }
 
+/// The living posts a section is about to be sent to, at least one: made
+/// only by [`Recording::of`], so a cursor is never recorded for a send
+/// that holds no post (ADR-0067).
+pub(crate) struct Recording(Vec<AdvisedPost>);
+
+impl Recording {
+    /// `posts`, where it holds any.
+    pub(crate) fn of(posts: Vec<AdvisedPost>) -> Option<Self> {
+        (!posts.is_empty()).then_some(Self(posts))
+    }
+}
+
 /// `record` of the report `name` with each of `advised` it does not hold,
 /// written before the section is sent, between two writes of the names of
 /// the reports whose living posts were sent advisories, so no cursor keeps
@@ -147,22 +159,20 @@ pub(crate) async fn recorded<S: Store, C: Clock, G: Signer>(
     ports: &Ports<'_, S, C, G>,
     name: &str,
     record: Option<Versioned<Cursor>>,
-    advised: Vec<AdvisedPost>,
+    advised: Recording,
 ) -> Result<Option<Versioned<Cursor>>, Stop> {
     let mut cursor = record
         .as_ref()
         .map(|record| record.value.clone())
         .unwrap_or_default();
     let recalls = ports.store.recalls();
-    let asked = !advised.is_empty();
     let fresh: Vec<AdvisedPost> = advised
+        .0
         .into_iter()
         .filter(|post| !cursor.advised.contains(post))
         .collect();
     if fresh.is_empty() {
-        if asked {
-            indexed(&recalls, name, false).await?;
-        }
+        indexed(&recalls, name, false).await?;
         return Ok(record);
     }
     cursor.advised.extend(fresh);

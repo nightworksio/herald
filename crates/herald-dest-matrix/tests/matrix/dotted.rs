@@ -45,19 +45,27 @@ fn replay(exchanges: &Value) -> Replay {
     Replay::of(Fixture::from_json(&json!({ "exchanges": exchanges }).to_string()).unwrap())
 }
 
-/// The homeserver's answer naming herald's own account.
-fn whoami_exchange() -> Value {
+/// The homeserver answering a read of `path` with `body`.
+fn read_exchange(path: &str, body: &Value) -> Value {
     json!({
         "request": {
             "method": "GET",
-            "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+            "url": format!("https://matrix.example/_matrix/client/v3{path}"),
             "headers": {
                 "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
                 "User-Agent": USER_AGENT
             }
         },
-        "response": { "status": 200, "body": { "user_id": "@herald:matrix.example" } }
+        "response": { "status": 200, "body": body }
     })
+}
+
+/// The homeserver's answer naming herald's own account.
+fn whoami_exchange() -> Value {
+    read_exchange(
+        "/account/whoami",
+        &json!({ "user_id": "@herald:matrix.example" }),
+    )
 }
 
 /// What `step` of `entry` sends through a replay asking nothing, and
@@ -116,14 +124,17 @@ fn a_pin_named_by_a_dotted_event_is_never_read_back() {
     let room = matrix("!abcdefg:matrix.example");
     let mut unremembered = announcement();
     unremembered.replaces = None;
-    let http = ScriptedHttp::new(vec![
-        answer(&json!({ "pinned": ["..", "$post"] })),
-        whoami(),
-    ]);
+    let http = replay(&json!([
+        read_exchange(
+            "/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+            &json!({ "pinned": ["..", "$post"] })
+        ),
+        whoami_exchange(),
+    ]));
     let sent = pollster::block_on(room.send(&http, &Step::Unpin, &unremembered, &posted("$post")))
         .unwrap();
     assert_eq!(sent, Sent::Refused(DOTTED.to_owned()));
-    assert_eq!(http.asked().len(), 2);
+    assert_eq!(http.finish(), Ok(()));
 }
 
 #[test]
