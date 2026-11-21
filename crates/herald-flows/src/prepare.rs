@@ -180,7 +180,6 @@ pub struct PreparedRoute {
     pub(crate) secret: Secret,
     pub(crate) marker_key: Secret,
     pub(crate) derived: bool,
-    pub(crate) projects: Option<Projects>,
     /// The instance's domain, which a feed is served on; empty where
     /// `[federation]` names none.
     pub(crate) domain: String,
@@ -243,6 +242,7 @@ pub(crate) fn expanded<'a, H>(
 pub struct Prepared {
     models: Vec<PreparedModel>,
     routes: Vec<PreparedRoute>,
+    projects: BTreeMap<RouteId, Projects>,
     sources: Vec<PreparedSource>,
     mintings: Vec<Minting>,
     interacting: Vec<(DestinationName, Interacted)>,
@@ -312,6 +312,9 @@ pub enum Asking<H> {
 pub struct Connected<H> {
     pub(crate) models: Vec<(PreparedModel, Asking<H>)>,
     pub(crate) routes: Vec<(PreparedRoute, H)>,
+    /// The projects each route announcing each project as an actor of its
+    /// own names its actors from, by the route's id (ADR-0036).
+    pub(crate) projects: BTreeMap<RouteId, Projects>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
     pub(crate) mintings: Vec<(Minting, H)>,
     pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
@@ -478,6 +481,7 @@ impl Prepared {
             pages,
             models,
             routes,
+            projects: self.projects,
             sources,
             mintings,
             interacting,
@@ -678,7 +682,6 @@ fn prepared_routes(
             secret: destination.secret.clone(),
             marker_key: destination.marker_key.clone(),
             derived: destination.derived,
-            projects: Projects::of(config, route),
             domain: config.federation.domain.clone().unwrap_or_default(),
             base: config.instance_base().to_owned(),
             attempts: config.attempts.get(),
@@ -774,6 +777,11 @@ pub async fn prepare<S: Secrets, G: Signer>(
     Ok(Prepared {
         models: prepared_models(config, (&read, secrets), uses).await?,
         routes,
+        projects: config
+            .routes
+            .iter()
+            .filter_map(|route| Some((route.route.id.clone(), Projects::of(config, route)?)))
+            .collect(),
         sources,
         mintings: mintings.0,
         interacting,

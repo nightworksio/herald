@@ -185,11 +185,14 @@ fn unnamed<H>(
 ) -> Vec<Gap> {
     let mut gaps = Vec::new();
     for (index, (route, _)) in connected.routes.iter().enumerate() {
-        let taken = route.projects.as_ref().is_some_and(|projects| {
-            projects
-                .owner(source)
-                .is_some_and(|sourced| projects.takes((expand, sourced), member, project))
-        });
+        let taken = connected
+            .projects
+            .get(&route.config.route.id)
+            .is_some_and(|projects| {
+                projects
+                    .owner(source)
+                    .is_some_and(|sourced| projects.takes((expand, sourced), member, project))
+            });
         let Some((actor, named)) = route
             .reached
             .federates()

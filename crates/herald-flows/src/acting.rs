@@ -351,7 +351,7 @@ async fn claimed<'a, S: Store, H>(
             continue;
         };
         let destination = &route.config.route.destination;
-        let Some(projects) = &route.projects else {
+        let Some(projects) = connected.projects.get(&route.config.route.id) else {
             if actor.actor() == name {
                 found.claims.insert(Claim::route(destination));
                 found.fixed.push(Acting {
@@ -513,8 +513,7 @@ pub(crate) async fn acting<'a, S: Store, H>(
             reason: Stop::Store(error.to_string()),
         });
     }
-    Ok(Cow::Owned(PreparedRoute {
-        reached: actor.named(&name).reached(),
-        ..route.clone()
-    }))
+    let mut acting = route.clone();
+    acting.reached = actor.named(&name).reached();
+    Ok(Cow::Owned(acting))
 }

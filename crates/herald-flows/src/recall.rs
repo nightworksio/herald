@@ -251,7 +251,6 @@ fn recalling<'c, H>(
             secret: borrowed.secret.clone(),
             marker_key: borrowed.marker_key.clone(),
             derived: borrowed.derived,
-            projects: None,
             domain: borrowed.domain.clone(),
             base: borrowed.base.clone(),
             attempts: borrowed.attempts,
