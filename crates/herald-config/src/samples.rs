@@ -119,6 +119,7 @@ pub fn sample_origin() -> Origin {
         topics: vec!["sample-topic".to_owned()],
         properties: BTreeMap::from([("team".to_owned(), vec!["sample".to_owned()])]),
         visibility: Visibility::Public,
+        areas: None,
         source: Some(SourceName::new("sample-source")),
     }
 }

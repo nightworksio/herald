@@ -178,6 +178,10 @@
             "php-mutation-gate"
           ]
         },
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "content_warning": {
           "description": "The content warning each Note is shown behind.",
           "type": "string"
@@ -519,6 +523,21 @@
         }
       ]
     },
+    "AreaPaths": {
+      "description": "Where a route narrowing by areas reads the paths a pull request's head\nchanges, which its event's areas are those of (ADR-0072).",
+      "oneOf": [
+        {
+          "description": "From the pull request as herald keeps it, where its head is the\nevent's: no request more, and no areas where they are not kept.",
+          "type": "string",
+          "const": "kept"
+        },
+        {
+          "description": "From the forge as the event is delivered: one request more for each\npull request event the route may take.",
+          "type": "string",
+          "const": "delivery"
+        }
+      ]
+    },
     "Attempts": {
       "description": "How many times the store tries a write that lost a race to an unrelated write, 3 by default.",
       "type": "integer",
@@ -591,6 +610,10 @@
           "description": "A route to a Discord destination.",
           "type": "object",
           "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -728,6 +751,10 @@
           "description": "A route to a Mastodon destination.",
           "type": "object",
           "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -876,6 +903,10 @@
           "description": "A route to a Matrix destination.",
           "type": "object",
           "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -1001,6 +1032,10 @@
           "description": "A route to a Slack destination.",
           "type": "object",
           "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -1133,6 +1168,10 @@
                 "php-mutation-gate"
               ]
             },
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -1264,6 +1303,10 @@
           "description": "A route publishing its events to a feed of herald's own.",
           "type": "object",
           "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -1381,6 +1424,10 @@
           "description": "A route pushing its events to a peer's herald source.",
           "type": "object",
           "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
             "at": {
               "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
               "type": "string",
@@ -2233,6 +2280,10 @@
       "description": "A route to a Discord destination.",
       "type": "object",
       "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "channel": {
           "description": "The channel's id. A bot needs one; a webhook posts where it was made.",
           "type": "string"
@@ -2854,6 +2905,10 @@
       "description": "A route pushing its events to a peer's herald source.",
       "type": "object",
       "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
           "type": "boolean",
@@ -2968,6 +3023,10 @@
       "description": "A route publishing its events to a feed of herald's own.",
       "type": "object",
       "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
           "type": "boolean",
@@ -3346,6 +3405,10 @@
       "description": "A route to a Mastodon destination.",
       "type": "object",
       "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "content_warning": {
           "description": "The content warning each status is shown behind.",
           "type": "string"
@@ -3491,6 +3554,14 @@
       "description": "What of an event a route narrows its sources' events by. Each list\ntakes any one of what it holds, and every event where empty; an event\nwith no origin, such as a feed's, is taken only where the match names\nprojects and attributes alone; and an event `not` takes is never taken.",
       "type": "object",
       "properties": {
+        "areas": {
+          "description": "The areas, as globs ignoring case, any one of which the pull request\nan event is of falls in, each matching an area one of the route's\nsources names; an event whose areas are not known is not taken, and\nunder `not` is never taken (ADR-0072).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
         "attributes": {
           "description": "The attributes of the event's kind, every one of which it carries\nwith one of the values given for it, as text and ignoring case, such\nas `conclusion = [\"failure\", \"timed_out\"]`; any value where none is\ngiven.",
           "type": "object",
@@ -3659,6 +3730,10 @@
       "description": "A route to a Matrix destination.",
       "type": "object",
       "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
           "type": "boolean",
@@ -5245,6 +5320,10 @@
       "description": "A route to a Slack destination.",
       "type": "object",
       "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
         "channel": {
           "description": "The channel's id, such as `C0123456789`, which the bot has joined. A\nbot needs one; a webhook posts where it was made.",
           "type": "string"

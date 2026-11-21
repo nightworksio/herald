@@ -437,6 +437,19 @@ impl herald_kinds::Queue for Scoped {
         })
     }
 
+    fn changed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (repository, number): (&'a str, u64),
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Changed, Unpolled>> {
+        Box::pin(async move {
+            let origin = self.origin(repository);
+            let reading = (Most::default(), false);
+            let opened = self.reading(&origin, ("", herald_core::Visibility::Private), reading);
+            opened.files_of(&Erased(http), number).await
+        })
+    }
+
     fn opened<'a>(
         &'a self,
         http: &'a dyn DynHttp,

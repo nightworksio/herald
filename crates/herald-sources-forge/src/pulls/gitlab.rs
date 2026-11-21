@@ -44,6 +44,7 @@ struct Listed {
     updated_at: Option<Timestamp>,
     source_branch: Option<String>,
     target_branch: Option<String>,
+    sha: Option<String>,
     #[serde(default)]
     labels: Vec<String>,
 }
@@ -77,6 +78,7 @@ impl Listed {
             author: Some(self.author.username),
             base: self.target_branch,
             head: self.source_branch,
+            commit: self.sha,
             draft: self.draft,
             merged_by: self.merged_by.map(|user| user.username),
             labels: self.labels,
@@ -99,6 +101,12 @@ struct Changes {
     draft: Option<Drafted>,
 }
 
+/// A merge request's head commit, as GitLab's webhook names it.
+#[derive(Deserialize)]
+struct Commit {
+    id: String,
+}
+
 /// A merge request, as GitLab's webhook describes it.
 #[derive(Deserialize)]
 struct Attributes {
@@ -110,6 +118,7 @@ struct Attributes {
     draft: bool,
     source_branch: Option<String>,
     target_branch: Option<String>,
+    last_commit: Option<Commit>,
     #[serde(default, deserialize_with = "crate::gitlab::when")]
     created_at: Option<Timestamp>,
     #[serde(default, deserialize_with = "crate::gitlab::when")]
@@ -196,6 +205,7 @@ pub(super) fn delivered(
         author: opened.then(|| actor.clone()),
         base: attributes.target_branch,
         head: attributes.source_branch,
+        commit: attributes.last_commit.map(|commit| commit.id),
         draft: attributes.draft,
         merged_by: (action == PullAction::Merged).then_some(actor),
         labels: hooked.labels.into_iter().map(|label| label.title).collect(),

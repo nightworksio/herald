@@ -32,6 +32,7 @@ mod pushing;
 mod replacing;
 mod sealing;
 mod withdrawing;
+mod zoning;
 
 use crate::prepare::{Connected, PreparedRoute};
 use heard::Heard;
@@ -804,26 +805,27 @@ impl<'a> Within<'a> {
     }
 }
 
-/// The routes of `connected` that take `event` of `source`: those
-/// `within` names and `bound` lets through, where either names any.
-fn taking<'c, H>(
+/// The routes of `connected` an event of `source` may reach: those
+/// `within` names and `bound` lets through, where either names any, that
+/// name `source` or the owner's member `within` names reaches.
+fn reachable<'c, H>(
     connected: &'c Connected<H>,
     (within, bound): (Within<'_>, Option<&[RouteId]>),
-    (source, event): (&SourceName, &Event),
+    source: &SourceName,
 ) -> Vec<&'c (PreparedRoute, H)> {
     connected
         .routes
         .iter()
         .filter(|(route, _)| {
             let route = &route.config.route;
+            let sourced = route.filter.sources.contains(source);
             within
                 .routes
                 .is_none_or(|routes| routes.contains(&route.id))
                 && bound.is_none_or(|routes| routes.contains(&route.id))
-                && within.reach.map_or_else(
-                    || route.filter.takes(source, event),
-                    |reach| reach.takes(route, source, event),
-                )
+                && within
+                    .reach
+                    .map_or(sourced, |reach| reach.reaches(&route.id, sourced))
         })
         .collect()
 }
@@ -858,64 +860,68 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     };
     let seen = visibility.unwrap_or(Visibility::Public);
     let bound = visibility.and_then(|visibility| crate::poll::bounded(config, visibility));
-    let taking = taking(connected, (within, bound.as_deref()), (source, event));
+    let reachable = reachable(connected, (within, bound.as_deref()), source);
+    let zoned = zoning::zoned((config, connected, ports), (source, event), &reachable).await;
+    let taking = zoned.taking(reachable, within, (source, event));
     let now = ports.clock.now();
-    let outcomes: Vec<Outcome> = stream::iter(taking.iter().map(|(route, http)| async move {
-        if !config.places(&route.config, event.kind()) {
-            return Outcome::Skipped(UNPLACED.to_owned());
-        }
-        let route = match acting(
-            (connected, ports.store, now),
-            route,
-            (source, event.project()),
-        )
-        .await
-        {
-            Ok(route) => route,
-            Err(outcome) => return outcome,
-        };
-        let running = Run {
-            ports,
-            route: &route,
-            kinds: &config.kinds,
-            http,
-            holder: run,
-            lease: config.announce.lease,
-            seen,
-            view: within.view,
-            advised: within.advised.contains(&route.config.route.id),
-        };
-        if event.withdrawn() {
-            let released = (event.identity(), Some(event.project()));
-            let held = HeldEvent {
-                source: source.clone(),
-                member: None,
-                event: event.clone(),
-            };
-            return Box::pin(running.withdraw(config, released, Some(held), Asked::Forge)).await;
-        }
-        let event = &match running.reissued(event).await {
-            Ok(event) => event,
-            Err(reason) => return stopped(reason),
-        };
-        match &route.config.route.delivery.group {
-            Some(grouping) => {
-                Grouped {
-                    run: &running,
-                    config,
-                    grouping,
-                }
-                .announce(source, event)
-                .await
+    let outcomes: Vec<Outcome> =
+        stream::iter(taking.iter().map(|&((route, http), event)| async move {
+            if !config.places(&route.config, event.kind()) {
+                return Outcome::Skipped(UNPLACED.to_owned());
             }
-            None => running.announce(event, &config.templates).await,
-        }
-    }))
-    .buffered(at_once(ports.store, config.run.routes).get())
-    .collect()
-    .await;
+            let route = match acting(
+                (connected, ports.store, now),
+                route,
+                (source, event.project()),
+            )
+            .await
+            {
+                Ok(route) => route,
+                Err(outcome) => return outcome,
+            };
+            let running = Run {
+                ports,
+                route: &route,
+                kinds: &config.kinds,
+                http,
+                holder: run,
+                lease: config.announce.lease,
+                seen,
+                view: within.view,
+                advised: within.advised.contains(&route.config.route.id),
+            };
+            if event.withdrawn() {
+                let released = (event.identity(), Some(event.project()));
+                let held = HeldEvent {
+                    source: source.clone(),
+                    member: None,
+                    event: event.clone(),
+                };
+                return Box::pin(running.withdraw(config, released, Some(held), Asked::Forge))
+                    .await;
+            }
+            let event = &match running.reissued(event).await {
+                Ok(event) => event,
+                Err(reason) => return stopped(reason),
+            };
+            match &route.config.route.delivery.group {
+                Some(grouping) => {
+                    Grouped {
+                        run: &running,
+                        config,
+                        grouping,
+                    }
+                    .announce(source, event)
+                    .await
+                }
+                None => running.announce(event, &config.templates).await,
+            }
+        }))
+        .buffered(at_once(ports.store, config.run.routes).get())
+        .collect()
+        .await;
     let mut announced = Vec::new();
-    for ((route, _), outcome) in taking.into_iter().zip(outcomes) {
+    for (((route, _), _), outcome) in taking.into_iter().zip(outcomes) {
         let id = &route.config.route.id;
         let outcome = match route.config.route.delivery.group {
             _ if event.withdrawn() => outcome,

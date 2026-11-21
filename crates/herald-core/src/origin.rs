@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::address::{domain, path_of_names};
 use crate::event::Problem;
 use crate::members::{Listed, Visibility, any_of, holds_all};
+use crate::queue::MOST_AREAS;
 use crate::route::SourceName;
 
 /// Where an event comes from: the forge or registry, the owner and the
@@ -36,6 +37,12 @@ pub struct Origin {
     pub properties: BTreeMap<String, Vec<String>>,
     /// Who may see it.
     pub visibility: Visibility,
+    /// The areas of its repository the pull request it is of falls in,
+    /// where every path that pull request's head changes is known; none
+    /// where they are not, which a route narrowing by areas never takes
+    /// (ADR-0072).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub areas: Option<Vec<String>>,
     /// The source or app it reached herald through, which herald names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(skip)]
@@ -86,6 +93,7 @@ impl Origin {
             topics: listed.topics.clone(),
             properties: listed.properties.clone(),
             visibility: listed.visibility,
+            areas: None,
             source: None,
         }
     }
@@ -103,6 +111,7 @@ impl Origin {
             topics: Vec::new(),
             properties: BTreeMap::new(),
             visibility: Visibility::Public,
+            areas: None,
             source: None,
         }
     }
@@ -126,6 +135,7 @@ impl Origin {
         .chain(&self.topics)
         .chain(self.properties.keys())
         .chain(self.properties.values().flatten())
+        .chain(self.areas.iter().flatten())
         .any(|field| field.len() > FIELD);
         if long {
             Err(Problem::OriginTooLong)
@@ -139,6 +149,12 @@ impl Origin {
             Err(Problem::OriginPath)
         } else if self.id.trim().is_empty() {
             Err(Problem::OriginId)
+        } else if self
+            .areas
+            .as_ref()
+            .is_some_and(|areas| areas.len() > MOST_AREAS)
+        {
+            Err(Problem::OriginAreas)
         } else {
             Ok(self)
         }

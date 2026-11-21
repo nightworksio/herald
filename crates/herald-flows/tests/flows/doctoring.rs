@@ -950,6 +950,7 @@ fn an_owner_registering_member_webhooks_is_checked_online_for_its_token_and_each
 }
 
 mod addressed;
+mod areas;
 mod federation;
 mod kept;
 mod reports;

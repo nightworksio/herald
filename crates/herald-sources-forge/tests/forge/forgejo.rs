@@ -51,6 +51,7 @@ fn a_webhook_named_by_either_of_forgejo_s_event_headers_announces_its_release() 
         ],
         properties: std::collections::BTreeMap::new(),
         visibility: herald_core::Visibility::Public,
+        areas: None,
         source: None,
     };
     let event = Forge::Forgejo

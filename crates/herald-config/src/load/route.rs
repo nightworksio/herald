@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Glob, Kind, Match, Mentions, Pattern, Pinning, Pins,
-    Profile, RoleId, Route, RouteId, SourceName, TemplateName, Thread,
+    AreaPaths, Delivery, DestinationName, Filter, Glob, Kind, Match, Mentions, Pattern, Pinning,
+    Pins, Profile, RoleId, Route, RouteId, SourceName, TemplateName, Thread,
 };
 use toml::Spanned;
 use toml::de::DeValue;
@@ -92,7 +92,7 @@ impl Loader<'_> {
         &mut self,
         mut file: MatchFile,
         path: &str,
-        kinds: &BTreeSet<Kind>,
+        (kinds, known): (&BTreeSet<Kind>, &BTreeSet<String>),
     ) -> Option<Match> {
         let at = format!("{path}.match");
         let not = file.not.take().map(|not| {
@@ -107,9 +107,9 @@ impl Loader<'_> {
             if let Some(refused) = refused {
                 self.error(&span, &format!("{at}.not"), refused);
             }
-            self.matched(*not, &format!("{at}.not"), kinds)
+            self.matched(*not, &format!("{at}.not"), (kinds, known))
         });
-        let matching = self.matched(file, &at, kinds)?;
+        let matching = self.matched(file, &at, (kinds, known))?;
         let not = match not {
             Some(not) => Some(Box::new(not?)),
             None => None,
@@ -118,7 +118,12 @@ impl Loader<'_> {
     }
 
     /// The match `file` writes at `at`, leaving `not` aside.
-    fn matched(&mut self, file: MatchFile, at: &str, kinds: &BTreeSet<Kind>) -> Option<Match> {
+    fn matched(
+        &mut self,
+        file: MatchFile,
+        at: &str,
+        (kinds, known): (&BTreeSet<Kind>, &BTreeSet<String>),
+    ) -> Option<Match> {
         let mut sound = true;
         let mut globs = |written: Vec<Spanned<String>>, key: &str| -> Vec<Glob> {
             written
@@ -141,6 +146,8 @@ impl Loader<'_> {
         let projects = globs(file.projects, "projects");
         let repositories = globs(file.repositories, "repositories");
         let owners = globs(file.owners, "owners");
+        let areas = self.areas(file.areas, at, known);
+        sound &= areas.is_some();
         let attributes = file.attributes.map_or_else(BTreeMap::new, |attributes| {
             let span = attributes.span();
             let attributes = attributes.into_inner();
@@ -172,8 +179,71 @@ impl Loader<'_> {
             topics: file.topics,
             properties: file.properties,
             attributes,
+            areas: areas.unwrap_or_default(),
             not: None,
         })
+    }
+
+    /// Where the route at `path` reads the paths `matching`'s areas are
+    /// those of, as `written` says: refused at delivery where it names no
+    /// areas.
+    fn area_paths(
+        &mut self,
+        written: Option<Spanned<AreaPaths>>,
+        path: &str,
+        matching: &Match,
+    ) -> AreaPaths {
+        written.map_or(AreaPaths::Kept, |area_paths| {
+            if *area_paths.get_ref() == AreaPaths::Delivery && !matching.reads_areas() {
+                self.error(
+                    &area_paths.span(),
+                    &format!("{path}.area_paths"),
+                    "a route reads paths at delivery only for a match naming areas; name them, or remove area_paths",
+                );
+            }
+            area_paths.into_inner()
+        })
+    }
+
+    /// The area globs `written` at `at`, each matching an area of `named`,
+    /// the areas the route's sources name; none where one cannot be read or
+    /// matches no area.
+    fn areas(
+        &mut self,
+        written: Vec<Spanned<String>>,
+        at: &str,
+        named: &BTreeSet<String>,
+    ) -> Option<Vec<Glob>> {
+        let listed: Vec<&str> = named.iter().map(String::as_str).collect();
+        let mut sound = true;
+        let mut areas = Vec::with_capacity(written.len());
+        for (index, text) in written.into_iter().enumerate() {
+            let key = format!("{at}.areas[{index}]");
+            match Glob::new(text.get_ref()) {
+                Ok(glob) if named.iter().any(|name| glob.matches(name)) => areas.push(glob),
+                Ok(glob) => {
+                    let known = if listed.is_empty() {
+                        "they name none; give a source an areas table".to_owned()
+                    } else {
+                        format!("the areas are {}", list(&listed))
+                    };
+                    self.error(
+                        &text.span(),
+                        &key,
+                        format!(
+                            "\"{}\" matches no area the route's sources name; {known}",
+                            glob.as_str()
+                        ),
+                    );
+                    sound = false;
+                }
+                Err(error) => {
+                    self.error(&text.span(), &key, error.to_string());
+                    sound = false;
+                }
+            }
+        }
+        sound.then_some(areas)
     }
 
     /// Whether some kind of `kinds` carries the attribute `name`.
@@ -623,17 +693,13 @@ impl Loader<'_> {
             versions: route.versions.as_ref(),
         };
         let sample_kinds = self.sample_kinds(taken, &path, sources, others)?;
-        let matching = self.matching(route.matching, &path, &sample_kinds)?;
-        let origins = route.sources.iter().all(|name| {
-            sources
-                .get(&SourceName::new(name.get_ref()))
-                .is_some_and(|source| source.origins())
-        });
-        let filter_sources: Vec<SourceName> = route
-            .sources
+        let filter_sources = named_sources(&route.sources);
+        let known = area_names(&filter_sources, sources);
+        let matching = self.matching(route.matching, &path, (&sample_kinds, &known))?;
+        let area_paths = self.area_paths(route.area_paths, &path, &matching);
+        let origins = filter_sources
             .iter()
-            .map(|source| SourceName::new(source.get_ref()))
-            .collect();
+            .all(|name| sources.get(name).is_some_and(|source| source.origins()));
         let filter_kinds: Vec<Kind> = route.kinds.into_iter().map(Spanned::into_inner).collect();
         let filter = Filter {
             sources: filter_sources,
@@ -643,6 +709,7 @@ impl Loader<'_> {
                 .versions
                 .map(|versions| Pattern::new(versions.into_inner())),
             matching,
+            area_paths,
         };
         let config = RouteConfig {
             route: Route {
@@ -720,4 +787,21 @@ fn posted(rule: &Rule) -> Vec<Kind> {
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// The sources `written` names.
+fn named_sources(written: &[Spanned<String>]) -> Vec<SourceName> {
+    written
+        .iter()
+        .map(|source| SourceName::new(source.get_ref()))
+        .collect()
+}
+
+/// The areas the sources `named` of `sources` name.
+fn area_names(named: &[SourceName], sources: &BTreeMap<SourceName, Source>) -> BTreeSet<String> {
+    named
+        .iter()
+        .filter_map(|name| sources.get(name))
+        .flat_map(|source| source.area_names())
+        .collect()
 }

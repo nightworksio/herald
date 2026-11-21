@@ -113,6 +113,7 @@ pub(crate) fn origin(forge: Forge, host: &str, (id, delivered): (String, Deliver
         topics: delivered.topics.unwrap_or_default(),
         properties: delivered.properties.unwrap_or_default(),
         visibility: delivered.visibility.unwrap_or(Visibility::Private),
+        areas: None,
         source: None,
     }
 }

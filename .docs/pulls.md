@@ -35,6 +35,7 @@ or `Merge request !3 opened: Add feature`, and its `pull` link opens it.
 | `author` | who opened it, where the forge names them |
 | `bot` | whether its author is a bot or an app |
 | `base`, `head` | the branches it merges into and from |
+| `commit` | its head commit's sha, where the forge names it |
 | `draft` | whether it is a draft |
 | `merged_by` | who merged it |
 | `labels` | its labels, joined by a comma and a space |
@@ -42,6 +43,29 @@ or `Merge request !3 opened: Add feature`, and its `pull` link opens it.
 Its identity is `<host>/<repository id>/pull/<number>/opened` for its
 opening, which a webhook and a poll name alike, and
 `.../<action>/<unix seconds>` for what it did after.
+
+## Areas
+
+A route's `match.areas` takes only the pull request events whose pull
+request changes a path in one of the areas its sources name (ADR-0071,
+ADR-0072), and `match.not.areas` none of them. An event's
+`origin.areas` comes from the paths kept for its pull request where the
+kept head is the event's `commit`, so a view must read the source kept;
+`area_paths = "delivery"` on the route reads them from the forge as the
+event is delivered instead, one request an event. Where the paths are
+not all known, the event falls in no area: `match.areas` does not take
+it and `not.areas` refuses it. Areas travel with the event, so a private
+repository's reach only the routes said private.
+
+```toml
+[[routes]]
+id = "web-team"
+sources = ["monorepo"]
+destination = "discord"
+channel = "1566200000000000100"
+area_paths = "delivery"
+match = { areas = ["web"] }
+```
 
 ## How pull requests reach herald
 

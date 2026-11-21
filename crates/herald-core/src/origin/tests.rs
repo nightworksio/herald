@@ -119,11 +119,26 @@ fn an_origin_no_source_could_give_is_refused_by_its_first_field() {
             },
             Problem::OriginId,
         ),
+        (
+            Origin {
+                areas: Some(vec!["a".repeat(FIELD + 1)]),
+                ..origin()
+            },
+            Problem::OriginTooLong,
+        ),
+        (
+            Origin {
+                areas: Some(vec!["web".to_owned(); MOST_AREAS + 1]),
+                ..origin()
+            },
+            Problem::OriginAreas,
+        ),
     ] {
         assert_eq!(origin.clone().checked(), Err(problem), "{origin:?}");
     }
     let full = Origin {
         topics: vec!["a".repeat(FIELD)],
+        areas: Some(vec!["a".repeat(FIELD); MOST_AREAS]),
         ..origin()
     };
     assert_eq!(full.clone().checked(), Ok(full));
@@ -207,7 +222,27 @@ fn each_origin_problem_names_the_origin() {
         Problem::OriginHost,
         Problem::OriginPath,
         Problem::OriginId,
+        Problem::OriginAreas,
     ] {
         assert!(problem.to_string().contains("origin"), "{problem:?}");
     }
+}
+
+#[test]
+fn an_origin_writes_its_areas_only_where_they_are_known() {
+    let unknown = serde_json::to_value(origin()).unwrap();
+    assert!(unknown.get("areas").is_none(), "{unknown}");
+    let zoned = Origin {
+        areas: Some(vec!["web".to_owned()]),
+        ..origin()
+    };
+    let written = serde_json::to_value(&zoned).unwrap();
+    assert_eq!(written["areas"], serde_json::json!(["web"]));
+    assert_eq!(serde_json::from_value::<Origin>(written).unwrap(), zoned);
+    let none = Origin {
+        areas: Some(Vec::new()),
+        ..origin()
+    };
+    let written = serde_json::to_value(&none).unwrap();
+    assert_eq!(written["areas"], serde_json::json!([]));
 }

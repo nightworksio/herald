@@ -65,6 +65,7 @@ fn a_webhook_of_the_source_s_published_release_announces_it() {
         topics: vec![],
         properties: std::collections::BTreeMap::new(),
         visibility: herald_core::Visibility::Public,
+        areas: None,
         source: None,
     };
     assert_eq!(
