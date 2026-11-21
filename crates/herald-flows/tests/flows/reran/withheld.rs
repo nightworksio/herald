@@ -107,6 +107,11 @@ fn a_job_of_a_withheld_plan_is_refused_saying_the_output_must_be_said_private_an
 /// A config reading [`SECRET`] kept, predicting conflicts and showing its
 /// CI capacity, and a rule planning re-runs of its flaky checks.
 fn secret_config() -> Config {
+    secret_config_with("")
+}
+
+/// [`secret_config`], its view `kept` given `more` after its overviews.
+fn secret_config_with(more: &str) -> Config {
     let text = format!(
         r#"version = 1
 [store]
@@ -125,6 +130,7 @@ mode = "kept"
 reconcile = "1d"
 conflicts = true
 overviews = ["capacity"]
+{more}
 [rules.flaky]
 view = "kept"
 flaky = {{ rerun = true }}
@@ -347,4 +353,41 @@ fn a_read_or_a_plan_that_fails_is_said_in_full_only_where_the_output_is_said_pri
     );
     let full = format!("{:?}", said(&unreconciled, &[], Printed::Asked));
     assert!(full.contains("nothing scripted"), "{full}");
+}
+
+#[test]
+fn a_pull_request_shown_in_several_areas_is_counted_and_planned_once() {
+    let config = secret_config_with(
+        "group_by = \"area\"\n[sources.work.areas]\nlib = [\"src/**\"]\nrust = [\"*.rs\"]",
+    );
+    let store = healthy();
+    kept_secret(&store);
+    let script = secret_runs();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+    let connected: Connected<Script> = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let clock = FakeClock::at(NOON);
+    let ports = Ports {
+        store: &store,
+        clock: &clock,
+        signer: &FakeSigner,
+        budget: Budget::UNBOUNDED,
+    };
+    let flow = (&config, &connected, &ports);
+    let board = pollster::block_on(herald_flows::queue(
+        &config,
+        &connected,
+        &ports,
+        ("kept", Printed::Asked),
+    ))
+    .unwrap();
+    let groups: Vec<(&str, usize)> = board
+        .groups
+        .iter()
+        .map(|group| (group.name.as_str(), group.rows.len()))
+        .collect();
+    assert_eq!(groups, [("lib", 2), ("rust", 2)]);
+    assert_eq!((board.total(), board.distinct_rows().len()), (2, 2));
+    let plans = pollster::block_on(rerun_plans(flow, (None, Printed::Asked))).unwrap();
+    assert_eq!(plans.planned.len(), 1, "{plans:?}");
 }

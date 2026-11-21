@@ -198,3 +198,33 @@ fn a_nudge_names_no_author_or_login_the_forge_did_not_and_keeps_a_private_reposi
     };
     assert_eq!(nudge_event("review", nudge), Err(Problem::NoProject));
 }
+
+#[test]
+fn a_pull_request_in_several_areas_is_nudged_once_and_the_most_counts_pull_requests() {
+    let areas = vec!["api".to_owned(), "docs".to_owned(), "web".to_owned()];
+    let pulls = [
+        Pull {
+            areas: areas.clone(),
+            ..waiting(3, 90 * DAY)
+        },
+        Pull {
+            areas,
+            ..waiting(2, 97 * DAY)
+        },
+        waiting(4, 96 * DAY),
+    ];
+    let view = View {
+        group_by: crate::queue::GroupBy::Area,
+        ..View::default()
+    };
+    let shown = board(&view, &pulls, now());
+    assert_eq!(shown.groups.len(), 4);
+    let nudged = |most: usize| -> Vec<u64> {
+        nudges(&shown, &stages(), most)
+            .into_iter()
+            .map(|nudge| nudge.row.pull.number)
+            .collect()
+    };
+    assert_eq!(nudged(10), [3, 4, 2]);
+    assert_eq!(nudged(2), [3, 4]);
+}

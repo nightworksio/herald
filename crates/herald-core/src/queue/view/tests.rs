@@ -412,6 +412,36 @@ fn rows_group_under_each_of_their_areas_and_a_view_narrows_by_area() {
 }
 
 #[test]
+fn a_board_s_distinct_rows_hold_each_pull_request_once_however_many_groups_show_it() {
+    let pulls = [
+        Pull {
+            areas: vec!["api".to_owned(), "web".to_owned()],
+            ..waited(1, 1)
+        },
+        Pull {
+            url: "https://gitlab.com/o/r/-/merge_requests/1".to_owned(),
+            areas: vec!["web".to_owned()],
+            ..waited(2, 1)
+        },
+        bot("chore(deps): bump serde from 1.0.0 to 1.0.1", "o/r", 2),
+    ];
+    let view = View {
+        group_by: GroupBy::Area,
+        ..View::default()
+    };
+    let shown = board_of(&view, &pulls);
+    assert_eq!(numbers(&shown), [vec![1], vec![1, 1]]);
+    let distinct: Vec<(u64, &str)> = shown
+        .distinct_rows()
+        .into_iter()
+        .map(|row| (row.pull.number, row.pull.url.as_str()))
+        .collect();
+    assert_eq!(distinct.len(), 3, "{distinct:?}");
+    assert_eq!(shown.total(), 3);
+    assert_eq!(Board::default().distinct_rows(), Vec::<&Row>::new());
+}
+
+#[test]
 fn the_forge_or_labels_tell_whose_turn_where_a_view_says() {
     let pulls = [
         Pull {

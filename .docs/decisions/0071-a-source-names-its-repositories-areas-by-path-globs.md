@@ -42,7 +42,8 @@ covers the areas a config names.
    each glob must match an area one of its sources names, or the config
    is refused. `group_by = "area"` puts a row in the group of each of its
    areas, and one in none in a group named by none; counts and totals
-   count each pull request once.
+   count each pull request once, and a rule's nudges and re-run plans
+   act on each pull request once, its `most` counting pull requests.
 5. **An area is its repository's data.** A row's areas travel with the
    row, so a private or internal repository's areas are withheld with its
    rows, by the one `Printed` (ADR-0069), from `herald queue` and every

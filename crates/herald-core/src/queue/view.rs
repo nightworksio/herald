@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::{SignedDuration, Timestamp};
 
@@ -6,6 +6,7 @@ use super::{Failure, Overviews, Pull, Reason, Rules, Triage, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::decide::Slot;
 use crate::glob::Glob;
+use crate::nudge::pull_identity;
 
 /// What a view does with a bot's pull requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -185,6 +186,21 @@ pub struct Board {
 }
 
 impl Board {
+    /// Each row it shows once, its groups' and then its batches', in their
+    /// order: a row grouped under several areas is taken where it first
+    /// shows, so whatever acts on or counts its rows acts on each pull
+    /// request once (ADR-0071).
+    #[must_use]
+    pub fn distinct_rows(&self) -> Vec<&Row> {
+        let mut seen = BTreeSet::new();
+        self.groups
+            .iter()
+            .flat_map(|group| &group.rows)
+            .chain(self.batches.iter().flat_map(|batch| &batch.rows))
+            .filter(|row| seen.insert(pull_identity(&row.pull)))
+            .collect()
+    }
+
     /// How many pull requests it shows, grouped and batched.
     #[must_use]
     pub fn total(&self) -> usize {
