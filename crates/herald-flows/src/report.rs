@@ -17,6 +17,7 @@ use jiff::Timestamp;
 use crate::announce::{Outcome, Ports, Stop, Within, announce_within};
 use crate::budget::Budgeted;
 use crate::deciding::decided_rows;
+use crate::halted::Halted;
 use crate::poll::{Fresh, Remembered, Sweep, Swept, remembered, stored};
 use crate::prepare::Connected;
 use crate::recall::Recording;
@@ -116,7 +117,9 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     let sources = sources(flow.1, view)?;
     let mut read = match reads.get(name) {
         Some(read) => read.clone(),
-        None => read_pulls((flow.0, &sources, flow.2), view).await?,
+        None => read_pulls((flow.0, &sources, flow.2), view)
+            .await
+            .map_err(|halted| halted.stop)?,
     };
     if let (Some(kept), Some(advising), None) = (advised, view.advisories, &read.advisories) {
         let found =
@@ -130,11 +133,11 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
 /// The open pull requests of every source `view` reads, live or kept as
 /// the view and the store say (ADR-0061), and the overviews it shows
 /// (ADR-0066); the first source that could not be read, and the run's
-/// budget, stopping it.
+/// budget, stopping it, named with its stop.
 pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     (config, reached, ports): (&Config, &Sources<'_, H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
-) -> Result<Read, Stop> {
+) -> Result<Read, Halted> {
     let mut pulls = Vec::new();
     let mut overviews = Overviews {
         capacity: view.capacity.map(|_| Vec::new()),
@@ -142,7 +145,11 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     };
     for &(name, queue, http) in reached.iter() {
         let members = if queue.scoped() {
-            Some(crate::scope::members(ports.store, name).await?)
+            Some(
+                crate::scope::members(ports.store, name)
+                    .await
+                    .map_err(|stop| Halted::of(name, stop))?,
+            )
         } else {
             None
         };
@@ -165,12 +172,13 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .and_then(|source| source.queue_cost(view.most))
                 .is_some_and(|cost| cost.detailed);
             crate::kept::kept_pulls(ports, (name, queue.as_ref(), http), (view, asked, detailed))
-                .await?
+                .await
+                .map_err(|stop| Halted::of(name, stop))?
         } else {
             queue
                 .opened(http, asked)
                 .await
-                .map_err(|unpolled| http.halted(unpolled))?
+                .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?
         };
         if let Some(capacity) = view.capacity {
             let shown = herald_core::rows(&view.view, &read, ports.clock.now());
@@ -276,7 +284,9 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     let flow = (config, connected, ports);
     crate::poll::minting(flow, |_| true).await;
     let sources = sources(connected, view)?;
-    let read = read_pulls((config, &sources, ports), view).await?;
+    let read = read_pulls((config, &sources, ports), view)
+        .await
+        .map_err(|halted| halted.said(printed))?;
     let (pulls, withheld) = printed.printed(read.pulls);
     let surface = Surface::Queue { private: printed };
     let found = match view.advisories {

@@ -151,11 +151,16 @@ pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
         .filter_map(|(name, rule)| Some((name, rule, config.views.get(&rule.watch.view)?)));
     for (name, rule, view) in viewed {
         let sources = sources(connected, view)?;
-        let read = read_pulls((config, &sources, ports), view).await?;
+        let read = read_pulls((config, &sources, ports), view)
+            .await
+            .map_err(|halted| halted.said(printed))?;
         let (pulls, held) = printed.printed(read.pulls);
         withheld += held;
         let shown = grouped(&view.view, decided_rows(flow, view, &pulls).await);
-        for planning in crate::reruns::plans((connected, ports), rule, (view, &shown)).await? {
+        let plans = crate::reruns::plans((connected, ports), rule, (view, &shown))
+            .await
+            .map_err(|halted| halted.said(printed))?;
+        for planning in plans {
             for run in planning.runs() {
                 planned.push(Planned {
                     rule: name.to_owned(),
