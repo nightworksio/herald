@@ -276,3 +276,109 @@ fn doctor_names_the_roles_that_withhold_a_channel_its_section() {
         ]
     );
 }
+
+#[test]
+fn a_role_its_overwrite_lets_view_what_it_may_already_view_still_sees_the_channel() {
+    let both = checked(
+        &[],
+        (
+            channel(0, &[overwrite(MODS, 0, (VIEW, 0))]),
+            server(0, &[(MODS, "Mods", VIEW)]),
+            onboarding(&[], &[]),
+        ),
+    );
+    assert_eq!(
+        both,
+        Audience::Public(format!(
+            "the role Mods ({MODS}) may view the channel and the route's viewers does not list them"
+        ))
+    );
+    let unwritten = json!({ "id": MODS, "type": 0, "allow": "x", "deny": "0" });
+    let (unread, _) = audience(
+        &bot(CHANNEL, &[]),
+        vec![
+            answer(200, &hidden(&[unwritten])),
+            answer(200, &server(VIEW, &[(MODS, "Mods", 0)])),
+        ],
+    );
+    assert_eq!(
+        unread,
+        Audience::Unread("Discord did not say what Mods may do".to_owned())
+    );
+}
+
+#[test]
+fn a_member_overwrite_that_does_not_allow_viewing_lets_no_one_in() {
+    let denied = checked(
+        &[],
+        (
+            hidden(&[overwrite(MEMBER, 1, (0, VIEW))]),
+            server(VIEW, &[]),
+            onboarding(&[], &[]),
+        ),
+    );
+    assert_eq!(denied, Audience::Private);
+}
+
+#[test]
+fn an_onboarding_prompt_showing_the_channel_makes_it_public_and_one_showing_another_does_not() {
+    let prompted = |channels: &[&str]| {
+        json!({ "guild_id": GUILD, "enabled": true, "default_channel_ids": [],
+            "prompts": [{ "options": [{ "channel_ids": channels, "role_ids": [] }] }] })
+    };
+    let shown = checked(&[], (hidden(&[]), server(VIEW, &[]), prompted(&[CHANNEL])));
+    assert_eq!(
+        shown,
+        Audience::Public("the server's onboarding shows the channel to whoever joins".to_owned())
+    );
+    let elsewhere = checked(&[], (hidden(&[]), server(VIEW, &[]), prompted(&[MEMBER])));
+    assert_eq!(elsewhere, Audience::Private);
+}
+
+#[test]
+fn doctor_names_a_channel_that_is_no_path_segment_and_says_nothing_of_a_private_one() {
+    let probed = |discord: &Discord, answers: Vec<Response>| {
+        let http = ScriptedHttp::new(answers);
+        let probes = pollster::block_on(discord.probe(&http, &Delivery::default()));
+        (probes, http.asked().len())
+    };
+    let (dotted, asked) = probed(&bot("..", &[]), vec![answer(200, &json!({ "id": "1" }))]);
+    assert_eq!(
+        dotted,
+        [
+            Probe::Taken,
+            Probe::Route {
+                key: Some("channel"),
+                why: "the Discord id in the request's path is empty or a dot segment, which names nothing in a URL path, so this step is not taken".to_owned(),
+            },
+        ]
+    );
+    assert_eq!(asked, 1);
+    let (private, asked) = probed(
+        &bot(CHANNEL, &[]),
+        vec![
+            answer(200, &json!({ "id": "1" })),
+            answer(200, &hidden(&[])),
+            answer(200, &server(VIEW, &[])),
+            answer(200, &onboarding(&[], &[])),
+        ],
+    );
+    assert_eq!(private, [Probe::Taken]);
+    assert_eq!(asked, 4);
+}
+
+#[test]
+fn only_an_answer_carrying_discord_s_error_code_declines_a_step() {
+    let discord = bot(CHANNEL, &[]);
+    assert!(discord.declines(&answer(
+        403,
+        &json!({ "code": 50013, "message": "Missing Permissions" })
+    )));
+    for undeclined in [
+        json!({ "message": "Missing Permissions" }),
+        json!({ "code": "50013" }),
+        json!({}),
+    ] {
+        assert!(!discord.declines(&answer(403, &undeclined)), "{undeclined}");
+    }
+}

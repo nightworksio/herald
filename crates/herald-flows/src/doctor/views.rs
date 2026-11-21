@@ -380,3 +380,6 @@ fn advised_notes(config: &Config, named: &str, naming: &[&RouteConfig], notes: &
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

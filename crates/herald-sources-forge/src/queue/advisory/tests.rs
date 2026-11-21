@@ -370,7 +370,14 @@ fn a_gitlab_project_s_open_vulnerabilities_are_paged_by_cursor() {
             ),
             answer(
                 200,
-                &vulnerabilities("project", &[vulnerability(2, "CONFIRMED", None)], None),
+                &vulnerabilities(
+                    "project",
+                    &[
+                        vulnerability(2, "CONFIRMED", None),
+                        vulnerability(3, "UNHEARD", None),
+                    ],
+                    None,
+                ),
             ),
         ],
         (
@@ -846,4 +853,119 @@ fn a_member_whose_recorded_path_steps_out_of_its_repository_is_never_asked() {
         "{refused:?}"
     );
     assert_eq!(http.asked().len(), 0);
+}
+
+/// An organization whose view holds only some of `members`.
+fn held(members: &[Listed]) -> Asked<'_> {
+    Asked {
+        scope: Some(Scope {
+            owner: Owner::Organization,
+            members,
+            narrowed: true,
+        }),
+        ..Asked::default()
+    }
+}
+
+#[test]
+fn a_view_holding_some_members_reads_the_first_by_name_with_no_push_order() {
+    let members = [member("o/zed"), member("o/App"), member("o/lib")];
+    let empty = || (0..6).map(|_| answer(200, &json!([]))).collect::<Vec<_>>();
+    let (found, urls) = read(
+        &scoped(Forge::GitHub),
+        empty(),
+        (
+            held(&members),
+            &[],
+            advising(AdvisoriesFrom::Members, (2, 1000)),
+        ),
+    );
+    assert_eq!(urls.len(), 6, "{urls:?}");
+    assert!(
+        urls[..3]
+            .iter()
+            .all(|(url, _)| url.contains("/repos/o/App/"))
+            && urls[3..]
+                .iter()
+                .all(|(url, _)| url.contains("/repos/o/lib/")),
+        "{urls:?}"
+    );
+    assert!(found.more);
+    assert_eq!(
+        found.unread[0].reason,
+        "1 of the member repositories the view holds were not read: only the first 2 by name are, as advisory_repositories says"
+    );
+    let (all, urls) = read(
+        &scoped(Forge::GitHub),
+        empty(),
+        (
+            held(&members[1..]),
+            &[],
+            advising(AdvisoriesFrom::Members, (2, 1000)),
+        ),
+    );
+    assert_eq!(urls.len(), 6, "{urls:?}");
+    assert_eq!((all.unread.len(), all.more), (0, false));
+}
+
+/// Where a listing of at most 100 stops after its page `page` of `pages`,
+/// `kept` advisories kept and a next page named where `next` says, as each
+/// caller decides it: `stops`, then the end of the pages.
+fn decided(
+    holder: Holder<'_>,
+    kept: usize,
+    (page, pages): (usize, usize),
+    next: bool,
+) -> Option<Cut> {
+    stops(holder, (kept, 100), (page, pages), next).or((!next).then_some(Cut::Whole))
+}
+
+/// A listing's holder, how many advisories it kept, its page of how
+/// many, whether a next page is named, and where it stops.
+type Stopping = (Holder<'static>, usize, (usize, usize), bool, Option<Cut>);
+
+const BY_REPOSITORY: Holder<'static> = Holder::Repository("o/r");
+const BY_OWNER: Holder<'static> = Holder::Owner("o");
+const WHOLE: Option<Cut> = Some(Cut::Whole);
+const HELD: Option<Cut> = Some(Cut::Held);
+const SHORT: Option<Cut> = Some(Cut::Short { pages: 2 });
+
+/// Every combination a listing may stop on, and where the code before
+/// the end of its pages moved into its callers stopped it.
+const STOPS: [Stopping; 24] = [
+    (BY_REPOSITORY, 99, (1, 2), false, WHOLE),
+    (BY_REPOSITORY, 99, (2, 2), false, WHOLE),
+    (BY_REPOSITORY, 99, (1, 2), true, None),
+    (BY_REPOSITORY, 99, (2, 2), true, SHORT),
+    (BY_REPOSITORY, 100, (1, 2), false, WHOLE),
+    (BY_REPOSITORY, 100, (2, 2), false, WHOLE),
+    (BY_REPOSITORY, 100, (1, 2), true, HELD),
+    (BY_REPOSITORY, 100, (2, 2), true, HELD),
+    (BY_REPOSITORY, 101, (1, 2), false, HELD),
+    (BY_REPOSITORY, 101, (2, 2), false, HELD),
+    (BY_REPOSITORY, 101, (1, 2), true, HELD),
+    (BY_REPOSITORY, 101, (2, 2), true, HELD),
+    (BY_OWNER, 99, (1, 2), false, WHOLE),
+    (BY_OWNER, 99, (2, 2), false, WHOLE),
+    (BY_OWNER, 99, (1, 2), true, None),
+    (BY_OWNER, 99, (2, 2), true, SHORT),
+    (BY_OWNER, 100, (1, 2), false, WHOLE),
+    (BY_OWNER, 100, (2, 2), false, WHOLE),
+    (BY_OWNER, 100, (1, 2), true, None),
+    (BY_OWNER, 100, (2, 2), true, SHORT),
+    (BY_OWNER, 101, (1, 2), false, HELD),
+    (BY_OWNER, 101, (2, 2), false, HELD),
+    (BY_OWNER, 101, (1, 2), true, HELD),
+    (BY_OWNER, 101, (2, 2), true, HELD),
+];
+
+#[test]
+fn every_listing_stops_where_it_holds_more_than_its_most_ends_or_reaches_its_last_page() {
+    for (holder, kept, pages, next, stopped) in STOPS {
+        assert_eq!(
+            decided(holder, kept, pages, next),
+            stopped,
+            "{holder:?} {kept} {pages:?} {next}"
+        );
+    }
 }

@@ -400,3 +400,31 @@ fn a_post_or_chunk_answered_without_landing_leaves_nothing_to_find_again() {
     let landed = posted(tag()).refused(&Step::Chunk(1));
     assert_eq!(landed.part(1), Some("one"));
 }
+
+#[test]
+fn a_replacement_reposts_only_the_parts_still_to_delete_and_waits_on_a_deletion_only_attempted() {
+    let at = Timestamp::from_second(1_000).unwrap();
+    let pinned = posted(tag()).landed(Step::Pin, Facts::default());
+    let entry = Entry {
+        replacing: Some(replaced(&pinned, &release(), at)),
+        ..pinned
+    };
+    let deleting = |entry: &Entry| {
+        entry
+            .replacing
+            .as_ref()
+            .map(|replacing| replacing.deleting.clone())
+    };
+    let tried = entry.clone().attempted(Step::Delete(2), at);
+    assert_eq!(deleting(&tried), Some(vec![0, 2, 1]));
+    assert_eq!(tried.sent_at(&Step::Delete(2)), Some(at));
+    let partly = entry.landed(Step::Delete(2), Facts::default());
+    assert_eq!(deleting(&partly), Some(vec![0, 1]));
+    let kept: Vec<Step> = partly
+        .reposting()
+        .records
+        .iter()
+        .map(|record| record.step.clone())
+        .collect();
+    assert_eq!(kept, [Step::Pin]);
+}

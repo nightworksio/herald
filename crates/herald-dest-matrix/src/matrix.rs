@@ -10,7 +10,8 @@ use serde_json::Value;
 use crate::options::RouteOptions;
 use crate::read::{UNNAMED, failure, json, read, text};
 use crate::request::{
-    MATRIX_TO, ROUTE, Repin, event, get, pin_target, pinned, pins, repinned, step, with, without,
+    MATRIX_TO, ROUTE, Repin, Room, event, get, pin_target, pinned, pins, repinned, room, step,
+    with, without,
 };
 
 /// The platform, as herald names it.
@@ -183,11 +184,11 @@ impl Matrix {
             Ok(target) => target,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        let asked = match pinned(self) {
-            Ok(asked) => asked,
+        let room = match room(self) {
+            Ok(room) => room,
             Err(declined) => return Ok(Sent::Refused(declined.to_string())),
         };
-        let held = match pins(&http.send(asked).await?, self.waits) {
+        let held = match pins(&http.send(pinned(self, &room)).await?, self.waits) {
             Ok(held) => held,
             Err(sent) => return Ok(sent),
         };
@@ -201,7 +202,7 @@ impl Matrix {
                 post,
                 remembered: None,
             } => match self
-                .routed(http, &held, post, &announcement.marks.route)
+                .routed((http, &room), &held, post, &announcement.marks.route)
                 .await?
             {
                 Ok(stale) => without(&held, &stale, post),
@@ -212,11 +213,7 @@ impl Matrix {
         if wanted == held {
             return Ok(landed);
         }
-        let written = match repinned(self, &wanted) {
-            Ok(written) => written,
-            Err(declined) => return Ok(Sent::Refused(declined.to_string())),
-        };
-        let answer = http.send(written).await?;
+        let answer = http.send(repinned(self, &room, &wanted)).await?;
         Ok(failure(&answer, self.waits).unwrap_or(landed))
     }
 
@@ -224,11 +221,11 @@ impl Matrix {
     /// (ADR-0048): nothing where it is not pinned or the pins were written,
     /// and otherwise what the homeserver's trouble means.
     async fn unpinned<H: Http>(&self, http: &H, post: &str) -> Result<Option<Sent>, HttpError> {
-        let asked = match pinned(self) {
-            Ok(asked) => asked,
+        let room = match room(self) {
+            Ok(room) => room,
             Err(declined) => return Ok(Some(Sent::Refused(declined.to_string()))),
         };
-        let held = match pins(&http.send(asked).await?, self.waits) {
+        let held = match pins(&http.send(pinned(self, &room)).await?, self.waits) {
             Ok(held) => held,
             Err(sent) => return Ok(Some(sent)),
         };
@@ -236,20 +233,16 @@ impl Matrix {
             return Ok(None);
         }
         let left: Vec<String> = held.into_iter().filter(|pin| pin != post).collect();
-        let written = match repinned(self, &left) {
-            Ok(written) => written,
-            Err(declined) => return Ok(Some(Sent::Refused(declined.to_string()))),
-        };
-        let answer = http.send(written).await?;
+        let answer = http.send(repinned(self, &room, &left)).await?;
         Ok(failure(&answer, self.waits))
     }
 
-    /// The pins in `held`, other than `post`, that herald's own account sent
-    /// and that carry the route's marker `route`. A pin whose event is gone
-    /// is not counted.
+    /// The pins in `held`, other than `post`, of the room at `room`, that
+    /// herald's own account sent and that carry the route's marker `route`.
+    /// A pin whose event is gone is not counted.
     async fn routed<H: Http>(
         &self,
-        http: &H,
+        (http, room): (&H, &Room),
         held: &[String],
         post: &str,
         route: &Marker,
@@ -264,7 +257,7 @@ impl Matrix {
         };
         let mut stale = Vec::new();
         for pin in candidates {
-            let asked = match event(self, pin) {
+            let asked = match event(self, room, pin) {
                 Ok(asked) => asked,
                 Err(declined) => return Ok(Err(Sent::Refused(declined.to_string()))),
             };

@@ -3,13 +3,14 @@
 //! through the routes naming the report (ADR-0055).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
     Advised, AdvisedPost, Advisories, Board, Cursor, Identity, Listed, Overviews, Pull, RouteId,
     Row, Showing, SourceName, Surface, Unread, Visibility, advises, grouped, report_event, steps,
 };
-use herald_kinds::{Asked, Scope};
+use herald_kinds::{Asked, Queue, Scope};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
 use jiff::Timestamp;
 
@@ -58,6 +59,47 @@ impl Read {
     }
 }
 
+/// Each source a view reads, as this run reaches it: its name, its queue
+/// and the `Http` that reaches it. Made only by [`sources`], so a view's
+/// advisories are read from no source its rows were not read from.
+pub(crate) struct Sources<'c, H>(Vec<(&'c SourceName, &'c Arc<dyn Queue>, &'c H)>);
+
+impl<'c, H> Sources<'c, H> {
+    /// Each source, in the order the view names them.
+    pub(crate) fn iter(
+        &self,
+    ) -> impl Iterator<Item = &(&'c SourceName, &'c Arc<dyn Queue>, &'c H)> {
+        self.0.iter()
+    }
+}
+
+/// Each source `view` reads, as `connected` reaches it: the one place a
+/// view's sources are found, so its advisories are read only from the
+/// sources its rows are.
+///
+/// # Errors
+///
+/// Where the view reads a source this run does not reach.
+fn sources<'c, H>(connected: &'c Connected<H>, view: &ViewConfig) -> Result<Sources<'c, H>, Stop> {
+    view.sources
+        .iter()
+        .map(|name| {
+            connected
+                .sources
+                .iter()
+                .find(|(source, _)| source.name == *name)
+                .and_then(|(source, http)| {
+                    source
+                        .queue
+                        .as_ref()
+                        .map(|queue| (&source.name, queue, http))
+                })
+                .ok_or_else(|| Stop::Source(UNREAD_SOURCE.to_owned()))
+        })
+        .collect::<Result<_, _>>()
+        .map(Sources)
+}
+
 /// The open pull requests and overviews of the view `name`, read once a
 /// round into `reads`, and its advisories where `advised` says a consumer
 /// can be shown them, read once a round after its rows and leaving as many
@@ -67,13 +109,14 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     (name, view, advised): (&str, &ViewConfig, Option<usize>),
     reads: &mut Reads,
 ) -> Result<Read, Stop> {
+    let sources = sources(flow.1, view)?;
     let mut read = match reads.get(name) {
         Some(read) => read.clone(),
-        None => read_pulls(flow, view).await?,
+        None => read_pulls((flow.0, &sources, flow.2), view).await?,
     };
     if let (Some(kept), Some(advising), None) = (advised, view.advisories, &read.advisories) {
         let found =
-            crate::advised::read((flow.1, flow.2), (view, advising, kept), &read.pulls).await;
+            crate::advised::read((&sources, flow.2), (view, advising, kept), &read.pulls).await;
         read.advisories = Some(found);
     }
     reads.insert(name.to_owned(), read.clone());
@@ -85,7 +128,7 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
 /// (ADR-0066); the first source that could not be read, and the run's
 /// budget, stopping it.
 async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
-    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    (config, reached, ports): (&Config, &Sources<'_, H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
 ) -> Result<Read, Stop> {
     let mut pulls = Vec::new();
@@ -93,13 +136,7 @@ async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         capacity: view.capacity.map(|_| Vec::new()),
         ..Overviews::default()
     };
-    for name in &view.sources {
-        let (queue, http) = connected
-            .sources
-            .iter()
-            .find(|(source, _)| source.name == *name)
-            .and_then(|(source, http)| source.queue.as_ref().map(|queue| (queue, http)))
-            .ok_or_else(|| Stop::Source(UNREAD_SOURCE.to_owned()))?;
+    for &(name, queue, http) in reached.iter() {
         let members = if queue.scoped() {
             Some(crate::scope::members(ports.store, name).await?)
         } else {
@@ -234,10 +271,11 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     };
     let flow = (config, connected, ports);
     crate::poll::minting(flow, |_| true).await;
-    let read = read_pulls(flow, view).await?;
+    let sources = sources(connected, view)?;
+    let read = read_pulls((config, &sources, ports), view).await?;
     let found = match view.advisories {
         Some(advising) if private => {
-            Some(crate::advised::read((connected, ports), (view, advising, 0), &read.pulls).await)
+            Some(crate::advised::read((&sources, ports), (view, advising, 0), &read.pulls).await)
         }
         _ => None,
     };

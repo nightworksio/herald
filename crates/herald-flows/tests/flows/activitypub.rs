@@ -572,3 +572,22 @@ fn a_run_resumed_delivers_only_to_the_inboxes_it_kept_no_landing_for() {
     );
     assert_eq!(again.seen().len(), 1);
 }
+
+#[test]
+fn a_note_whose_keeping_failed_is_published_again_with_nothing_read_back() {
+    let mut store = healthy();
+    store.fault = Fault::KeepsNotes;
+    assert!(matches!(
+        announced(&store, &Script::default()),
+        Outcome::Stopped { .. }
+    ));
+    store.fault = Fault::Nothing;
+    let script = Script::default();
+    assert_eq!(
+        announced(&store, &script),
+        Outcome::Sent {
+            steps: vec![Step::Post]
+        }
+    );
+    assert_eq!(script.seen(), Vec::<String>::new());
+}

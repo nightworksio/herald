@@ -272,6 +272,11 @@ fn an_answer_is_threaded_under_the_command_unless_public_once_per_part() {
         serde_json::from_slice::<Value>(&public[0].body).unwrap()["m.relates_to"],
         json!({ "m.in_reply_to": { "event_id": "$command" } })
     );
+    let dotted = Replying {
+        room: "..".to_owned(),
+        ..replying
+    };
+    assert_eq!(interacting("").answered(&dotted, &parts, false).len(), 0);
 }
 
 #[test]

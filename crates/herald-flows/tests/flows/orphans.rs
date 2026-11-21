@@ -517,3 +517,106 @@ fn a_clear_naming_the_parts_listed_clears_that_route_alone() {
     let left = pollster::block_on(orphans(&store, "live", None)).unwrap();
     assert_eq!(left, [listed[1].clone()]);
 }
+
+#[test]
+fn records_that_cannot_be_read_or_written_clear_nothing_and_say_so() {
+    let mut store = strayed();
+    let a = RouteId::new("a");
+    let seen = pollster::block_on(orphans(&store, "live", None)).unwrap()[0]
+        .seen
+        .clone();
+    let unread = format!(
+        "the records of the report live's living posts could not be read, so nothing was cleared: {}",
+        crate::harness::broken()
+    );
+    for fault in [Fault::Cursors, Fault::Reads] {
+        store.fault = fault;
+        assert_eq!(
+            pollster::block_on(orphans(&store, "live", None)),
+            Err(unread.clone()),
+            "{fault:?}"
+        );
+        assert_eq!(
+            pollster::block_on(orphans_cleared(&store, "live", (&a, &seen))),
+            Err(unread.clone()),
+            "{fault:?}"
+        );
+    }
+    *store.writes.lock().unwrap() = 0;
+    store.fault = Fault::ClaimConflicts;
+    let conflicted = pollster::block_on(orphans_cleared(&store, "live", (&a, &seen)));
+    assert_eq!(
+        conflicted,
+        Err("a run wrote the ledger entry of the report live's living post on the route a meanwhile, so nothing was cleared; list them again with `herald orphans clear live --route a`".to_owned())
+    );
+    *store.writes.lock().unwrap() = 0;
+    store.fault = Fault::Claims;
+    let failed = pollster::block_on(orphans_cleared(&store, "live", (&a, &seen)));
+    assert_eq!(
+        failed,
+        Err(format!(
+            "the ledger entry of the report live's living post on the route a could not be written, so its possibly orphaned parts may or may not be cleared; list them again with `herald orphans clear live --route a`: {}",
+            crate::harness::broken()
+        ))
+    );
+    store.fault = Fault::Nothing;
+    assert_eq!(strays(&store, "a").len(), 1);
+}
+
+#[test]
+fn doctor_names_a_recalled_post_whose_records_cannot_be_read_or_whose_replacement_stopped() {
+    let mut store = strayed();
+    let named = herald_core::AdvisedReports {
+        reports: ["live".to_owned()].into_iter().collect(),
+    };
+    pollster::block_on(herald_ports::Recalls::put_advised(
+        &store.recalls(),
+        &named,
+        None,
+    ))
+    .unwrap();
+    let key = Key::derive(&RouteId::new("a"), &Identity::new(living_identity("live")));
+    let entry = pollster::block_on(Store::ledger(&store).entry(&key))
+        .unwrap()
+        .unwrap();
+    let replacing = Entry {
+        replacing: Some(herald_core::replaced(
+            &entry.value,
+            &herald_core::Revision::of(None, ["shown"]),
+            NOON,
+        )),
+        ..entry.value
+    };
+    pollster::block_on(Store::ledger(&store).put_entry(&replacing, Some(entry.version))).unwrap();
+    let config = config(true);
+    let doctor = |store: &Failing| {
+        pollster::block_on(recalls(
+            &config,
+            (&store.cursors(), &store.recalls(), &store.ledger()),
+        ))
+    };
+    let found = doctor(&store);
+    assert!(
+        found.notes.iter().any(|note| note.starts_with(
+            "the living post of the report live on the route a through room is being deleted and posted anew"
+        )),
+        "{found:?}"
+    );
+    store.fault = Fault::Reads;
+    let unread = doctor(&store);
+    assert!(
+        unread.mistakes.iter().any(|mistake| mistake.starts_with(
+            "the ledger entry of the living post of the report live on the route a could not be read"
+        )),
+        "{unread:?}"
+    );
+    store.fault = Fault::Cursors;
+    let cursorless = doctor(&store);
+    assert!(
+        cursorless
+            .mistakes
+            .iter()
+            .any(|mistake| mistake.starts_with("the report live's cursor could not be read")),
+        "{cursorless:?}"
+    );
+}

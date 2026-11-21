@@ -273,6 +273,14 @@ overviews = ["capacity"]
         members.contains("its owner's 7 newest pushed members"),
         "{members}"
     );
+    let held =
+        note("capacity_from = \"members\"\ncapacity_repositories = 7\nrepositories = [\"o/g*\"]");
+    assert!(
+        held.contains(
+            "the first 7 by name of the members it holds, with no request for their order"
+        ),
+        "{held}"
+    );
 }
 
 #[test]
@@ -329,6 +337,14 @@ fn a_view_showing_advisories_names_its_cost_its_permissions_and_each_route_sent_
             .any(|note| note.contains("its owner's 7 newest pushed members")
                 && note.contains("at most 50 advisories read")),
         "{members:?}"
+    );
+    let held = notes(
+        "advisories_from = \"members\"\nadvisory_repositories = 7\nrepositories = [\"o/g*\"]",
+    );
+    assert!(
+        held.iter()
+            .any(|note| note.contains("the first 7 by name of the members it holds, one by one")),
+        "{held:?}"
     );
 }
 

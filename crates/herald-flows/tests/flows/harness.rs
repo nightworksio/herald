@@ -302,6 +302,10 @@ pub(crate) enum Fault {
     WritesRecalls,
     RecallsConflict,
     OneAtATime,
+    /// Every read of a source's members after the first fails.
+    ReadsMembersOnce,
+    /// Every read of a cursor after the first fails.
+    ReadsCursorOnce,
 }
 
 pub(crate) struct Failing {
@@ -359,6 +363,13 @@ impl Inboxes for Failing {
 }
 
 impl Failing {
+    /// Whether this is the first read it counts.
+    fn read_once(&self) -> bool {
+        let mut reads = self.landings.lock().unwrap();
+        *reads += 1;
+        *reads == 1
+    }
+
     /// Whether this is one of the first two landings it counts.
     fn landed_once(&self) -> bool {
         let mut landings = self.landings.lock().unwrap();
@@ -429,7 +440,9 @@ impl Ledger for Failing {
 
 impl Cursors for Failing {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
-        if self.fault == Fault::Cursors {
+        if self.fault == Fault::Cursors
+            || (self.fault == Fault::ReadsCursorOnce && !self.read_once())
+        {
             return Err(broken());
         }
         self.inner.cursor(source).await
@@ -471,7 +484,9 @@ impl Cursors for Failing {
         &self,
         source: &SourceName,
     ) -> Result<Vec<Versioned<herald_core::Membership>>, StoreError> {
-        if self.fault == Fault::ReadsMembers {
+        if self.fault == Fault::ReadsMembers
+            || (self.fault == Fault::ReadsMembersOnce && !self.read_once())
+        {
             return Err(broken());
         }
         self.inner.members(source).await

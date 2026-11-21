@@ -270,3 +270,6 @@ fn onboarded(onboarding: &Onboarding, channel: &str, seeing: &[&Role]) -> Option
         handed.name, handed.id
     )))
 }
+
+#[cfg(test)]
+mod tests;

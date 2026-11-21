@@ -355,3 +355,36 @@ fn a_reached_push_goes_to_the_peer_s_inbox_and_is_sent_nothing_step_by_step() {
             .contains("pushes its envelopes")
     );
 }
+
+#[test]
+fn a_push_is_public_unless_its_peer_takes_private_events_and_declines_nothing() {
+    let named = checked(NAMED).unwrap();
+    let delivery = herald_core::Delivery::default();
+    assert_eq!(
+        peered(&named).public(&placed(), &delivery),
+        Some(
+            "its push goes to a peer that takes no private events; set private = true on the peer in [peers] if it may take them"
+        )
+    );
+    let private = named
+        .peered(Peered {
+            url: "https://peer.example".to_owned(),
+            private: true,
+            presented: herald_kinds::Presented::default(),
+        })
+        .unwrap();
+    assert_eq!(private.public(&placed(), &delivery), None);
+    let reached = private.reach(&placed(), "", key()).unwrap();
+    let refusal = herald_ports::Response {
+        status: 403,
+        headers: Vec::new(),
+        body: b"{\"error\":\"forbidden\"}".to_vec(),
+    };
+    assert!(!reached.declines(&refusal));
+    let http = ScriptedHttp::new(Vec::new());
+    assert!(matches!(
+        pollster::block_on(reached.audience(&http)),
+        herald_kinds::Audience::Public(_)
+    ));
+    assert_eq!(http.asked(), Vec::new());
+}

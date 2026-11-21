@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod audience;
 #[cfg(test)]
+mod dotted;
+#[cfg(test)]
 mod probe;
 #[cfg(test)]
 mod replay;

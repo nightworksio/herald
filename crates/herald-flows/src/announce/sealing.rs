@@ -18,3 +18,6 @@ pub(crate) fn sealed(outcome: Outcome) -> Outcome {
     };
     Outcome::Sealed { stopped }
 }
+
+#[cfg(test)]
+mod tests;

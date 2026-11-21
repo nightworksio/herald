@@ -174,3 +174,26 @@ fn a_reached_feed_is_published_to_by_the_flows_and_sent_nothing() {
     );
     assert_eq!(Size::KIB, 1024);
 }
+
+#[test]
+fn a_reached_feed_is_public_declines_nothing_and_is_never_shown_a_section() {
+    let unset = checked("").unwrap();
+    let placed = Placed::new(FeedRouteOptions::default());
+    assert_eq!(
+        unset.public(&placed, &herald_core::Delivery::default()),
+        Some("a herald feed is served to anyone")
+    );
+    let reached = unset.reach(&placed, "", key()).unwrap();
+    let refusal = herald_ports::Response {
+        status: 403,
+        headers: Vec::new(),
+        body: b"{\"error\":\"forbidden\"}".to_vec(),
+    };
+    assert!(!reached.declines(&refusal));
+    let http = ScriptedHttp::new(Vec::new());
+    assert!(matches!(
+        pollster::block_on(reached.audience(&http)),
+        herald_kinds::Audience::Public(_)
+    ));
+    assert_eq!(http.asked(), Vec::new());
+}

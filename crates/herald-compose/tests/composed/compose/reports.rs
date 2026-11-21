@@ -55,3 +55,17 @@ fn a_view_is_read_through_the_composed_sources() {
     let read = pollster::block_on(composed.queue("queue", false));
     assert!(matches!(read, Err(Stop::Source(_))), "{read:?}");
 }
+
+#[test]
+fn orphans_are_listed_through_the_composed_store_and_one_it_cannot_read_lists_none() {
+    let composed = pollster::block_on(Composed::new(
+        github(),
+        reporting(),
+        NODE,
+        Uses::Serves,
+        "test",
+    ))
+    .unwrap();
+    let listed = pollster::block_on(composed.orphans("daily", None));
+    assert!(listed.is_err(), "{listed:?}");
+}

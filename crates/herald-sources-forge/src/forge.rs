@@ -719,6 +719,25 @@ pub(crate) fn named(path: &str, what: &str) -> Result<String, Unpolled> {
         .map(|parts| parts.join("/"))
 }
 
+/// The base URL of an [`Origin`]'s repository, made only by
+/// [`Origin::checked`] once its path is checked.
+pub(crate) struct Checked<'o> {
+    origin: &'o Origin,
+    base: String,
+}
+
+impl Checked<'_> {
+    /// The request for `path` under the repository, carrying `token`.
+    pub(crate) fn get(&self, path: &str, token: Option<&Token>) -> Request {
+        let request = Request::new(
+            Method::Get,
+            SecretText::plain(format!("{}{path}", self.base)),
+        )
+        .at_most(self.origin.reading.parse);
+        authorized(self.origin.forge, request, token)
+    }
+}
+
 impl Origin {
     /// `repository` on `forge`, asked as `options` say.
     #[must_use]
@@ -783,14 +802,24 @@ impl Origin {
     /// Where a part of the repository's path is empty, `.` or `..`, which
     /// would reach another path of the API (ADR-0067).
     pub(crate) fn get(&self, path: &str, token: Option<&Token>) -> Result<Request, Unpolled> {
+        Ok(self.checked()?.get(path, token))
+    }
+
+    /// The base URL of the repository, its path through the one segment
+    /// encoder, from which each request under it is made with no check
+    /// left to fail.
+    ///
+    /// # Errors
+    ///
+    /// Where a part of the repository's path is empty, `.` or `..`, which
+    /// would reach another path of the API (ADR-0067).
+    pub(crate) fn checked(&self) -> Result<Checked<'_>, Unpolled> {
         let repository = named(&self.repository, REPOSITORY)?;
         let base = match self.forge {
             Forge::GitHub | Forge::Forgejo => format!("{}/repos/{repository}", self.api),
             Forge::GitLab => gitlab::project(&self.api, &self.repository),
         };
-        let request = Request::new(Method::Get, SecretText::plain(format!("{base}{path}")))
-            .at_most(self.reading.parse);
-        Ok(authorized(self.forge, request, token))
+        Ok(Checked { origin: self, base })
     }
 
     /// The request for `path` under the API's base URL, carrying `token`.

@@ -1,6 +1,7 @@
 //! Discord against its fixtures: each step's request as the fixture holds
 //! it, and each answer read back into what the ledger records.
 
+mod dotted;
 mod revise;
 
 use herald_core::{

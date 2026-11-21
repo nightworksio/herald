@@ -1,0 +1,136 @@
+//! A room that is no single path segment, `..` read from a config no check
+//! passed, and an event id that is not one: refused before a request, at
+//! the point each was refused before (ADR-0067).
+
+use herald_core::{Declined, Delivery, Entry, Facts, Sent, Step};
+use herald_dest_matrix::{Matrix, MatrixMarkers, RouteOptions};
+use herald_kinds::{Probe, Reach};
+use herald_ports::{Markers, Response, Secret};
+use herald_testing::ScriptedHttp;
+use herald_testing::sample::{announcement, marker};
+use serde_json::{Value, json};
+
+const DOTTED: &str = "the Matrix id in the request's path is empty or a dot segment, which names nothing in a URL path, so this step is not taken";
+
+fn matrix(room: &str) -> Matrix {
+    Matrix::new(
+        "https://matrix.example",
+        Secret::new("HERALD_MATRIX_TOKEN", "test-token"),
+        RouteOptions {
+            room: room.to_owned(),
+        },
+    )
+}
+
+fn answer(body: &Value) -> Response {
+    Response {
+        status: 200,
+        headers: Vec::new(),
+        body: body.to_string().into_bytes(),
+    }
+}
+
+fn posted(event: &str) -> Entry {
+    Entry::new(announcement().key).landed(
+        Step::Post,
+        Facts {
+            message: Some(event.to_owned()),
+            ..Facts::default()
+        },
+    )
+}
+
+fn sent(matrix: &Matrix, answers: Vec<Response>, step: &Step, entry: &Entry) -> (Sent, usize) {
+    let http = ScriptedHttp::new(answers);
+    let sent = pollster::block_on(matrix.send(&http, step, &announcement(), entry)).unwrap();
+    (sent, http.asked().len())
+}
+
+fn whoami() -> Response {
+    answer(&json!({ "user_id": "@herald:matrix.example" }))
+}
+
+#[test]
+fn a_dotted_room_is_pinned_unpinned_redacted_or_read_back_with_no_request() {
+    let dotted = matrix("..");
+    let refused = (Sent::Refused(DOTTED.to_owned()), 0);
+    assert_eq!(
+        sent(&dotted, Vec::new(), &Step::Pin, &posted("$post")),
+        refused
+    );
+    assert_eq!(
+        sent(&dotted, Vec::new(), &Step::Unpin, &posted("$post")),
+        refused
+    );
+    let pinned = posted("$post").landed(Step::Pin, Facts::default());
+    assert_eq!(
+        sent(&dotted, Vec::new(), &Step::Delete(0), &pinned),
+        refused
+    );
+    assert_eq!(
+        dotted
+            .request(&Step::Pin, &announcement(), &posted("$post"))
+            .unwrap_err()
+            .to_string(),
+        DOTTED
+    );
+    let http = ScriptedHttp::new(vec![whoami()]);
+    let read = pollster::block_on(
+        MatrixMarkers::new(&dotted, &http).entry(&announcement().key, &marker()),
+    );
+    assert_eq!(
+        read.unwrap_err().to_string(),
+        format!("the destination's posts could not be read: {DOTTED}")
+    );
+    assert_eq!(http.asked().len(), 1);
+    let checking = ScriptedHttp::new(vec![whoami()]);
+    let probes = pollster::block_on(dotted.probe(&checking, &Delivery::default()));
+    assert_eq!(
+        probes,
+        [
+            Probe::Taken,
+            Probe::Route {
+                key: Some("room"),
+                why: DOTTED.to_owned(),
+            },
+        ]
+    );
+    assert_eq!(checking.asked().len(), 1);
+}
+
+#[test]
+fn a_pin_named_by_a_dotted_event_is_never_read_back() {
+    let room = matrix("!abcdefg:matrix.example");
+    let mut unremembered = announcement();
+    unremembered.replaces = None;
+    let http = ScriptedHttp::new(vec![
+        answer(&json!({ "pinned": ["..", "$post"] })),
+        whoami(),
+    ]);
+    let sent = pollster::block_on(room.send(&http, &Step::Unpin, &unremembered, &posted("$post")))
+        .unwrap();
+    assert_eq!(sent, Sent::Refused(DOTTED.to_owned()));
+    assert_eq!(http.asked().len(), 2);
+}
+
+#[test]
+fn an_event_id_is_a_dollar_and_at_least_one_more_character() {
+    let room = matrix("!abcdefg:matrix.example");
+    assert_eq!(
+        room.request(&Step::Chunk(1), &announcement(), &posted("$")),
+        Err(Declined::Malformed("Matrix event id"))
+    );
+    assert!(
+        room.request(&Step::Chunk(1), &announcement(), &posted("$p"))
+            .is_ok()
+    );
+}
+
+#[test]
+fn only_an_answer_naming_a_matrix_error_code_declines_a_step() {
+    let room = matrix("!abcdefg:matrix.example");
+    assert!(room.declines(&answer(&json!({ "errcode": "M_FORBIDDEN", "error": "no" }))));
+    for undeclined in [json!({ "error": "no" }), json!({})] {
+        assert!(!room.declines(&answer(&undeclined)), "{undeclined}");
+    }
+}

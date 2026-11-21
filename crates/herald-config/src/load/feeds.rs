@@ -87,10 +87,10 @@ impl Loader<'_> {
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         routes: &[Read],
     ) {
-        for read in routes {
-            let Some((destination, _)) = destinations.get(&read.config.route.destination) else {
-                continue;
-            };
+        let placed = routes
+            .iter()
+            .filter_map(|read| Some((read, &destinations.get(&read.config.route.destination)?.0)));
+        for (read, destination) in placed {
             let public = destination.public(&read.config.options, &read.config.route.delivery);
             if let (true, Some(reason)) = (read.config.private, public) {
                 self.error(

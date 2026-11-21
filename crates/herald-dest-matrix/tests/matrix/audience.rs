@@ -131,4 +131,20 @@ fn a_restricted_room_is_private_only_where_every_room_it_lets_in_takes_an_invite
         )
     );
     assert_eq!(asked.len(), 2);
+    let most: Vec<serde_json::Value> = (0..5)
+        .map(|n| member(&format!("!r{n}:matrix.example")))
+        .collect();
+    let invited = vec![json!({ "join_rule": "invite" }); 5];
+    let (all, asked) = read(most, invited);
+    assert_eq!(all, Audience::Private);
+    assert_eq!(asked.len(), 7);
+    let (dotted, asked) = read(vec![member("..")], Vec::new());
+    assert_eq!(
+        dotted,
+        Audience::Unread(
+            "the Matrix id in the request's path is empty or a dot segment, which names nothing in a URL path, so this step is not taken"
+                .to_owned()
+        )
+    );
+    assert_eq!(asked.len(), 2);
 }

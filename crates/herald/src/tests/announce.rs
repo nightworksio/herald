@@ -620,3 +620,21 @@ fn only_a_push_of_a_tag_names_the_tag_a_run_is_for() {
         None
     );
 }
+
+#[test]
+fn a_pushed_tag_that_is_a_dot_segment_is_never_asked_for() {
+    let mut dotted = signalled("signals = [\"release\", \"tag\"]\n");
+    dotted
+        .vars
+        .insert("GITHUB_REF".to_owned(), "refs/tags/..".to_owned());
+    let world = World::default();
+    let refused = herald(&dotted, &world, &ANNOUNCE);
+    assert_ne!(refused.code, DONE);
+    assert!(
+        refused
+            .err
+            .contains("the tag \"..\" is empty or a dot segment, or holds one, which names nothing in a URL path, so it is not asked for"),
+        "{}",
+        refused.err
+    );
+}

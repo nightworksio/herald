@@ -548,3 +548,26 @@ fn a_living_post_herald_cannot_record_first_is_never_sent_the_section() {
     assert!(body.contains(WITHHELD), "{body}");
     assert!(!body.contains(ALERT_PAGE), "{body}");
 }
+
+#[test]
+fn an_owner_s_members_unread_for_its_advisories_name_it_unread_with_why() {
+    let config = owned("");
+    let mut store = listed();
+    store.fault = Fault::ReadsMembersOnce;
+    let board = read_with(&config, &forge(0), &store);
+    let shown = board.overviews.advisories.unwrap();
+    let found = shown.shown().unwrap();
+    let unread: Vec<(&str, &str)> = found
+        .unread
+        .iter()
+        .map(|unread| (unread.repository.as_str(), unread.reason.as_str()))
+        .collect();
+    assert_eq!(
+        unread,
+        [(
+            "org",
+            "its members could not be read: the store could not be reached: broken"
+        )]
+    );
+    assert_eq!(found.open.len(), 0);
+}

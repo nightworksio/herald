@@ -109,6 +109,23 @@ mod tests {
     use crate::look::Colour;
 
     #[test]
+    fn a_route_s_viewers_are_each_an_id_as_discord_writes_one() {
+        let route = |viewers: &[&str]| RouteOptions {
+            channel: Some("1566184281406177531".to_owned()),
+            viewers: viewers.iter().map(|viewer| (*viewer).to_owned()).collect(),
+            ..RouteOptions::default()
+        };
+        assert_eq!(
+            route(&["1566184281406170001", "1566184281406170003"]).check(),
+            Ok(())
+        );
+        assert_eq!(
+            route(&["1566184281406170001", "Mods"]).check(),
+            Err("\"Mods\" in viewers is not a role or member id; give its id, 17 to 20 digits, from Copy Role ID or Copy User ID".to_owned())
+        );
+    }
+
+    #[test]
     fn its_posts_look_as_its_colours_and_archive_length_say() {
         let options: DestinationOptions = serde_json::from_value(serde_json::json!({
             "colours": { "release": "#000001" },

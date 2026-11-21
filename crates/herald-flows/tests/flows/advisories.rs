@@ -464,5 +464,11 @@ fn herald_queue_shows_the_section_only_where_the_operator_says_its_output_is_pri
             private.then_some(1),
             "{private}"
         );
+        assert_eq!(
+            script.seen().len(),
+            if private { 4 } else { 1 },
+            "{:?}",
+            script.seen()
+        );
     }
 }

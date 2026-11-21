@@ -416,3 +416,13 @@ fn a_recalled_place_is_checked_as_a_route_s_is_and_a_tampered_one_reaches_nothin
         assert!(options.recalled(tampered).is_none(), "{tampered}");
     }
 }
+
+#[test]
+fn a_slack_route_is_never_public_by_its_kind() {
+    let placed = Placed::new(route(&json!({ "channel": "C0123456789" })));
+    let crossposting = herald_core::Delivery {
+        crosspost: true,
+        ..herald_core::Delivery::default()
+    };
+    assert_eq!(bot(&json!(null)).public(&placed, &crossposting), None);
+}

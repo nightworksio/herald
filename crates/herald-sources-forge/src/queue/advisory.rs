@@ -100,11 +100,12 @@ fn next_page(answer: &Response) -> Option<String> {
 }
 
 /// Where a listing of `holder` that kept `kept` advisories, at most `left`
-/// wanted, stops after its page `page` of at most `pages`, a next page to
-/// be read where `next` says: none while it reads on. Only advisories of a
-/// repository it keeps count, so another repository's alerts never cut one
-/// short; an owner's listing past its pages stops short, never saying an
-/// advisory was left out where it cannot know.
+/// wanted, stops before its end, after its page `page` of at most `pages`,
+/// a next page to be read where `next` says: none while it reads on or
+/// where it ends, which its caller tells by the next page it lacks. Only
+/// advisories of a repository it keeps count, so another repository's
+/// alerts never cut one short; an owner's listing past its pages stops
+/// short, never saying an advisory was left out where it cannot know.
 const fn stops(
     holder: Holder<'_>,
     (kept, left): (usize, usize),
@@ -114,9 +115,7 @@ const fn stops(
     let whole = matches!(holder, Holder::Repository(_));
     if kept > left || (whole && next && kept == left) {
         Some(Cut::Held)
-    } else if !next {
-        Some(Cut::Whole)
-    } else if page >= pages {
+    } else if next && page >= pages {
         Some(Cut::Short { pages: page })
     } else {
         None

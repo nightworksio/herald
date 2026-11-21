@@ -454,3 +454,20 @@ fn every_id_in_a_discord_path_is_percent_encoded_in_its_one_place() {
         "https://discord.com/api/v10/channels/1%3Fx%3D%23"
     );
 }
+
+#[test]
+fn a_route_is_public_where_it_crossposts_and_else_its_channel_decides() {
+    let placed = Placed::new(route(&json!({ "channel": CHANNEL })));
+    let crossposting = herald_core::Delivery {
+        crosspost: true,
+        ..herald_core::Delivery::default()
+    };
+    assert_eq!(
+        bot(&json!(null)).public(&placed, &crossposting),
+        Some("it crossposts each post to every server following the channel")
+    );
+    assert_eq!(
+        bot(&json!(null)).public(&placed, &herald_core::Delivery::default()),
+        None
+    );
+}

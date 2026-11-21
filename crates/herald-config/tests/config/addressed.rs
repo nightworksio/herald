@@ -89,9 +89,13 @@ fn written(kind: &str, extra: &str) -> String {
 }
 
 pub(crate) fn loaded(kind: &str, extra: &str) -> Result<Config, String> {
+    read(&written(kind, extra))
+}
+
+fn read(text: &str) -> Result<Config, String> {
     load(
         "herald.toml",
-        &written(kind, extra),
+        text,
         &|_| Err("no file".to_owned()),
         &crate::common::kinds(),
     )
@@ -288,5 +292,41 @@ fn herald_s_fixed_recall_line_cannot_be_replaced() {
     assert!(
         replaced.contains("herald:recalled is herald's own fixed line and cannot be replaced"),
         "{replaced}"
+    );
+}
+
+#[test]
+fn a_route_not_declared_private_is_not_private_and_a_living_one_is_recallable() {
+    let plain = loaded("discord", "").unwrap();
+    let id = plain.routes[0].route.id.clone();
+    assert_eq!(
+        plain.surface(&id),
+        Surface::Route {
+            private: false,
+            recallable: false
+        }
+    );
+    let living = read(&format!(
+        "{}[reports.daily]\n",
+        written("matrix", "private = true\nliving = true")
+            .replace("sources = [\"gate\"]", "sources = [\"daily\"]")
+    ))
+    .unwrap();
+    assert!(living.routes[0].living());
+    assert_eq!(
+        living.surface(&living.routes[0].route.id),
+        Surface::Route {
+            private: true,
+            recallable: true
+        }
+    );
+    let mut unplaced = plain;
+    unplaced.destinations.clear();
+    assert_eq!(
+        unplaced.surface(&id),
+        Surface::Route {
+            private: false,
+            recallable: false
+        }
     );
 }

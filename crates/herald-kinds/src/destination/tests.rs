@@ -269,3 +269,10 @@ fn only_a_place_herald_cannot_ask_of_says_why() {
         assert_eq!(asked.unchecked(), None);
     }
 }
+
+#[test]
+fn a_kind_and_a_place_that_keep_every_default_recall_and_write_nothing() {
+    assert!(plain("HERALD_KEY").recalled("{}").is_none());
+    assert_eq!(Spot("channel").written(), None);
+    assert_eq!(Room.written(), None);
+}

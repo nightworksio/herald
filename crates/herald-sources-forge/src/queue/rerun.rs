@@ -99,22 +99,23 @@ impl Opened<'_> {
                     .collect::<Vec<_>>()
             }
             Forge::GitHub => {
-                let asked = self.origin.get(
+                let checked = self.origin.checked()?;
+                let asked = checked.get(
                     &format!("/actions/runs?head_sha={head}&status=failure&per_page={most}"),
                     self.token,
-                )?;
+                );
                 let body = self.asked(http, asked, RUNS).await?;
                 let runs: Runs =
                     herald_wire::read(RUNS, parse, &body).map_err(Unpolled::unreadable)?;
                 let mut planned = Vec::new();
                 for run in runs.workflow_runs.into_iter().take(most) {
-                    let asked = self.origin.get(
+                    let asked = checked.get(
                         &format!(
                             "/actions/runs/{}/jobs?filter=latest&per_page={PAGE}",
                             run.id
                         ),
                         self.token,
-                    )?;
+                    );
                     let body = self.asked(http, asked, JOBS).await?;
                     let jobs: Jobs =
                         herald_wire::read(JOBS, parse, &body).map_err(Unpolled::unreadable)?;

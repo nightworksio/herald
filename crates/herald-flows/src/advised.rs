@@ -12,10 +12,7 @@ use herald_ports::{Clock, Http, Signer, Store};
 
 use crate::announce::Ports;
 use crate::budget::Budgeted;
-use crate::prepare::Connected;
-
-/// Why a source's advisories were not read where this run does not poll it.
-const UNPOLLED: &str = "this run does not poll the source";
+use crate::report::Sources;
 
 /// `routes` parted by the surface `config` makes each; each part none of
 /// whose routes is left out.
@@ -37,13 +34,13 @@ pub(crate) fn shown(found: Option<&Advisories>, surface: Surface) -> Advised {
     found.map_or_else(Advised::withheld, |found| Advised::to(found, surface))
 }
 
-/// The advisories `advising` reads of every source `view` reads, after its
-/// rows `pulls`, leaving `kept` of the run's requests for the posts: only
-/// those of the repositories the view holds, and each source whose read
-/// failed, the run's budget ending included, named unread with why, never
-/// stopping the report.
+/// The advisories `advising` reads of each of `sources`, those the view
+/// `view` read its rows `pulls` from, after those rows, leaving `kept` of
+/// the run's requests for the posts: only those of the repositories the
+/// view holds, and each source whose read failed, the run's budget ending
+/// included, named unread with why, never stopping the report.
 pub(crate) async fn read<S: Store, C: Clock, G: Signer, H: Http>(
-    (connected, ports): (&Connected<H>, &Ports<'_, S, C, G>),
+    (sources, ports): (&Sources<'_, H>, &Ports<'_, S, C, G>),
     (view, advising, kept): (&ViewConfig, Advising, usize),
     pulls: &[Pull],
 ) -> Advisories {
@@ -57,20 +54,11 @@ pub(crate) async fn read<S: Store, C: Clock, G: Signer, H: Http>(
     shown.sort_unstable();
     shown.dedup();
     let mut found = Advisories::none(now);
-    for name in &view.sources {
+    for &(name, queue, http) in sources.iter() {
         let unread = |reason: String| Unread {
             repository: name.as_str().to_owned(),
             visibility: Visibility::Private,
             reason,
-        };
-        let Some((queue, http)) = connected
-            .sources
-            .iter()
-            .find(|(source, _)| source.name == *name)
-            .and_then(|(source, http)| source.queue.as_ref().map(|queue| (queue, http)))
-        else {
-            found.unread.push(unread(UNPOLLED.to_owned()));
-            continue;
         };
         let members = if queue.scoped() {
             match crate::scope::members(ports.store, name).await {
@@ -121,3 +109,6 @@ fn stopped(stop: &crate::announce::Stop) -> String {
         _ => "its members could not be read".to_owned(),
     }
 }
+
+#[cfg(test)]
+mod tests;

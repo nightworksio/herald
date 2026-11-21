@@ -136,6 +136,17 @@ pub(crate) fn bounded(
     script: &Script,
     (at, most): (Timestamp, Option<usize>),
 ) -> Vec<Swept> {
+    ran(config, (store, script), (at, most), "r1")
+}
+
+/// One report round at `at` by the run `run`, making at most `most`
+/// requests where it says.
+fn ran(
+    config: &Config,
+    (store, script): (&Failing, &Script),
+    (at, most): (Timestamp, Option<usize>),
+    run: &str,
+) -> Vec<Swept> {
     let secrets = FakeSecrets::default()
         .with("HERALD_MATRIX_TOKEN", "t0ken")
         .with("HERALD_GITHUB_TOKEN", "ghp_x");
@@ -156,7 +167,7 @@ pub(crate) fn bounded(
             ..Budget::UNBOUNDED
         },
     };
-    pollster::block_on(report(config, &connected, &ports, "r1"))
+    pollster::block_on(report(config, &connected, &ports, run))
 }
 
 /// The transaction each event `script` sent to the room was sent under.
@@ -340,4 +351,76 @@ fn a_section_whose_view_no_longer_reads_advisories_is_recalled_before_the_next_p
             .all(|body| !body.contains("Prototype pollution")),
         "{bodies:?}"
     );
+}
+
+#[test]
+fn a_replacement_that_cannot_read_back_or_record_its_start_sends_nothing() {
+    let store = Failing {
+        fault: Fault::LandsReplacedPostOnce,
+        ..healthy()
+    };
+    let first = world("invite", true, &["$one"]);
+    round(&config(true), &store, &first, NOON);
+    let later = NOON + SignedDuration::from_hours(1);
+    let cut = world("invite", false, &["$gone", "$two"]);
+    round(&config(true), &store, &cut, later);
+    let unread = world("invite", true, &[]);
+    round(
+        &config(true),
+        &store,
+        &unread,
+        later + SignedDuration::from_hours(1),
+    );
+    assert_eq!(
+        written(&unread),
+        Vec::<String>::new(),
+        "{:?}",
+        unread.seen()
+    );
+    let mut fresh = healthy();
+    round(
+        &config(true),
+        &fresh,
+        &world("invite", true, &["$one"]),
+        NOON,
+    );
+    *fresh.writes.lock().unwrap() = 0;
+    fresh.fault = Fault::Claims;
+    let unclaimed = world("invite", false, &["$gone", "$two"]);
+    round(&config(true), &fresh, &unclaimed, later);
+    assert_eq!(
+        written(&unclaimed),
+        Vec::<String>::new(),
+        "{:?}",
+        unclaimed.seen()
+    );
+}
+
+#[test]
+fn a_replacement_another_run_holds_is_left_to_it() {
+    let mut store = healthy();
+    round(
+        &config(true),
+        &store,
+        &world("invite", true, &["$one"]),
+        NOON,
+    );
+    let later = NOON + SignedDuration::from_hours(1);
+    store.fault = Fault::Releases;
+    round(
+        &config(true),
+        &store,
+        &world("invite", false, &["$gone", "$two"]),
+        later,
+    );
+    store.fault = Fault::Nothing;
+    let other = world("invite", false, &[]);
+    let swept = ran(
+        &config(true),
+        (&store, &other),
+        (later + SignedDuration::from_mins(1), None),
+        "r2",
+    );
+    assert!(format!("{swept:?}").contains("Held {"), "{swept:?}");
+    assert_eq!(written(&other), Vec::<String>::new(), "{:?}", other.seen());
 }

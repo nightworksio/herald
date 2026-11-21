@@ -190,6 +190,12 @@ fn living(route: &str) -> herald_core::Key {
 /// The report `live`'s living posts on the routes `a` and `b`, kept in
 /// the store `world` holds, each with one part sent and never found again.
 fn strayed(world: &World) {
+    strayed_parts(world, &[0]);
+}
+
+/// The report `live`'s living posts on the routes `a` and `b`, kept in
+/// the store `world` holds, each with `parts` sent and never found again.
+fn strayed_parts(world: &World, parts: &[u32]) {
     use herald_ports::{Cursors as _, Ledger as _, Store as _};
     let store = kept(world);
     let posts: Vec<herald_core::AdvisedPost> = ["a", "b"]
@@ -208,10 +214,12 @@ fn strayed(world: &World) {
     pollster::block_on(store.cursors().put_cursor(&live, &cursor, None)).unwrap();
     for route in ["a", "b"] {
         let mut entry = herald_core::Entry::new(living(route));
-        entry.strays.push(herald_core::Stray {
-            part: 0,
-            token: format!("{route}.first"),
-        });
+        for (sent, part) in parts.iter().enumerate() {
+            entry.strays.push(herald_core::Stray {
+                part: *part,
+                token: format!("{route}.{sent}"),
+            });
+        }
         pollster::block_on(store.ledger().put_entry(&entry, None)).unwrap();
     }
 }
@@ -296,4 +304,21 @@ fn orphans_are_listed_with_each_route_s_digest_and_cleared_one_route_at_a_time()
         again.err
     );
     assert_eq!(strays(&world, "b"), 1);
+}
+
+#[test]
+fn a_part_sent_more_than_once_is_listed_once_with_how_many_times() {
+    let setup = setup(&viewed());
+    let world = World::default();
+    strayed_parts(&world, &[2, 0, 0]);
+    let listed = herald(&setup, &world, &["orphans", "clear", "live"]);
+    assert_eq!((listed.code, listed.err.as_str()), (DONE, ""));
+    assert_eq!(
+        listed.out.lines().next(),
+        Some(
+            "possibly orphaned: the post (sent 2 times), chunk 2 of the report live's living post on the route a"
+        ),
+        "{}",
+        listed.out
+    );
 }

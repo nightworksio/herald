@@ -52,13 +52,24 @@ pub(crate) fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
         .body(body.to_string())
 }
 
+/// The path of the route's room, its id checked as one path segment:
+/// made only by [`room`], so each request built from it has no check left
+/// to fail (ADR-0067).
+pub(crate) struct Room(String);
+
+impl std::fmt::Display for Room {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// The path of the route's room.
 ///
 /// # Errors
 ///
 /// Where the room's id names nothing in a path.
-pub(crate) fn room(matrix: &Matrix) -> Result<String, Declined> {
-    Ok(format!("/rooms/{}", segment(&matrix.route.room)?))
+pub(crate) fn room(matrix: &Matrix) -> Result<Room, Declined> {
+    Ok(Room(format!("/rooms/{}", segment(&matrix.route.room)?)))
 }
 
 /// `text` as one segment of a Matrix path, through the one segment
@@ -247,7 +258,7 @@ pub(crate) fn step(
             let content = chunk_content(announcement, *index, root, before);
             sent(matrix, &entry.chunk_token(*index), &content)
         }
-        Step::Pin | Step::Unpin => pinned(matrix),
+        Step::Pin | Step::Unpin => Ok(pinned(matrix, &room(matrix)?)),
         Step::Crosspost => Err(cannot("crosspost")),
         Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
         Step::Deliver(_) | Step::Deliveries | Step::Updates(_) | Step::Deletes => {
@@ -261,12 +272,9 @@ pub(crate) fn step(
     }
 }
 
-/// The request reading the room's pinned events.
-pub(crate) fn pinned(matrix: &Matrix) -> Result<Request, Declined> {
-    Ok(get(
-        matrix,
-        &format!("{}/state/{PINNED_EVENTS}", room(matrix)?),
-    ))
+/// The request reading the pinned events of the room at `room`.
+pub(crate) fn pinned(matrix: &Matrix, room: &Room) -> Request {
+    get(matrix, &format!("{room}/state/{PINNED_EVENTS}"))
 }
 
 /// The room's pinned events, as `response` holds them, or what the
@@ -335,16 +343,20 @@ pub(crate) fn without(held: &[String], stale: &[String], post: &str) -> Vec<Stri
         .collect()
 }
 
-/// The write setting the room's pins to `pins`.
-pub(crate) fn repinned(matrix: &Matrix, pins: &[String]) -> Result<Request, Declined> {
-    let path = format!("{}/state/{PINNED_EVENTS}", room(matrix)?);
-    Ok(put(matrix, &path, &json!({ "pinned": pins })))
+/// The write setting the pins of the room at `room` to `pins`.
+pub(crate) fn repinned(matrix: &Matrix, room: &Room, pins: &[String]) -> Request {
+    put(
+        matrix,
+        &format!("{room}/state/{PINNED_EVENTS}"),
+        &json!({ "pinned": pins }),
+    )
 }
 
-/// The request reading the event `event` of the room.
-pub(crate) fn event(matrix: &Matrix, event: &str) -> Result<Request, Declined> {
-    Ok(get(
-        matrix,
-        &format!("{}/event/{}", room(matrix)?, segment(event)?),
-    ))
+/// The request reading the event `event` of the room at `room`.
+///
+/// # Errors
+///
+/// Where `event` names nothing in a path.
+pub(crate) fn event(matrix: &Matrix, room: &Room, event: &str) -> Result<Request, Declined> {
+    Ok(get(matrix, &format!("{room}/event/{}", segment(event)?)))
 }

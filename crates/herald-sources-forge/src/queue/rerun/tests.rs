@@ -179,3 +179,31 @@ fn a_plan_reads_only_the_newest_runs_it_is_bounded_to() {
     let (plan, _) = planned_most(&queued(Forge::GitLab), vec![answer(&pipelines)], 1);
     assert!(matches!(plan.unwrap(), Plan::Runs(runs) if runs.len() == 1 && runs[0].run == "8"));
 }
+
+#[test]
+fn a_repository_whose_path_holds_a_dot_segment_plans_nothing_and_asks_nothing() {
+    for forge in [Forge::GitHub, Forge::GitLab] {
+        let options = SourceOptions {
+            owner: Some("o".to_owned()),
+            ..SourceOptions::default()
+        };
+        let owned = crate::owner::Owned::new(forge, ("o", None), &options, (None, 0));
+        let scoped = crate::queue::Scoped::new(
+            (forge, "o"),
+            &options,
+            None,
+            ("https://api.github.com/graphql".to_owned(), owned),
+        );
+        let http = ScriptedHttp::new(Vec::new());
+        let plan = pollster::block_on(scoped.planned(&http, ("o/..", "h1", "test"), 5));
+        assert_eq!(
+            plan,
+            Err(Unpolled::Unreadable(
+                "the repository's path \"..\" is empty or a dot segment, or holds one, which names nothing in a URL path, so it is not asked for"
+                    .to_owned()
+            )),
+            "{forge:?}"
+        );
+        assert_eq!(http.asked().len(), 0, "{forge:?}");
+    }
+}
