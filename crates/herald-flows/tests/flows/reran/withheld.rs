@@ -302,3 +302,34 @@ fn a_private_repository_s_conflicts_flaky_check_runs_and_unread_line_name_it_now
         assert!(!said.contains(named), "{named}: {said}");
     }
 }
+
+#[test]
+fn a_plan_whose_runs_fail_to_read_is_said_in_full_only_where_the_output_is_said_private() {
+    let config = config(TOKEN_WRITE);
+    let store = healthy();
+    crate::boards::flaky_seen(&store, "Change", herald_core::Visibility::Public);
+    let clock = FakeClock::at(NOON);
+    let ports = Ports {
+        store: &store,
+        clock: &clock,
+        signer: &FakeSigner,
+        budget: Budget::UNBOUNDED,
+    };
+    let said = |printed| {
+        let script = Script::answering(&[(super::RUNS, 404, "{}")]);
+        let prepared =
+            pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+        let connected: Connected<Script> =
+            prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+        pollster::block_on(rerun_plans((&config, &connected, &ports), (None, printed)))
+    };
+    assert_eq!(
+        said(Printed::Withheld),
+        Err(herald_flows::Stop::Source(format!(
+            "the source \"open\" could not be read: its forge's answer could not be read; {}",
+            herald_flows::UNSAID_FAILURE
+        )))
+    );
+    let full = format!("{:?}", said(Printed::Configured));
+    assert!(full.contains("answered with 404"), "{full}");
+}
