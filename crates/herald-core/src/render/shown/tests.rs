@@ -50,7 +50,8 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
             "name",
             "overviews",
             "stale",
-            "total"
+            "total",
+            "withheld_pulls"
         ]
     );
     assert_eq!(value.get_attr("name").unwrap().to_string(), "queue");
@@ -136,7 +137,8 @@ fn a_view_as_json_holds_the_keys_a_template_reads() {
             "name",
             "overviews",
             "stale",
-            "total"
+            "total",
+            "withheld_pulls"
         ]
     );
     assert_eq!(json["groups"][0]["rows"][0]["number"], 7);

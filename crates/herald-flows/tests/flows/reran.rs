@@ -5,7 +5,7 @@
 use std::sync::Mutex;
 
 use herald_config::{Config, Uses, load};
-use herald_core::{Reran, RunKey};
+use herald_core::{Printed, Reran, RunKey};
 use herald_flows::{
     Applied, Applying, Budget, Connected, Done, Ports, Requests, Stop, UNCHOSEN, UNKEPT, UNPLANNED,
     prepare, rerun_apply, rerun_plans,
@@ -214,16 +214,23 @@ fn applied_by(
     asked: (&[(&str, &str)], Option<usize>),
     refused: Option<&str>,
 ) -> Ended {
-    applied_from(given.0, given, script, asked, refused)
+    applied_from(
+        given.0,
+        given,
+        script,
+        asked,
+        (refused, Printed::Configured),
+    )
 }
 
-/// [`applied_by`], its sources prepared from `prepared_from`.
+/// [`applied_by`], its sources prepared from `prepared_from`, its plans
+/// read as `printed` prints them.
 fn applied_from(
     prepared_from: &Config,
     (config, store, secrets): (&Config, &Failing, &FakeSecrets),
     script: &Script,
     (chosen, most): (&[(&str, &str)], Option<usize>),
-    refused: Option<&str>,
+    (refused, printed): (Option<&str>, Printed),
 ) -> Ended {
     let prepared = pollster::block_on(prepare(
         prepared_from,
@@ -278,7 +285,7 @@ fn applied_from(
     let applied = pollster::block_on(rerun_apply(
         (config, &connected, &ports),
         &applying,
-        (Some("flaky"), &chosen),
+        ((Some("flaky"), printed), &chosen),
     ));
     Ended {
         applied,
@@ -351,7 +358,12 @@ fn a_plan_names_each_job_and_its_call_without_reading_the_write_credential() {
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    let planned = pollster::block_on(rerun_plans((&config, &connected, &ports), None)).unwrap();
+    let planned = pollster::block_on(rerun_plans(
+        (&config, &connected, &ports),
+        (None, Printed::Configured),
+    ))
+    .unwrap()
+    .planned;
     assert_eq!(planned.len(), 1);
     let plan = &planned[0];
     assert_eq!(
@@ -368,7 +380,10 @@ fn a_plan_names_each_job_and_its_call_without_reading_the_write_credential() {
         "POST https://api.github.com/repos/o/open/actions/jobs/420/rerun"
     );
     assert_eq!(carrying(&script, "write-value"), Vec::<String>::new());
-    let unknown = pollster::block_on(rerun_plans((&config, &connected, &ports), Some("nope")));
+    let unknown = pollster::block_on(rerun_plans(
+        (&config, &connected, &ports),
+        (Some("nope"), Printed::Configured),
+    ));
     assert!(
         matches!(unknown, Err(Stop::Source(ref reason)) if reason.contains("no rule is named"))
     );
@@ -884,6 +899,7 @@ fn a_source_reading_as_an_app_is_held_apart_from_its_write_credential_by_the_app
 
 mod apps;
 mod revoked;
+mod withheld;
 
 #[test]
 fn a_job_of_a_source_the_config_applied_under_does_not_name_is_refused_as_unwritten() {
@@ -898,7 +914,7 @@ fn a_job_of_a_source_the_config_applied_under_does_not_name_is_refused_as_unwrit
         (&unnamed, &store, &secrets()),
         &script,
         (CHOSEN, None),
-        None,
+        (None, Printed::Configured),
     );
     assert_eq!(refused(&applied), herald_kinds::UNWRITTEN);
     assert!(applied.told.is_empty() && applied.bases.is_empty());

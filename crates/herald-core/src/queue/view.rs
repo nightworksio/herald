@@ -171,6 +171,9 @@ pub struct Board {
     pub failures: Vec<Failure>,
     /// Its overviews, as its audience may see them (ADR-0066).
     pub overviews: Overviews,
+    /// How many pull requests of private or internal repositories were
+    /// withheld from it, where its output was not said to be private.
+    pub withheld: usize,
 }
 
 impl Board {
@@ -367,6 +370,7 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
         stale,
         failures,
         overviews: Overviews::default(),
+        withheld: 0,
     }
 }
 

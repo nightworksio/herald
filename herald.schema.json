@@ -22,6 +22,10 @@
         "$ref": "#/$defs/Board"
       }
     },
+    "cli": {
+      "description": "What herald's commands print.",
+      "$ref": "#/$defs/Cli"
+    },
     "destinations": {
       "description": "The places herald posts to, by name.",
       "type": "object",
@@ -1531,6 +1535,17 @@
           "const": "members"
         }
       ]
+    },
+    "Cli": {
+      "description": "`[cli]`: what herald's commands print.",
+      "type": "object",
+      "properties": {
+        "private": {
+          "description": "Whether `herald queue` and `herald rerun` print the rows and plans of\nprivate and internal repositories without `--private`: false where\nabsent, so they are withheld and counted. Set it only where their\noutput stays private: a CI job's log on a public repository is public.\nAdvisories are printed with `--private` alone, whatever it says.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "Colour": {
       "description": "A colour, written \"#rrggbb\".",

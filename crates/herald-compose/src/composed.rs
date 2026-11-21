@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use herald_config::{Config, Uses};
-use herald_core::{Board, RouteId, status};
+use herald_core::{Board, Printed, RouteId, status};
 use herald_flows::{
     Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Orphaned, Place, Ports,
     Publishing, Requests, Room, Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked,
@@ -257,15 +257,16 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     }
 
     /// The board of the view `view`, its sources' open pull requests read
-    /// now (ADR-0055), its advisories shown where `private` says the output
-    /// is private (ADR-0067).
+    /// now (ADR-0055), a private or internal repository's rows printed as
+    /// `printed` says and its advisories only where the operator asked
+    /// (ADR-0067).
     ///
     /// # Errors
     ///
     /// Where the config has no such view, or a source it reads could not
     /// be read.
-    pub async fn queue(&self, view: &str, private: bool) -> Result<Board, Stop> {
-        self.through(Admission::Once, self.started(), Queueing(view, private))
+    pub async fn queue(&self, view: &str, printed: Printed) -> Result<Board, Stop> {
+        self.through(Admission::Once, self.started(), Queueing(view, printed))
             .await
     }
 
@@ -565,7 +566,7 @@ impl<H: Host> Through<H> for Logging {
     }
 }
 
-struct Queueing<'v>(&'v str, bool);
+struct Queueing<'v>(&'v str, Printed);
 
 impl<H: Host> Through<H> for Queueing<'_> {
     type Done = Result<Board, Stop>;

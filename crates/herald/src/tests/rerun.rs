@@ -247,6 +247,11 @@ fn json_said_escapes_every_character_a_line_drops_and_reads_back_unchanged() {
 /// `world`'s store keeping `cli/cli#1` on its head `h1`, whose check `test`
 /// fails now and failed then passed on it an hour ago, read now.
 fn flaky(world: &World) {
+    flaky_seen(world, herald_core::Visibility::Public);
+}
+
+/// [`flaky`], its repository seen as `visibility`.
+fn flaky_seen(world: &World, visibility: herald_core::Visibility) {
     use herald_core::{Checks, Flip, KeptPull, PullKey, Reconciled, RepositoryKey};
     use herald_ports::{Pulls as _, Store as _};
     let now = jiff::Timestamp::now();
@@ -258,7 +263,7 @@ fn flaky(world: &World) {
     let pull = herald_core::Pull {
         project: "cli".to_owned(),
         repository: "cli/cli".to_owned(),
-        visibility: herald_core::Visibility::Public,
+        visibility,
         number: 1,
         title: "Change".to_owned(),
         url: "https://github.com/cli/cli/pull/1".to_owned(),
@@ -403,4 +408,36 @@ fn a_job_named_without_its_id_or_head_is_refused_and_an_apply_of_no_rule_says_wh
         "{}",
         unknown.err
     );
+}
+
+#[test]
+fn a_private_repository_s_plan_is_withheld_and_its_job_refused_unless_the_output_is_said_private() {
+    let setup = setup(&format!(
+        "{CONFIG}[views.kept]\nsources = [\"cli\"]\nmode = \"kept\"\nreconcile = \"1d\"\n[rules.flaky]\nview = \"kept\"\nflaky = {{ rerun = true }}\nevery = \"1h\"\nat = \"00:00\"\n"
+    ));
+    let world = World::default();
+    flaky_seen(&world, herald_core::Visibility::Private);
+    let plan = herald(&setup, &world, &["rerun", "flaky"]);
+    assert_eq!(
+        plan.out.lines().collect::<Vec<_>>(),
+        [
+            "no flaky check is failing on the rule's open pull requests, so nothing is planned",
+            "the plans of 1 pull requests of private or internal repositories withheld: --private, or [cli] private, prints them",
+        ],
+        "{}",
+        plan.err
+    );
+    let applied = herald(
+        &setup,
+        &world,
+        &["rerun", "flaky", "--apply", "--job", "420@h1"],
+    );
+    assert_eq!(
+        applied.out.trim(),
+        format!(
+            "job 420@h1: not re-run: {}",
+            herald_flows::UNPLANNED_WITHHELD
+        )
+    );
+    assert!(!applied.out.contains("cli/cli"), "{}", applied.out);
 }

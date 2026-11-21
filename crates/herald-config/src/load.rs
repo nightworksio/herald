@@ -328,6 +328,7 @@ pub fn load(
     let announce = loader.announce(sections.announce);
     let run = loader.run(sections.run);
     let doctor = loader.doctor(sections.doctor);
+    let cli = loader.cli(sections.cli);
     loader.exposed(&sources, &routes, doctor);
     loader.unstated(&routes, doctor);
     loader.unaddressed(&destinations, &routes);
@@ -364,6 +365,7 @@ pub fn load(
             announce,
             run,
             doctor,
+            cli,
             kinds: std::mem::take(&mut loader.specs),
             secret_keys,
         },

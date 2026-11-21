@@ -40,7 +40,7 @@ fn a_view_is_printed_as_a_table_or_as_json() {
     let setup = setup(&viewed());
     let world = World::default();
     listed(&world);
-    let table = herald(&setup, &world, &["queue", "mine"]);
+    let table = herald(&setup, &world, &["queue", "mine", "--private"]);
     assert_eq!((table.code, table.err.as_str()), (DONE, ""));
     let lines: Vec<&str> = table.out.lines().collect();
     assert_eq!(lines[0], "mine: 4 open pull requests, 4 stale");
@@ -63,7 +63,7 @@ fn a_view_is_printed_as_a_table_or_as_json() {
             "serde to 1.0.1 (1, 0 green, 0 failing)",
         ]
     );
-    let flat = herald(&setup, &world, &["queue", "flat"]);
+    let flat = herald(&setup, &world, &["queue", "flat", "--private"]);
     let flat: Vec<&str> = flat
         .out
         .lines()
@@ -79,7 +79,11 @@ fn a_view_is_printed_as_a_table_or_as_json() {
             "tokio (1, 0 green, 0 failing)"
         ]
     );
-    let json = herald(&setup, &world, &["queue", "mine", "--format", "json"]);
+    let json = herald(
+        &setup,
+        &world,
+        &["queue", "mine", "--format", "json", "--private"],
+    );
     let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
     assert_eq!(read["name"], "mine");
     assert_eq!(read["groups"][0]["rows"][0]["number"], 7);
@@ -162,6 +166,85 @@ fn a_view_s_advisories_are_printed_only_where_the_operator_says_the_output_is_pr
     let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
     assert_eq!(read["overviews"]["advisories"]["count"], 1);
     assert!(read["overviews"].get("withheld").is_none());
+}
+
+const WITHHELD_ROWS: &str = "4 pull requests of private or internal repositories withheld: --private, or [cli] private, prints them";
+
+#[test]
+fn a_private_repository_s_rows_are_withheld_and_counted_unless_the_output_is_said_private() {
+    let setup = setup(&viewed());
+    let world = World::default();
+    listed(&world);
+    let table = herald(&setup, &world, &["queue", "mine"]);
+    assert_eq!((table.code, table.err.as_str()), (DONE, ""));
+    assert_eq!(
+        table.out.lines().collect::<Vec<_>>(),
+        ["mine: 0 open pull requests, 0 stale", WITHHELD_ROWS]
+    );
+    let json = herald(&setup, &world, &["queue", "mine", "--format", "json"]);
+    assert!(!json.out.contains("cli/cli"), "{}", json.out);
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(read["withheld_pulls"], 4);
+    assert_eq!(read["total"], 0);
+    for asked in [
+        &["queue", "mine", "--private"][..],
+        &["queue", "mine", "--format", "json", "--private"][..],
+    ] {
+        let printed = herald(&setup, &world, asked);
+        assert!(printed.out.contains("cli/cli"), "{}", printed.out);
+        assert!(!printed.out.contains(WITHHELD_ROWS), "{}", printed.out);
+    }
+    let read: serde_json::Value = serde_json::from_str(
+        &herald(
+            &setup,
+            &world,
+            &["queue", "mine", "--format", "json", "--private"],
+        )
+        .out,
+    )
+    .unwrap();
+    assert_eq!(
+        (read["withheld_pulls"].clone(), read["total"].clone()),
+        (json!(0), json!(4))
+    );
+    let configured = super::world::setup(&format!("{}[cli]\nprivate = true\n", viewed()));
+    for format in ["table", "json"] {
+        let printed = herald(&configured, &world, &["queue", "mine", "--format", format]);
+        assert!(
+            printed.out.contains("cli/cli#7") || printed.out.contains("\"number\": 7"),
+            "{}",
+            printed.out
+        );
+        assert!(!printed.out.contains(WITHHELD_ROWS), "{}", printed.out);
+    }
+}
+
+#[test]
+fn the_cli_setting_prints_private_rows_but_never_a_view_s_advisories() {
+    let setup = setup(&format!(
+        "{CONFIG}[views.security]\nmost_pulls = 0\noverviews = [\"advisories\"]\n\n[cli]\nprivate = true\n"
+    ));
+    let world = World::default();
+    listed(&world);
+    let table = herald(&setup, &world, &["queue", "security"]);
+    assert!(table.out.contains("cli/cli#7"), "{}", table.out);
+    assert_eq!(table.out.lines().last(), Some(herald_core::WITHHELD));
+    assert!(!table.out.contains("advisories ("), "{}", table.out);
+    let json = herald(&setup, &world, &["queue", "security", "--format", "json"]);
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(read["overviews"]["withheld"], herald_core::WITHHELD);
+    assert!(read["overviews"].get("advisories").is_none());
+    assert!(!json.out.contains("security/dependabot"), "{}", json.out);
+    assert!(
+        world
+            .state
+            .lock()
+            .unwrap()
+            .seen
+            .iter()
+            .all(|asked| !asked.contains("/alerts")),
+        "no advisory is read where none may be printed"
+    );
 }
 
 #[test]

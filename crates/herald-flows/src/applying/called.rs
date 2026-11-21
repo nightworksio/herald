@@ -50,14 +50,20 @@ pub struct Applied {
 }
 
 impl Applied {
-    /// The job `job` on `head`, which no plan holds now.
-    pub(super) fn unplanned(job: &str, head: &str) -> Self {
+    /// The job `job` on `head`, which no plan holds now, `withheld` pull
+    /// requests of private or internal repositories withheld from the plans.
+    pub(super) fn unplanned((job, head): (&str, &str), withheld: usize) -> Self {
+        let why = if withheld == 0 {
+            super::UNPLANNED
+        } else {
+            super::UNPLANNED_WITHHELD
+        };
         Self {
             repository: None,
             number: None,
             job: job.to_owned(),
             head: head.to_owned(),
-            done: Done::Refused(super::UNPLANNED.to_owned()),
+            done: Done::Refused(why.to_owned()),
         }
     }
 

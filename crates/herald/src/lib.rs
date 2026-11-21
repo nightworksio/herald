@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use clap::Parser as _;
 use herald_config::{Config, Uses, load};
+use herald_core::Printed;
 use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
 use herald_sources_forge::Forge;
@@ -284,10 +285,15 @@ async fn answered(
             finished(done.await, err)
         }
         Reading::Rerun {
-            rule, apply, job, ..
+            rule,
+            apply,
+            job,
+            private,
+            ..
         } => {
-            let done =
-                rerunning::rerunning(config, vars, connect, (rule.as_deref(), apply, &job), out);
+            let printed = Printed::of(private, config.cli.private);
+            let asked = ((rule.as_deref(), printed), apply, job.as_slice());
+            let done = rerunning::rerunning(config, vars, connect, asked, out);
             finished(done.await, err)
         }
         Reading::Queue {
@@ -295,7 +301,11 @@ async fn answered(
             format,
             private,
         } => {
-            let asked = (view.as_deref(), format, private);
+            let asked = (
+                view.as_deref(),
+                format,
+                Printed::of(private, config.cli.private),
+            );
             let done = queueing::queueing(config, vars, connect, asked, out);
             finished(done.await, err)
         }

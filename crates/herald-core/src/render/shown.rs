@@ -175,6 +175,7 @@ pub(super) fn view_value(showing: Showing<'_>) -> Value {
         batches => board.batches.iter().map(batch_value).collect::<Vec<_>>(),
         failures => board.failures.iter().map(failure_value).collect::<Vec<_>>(),
         overviews => overviews_value(&board.overviews),
+        withheld_pulls => board.withheld,
     }
 }
 

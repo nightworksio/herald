@@ -86,3 +86,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0066](0066-a-view-shows-its-repositories-ci-capacity.md) | A view shows its repositories' CI capacity | Accepted |
 | [0067](0067-a-view-shows-its-repositories-advisories-to-private-routes-alone.md) | A view shows its repositories' advisories to private routes alone | Accepted |
 | [0068](0068-an-operator-signed-in-at-the-forge-re-runs-a-planned-job-once.md) | An operator signed in at the forge re-runs a planned job once | Accepted |
+| [0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md) | herald's commands withhold private repositories' rows unless their output is said private | Accepted |

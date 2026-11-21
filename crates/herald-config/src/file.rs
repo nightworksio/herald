@@ -529,6 +529,19 @@ pub(crate) struct DoctorFile {
     pub(crate) private_kinds: Option<crate::config::Guard>,
 }
 
+/// `[cli]`: what herald's commands print.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Cli")]
+pub(crate) struct CliFile {
+    /// Whether `herald queue` and `herald rerun` print the rows and plans of
+    /// private and internal repositories without `--private`: false where
+    /// absent, so they are withheld and counted. Set it only where their
+    /// output stays private: a CI job's log on a public repository is public.
+    /// Advisories are printed with `--private` alone, whatever it says.
+    pub(crate) private: Option<bool>,
+}
+
 /// `[run]`: how many routes and sources a run goes through at once.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

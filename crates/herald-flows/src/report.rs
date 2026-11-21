@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Advised, Advisories, Board, Cursor, Identity, Listed, Overviews, Pull, RouteId, Row, Showing,
-    SourceName, Surface, Unread, Visibility, advises, grouped, report_event, steps,
+    Advised, Advisories, Board, Cursor, Identity, Listed, Overviews, Printed, Pull, RouteId, Row,
+    Showing, SourceName, Surface, Unread, Visibility, advises, grouped, report_event, steps,
 };
 use herald_kinds::{Asked, Queue, Scope};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -260,7 +260,7 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
-    (name, private): (&str, bool),
+    (name, printed): (&str, Printed),
 ) -> Result<Board, Stop> {
     let Some(view) = config.views.get(name) else {
         let names: Vec<String> = config
@@ -277,17 +277,20 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     crate::poll::minting(flow, |_| true).await;
     let sources = sources(connected, view)?;
     let read = read_pulls((config, &sources, ports), view).await?;
+    let (pulls, withheld) = printed.printed(read.pulls);
+    let surface = Surface::Queue { private: printed };
     let found = match view.advisories {
-        Some(advising) if private => {
-            Some(crate::advised::read((&sources, ports), (view, advising, 0), &read.pulls).await)
+        Some(advising) if advises(surface) => {
+            Some(crate::advised::read((&sources, ports), (view, advising, 0), &pulls).await)
         }
         _ => None,
     };
-    let mut board = grouped(&view.view, decided_rows(flow, view, &read.pulls).await);
-    board.overviews = read.overviews;
+    let mut board = grouped(&view.view, decided_rows(flow, view, &pulls).await);
+    board.overviews = printed.overviews(read.overviews);
     board.overviews.advisories = view
         .advisories
-        .map(|_| crate::advised::shown(found.as_ref(), Surface::Queue { private }));
+        .map(|_| crate::advised::shown(found.as_ref(), surface));
+    board.withheld = withheld;
     Ok(board)
 }
 

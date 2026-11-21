@@ -107,9 +107,10 @@ pub(crate) enum Reading {
         /// How it is printed.
         #[arg(long, value_enum, default_value_t = QueueFormat::Table)]
         format: QueueFormat,
-        /// Say this output is private, so a view's advisories are printed;
-        /// without it they are withheld, as from a route that is not private
-        /// (ADR-0067). A CI job's log may be public.
+        /// Say this output is private, so the rows of private and internal
+        /// repositories and a view's advisories are printed; without it they
+        /// are withheld and counted, the rows printed where `[cli] private`
+        /// says so (ADR-0067). A CI job's log may be public.
         #[arg(long)]
         private: bool,
     },
@@ -131,6 +132,12 @@ pub(crate) enum Reading {
         /// A job to re-run, as the plan prints it: <job>@<head>.
         #[arg(long, value_name = "JOB@HEAD", requires = "apply")]
         job: Vec<String>,
+        /// Say this output is private, so the plans of private and internal
+        /// repositories are listed and applied; without it they are withheld
+        /// and counted, unless `[cli] private` says so. A CI job's log may be
+        /// public.
+        #[arg(long)]
+        private: bool,
     },
     /// Say what you did by hand about a living post's possibly orphaned
     /// parts, which doctor names (ADR-0067).

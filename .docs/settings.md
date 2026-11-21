@@ -403,6 +403,14 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
 | `boards.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |
 
+## `cli`
+
+What herald's commands print.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `cli.private` | boolean | Whether `herald queue` and `herald rerun` print the rows and plans of private and internal repositories without `--private`: false where absent, so they are withheld and counted. Set it only where their output stays private: a CI job's log on a public repository is public. Advisories are printed with `--private` alone, whatever it says. |
+
 ## `destinations`
 
 The places herald posts to, by name.

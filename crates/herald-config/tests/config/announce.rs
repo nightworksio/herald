@@ -1,10 +1,11 @@
-//! `[announce]` and `[run]`: how a run holds and keeps an announcement, and
-//! how many routes and sources it goes through at once, read with their
-//! defaults, and every value they cannot keep named by key.
+//! `[announce]`, `[run]` and `[cli]`: how a run holds and keeps an
+//! announcement, how many routes and sources it goes through at once, and
+//! what herald's commands print, read with their defaults, and every value
+//! they cannot keep named by key.
 
 use std::num::NonZeroUsize;
 
-use herald_config::{Announce, Run, load};
+use herald_config::{Announce, Cli, Run, load};
 use jiff::SignedDuration;
 
 const EXAMPLE: &str = r#"version = 1
@@ -108,6 +109,29 @@ fn every_run_setting_is_read_and_a_mistake_named_by_its_key() {
         let error = load(
             "herald.toml",
             &format!("{EXAMPLE}\n[run]\n{written}\n"),
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains(key), "{error}");
+    }
+}
+
+#[test]
+fn the_commands_withhold_private_rows_unless_the_cli_setting_says_their_output_is_private() {
+    let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
+    assert_eq!(config.cli, Cli { private: false });
+    let text = format!("{EXAMPLE}\n[cli]\nprivate = true\n");
+    let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
+    assert_eq!(config.cli, Cli { private: true });
+    for (written, key) in [
+        ("private = \"yes\"", "cli.private"),
+        ("advisories = true", "advisories"),
+    ] {
+        let error = load(
+            "herald.toml",
+            &format!("{EXAMPLE}\n[cli]\n{written}\n"),
             &nothing,
             &crate::common::kinds(),
         )

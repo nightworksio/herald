@@ -1,6 +1,6 @@
 # ADR-0055: A report announces a view of open pull requests once a window
 
-**Status:** Accepted
+**Status:** Accepted; `herald queue` withholding private repositories' rows too extended by [ADR-0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md)
 **Date:** 2026-11-18
 
 ## Context

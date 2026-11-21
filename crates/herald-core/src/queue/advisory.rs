@@ -7,8 +7,9 @@ use std::collections::BTreeSet;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use super::View;
 use super::overview::Unread;
+use super::{Overviews, Pull, View};
+use crate::members::Visibility;
 use crate::{DestinationName, RouteId};
 
 /// The most repositories an advisories overview reads one by one where it
@@ -47,11 +48,11 @@ pub enum Surface {
         /// a living post on a destination that edits.
         recallable: bool,
     },
-    /// `herald queue`'s table or JSON: private where the operator says so
-    /// with `--private`.
+    /// `herald queue`'s table or JSON, or `herald rerun`'s lines: private
+    /// as the operator says with `--private` or the config's `[cli] private`.
     Queue {
-        /// Whether the operator said `--private`.
-        private: bool,
+        /// How private the operator said the output is.
+        private: Printed,
     },
     /// A grouped route's digest, which shows no view.
     Digest,
@@ -72,7 +73,7 @@ pub enum Surface {
 
 impl Surface {
     /// Every surface, each private one both ways.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Route {
             private: true,
             recallable: true,
@@ -89,8 +90,15 @@ impl Surface {
             private: false,
             recallable: false,
         },
-        Self::Queue { private: true },
-        Self::Queue { private: false },
+        Self::Queue {
+            private: Printed::Asked,
+        },
+        Self::Queue {
+            private: Printed::Configured,
+        },
+        Self::Queue {
+            private: Printed::Withheld,
+        },
         Self::Digest,
         Self::Feed,
         Self::Push,
@@ -112,7 +120,7 @@ pub const fn advises(surface: Surface) -> bool {
             private,
             recallable,
         } => private && recallable,
-        Surface::Queue { private } => private,
+        Surface::Queue { private } => matches!(private, Printed::Asked),
         Surface::Digest
         | Surface::Feed
         | Surface::Push
@@ -120,6 +128,64 @@ pub const fn advises(surface: Surface) -> bool {
         | Surface::Told
         | Surface::Doctor
         | Surface::Api => false,
+    }
+}
+
+/// How private the operator said `herald queue`'s or `herald rerun`'s
+/// output is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Printed {
+    /// Said nothing: a private or internal repository's rows are withheld.
+    Withheld,
+    /// The config's `[cli] private` says it: rows are printed, advisories
+    /// are not.
+    Configured,
+    /// The operator said `--private`: rows and advisories are printed.
+    Asked,
+}
+
+impl Printed {
+    /// How private the output is where the operator `asked` with
+    /// `--private` and the config's `[cli] private` is `configured`.
+    #[must_use]
+    pub const fn of(asked: bool, configured: bool) -> Self {
+        if asked {
+            Self::Asked
+        } else if configured {
+            Self::Configured
+        } else {
+            Self::Withheld
+        }
+    }
+
+    /// Whether the rows of a repository seen as `visibility` are printed:
+    /// a public one's always, a private or internal one's only where the
+    /// operator said the output is private.
+    #[must_use]
+    pub const fn prints(self, visibility: Visibility) -> bool {
+        matches!(visibility, Visibility::Public) || !matches!(self, Self::Withheld)
+    }
+
+    /// `pulls` as they are printed, with how many were withheld.
+    #[must_use]
+    pub fn printed(self, pulls: Vec<Pull>) -> (Vec<Pull>, usize) {
+        let (shown, withheld): (Vec<Pull>, Vec<Pull>) = pulls
+            .into_iter()
+            .partition(|pull| self.prints(pull.visibility));
+        (shown, withheld.len())
+    }
+
+    /// `overviews` as they are printed: the CI runs and the unread
+    /// repositories of those whose rows it prints.
+    #[must_use]
+    pub fn overviews(self, mut overviews: Overviews) -> Overviews {
+        if let Some(runs) = overviews.capacity.as_mut() {
+            runs.retain(|run| self.prints(run.visibility));
+        }
+        overviews
+            .unread
+            .retain(|unread| self.prints(unread.visibility));
+        overviews
     }
 }
 

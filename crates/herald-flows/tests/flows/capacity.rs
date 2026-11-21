@@ -118,7 +118,7 @@ fn ran_within(
         &config,
         &connected,
         &ports,
-        ("ci", false),
+        ("ci", herald_core::Printed::Configured),
     ));
     let swept = if board.is_ok() && most.is_none() {
         pollster::block_on(report(&config, &connected, &ports, "r1"))

@@ -121,7 +121,7 @@ fn queued_at(
         config,
         &connected,
         &ports,
-        ("queue", false),
+        ("queue", herald_core::Printed::Configured),
     ))
 }
 

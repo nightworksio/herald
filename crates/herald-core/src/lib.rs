@@ -149,9 +149,9 @@ pub use queue::{
     Closed, Deciding, Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, KeptPull,
     Lifecycle, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
     MOST_ADVISORY_REPOSITORIES, MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome,
-    Overviews, Pull, PullKey, RECALLED, Ran, Read, Reason, Reconciled, RepositoryKey, Review,
-    Reviewed, Row, Rules, Running, Showing, Since, Surface, Triage, Turn, Unread, Verdict, View,
-    WITHHELD, advises, board, grouped, overlaps, rows,
+    Overviews, Printed, Pull, PullKey, RECALLED, Ran, Read, Reason, Reconciled, RepositoryKey,
+    Review, Reviewed, Row, Rules, Running, Showing, Since, Surface, Triage, Turn, Unread, Verdict,
+    View, WITHHELD, advises, board, grouped, overlaps, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{

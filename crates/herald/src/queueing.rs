@@ -7,7 +7,7 @@ use std::io::Write;
 use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
-use herald_core::{Advisories, Board, Row, Showing, WITHHELD, view_json, waited};
+use herald_core::{Advisories, Board, Printed, Row, Showing, WITHHELD, view_json, waited};
 
 use super::cli::QueueFormat;
 use super::output::{say, say_json};
@@ -61,6 +61,7 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         ));
         lines.extend(batch.rows.iter().map(line));
     }
+    lines.extend(withheld_line("", board.withheld));
     match board
         .overviews
         .advisories
@@ -72,6 +73,16 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         None => {}
     }
     lines
+}
+
+/// The line saying `what` of `withheld` pull requests of private or
+/// internal repositories were withheld, where any were.
+pub(crate) fn withheld_line(what: &str, withheld: usize) -> Option<String> {
+    (withheld > 0).then(|| {
+        format!(
+            "{what}{withheld} pull requests of private or internal repositories withheld: --private, or [cli] private, prints them"
+        )
+    })
 }
 
 /// The advisories `found` holds as lines of a table: each open one, those
@@ -107,7 +118,7 @@ pub(crate) async fn queueing(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    (view, format, private): (Option<&str>, QueueFormat, bool),
+    (view, format, printed): (Option<&str>, QueueFormat, Printed),
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let view = view.unwrap_or(BUILT_IN_VIEW);
@@ -121,7 +132,7 @@ pub(crate) async fn queueing(
     )
     .await?;
     let board = composed
-        .queue(view, private)
+        .queue(view, printed)
         .await
         .map_err(|stop| why(&stop))?;
     match format {

@@ -1,6 +1,6 @@
 # ADR-0068: An operator signed in at the forge re-runs a planned job once
 
-**Status:** Accepted
+**Status:** Accepted; private repositories' plans withheld unless the output is said private extended by [ADR-0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md)
 **Date:** 2026-11-20
 
 ## Context

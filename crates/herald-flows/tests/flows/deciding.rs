@@ -97,7 +97,12 @@ fn read(config: &Config, store: &Failing, script: &Script, asks: bool) -> Result
         signer: &FakeSigner,
         budget: herald_flows::Budget::UNBOUNDED,
     };
-    pollster::block_on(queue(config, &connected, &ports, ("queue", false)))
+    pollster::block_on(queue(
+        config,
+        &connected,
+        &ports,
+        ("queue", herald_core::Printed::Configured),
+    ))
 }
 
 /// The one row's state, reason and what was decided of it.
@@ -319,7 +324,13 @@ fn no_model_is_asked_once_the_host_s_requests_are_spent() {
             ..herald_flows::Budget::UNBOUNDED
         },
     };
-    let board = pollster::block_on(queue(&config, &connected, &ports, ("queue", false))).unwrap();
+    let board = pollster::block_on(queue(
+        &config,
+        &connected,
+        &ports,
+        ("queue", herald_core::Printed::Configured),
+    ))
+    .unwrap();
     assert_eq!(decided(&board).2, Vec::new());
     assert_eq!(script.seen().len(), 1);
 }

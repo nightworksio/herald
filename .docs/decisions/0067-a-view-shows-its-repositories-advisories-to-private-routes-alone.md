@@ -1,6 +1,6 @@
 # ADR-0067: A view shows its repositories' advisories to private routes alone
 
-**Status:** Accepted
+**Status:** Accepted; `[cli] private` releasing rows, never advisories, extended by [ADR-0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md)
 **Date:** 2026-11-20
 
 ## Context
