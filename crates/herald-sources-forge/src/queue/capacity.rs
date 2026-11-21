@@ -237,10 +237,7 @@ impl Opened<'_> {
                 FORGEJO_PAGE,
             )],
         };
-        let mut overviews = Overviews {
-            capacity: Some(Vec::new()),
-            ..Overviews::default()
-        };
+        let mut overviews = Overviews::default();
         for (listing, queued, page) in &listings {
             let asked = self.origin.get(listing, self.token);
             let answer = http.send(asked).await.map_err(Unpolled::unreachable)?;

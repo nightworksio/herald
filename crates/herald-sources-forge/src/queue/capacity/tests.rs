@@ -182,13 +182,19 @@ fn a_repository_whose_runs_are_refused_is_named_unread_with_the_permission_it_ne
         assert_eq!(overviews.unread[0].reason, reason, "{forge:?}");
         assert_eq!(overviews.unread[0].repository, "o/r");
     }
-    let http = ScriptedHttp::new(vec![answer(500, &json!({}))]);
-    let failed = pollster::block_on(queued(Forge::GitHub).capacity(
-        &http,
-        (ONE.0, &["o/r"]),
-        Capacity::Shown,
-    ));
-    assert!(matches!(failed, Err(Unpolled::Unreadable(_))));
+    for (forge, what) in [
+        (Forge::GitHub, RUNS),
+        (Forge::GitLab, PIPELINES),
+        (Forge::Forgejo, TASKS),
+    ] {
+        let http = ScriptedHttp::new(vec![answer(500, &json!({}))]);
+        let failed =
+            pollster::block_on(queued(forge).capacity(&http, (ONE.0, &["o/r"]), Capacity::Shown));
+        let Err(Unpolled::Unreadable(reason)) = failed else {
+            panic!("{forge:?}: {failed:?}");
+        };
+        assert!(reason.contains(what), "{forge:?}: {reason}");
+    }
     let http = ScriptedHttp::new(vec![answer(200, &json!("runs"))]);
     let failed = pollster::block_on(queued(Forge::GitLab).capacity(
         &http,
