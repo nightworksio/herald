@@ -367,12 +367,13 @@ template = "herald:rerun"
 private = false
 "#;
 
-/// `store` keeping `o/open#1`, whose check `test` fails on its head `h1`
-/// and failed then passed on it an hour before noon, listed at noon.
-fn flaky(store: &Failing) {
+/// `store` keeping `o/open#1` titled `title`, whose check `test` fails on
+/// its head `h1` and failed then passed on it an hour before noon, listed
+/// at noon.
+fn flaky(store: &Failing, title: &str) {
     use herald_core::{Checks, Reconciled};
     use herald_ports::Pulls as _;
-    keep(store, 1, Checks::Failed(vec!["test".to_owned()]));
+    keep(store, (1, title), Checks::Failed(vec!["test".to_owned()]));
     let mark = Reconciled {
         repository: Some(repository()),
         at: Some(NOON),
@@ -388,9 +389,10 @@ fn repository() -> herald_core::RepositoryKey {
     }
 }
 
-/// `store` keeping `o/open#<number>` on its head `h1` with `checks`, its
-/// check `test` having failed then passed on it an hour before noon.
-fn keep(store: &Failing, number: u64, checks: herald_core::Checks) {
+/// `store` keeping `o/open#<number>` titled `title` on its head `h1` with
+/// `checks`, its check `test` having failed then passed on it an hour
+/// before noon.
+fn keep(store: &Failing, (number, title): (u64, &str), checks: herald_core::Checks) {
     use herald_core::{Flip, KeptPull, PullKey};
     use herald_ports::Pulls as _;
     let pull = herald_core::Pull {
@@ -398,7 +400,7 @@ fn keep(store: &Failing, number: u64, checks: herald_core::Checks) {
         repository: "o/open".to_owned(),
         visibility: herald_core::Visibility::Public,
         number,
-        title: "Change".to_owned(),
+        title: title.to_owned(),
         url: format!("https://github.com/o/open/pull/{number}"),
         author: Some("ana".to_owned()),
         bot: false,
@@ -434,7 +436,7 @@ fn keep(store: &Failing, number: u64, checks: herald_core::Checks) {
 fn a_rule_plans_a_re_run_of_a_flaky_check_once_a_run_and_head_to_its_private_routes_alone() {
     let config = config(PLANS);
     let store = healthy();
-    flaky(&store);
+    flaky(&store, "Change");
     let runs = json!({ "workflow_runs": [
         { "id": 42, "html_url": "https://github.com/o/open/actions/runs/42" },
         { "id": 43, "html_url": "https://github.com/o/open/actions/runs/43" }
@@ -504,8 +506,8 @@ fn a_rule_plans_a_re_run_of_a_flaky_check_once_a_run_and_head_to_its_private_rou
 fn a_flaky_check_no_failed_run_ran_is_planned_with_the_reason_and_a_passing_pull_request_is_not() {
     let config = config(PLANS);
     let store = healthy();
-    flaky(&store);
-    keep(&store, 2, herald_core::Checks::Passed);
+    flaky(&store, "Change");
+    keep(&store, (2, "Change"), herald_core::Checks::Passed);
     let script = Script::answering(&[
         (
             "/repos/o/open/actions/runs?head_sha=h1&status=failure&per_page=5",
@@ -530,10 +532,28 @@ fn a_flaky_check_no_failed_run_ran_is_planned_with_the_reason_and_a_passing_pull
 }
 
 #[test]
+fn a_plan_that_makes_no_event_stops_the_rule_until_the_next_round() {
+    let config = config(PLANS);
+    let store = healthy();
+    flaky(&store, " ");
+    let script = Script::answering(&[(
+        "/repos/o/open/actions/runs?head_sha=h1&status=failure&per_page=5",
+        200,
+        r#"{"workflow_runs":[]}"#,
+    )]);
+    let swept = round(&config, &store, &script, NOON);
+    let Sweep::Stopped(Stop::Source(reason)) = &swept[0].outcome else {
+        panic!("{swept:?}");
+    };
+    assert!(reason.contains("no title"), "{reason}");
+    assert_eq!(script.seen().len(), 1);
+}
+
+#[test]
 fn a_rule_whose_runs_cannot_be_read_stops_until_the_next_round() {
     let config = config(PLANS);
     let store = healthy();
-    flaky(&store);
+    flaky(&store, "Change");
     let script = Script::answering(&[(
         "/repos/o/open/actions/runs?head_sha=h1&status=failure&per_page=5",
         502,
@@ -547,7 +567,7 @@ fn a_rule_whose_runs_cannot_be_read_stops_until_the_next_round() {
 fn a_plan_charges_each_request_it_makes_and_stops_where_the_budget_ends() {
     let config = config(PLANS);
     let store = healthy();
-    flaky(&store);
+    flaky(&store, "Change");
     let runs = json!({ "workflow_runs": [
         { "id": 41, "html_url": "https://github.com/o/open/actions/runs/41" },
         { "id": 42, "html_url": "https://github.com/o/open/actions/runs/42" },
