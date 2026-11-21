@@ -52,7 +52,7 @@ impl Claimed {
             let Some(actor) = route.reached.federates() else {
                 continue;
             };
-            let Some(projects) = &route.projects else {
+            let Some(projects) = connected.projects.get(&route.config.route.id) else {
                 let claim = Claim::route(&route.config.route.destination);
                 claimed.hold((actor.domain(), actor.actor()), claim, own(index));
                 continue;
