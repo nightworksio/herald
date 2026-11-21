@@ -24,20 +24,21 @@ fn a_rule_s_plans_and_an_apply_are_read_through_the_composed_herald() {
         "test",
     ))
     .unwrap();
-    let unknown = pollster::block_on(composed.rerun_plans(Some("nope")));
+    let unknown =
+        pollster::block_on(composed.rerun_plans((Some("nope"), herald_core::Printed::Configured)));
     assert!(
         matches!(unknown, Err(Stop::Source(ref why)) if why.contains("no rule is named \"nope\"")),
         "{unknown:?}"
     );
     let chosen = [("420".to_owned(), "h1".to_owned())];
     let applied = pollster::block_on(composed.rerun_apply(
-        (Some("nope"), &chosen),
+        ((Some("nope"), herald_core::Printed::Configured), &chosen),
         &FakeTimer::default(),
         &|_| {},
     ));
     assert!(applied.is_err(), "{applied:?}");
     let unchosen = pollster::block_on(composed.rerun_apply(
-        (Some("flaky"), &[]),
+        ((Some("flaky"), herald_core::Printed::Configured), &[]),
         &FakeTimer::default(),
         &|_| {},
     ));

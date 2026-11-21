@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use herald_flows::{
-    Admission, Applied, Applying, Planned, SigningIn, Stop, rerun_apply, rerun_plans,
+    Admission, Applied, Applying, PlansAsked, RerunPlans, SigningIn, Stop, rerun_apply, rerun_plans,
 };
 use herald_ports::{Base, Keyring, Store, Timer};
 
@@ -12,11 +12,11 @@ use super::{Composed, ServingOn, TIMEOUT_MS, Through};
 use crate::counted::Counted;
 use crate::host::Host;
 
-/// The plans of a rule, or of every rule that plans re-runs.
-struct Plans<'r>(Option<&'r str>);
+/// The plans of a rule, or of every rule that plans re-runs, as printed.
+struct Plans<'r>(PlansAsked<'r>);
 
 impl<H: Host> Through<H> for Plans<'_> {
-    type Done = Result<Vec<Planned>, Stop>;
+    type Done = Result<RerunPlans, Stop>;
 
     async fn through<S: Store, K: Keyring>(
         self,
@@ -30,7 +30,7 @@ impl<H: Host> Through<H> for Plans<'_> {
 /// The runs an operator named, applied.
 struct Apply<'a, H: Host, T> {
     applying: &'a Applying<'a, Counted<H::Http>, T>,
-    rule: Option<&'a str>,
+    planning: PlansAsked<'a>,
     chosen: &'a [(String, String)],
 }
 
@@ -45,7 +45,7 @@ impl<H: Host, T: Timer> Through<H> for Apply<'_, H, T> {
         rerun_apply(
             (serving.config, serving.connected, serving.ports),
             self.applying,
-            (self.rule, self.chosen),
+            (self.planning, self.chosen),
         )
         .await
     }
@@ -60,19 +60,20 @@ where
     H::Kv: 'static,
 {
     /// The plans of the rule `rule`, or of every rule that plans re-runs,
-    /// read now; no write credential is read (ADR-0068).
+    /// read now, a private or internal repository's as `printed` says; no
+    /// write credential is read (ADR-0068).
     ///
     /// # Errors
     ///
     /// Where no such rule plans re-runs, or what it plans from could not
     /// be read.
-    pub async fn rerun_plans(&self, rule: Option<&str>) -> Result<Vec<Planned>, Stop> {
-        self.through(Admission::Once, self.started(), Plans(rule))
+    pub async fn rerun_plans(&self, planning: PlansAsked<'_>) -> Result<RerunPlans, Stop> {
+        self.through(Admission::Once, self.started(), Plans(planning))
             .await
     }
 
     /// Each job `chosen` names as `(job, head)` that the plans of `rule`
-    /// hold now, re-run once by an operator signed in at its forge, shown
+    /// hold now as `printed` prints them, re-run once by an operator signed in at its forge, shown
     /// how by `told`, waiting by `timer` (ADR-0068).
     ///
     /// # Errors
@@ -81,7 +82,7 @@ where
     /// plans could not be read.
     pub async fn rerun_apply<T: Timer>(
         &self,
-        (rule, chosen): (Option<&str>, &[(String, String)]),
+        (planning, chosen): (PlansAsked<'_>, &[(String, String)]),
         timer: &T,
         told: &dyn Fn(SigningIn<'_>),
     ) -> Result<Vec<Applied>, Stop> {
@@ -99,7 +100,7 @@ where
         };
         let apply = Apply::<H, T> {
             applying: &applying,
-            rule,
+            planning,
             chosen,
         };
         self.through(Admission::Once, self.started(), apply).await

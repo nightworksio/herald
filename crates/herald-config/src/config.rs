@@ -58,6 +58,8 @@ pub struct Config {
     pub run: Run,
     /// How doctor judges the config.
     pub doctor: Doctor,
+    /// What herald's commands print.
+    pub cli: Cli,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
     /// This herald among other instances.
@@ -422,6 +424,15 @@ pub struct Doctor {
     /// What it does with a route that takes a private kind's events and
     /// says nothing of whether its place is private.
     pub private_kinds: Guard,
+}
+
+/// What herald's commands print.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Cli {
+    /// Whether `herald queue` and `herald rerun` print the rows and plans
+    /// of private and internal repositories without `--private`; never
+    /// their advisories.
+    pub private: bool,
 }
 
 /// How many routes and sources a run goes through at once.

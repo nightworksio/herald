@@ -19,7 +19,7 @@ mod view;
 pub use advisory::{
     ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
     AdvisoriesFrom, Advisory, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
-    MOST_ADVISORY_REPOSITORIES, RECALLED, Surface, WITHHELD, advises,
+    MOST_ADVISORY_REPOSITORIES, Printed, RECALLED, Surface, WITHHELD, advises,
 };
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
@@ -27,7 +27,7 @@ pub use kept::{
 };
 pub use overlap::overlaps;
 pub use overview::{
-    CAPACITY_REPOSITORIES, Capacity, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
+    CAPACITY_REPOSITORIES, Capacity, Head, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
 };
 pub use triage::{Failure, Triage};
 pub use view::{

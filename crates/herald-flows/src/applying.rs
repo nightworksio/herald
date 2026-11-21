@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::{Config, Rule};
-use herald_core::{Rerun, SourceName, grouped};
+use herald_core::{Printed, Rerun, SourceName, grouped};
 use herald_kinds::UNWRITTEN;
 use herald_kinds::{Credential, Source};
 use herald_ports::{Base, Clock, DynSecrets, Http, Secret, Signer, Store, Timer};
@@ -33,6 +33,26 @@ pub const UNCHOSEN: &str = "name each job to re-run as the plan prints it, --job
 
 /// Why a job named is not re-run where today's plan does not hold it.
 pub const UNPLANNED: &str = "the plan no longer holds this job on this head: the head moved, the job is no longer failing, or the check is no longer flaky; list the plan again";
+
+/// Why a job named is not re-run where today's plan does not hold it, and
+/// pull requests of private or internal repositories were withheld from the
+/// plan: their jobs are planned only where the output is said private.
+pub const UNPLANNED_WITHHELD: &str = "the plan read now does not hold this job on this head, and the plans of private or internal repositories were withheld: say --private, or set [cli] private, to plan and apply them";
+
+/// The rule whose plans are read, every rule's where `None`, and how
+/// private the output is said to be.
+pub type PlansAsked<'a> = (Option<&'a str>, Printed);
+
+/// A rule's plans as they are printed, with how many pull requests of
+/// private or internal repositories were withheld from them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RerunPlans {
+    /// Each job planned.
+    pub planned: Vec<Planned>,
+    /// How many pull requests were withheld, once for each rule planning
+    /// from them.
+    pub withheld: usize,
+}
 
 /// One job a rule's plan would re-run, or why it would re-run none.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,26 +131,30 @@ fn ruled<'c>(config: &'c Config, rule: Option<&str>) -> Result<Vec<(&'c str, &'c
 }
 
 /// The plans of the rule `rule`, or of every rule that plans re-runs, read
-/// now: no write credential is read, and nothing is announced.
+/// now, of private or internal repositories only as `printed` prints them:
+/// no write credential is read, and nothing is announced.
 ///
 /// # Errors
 ///
 /// Where no such rule plans re-runs, or a view or a run could not be read.
 pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    rule: Option<&str>,
-) -> Result<Vec<Planned>, Stop> {
+    (rule, printed): PlansAsked<'_>,
+) -> Result<RerunPlans, Stop> {
     let (config, connected, ports) = flow;
     let rules = ruled(config, rule)?;
     crate::poll::minting(flow, |_| true).await;
     let mut planned = Vec::new();
+    let mut withheld = 0;
     let viewed = rules
         .into_iter()
         .filter_map(|(name, rule)| Some((name, rule, config.views.get(&rule.watch.view)?)));
     for (name, rule, view) in viewed {
         let sources = sources(connected, view)?;
         let read = read_pulls((config, &sources, ports), view).await?;
-        let shown = grouped(&view.view, decided_rows(flow, view, &read.pulls).await);
+        let (pulls, held) = printed.printed(read.pulls);
+        withheld += held;
+        let shown = grouped(&view.view, decided_rows(flow, view, &pulls).await);
         for planning in crate::reruns::plans((connected, ports), rule, (view, &shown)).await? {
             for run in planning.runs() {
                 planned.push(Planned {
@@ -146,7 +170,7 @@ pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
             }
         }
     }
-    Ok(planned)
+    Ok(RerunPlans { planned, withheld })
 }
 
 /// The read credential the source `name`, `source`, reads with: the
@@ -174,7 +198,7 @@ async fn read_credential<H>(
 }
 
 /// Each job of `chosen`, given as `(job, head)`, that the plans of the rule
-/// `rule` hold now, re-run once with its source's write credential: the
+/// `rule` hold now as `printed` prints them, re-run once with its source's write credential: the
 /// plans are read again, the operator signs in through `applying` at each
 /// source of a job they hold alone, and each such job is checked right
 /// before its call; each other refused, saying why. The operator's tokens
@@ -188,7 +212,7 @@ async fn read_credential<H>(
 pub async fn rerun_apply<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     applying: &Applying<'_, H, T>,
-    (rule, chosen): (Option<&str>, &[(String, String)]),
+    ((rule, printed), chosen): (PlansAsked<'_>, &[(String, String)]),
 ) -> Result<Vec<Applied>, Stop> {
     let (config, connected, ports) = flow;
     if chosen.is_empty() {
@@ -197,7 +221,7 @@ pub async fn rerun_apply<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
     let Some(store) = ports.store.actions() else {
         return Err(Stop::Store(UNKEPT.to_owned()));
     };
-    let planned = rerun_plans(flow, rule).await?;
+    let RerunPlans { planned, withheld } = rerun_plans(flow, (rule, printed)).await?;
     let found: Vec<Option<(&Planned, &Rerun)>> = chosen
         .iter()
         .map(|(job, head)| {
@@ -224,7 +248,7 @@ pub async fn rerun_apply<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
     let mut applied = Vec::new();
     for ((job, head), found) in chosen.iter().zip(found) {
         applied.push(match found {
-            None => Applied::unplanned(job, head),
+            None => Applied::unplanned((job, head), withheld),
             Some((planned, rerun)) => match ready.get(&planned.source) {
                 Some((Some(revoking), Ok(signed))) => {
                     let signed = (signed, &revoking.token, store);

@@ -21,15 +21,22 @@ fn listed(surface: Surface) -> usize {
             private: false,
             recallable: false,
         } => 3,
-        Surface::Queue { private: true } => 4,
-        Surface::Queue { private: false } => 5,
-        Surface::Digest => 6,
-        Surface::Feed => 7,
-        Surface::Push => 8,
-        Surface::Rule => 9,
-        Surface::Told => 10,
-        Surface::Doctor => 11,
-        Surface::Api => 12,
+        Surface::Queue {
+            private: Printed::Asked,
+        } => 4,
+        Surface::Queue {
+            private: Printed::Configured,
+        } => 5,
+        Surface::Queue {
+            private: Printed::Withheld,
+        } => 6,
+        Surface::Digest => 7,
+        Surface::Feed => 8,
+        Surface::Push => 9,
+        Surface::Rule => 10,
+        Surface::Told => 11,
+        Surface::Doctor => 12,
+        Surface::Api => 13,
     }
 }
 
@@ -66,7 +73,9 @@ fn every_surface_is_listed_once_and_decided() {
                 private: true,
                 recallable: true,
             },
-            Surface::Queue { private: true }
+            Surface::Queue {
+                private: Printed::Asked
+            }
         ]
     );
 }
@@ -194,4 +203,132 @@ fn a_view_that_holds_only_some_repositories_reads_each_one_by_one_never_the_owne
     }
     assert!(View::default().holds_every());
     assert!(!narrowed.holds_every());
+}
+
+fn pull(repository: &str, visibility: Visibility) -> Pull {
+    Pull {
+        project: repository.to_owned(),
+        repository: repository.to_owned(),
+        visibility,
+        number: 1,
+        title: "Change".to_owned(),
+        url: format!("https://example.com/{repository}/pull/1"),
+        author: None,
+        bot: false,
+        draft: false,
+        labels: Vec::new(),
+        opened: Timestamp::from_second(1_000).unwrap(),
+        updated: Timestamp::from_second(1_000).unwrap(),
+        review: crate::queue::Review::Unasked,
+        reviewers: Vec::new(),
+        checks: crate::queue::Checks::Absent,
+        mergeable: crate::queue::Mergeable::Unknown,
+        queued: false,
+        forge: None,
+        head: None,
+        unread: false,
+        base: None,
+        files: None,
+        flips: Vec::new(),
+    }
+}
+
+#[test]
+fn a_private_or_internal_repository_s_rows_are_printed_only_where_the_output_is_said_private() {
+    let table = [
+        (Printed::Withheld, [true, false, false]),
+        (Printed::Configured, [true, true, true]),
+        (Printed::Asked, [true, true, true]),
+    ];
+    for (printed, prints) in table {
+        let seen = [
+            Visibility::Public,
+            Visibility::Internal,
+            Visibility::Private,
+        ]
+        .map(|visibility| printed.prints(visibility));
+        assert_eq!(seen, prints, "{printed:?}");
+    }
+    assert_eq!(
+        [(true, true), (true, false), (false, true), (false, false)]
+            .map(|(asked, configured)| Printed::of(asked, configured)),
+        [
+            Printed::Asked,
+            Printed::Asked,
+            Printed::Configured,
+            Printed::Withheld
+        ]
+    );
+    let pulls = vec![
+        pull("o/app", Visibility::Public),
+        pull("o/vault", Visibility::Private),
+        pull("o/inner", Visibility::Internal),
+    ];
+    let (shown, withheld) = Printed::Withheld.printed(pulls.clone());
+    assert_eq!(shown, [pull("o/app", Visibility::Public)]);
+    assert_eq!(withheld, 2);
+    assert_eq!(Printed::Configured.printed(pulls.clone()), (pulls, 0));
+}
+
+#[test]
+fn the_overviews_printed_keep_only_the_runs_unread_repositories_and_heads_whose_rows_are_printed() {
+    let run = |repository: &str, visibility| crate::queue::Running {
+        repository: repository.to_owned(),
+        visibility,
+        id: "1".to_owned(),
+        url: "https://example.com/run/1".to_owned(),
+        sha: "abc".to_owned(),
+        pull: true,
+        queued: false,
+        created: Timestamp::from_second(1_000).unwrap(),
+    };
+    let unread = |repository: &str, visibility| Unread {
+        repository: repository.to_owned(),
+        visibility,
+        reason: "refused".to_owned(),
+    };
+    let mut overviews = Overviews {
+        capacity: Some(vec![
+            run("o/app", Visibility::Public),
+            run("o/vault", Visibility::Private),
+        ]),
+        unread: vec![
+            unread("o/inner", Visibility::Internal),
+            unread("o/app", Visibility::Public),
+        ],
+        ..Overviews::default()
+    };
+    let headed = |repository: &str, visibility, head: &str| {
+        let mut headed = pull(repository, visibility);
+        headed.head = Some(head.to_owned());
+        headed
+    };
+    let pulls = vec![
+        headed("o/app", Visibility::Public, "h-app"),
+        headed("o/vault", Visibility::Private, "h-vault"),
+        pull("o/unheaded", Visibility::Public),
+    ];
+    overviews.heads = Overviews::heads_of(&pulls);
+    let (shown, _) = Printed::Withheld.printed(pulls.clone());
+    let printed = Printed::Withheld.overviews(overviews.clone(), &shown);
+    assert_eq!(
+        printed.capacity,
+        Some(vec![run("o/app", Visibility::Public)])
+    );
+    assert_eq!(printed.unread, [unread("o/app", Visibility::Public)]);
+    assert_eq!(
+        printed.heads,
+        [crate::queue::Head {
+            repository: "o/app".to_owned(),
+            sha: "h-app".to_owned(),
+        }]
+    );
+    assert_eq!(
+        Printed::Asked.overviews(overviews.clone(), &pulls),
+        overviews
+    );
+    assert_eq!(
+        Printed::Withheld.overviews(Overviews::default(), &[]),
+        Overviews::default()
+    );
 }

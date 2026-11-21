@@ -147,7 +147,7 @@ fn queued(config: &Config, store: &Failing, answers: &[(String, u16, String)]) -
         config,
         &connected,
         &ports,
-        ("security", true),
+        ("security", herald_core::Printed::Asked),
     ))
     .unwrap();
     (board, script)
@@ -231,7 +231,7 @@ fn read_with(config: &Config, forge: &Script, store: &Failing) -> Board {
         config,
         &connected,
         &ports,
-        ("security", true),
+        ("security", herald_core::Printed::Asked),
     ))
     .unwrap()
 }

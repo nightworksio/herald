@@ -11,10 +11,10 @@ use jiff::SignedDuration;
 use toml::Spanned;
 
 use super::{Loader, Value};
-use crate::config::{Announce, Doctor, HeldSessions, KeyCache, Run, Server, Work};
+use crate::config::{Announce, Cli, Doctor, HeldSessions, KeyCache, Run, Server, Work};
 use crate::file::{
-    AnnounceFile, DoctorFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile, ServerFile,
-    SessionsFile, WorkFile,
+    AnnounceFile, CliFile, DoctorFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile,
+    ServerFile, SessionsFile, WorkFile,
 };
 
 impl Loader<'_> {
@@ -370,6 +370,14 @@ impl Loader<'_> {
             .map_or_else(Doctor::default, |file| Doctor {
                 private_to_public: file.private_to_public.unwrap_or_default(),
                 private_kinds: file.private_kinds.unwrap_or_default(),
+            })
+    }
+
+    pub(super) fn cli(&mut self, value: Option<Value<'_>>) -> Cli {
+        value
+            .and_then(|value| self.typed::<CliFile>(value, "cli"))
+            .map_or_else(Cli::default, |file| Cli {
+                private: file.private.unwrap_or_default(),
             })
     }
 

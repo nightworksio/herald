@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, DoctorFile, FederationFile, GithubAppFile, HttpFile, KindFile,
+    AnnounceFile, AppFile, CliFile, DoctorFile, FederationFile, GithubAppFile, HttpFile, KindFile,
     MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile,
     TemplateFile,
 };
@@ -349,6 +349,8 @@ struct FileSchema {
     run: Option<RunFile>,
     /// How doctor judges the config.
     doctor: Option<DoctorFile>,
+    /// What herald's commands print.
+    cli: Option<CliFile>,
 }
 
 /// The JSON Schema of `herald.toml` with `kinds`, as

@@ -173,7 +173,13 @@ fn queued(config: &Config, script: &Script, private: bool) -> herald_core::Board
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    pollster::block_on(queue(config, &connected, &ports, ("security", private))).unwrap()
+    pollster::block_on(queue(
+        config,
+        &connected,
+        &ports,
+        ("security", herald_core::Printed::of(private, true)),
+    ))
+    .unwrap()
 }
 
 pub(crate) fn round(

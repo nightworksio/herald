@@ -374,6 +374,20 @@ pub(crate) fn flaky(store: &Failing, title: &str) {
     flaky_on(store, ("open", "github.com", "o/open"), title);
 }
 
+/// [`flaky`], its repository seen as `visibility`.
+pub(crate) fn flaky_seen(store: &Failing, title: &str, visibility: herald_core::Visibility) {
+    use herald_core::{Checks, Reconciled};
+    use herald_ports::Pulls as _;
+    let failed = (Checks::Failed(vec!["test".to_owned()]), visibility);
+    keep_seen(store, ("github.com", "o/open"), (1, title), failed);
+    let mark = Reconciled {
+        repository: Some(key("github.com")),
+        at: Some(NOON),
+        ..Reconciled::default()
+    };
+    pollster::block_on(store.put_reconciled(&SourceName::new("open"), &mark, None)).unwrap();
+}
+
 /// `store` keeping the pull request 1 of `repository` at `host` titled
 /// `title`, read by the source `source`, whose check `test` fails on its
 /// head `h1` and failed then passed on it an hour before noon, listed at
@@ -411,12 +425,23 @@ fn keep(
     (number, title): (u64, &str),
     checks: herald_core::Checks,
 ) {
+    let seen = (checks, herald_core::Visibility::Public);
+    keep_seen(store, (host, repository), (number, title), seen);
+}
+
+/// [`keep`], its repository seen as `visibility`.
+fn keep_seen(
+    store: &Failing,
+    (host, repository): (&str, &str),
+    (number, title): (u64, &str),
+    (checks, visibility): (herald_core::Checks, herald_core::Visibility),
+) {
     use herald_core::{Flip, KeptPull, PullKey};
     use herald_ports::Pulls as _;
     let pull = herald_core::Pull {
         project: "open".to_owned(),
         repository: repository.to_owned(),
-        visibility: herald_core::Visibility::Public,
+        visibility,
         number,
         title: title.to_owned(),
         url: format!("https://{host}/{repository}/pull/{number}"),

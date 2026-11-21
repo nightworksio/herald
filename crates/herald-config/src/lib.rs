@@ -22,8 +22,8 @@ mod schema;
 mod views;
 
 pub use config::{
-    Announce, App, Config, Doctor, Federation, GithubApp, Guard, HeldSessions, KeyCache, Pages,
-    RouteConfig, Run, Schedule, Server, Uses, Work,
+    Announce, App, Cli, Config, Doctor, Federation, GithubApp, Guard, HeldSessions, KeyCache,
+    Pages, RouteConfig, Run, Schedule, Server, Uses, Work,
 };
 pub use error::{ConfigError, Errors};
 pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};

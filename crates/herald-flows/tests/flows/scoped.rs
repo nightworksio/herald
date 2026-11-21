@@ -175,7 +175,7 @@ fn queued_within(
         config,
         &connected,
         &ports,
-        ("queue", false),
+        ("queue", herald_core::Printed::Configured),
     ))
 }
 

@@ -276,13 +276,23 @@ fn a_report_that_makes_no_event_stops_and_one_with_no_view_read_is_refused() {
         budget: herald_flows::Budget::UNBOUNDED,
     };
     assert_eq!(
-        pollster::block_on(unread(&config, &connected, &ports, ("queue", false))),
+        pollster::block_on(unread(
+            &config,
+            &connected,
+            &ports,
+            ("queue", herald_core::Printed::Configured)
+        )),
         Err(Stop::Source(
             "the view reads a source this run does not poll".to_owned()
         ))
     );
     assert_eq!(
-        pollster::block_on(unread(&config, &connected, &ports, ("missing", false))),
+        pollster::block_on(unread(
+            &config,
+            &connected,
+            &ports,
+            ("missing", herald_core::Printed::Configured)
+        )),
         Err(Stop::Source(
             "no view is named \"missing\"; the views are \"queue\"".to_owned()
         ))
@@ -346,7 +356,7 @@ fn a_view_read_now_is_the_board_of_every_source_it_reads() {
         &config,
         &connected,
         &ports,
-        ("queue", false),
+        ("queue", herald_core::Printed::Configured),
     ))
     .unwrap();
     assert_eq!(board.total(), 2);

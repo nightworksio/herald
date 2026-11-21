@@ -456,12 +456,28 @@ flow, so its sources take neither key.
 ```sh
 herald queue                 # the built-in view, as a table
 herald queue review --format json
-herald queue security --private   # this output is private: print its advisories
+herald queue security --private   # this output is private: print its private rows and advisories
 ```
 
-The JSON holds the keys a template reads as `view`. A view's advisories
-are printed only with `--private`; without it they are withheld, as from
-a route that is not private.
+The JSON holds the keys a template reads as `view`. A private or
+internal repository's pull requests, and its CI runs and unread lines in
+the overviews, are printed only where the output is said to be private;
+a repository whose visibility is not known counts as private. Without
+`--private` they are withheld, and the table's last line and the JSON's
+`withheld_pulls` count the pull requests withheld, never naming one.
+`[cli] private = true` prints them by default:
+
+```toml
+[cli]
+private = true   # false where absent
+```
+
+Set it only where the output stays private. `herald queue` run in a CI
+job prints to the job's log, and a public repository's logs are public:
+with the setting on, every private repository the view reads would be
+named there, with its pull requests' titles and authors. A view's
+advisories are printed only with `--private`, whatever `[cli] private`
+says, as from a route that is not private.
 
 ## `herald rerun`
 
@@ -470,13 +486,17 @@ herald rerun                       # every rule's plans, read now
 herald rerun flaky --apply --job 420@<head>   # sign in, then re-run job 420 on that head once
 ```
 
+Like `herald queue`, it withholds a private or internal repository's
+plans unless `--private` or `[cli] private` says the output is private,
+and counts the pull requests withheld. `--apply` reads the plans the same
+way, so a job of a withheld plan is refused as not planned, saying that
+`--private` or `[cli] private` would plan it, without naming it.
+
 `--apply` prints, for each job named, whether it was re-run and why not
 where it was not. Every line drops the control and format characters a
 forge's names could hold, and a line or paragraph break becomes a space;
 `herald queue` and `herald doctor` with `--format json` escape them as
-`\uXXXX` instead, so the JSON reads back unchanged. Like `herald queue`, it prints a private
-repository's plans too: a CI job's log may be public, so run it where
-its output is private.
+`\uXXXX` instead, so the JSON reads back unchanged.
 
 ## Time zones
 

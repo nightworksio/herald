@@ -68,7 +68,13 @@ fn decided_of(config: &Config, connected: &Connected<Script>) -> Vec<(Slot, Stri
         signer: &FakeSigner,
         budget: herald_flows::Budget::UNBOUNDED,
     };
-    let board = pollster::block_on(queue(config, connected, &ports, ("queue", false))).unwrap();
+    let board = pollster::block_on(queue(
+        config,
+        connected,
+        &ports,
+        ("queue", herald_core::Printed::Configured),
+    ))
+    .unwrap();
     decided(&board).2
 }
 

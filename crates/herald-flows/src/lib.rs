@@ -55,8 +55,9 @@ mod withdraw;
 
 pub use announce::{Announced, Outcome, Ports, Stop, Within, announce, announce_within};
 pub use applying::{
-    Applied, Applying, Done, Planned, SHARED_INSTALLATION, SigningIn, UNCHOSEN, UNFINISHED, UNKEPT,
-    UNPLANNED, UNSEPARATED, rerun_apply, rerun_plans,
+    Applied, Applying, Done, Planned, PlansAsked, RerunPlans, SHARED_INSTALLATION, SigningIn,
+    UNCHOSEN, UNFINISHED, UNKEPT, UNPLANNED, UNPLANNED_WITHHELD, UNSEPARATED, rerun_apply,
+    rerun_plans,
 };
 pub use approving::{Decision, decide, followers};
 pub use budget::{Budget, Requests};

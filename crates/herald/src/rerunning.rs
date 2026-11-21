@@ -1,7 +1,8 @@
 //! `herald rerun`: a rule's plans to re-run a flaky check listed, each with
 //! the command that applies it; or the jobs named applied by an operator
 //! signed in at the forge, each said as it ended (ADR-0068). Like `herald
-//! queue`'s rows, a private repository's are printed too.
+//! queue`'s rows, a private or internal repository's plans are withheld
+//! and counted unless the output is said private.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -10,10 +11,11 @@ use std::io::Write;
 use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{Config, Uses};
-use herald_flows::{Applied, Done, Planned, SigningIn};
+use herald_flows::{Applied, Done, Planned, PlansAsked, SigningIn};
 use herald_native::TokioTimer;
 
 use super::output::say;
+use super::queueing::withheld_line;
 use super::stores::composed;
 use super::{Connect, DONE};
 
@@ -88,7 +90,7 @@ pub(crate) async fn rerunning(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    (rule, apply, named): (Option<&str>, bool, &[String]),
+    (planning, apply, named): (PlansAsked<'_>, bool, &[String]),
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let chosen = chosen(named)?;
@@ -102,17 +104,20 @@ pub(crate) async fn rerunning(
     )
     .await?;
     if !apply {
-        let planned = composed
-            .rerun_plans(rule)
+        let plans = composed
+            .rerun_plans(planning)
             .await
             .map_err(|stop| why(&stop))?;
-        if planned.is_empty() {
+        if plans.planned.is_empty() {
             say(
                 out,
                 "no flaky check is failing on the rule's open pull requests, so nothing is planned",
             );
         }
-        for line in planned.iter().flat_map(planned_lines) {
+        for line in plans.planned.iter().flat_map(planned_lines) {
+            say(out, &line);
+        }
+        if let Some(line) = withheld_line("the plans of ", plans.withheld) {
             say(out, &line);
         }
         return Ok(DONE);
@@ -128,7 +133,7 @@ pub(crate) async fn rerunning(
         );
     };
     let applied = composed
-        .rerun_apply((rule, &chosen), &TokioTimer, &told)
+        .rerun_apply((planning, &chosen), &TokioTimer, &told)
         .await
         .map_err(|stop| why(&stop))?;
     let out = out.into_inner();
