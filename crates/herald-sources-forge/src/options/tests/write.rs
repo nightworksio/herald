@@ -115,6 +115,21 @@ fn a_sign_in_names_a_client_id_and_a_web_root() {
             .is_err()
     );
     assert!(signed("c", None).check(Forge::Forgejo).is_err());
+    assert_eq!(
+        signed("Iv23liClient", Some("https://ghes.example")).check(Forge::GitHub),
+        Ok(())
+    );
+    let reading_and_writing = SourceOptions {
+        repository: Some("o/r".to_owned()),
+        app: Some("herald".to_owned()),
+        write: Some(Write {
+            token: None,
+            app: Some("rerun".to_owned()),
+            installation: None,
+        }),
+        ..SourceOptions::default()
+    };
+    assert_eq!(reading_and_writing.check(Forge::GitHub), Ok(()));
 }
 
 #[test]

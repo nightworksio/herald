@@ -969,3 +969,24 @@ fn a_page_is_on_the_web_root_only_over_https_at_its_own_origin() {
         "https://github.com"
     ));
 }
+
+#[test]
+fn a_gitlab_job_counts_only_the_retried_jobs_of_its_own_name() {
+    let found =
+        json!({ "name": "test", "status": "failed", "pipeline": { "id": 7, "sha": "abc" } });
+    let others = ok(&json!([{ "name": "lint", "retried": true }, { "name": "test" }]));
+    let http = ScriptedHttp::new(vec![ok(&found), others]);
+    let run = pollster::block_on(gitlab().run(&http, ("g/p", &job("7", "70")))).unwrap();
+    assert_eq!(run.reruns, 0);
+}
+
+#[test]
+fn an_app_s_user_token_reaching_an_installation_naming_an_empty_app_is_refused_unread() {
+    let mut unnamed = reading(1, "Iv23liClient");
+    unnamed["app_slug"] = json!("");
+    let refused = signed_in_as_app(vec![installations(&[unnamed])], None);
+    assert!(
+        matches!(refused, Err(Unpolled::Unreadable(ref reason)) if reason == UNNAMED_APP),
+        "{refused:?}"
+    );
+}

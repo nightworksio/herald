@@ -110,3 +110,25 @@ fn every_method_of_recalls_a_store_keeps_none_of_is_probed() {
         ]
     );
 }
+
+#[test]
+fn every_method_of_the_records_of_re_runs_a_store_keeps_none_of_is_probed() {
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::actions(
+        &Option::<&FakeStore>::None,
+        &mut checks,
+    ));
+    assert_eq!(checks.done(), Ok(()));
+    let mut checks = Checks::default();
+    pollster::block_on(crate::conformance::unkept::actions(
+        &FakeStore::default(),
+        &mut checks,
+    ));
+    assert_eq!(
+        checks.0,
+        [
+            "action was not refused as unsupported by a store keeping none of its kind",
+            "put_action was not refused as unsupported by a store keeping none of its kind",
+        ]
+    );
+}

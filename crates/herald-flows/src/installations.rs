@@ -16,7 +16,7 @@ use herald_ports::{
 use jiff::{SignedDuration, Timestamp};
 
 use crate::announce::{Ports, Stop};
-use herald_wire::github_app::{Narrowed, Unminted};
+use herald_wire::github_app::{InstallationToken, Narrowed, Unminted, Wide};
 
 /// What an installation token kept in the store is sealed for.
 const PURPOSE: &str = "herald github-app installation token v1";
@@ -80,7 +80,14 @@ pub struct Minting {
     minted: Arc<Minted>,
     held: Arc<Mutex<Held>>,
     stored: bool,
-    narrowed: Option<Narrowed>,
+}
+
+/// A minting of a write App's installation of its own, never kept in a
+/// store, whose tokens hold only what its narrowing names (ADR-0068). Made
+/// only by [`Minting::narrowed`].
+pub(crate) struct Narrowing {
+    minting: Minting,
+    narrowed: Narrowed,
 }
 
 /// Every installation the prepared sources read, as they are prepared.
@@ -121,7 +128,6 @@ impl Mintings {
             minted: Arc::clone(&minted),
             held: Arc::new(Mutex::new(Held::default())),
             stored: app.store_token,
-            narrowed: None,
         });
         Ok(Some(minted))
     }
@@ -142,8 +148,8 @@ impl Minting {
 
     /// A minting of the same App's installation of its own, never kept in
     /// a store, whose token holds only what `narrowed` names (ADR-0068).
-    pub(crate) fn narrowed(&self, narrowed: Narrowed) -> Self {
-        Self {
+    pub(crate) fn narrowed(&self, narrowed: Narrowed) -> Narrowing {
+        let minting = Self {
             app: self.app.clone(),
             issuer: self.issuer.clone(),
             api: self.api.clone(),
@@ -153,18 +159,13 @@ impl Minting {
             minted: Arc::new(Minted::default()),
             held: Arc::new(Mutex::new(Held::default())),
             stored: false,
-            narrowed: Some(narrowed),
-        }
+        };
+        Narrowing { minting, narrowed }
     }
 
     /// The App's id or client id, as its config names it.
     pub(crate) fn issuer(&self) -> &str {
         &self.issuer
-    }
-
-    /// The token it mints.
-    pub(crate) fn minted(&self) -> Arc<Minted> {
-        Arc::clone(&self.minted)
     }
 
     /// The id of its installation, where it is named or a token was minted
@@ -333,7 +334,6 @@ impl Minting {
             http,
             (&self.api, self.target.installation(), known),
             (&format!("github_apps.{}", self.app), &jwt),
-            self.narrowed.as_ref(),
         )
         .await?;
         let unkept = match tokens {
@@ -343,13 +343,61 @@ impl Minting {
                 .err(),
             None => None,
         };
+        self.hold(minted, app);
+        Ok(unkept)
+    }
+
+    /// `minted` held as its token, with its installation, its App or else
+    /// `app`, and when it expires.
+    fn hold(&self, minted: InstallationToken, app: Option<u64>) {
         self.minted.refresh(Some(minted.token));
         *self.held.lock().unwrap_or_else(PoisonError::into_inner) = Held {
             id: Some(minted.installation),
             app: minted.app.or(app),
             expires: Some(minted.expires),
         };
-        Ok(unkept)
+    }
+}
+
+impl Narrowing {
+    /// A token minted now through `http`, signed by `signer`, holding only
+    /// what it is narrowed to, and held; or, where GitHub's answer says it
+    /// holds more, that token, never held.
+    ///
+    /// # Errors
+    ///
+    /// Where the App signs nothing, or no token is minted.
+    pub(crate) async fn minted<G: Signer, H: Http>(
+        &self,
+        (signer, http): (&G, &H),
+        now: Timestamp,
+    ) -> Result<Result<Arc<Minted>, Wide>, Unminted> {
+        let minting = &self.minting;
+        let jwt = minting.jwt(signer, now).await?;
+        let minted = herald_wire::github_app::minted_narrowed(
+            http,
+            (&minting.api, minting.target.installation(), None),
+            (&format!("github_apps.{}", minting.app), &jwt),
+            &self.narrowed,
+        )
+        .await?;
+        Ok(minted.map(|minted| {
+            minting.hold(minted, None);
+            Arc::clone(&minting.minted)
+        }))
+    }
+
+    /// [`Minting::identified`] of the installation it mints for.
+    ///
+    /// # Errors
+    ///
+    /// Where the App signs nothing or a lookup fails.
+    pub(crate) async fn identified<G: Signer, H: Http>(
+        &self,
+        reached: (&G, &H),
+        now: Timestamp,
+    ) -> Result<(u64, u64), Unminted> {
+        self.minting.identified(reached, now).await
     }
 }
 
@@ -397,7 +445,6 @@ pub(crate) async fn refreshed<S: Store, C: Clock, G: Signer, H: Http>(
             let stop = match unminted {
                 Unminted::Unreachable(reason) => Stop::Unreachable(reason),
                 Unminted::Unreadable(reason) => Stop::Source(reason),
-                wide @ Unminted::Wide(_) => Stop::Source(wide.to_string()),
             };
             (source, stop)
         })

@@ -9,14 +9,14 @@ use std::sync::Arc;
 use herald_config::Config;
 use herald_core::{Permission, SourceName, same};
 use herald_kinds::{Credential, Rerunner, SignIn, Source, UNWRITTEN, WriteCredential};
-use herald_ports::{Base, Clock, Http, OperatorToken, Secret, Signer, Store, Timer, Unkept};
-use herald_wire::github_app::Unminted;
+use herald_ports::{Base, Clock, Http, OperatorToken, Secret, Signer, Store, Timer};
+use herald_wire::github_app::{Unminted, Wide};
 
 use super::signing::{said, signed_in};
 use super::{Applying, read_credential};
 use crate::announce::Ports;
 use crate::budget::Budgeted;
-use crate::installations::{Kept, Minting, Mintings, refreshed_by};
+use crate::installations::{Minting, Mintings};
 use crate::prepare::Connected;
 
 /// Why a source's jobs are not re-run where its write credential holds the
@@ -100,16 +100,15 @@ async fn write_credential<H, T>(
     }
 }
 
-/// Why `token`, minted by `minting` holding more than it was asked for,
+/// Why `wide`, minted by `minting` holding more than it was asked for,
 /// was not used, once it is revoked with itself through `signed`'s
 /// connection to the source's API, outside the budget as the operator's
 /// token is; and whether its revocation failed.
-async fn revoked<H: Http>(signed: &Signed<'_, H>, minting: &Minting, token: Secret) -> String {
-    let answered = herald_wire::github_app::revoked(&signed.written, &minting.api, &token).await;
-    let wide = Unminted::Wide(token);
-    match answered {
-        Ok(()) => format!("{wide}; it was revoked"),
-        Err(failed) => format!("{wide}, and its revocation failed: {failed}"),
+async fn revoked<H: Http>(signed: &Signed<'_, H>, minting: &Minting, wide: Wide) -> String {
+    let said = wide.to_string();
+    match wide.revoked(&signed.written, &minting.api).await {
+        Ok(()) => format!("{said}; it was revoked"),
+        Err(failed) => format!("{said}, and its revocation failed: {failed}"),
     }
 }
 
@@ -135,22 +134,20 @@ pub(super) async fn credential<S: Store, C: Clock, G: Signer, H: Http>(
     let name = repository
         .rsplit_once('/')
         .map_or(repository, |(_, name)| name);
-    let narrowed = [(
-        minting.narrowed(herald_wire::github_app::rerunning(name)),
-        Budgeted::new(&signed.written, ports.budget, ports.clock),
-    )];
-    let unkept = (ports.signer, None::<Kept<'_, Unkept>>);
-    let refreshed = refreshed_by(&narrowed, unkept, ports.clock.now()).await;
+    let narrowed = minting.narrowed(herald_wire::github_app::rerunning(name));
+    let written = Budgeted::new(&signed.written, ports.budget, ports.clock);
     let unminted = |reason: String| format!("the write App's token could not be minted: {reason}");
-    match refreshed.unminted.into_values().next() {
-        Some(Unminted::Wide(token)) => return Err(unminted(revoked(signed, minting, token).await)),
-        Some(Unminted::Unreachable(reason) | Unminted::Unreadable(reason)) => {
+    let minted = match narrowed
+        .minted((ports.signer, &written), ports.clock.now())
+        .await
+    {
+        Ok(Ok(minted)) => minted,
+        Ok(Err(wide)) => return Err(unminted(revoked(signed, minting, wide).await)),
+        Err(Unminted::Unreachable(reason) | Unminted::Unreadable(reason)) => {
             return Err(unminted(reason));
         }
-        None => {}
-    }
-    let [(minted, written)] = narrowed;
-    let (installation, app) = minted
+    };
+    let (installation, app) = narrowed
         .identified((ports.signer, &written), ports.clock.now())
         .await
         .map_err(|error| unminted(error.to_string()))?;
@@ -160,7 +157,7 @@ pub(super) async fn credential<S: Store, C: Clock, G: Signer, H: Http>(
     {
         return Err(SHARED_INSTALLATION.to_owned());
     }
-    Ok(Credential::Minted(minted.minted()))
+    Ok(Credential::Minted(minted))
 }
 
 /// What the source `name`, `source`, re-runs with, before anyone signs in:

@@ -374,3 +374,33 @@ fn a_held_plan_is_printed_and_an_apply_tells_the_operator_where_to_sign_in() {
         )
     );
 }
+
+#[test]
+fn a_job_named_without_its_id_or_head_is_refused_and_an_apply_of_no_rule_says_why() {
+    let setup = setup(&ruled());
+    let world = World::default();
+    listed(&world);
+    for named in ["@h1", "42@", "@"] {
+        let refused = herald(
+            &setup,
+            &world,
+            &["rerun", "flaky", "--apply", "--job", named],
+        );
+        assert!(
+            refused.err.contains(&format!("\"{named}\" is not a job")),
+            "{named}: {}",
+            refused.err
+        );
+    }
+    let unknown = herald(
+        &setup,
+        &world,
+        &["rerun", "nope", "--apply", "--job", "42@h1"],
+    );
+    assert_ne!(unknown.code, DONE);
+    assert!(
+        unknown.err.contains("no rule is named \"nope\""),
+        "{}",
+        unknown.err
+    );
+}

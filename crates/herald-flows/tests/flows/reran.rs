@@ -904,3 +904,38 @@ fn a_job_of_a_source_the_config_applied_under_does_not_name_is_refused_as_unwrit
     assert!(applied.told.is_empty() && applied.bases.is_empty());
     assert_eq!(script.seen().len(), 2, "{:?}", script.seen());
 }
+
+#[test]
+fn a_rule_that_plans_no_re_run_applies_nothing_and_says_so() {
+    let mut config = config(TOKEN_WRITE);
+    config.rules.get_mut("flaky").unwrap().rerun = false;
+    let store = healthy();
+    let script = scripted(&[]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    assert!(
+        matches!(applied.applied, Err(Stop::Source(ref why)) if why.contains("plans no re-run")),
+        "{:?}",
+        applied.applied
+    );
+    assert_eq!(script.seen(), Vec::<String>::new());
+}
+
+#[test]
+fn a_sign_in_is_asked_after_until_the_moment_its_code_expires() {
+    let config = config(TOKEN_WRITE);
+    let store = healthy();
+    flaky(&store, "Change");
+    let mut signing = signed_in();
+    signing[0].2 = json!({ "device_code": "device-value", "user_code": "WDJB-MJHT",
+        "verification_uri": "https://github.com/login/device", "interval": 5, "expires_in": 10 })
+    .to_string();
+    let script = scripted(&[
+        planned(),
+        signing,
+        checked("h1", 1),
+        vec![(CALL, 201, String::new())],
+    ]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    assert_eq!(done(&applied), [Done::Rerun]);
+    assert_eq!(applied.waited, 2);
+}

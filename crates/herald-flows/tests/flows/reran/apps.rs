@@ -427,3 +427,123 @@ fn each_job_of_one_write_app_source_is_called_with_a_token_minted_for_it_alone()
     let narrowed = herald_wire::github_app::rerunning("open");
     assert_eq!(mints, [narrowed.body().as_bytes(); 2], "{seen:?}");
 }
+
+#[test]
+fn an_operator_whose_token_reaches_the_write_app_is_refused_as_its_user() {
+    let config = config(APP_WRITE);
+    let store = healthy();
+    flaky(&store, "Change");
+    let mut signing = signed_in();
+    signing[4].2 = json!({ "installations": [{ "app_id": 1, "app_slug": "herald-sign-in",
+        "client_id": "Iv23liRerun", "permissions": { "metadata": "read" } }] })
+    .to_string();
+    signing.truncate(5);
+    let script = scripted(&[planned(), signing]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    let reason = refused(&applied);
+    assert!(
+        reason.contains("the GitHub App the source writes as"),
+        "{reason}"
+    );
+    assert!(!asserted(&script));
+}
+
+#[test]
+fn a_source_reads_with_its_own_credential_beside_another_reading_as_an_app() {
+    let config = config(&format!("{}\n{OTHER_READER}", super::TOKEN_WRITE));
+    let store = healthy();
+    flaky(&store, "Change");
+    let script = scripted(&[
+        other_minted(),
+        planned(),
+        signed_in(),
+        checked("h1", 1),
+        vec![(CALL, 201, String::new())],
+    ]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    assert_eq!(done(&applied), [Done::Rerun]);
+    let read = carrying(&script, "read-value");
+    assert!(
+        read.contains(&format!("GET https://api.github.com{}", super::PULL)),
+        "{read:?}"
+    );
+    assert_eq!(carrying(&script, "reader-value"), Vec::<String>::new());
+}
+
+#[test]
+fn an_installation_a_source_reads_through_is_found_again_before_a_write_app_mints() {
+    let config = config(&format!("{APP_WRITE}\n{OTHER_READER}"));
+    let unminted = || -> Answers {
+        vec![
+            (
+                "/repos/o/other/installation",
+                200,
+                json!({ "id": 3, "app_id": 30 }).to_string(),
+            ),
+            ("/app/installations/3/access_tokens", 500, String::new()),
+        ]
+    };
+    let store = healthy();
+    flaky(&store, "Change");
+    let found = vec![(
+        "/repos/o/other/installation",
+        200,
+        json!({ "id": 3, "app_id": 30 }).to_string(),
+    )];
+    let script = scripted(&[
+        unminted(),
+        planned(),
+        found,
+        signed_in(),
+        checked("h1", 1),
+        minted(7),
+        vec![(CALL, 201, String::new())],
+    ]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    assert_eq!(done(&applied), [Done::Rerun]);
+    let store = healthy();
+    flaky(&store, "Change");
+    let lost = vec![("/repos/o/other/installation", 500, String::new())];
+    let script = scripted(&[unminted(), planned(), lost]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    let reason = refused(&applied);
+    assert!(
+        reason.starts_with("an installation a source reads through could not be found"),
+        "{reason}"
+    );
+    assert_eq!(applied.told, Vec::<String>::new());
+}
+
+#[test]
+fn a_write_app_whose_app_cannot_be_named_after_its_mint_records_the_call_unsent() {
+    let config = config_reading(
+        super::TOKEN_READ,
+        "write = { app = \"rerun\", installation = 7 }\nsign_in = { client_id = \"Iv23liClient\" }",
+    );
+    let store = healthy();
+    flaky(&store, "Change");
+    let script = scripted(&[
+        planned(),
+        signed_in(),
+        checked("h1", 1),
+        vec![
+            (
+                tokens_of(7),
+                201,
+                token_holding(&json!({ "actions": "write" })),
+            ),
+            ("/app/installations/7", 500, String::new()),
+        ],
+    ]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    let reason = refused(&applied);
+    assert!(
+        reason.starts_with("the write App's token could not be minted"),
+        "{reason}"
+    );
+    assert_eq!(carrying(&script, "minted-value"), Vec::<String>::new());
+    let record = pollster::block_on(store.inner.action(&key()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.value.outcome, Reran::Unsent);
+}

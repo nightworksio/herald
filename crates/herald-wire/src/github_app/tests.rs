@@ -31,7 +31,6 @@ fn mint(
         scripted,
         (API, installation, known),
         ("herald", &jwt_of()),
-        None,
     ))
 }
 
@@ -172,13 +171,16 @@ fn narrowed_token(permissions: &Value, repositories: &Value) -> Value {
     answer
 }
 
-fn mint_narrowed(answered: &Value) -> (ScriptedHttp, Result<InstallationToken, Unminted>) {
+/// What a narrowed mint answered `answered` minted, or why not.
+type Narrowing = Result<Result<InstallationToken, Wide>, Unminted>;
+
+fn mint_narrowed(answered: &Value) -> (ScriptedHttp, Narrowing) {
     let scripted = ScriptedHttp::new(vec![answer(201, answered)]);
-    let minted = pollster::block_on(minted(
+    let minted = pollster::block_on(minted_narrowed(
         &scripted,
         (API, Installation::Fixed(9), None),
         ("herald", &jwt_of()),
-        Some(&rerunning("r")),
+        &rerunning("r"),
     ));
     (scripted, minted)
 }
@@ -194,7 +196,7 @@ fn a_narrowed_token_names_its_permissions_and_repositories_and_a_whole_one_sends
         &json!({ "actions": "write", "metadata": "read" }),
         &json!([{ "name": "r", "full_name": "o/r" }]),
     ));
-    assert_eq!(held.unwrap().installation, 9);
+    assert_eq!(held.unwrap().unwrap().installation, 9);
     let request = &scripted.requests()[0];
     assert_eq!(request.body, narrowed.body().as_bytes());
     assert!(request.headers.iter().any(|(name, value)| {
@@ -209,7 +211,10 @@ fn a_narrowed_token_names_its_permissions_and_repositories_and_a_whole_one_sends
 fn a_narrowed_token_holding_more_than_re_running_on_the_one_repository_is_refused() {
     let one = json!([{ "name": "r" }]);
     let actions = json!({ "actions": "write" });
-    assert!(mint_narrowed(&narrowed_token(&actions, &one)).1.is_ok());
+    assert!(matches!(
+        mint_narrowed(&narrowed_token(&actions, &one)).1,
+        Ok(Ok(_))
+    ));
     for (permissions, repositories) in [
         (
             json!({ "actions": "write", "contents": "write" }),
@@ -228,21 +233,21 @@ fn a_narrowed_token_holding_more_than_re_running_on_the_one_repository_is_refuse
     ] {
         let (scripted, refused) = mint_narrowed(&narrowed_token(&permissions, &repositories));
         assert!(
-            matches!(refused, Err(ref wide @ Unminted::Wide(ref token)) if token.expose() == "ghs_minted" && wide.to_string().contains("holds other than actions: write")),
+            matches!(refused, Ok(Err(ref wide @ Wide(ref token))) if token.expose() == "ghs_minted" && wide.to_string().contains("holds other than actions: write") && !format!("{wide:?}").contains("ghs_minted")),
             "{permissions} {repositories}: {refused:?}"
         );
         assert_eq!(scripted.requests().len(), 1);
     }
     let (_, unnamed) = mint_narrowed(&token());
-    assert!(unnamed.is_err());
+    assert!(matches!(unnamed, Ok(Err(_))));
 }
 
 #[test]
 fn a_token_is_revoked_with_itself_and_a_failed_revocation_is_said() {
-    let token = Secret::new("github_apps.rerun", "ghs_minted");
     for (status, revoked_now) in [(204, true), (500, false)] {
+        let wide = Wide(Secret::new("github_apps.rerun", "ghs_minted"));
         let scripted = ScriptedHttp::new(vec![answer(status, &json!({}))]);
-        let answered = pollster::block_on(revoked(&scripted, API, &token));
+        let answered = pollster::block_on(wide.revoked(&scripted, API));
         assert_eq!(answered.is_ok(), revoked_now, "{status}: {answered:?}");
         let requests = scripted.requests();
         assert_eq!(requests.len(), 1);

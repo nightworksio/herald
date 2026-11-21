@@ -106,7 +106,7 @@ re-run at most once.
      beside its repository and organization ones (GitHub's public Apps
      answer `emails: read` there), so `git_ssh_keys: write` on the
      sign-in App is refused
-     (https://docs.github.com/en/rest/apps/apps#get-an-app: works with a
+     (<https://docs.github.com/en/rest/apps/apps#get-an-app>: works with a
      GitHub App user access token; `permissions` is a map of each
      permission to its level).
    - GitHub, any other prefix: refused, the refusal naming no part of

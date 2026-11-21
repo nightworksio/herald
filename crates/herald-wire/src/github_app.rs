@@ -34,9 +34,33 @@ pub enum Unminted {
     Unreachable(String),
     /// GitHub's answer minted nothing, for this reason.
     Unreadable(String),
-    /// GitHub minted a narrowed token holding more than it was asked for:
-    /// never used, and to be revoked with [`revoked`] outside any budget.
-    Wide(Secret),
+}
+
+/// A token GitHub minted for a narrowed mint holding more than it was asked
+/// for: never used, and revoked with itself by [`Wide::revoked`] outside
+/// any budget. Made only by [`narrowed`].
+#[derive(Debug)]
+pub struct Wide(Secret);
+
+impl Wide {
+    /// The token revoked at `api` through `http` with itself, and dropped.
+    ///
+    /// # Errors
+    ///
+    /// Where GitHub could not be asked or did not revoke it.
+    pub async fn revoked(self, http: &dyn DynHttp, api: &str) -> Result<(), Unminted> {
+        revoked(http, api, &self.0).await
+    }
+}
+
+impl fmt::Display for Wide {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (permission, level) = RERUN_PERMISSION;
+        write!(
+            f,
+            "the token GitHub minted holds other than {permission}: {level} on the one repository, so herald never uses it"
+        )
+    }
 }
 
 impl Unminted {
@@ -53,13 +77,6 @@ impl fmt::Display for Unminted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unreachable(reason) | Self::Unreadable(reason) => f.write_str(reason),
-            Self::Wide(_) => {
-                let (permission, level) = RERUN_PERMISSION;
-                write!(
-                    f,
-                    "the token GitHub minted holds other than {permission}: {level} on the one repository, so herald never uses it"
-                )
-            }
         }
     }
 }
@@ -279,7 +296,7 @@ pub fn rerunning(name: &str) -> Narrowed {
 /// # Errors
 ///
 /// Where GitHub could not be asked or did not revoke it.
-pub async fn revoked(http: &dyn DynHttp, api: &str, token: &Secret) -> Result<(), Unminted> {
+async fn revoked(http: &dyn DynHttp, api: &str, token: &Secret) -> Result<(), Unminted> {
     let http = Erased(http);
     let request = github::headed(Request::new(
         Method::Delete,
@@ -294,21 +311,19 @@ pub async fn revoked(http: &dyn DynHttp, api: &str, token: &Secret) -> Result<()
 }
 
 /// A token minted at `api` through `http` for `installation`, the App
-/// asserting itself with `jwt`, named `name`: holding every permission of
-/// the installation on each of its repositories, or where `narrowed` is
-/// given, the permissions and repository it names alone, refused as
-/// [`Unminted::Wide`] where GitHub's answer says the token holds more.
+/// asserting itself with `jwt`, named `name`, asked for what `narrowed`
+/// names where it is given; with the permissions and repositories
+/// GitHub's answer says it holds.
 ///
 /// # Errors
 ///
-/// Where the installation is not found, no token is minted for it, or a
-/// narrowed token holds more than it names, which the caller revokes.
-pub async fn minted(
+/// Where the installation is not found, or no token is minted for it.
+async fn mint(
     http: &dyn DynHttp,
     (api, installation, known): (&str, Installation<'_>, Option<u64>),
     (name, jwt): (&str, &Secret),
     narrowed: Option<&Narrowed>,
-) -> Result<InstallationToken, Unminted> {
+) -> Result<(InstallationToken, BTreeMap<String, String>, Vec<Named>), Unminted> {
     let http = Erased(http);
     let found = installation_id(&http, (api, installation, known), jwt).await?;
     let request = asserted(
@@ -333,15 +348,52 @@ pub async fn minted(
         permissions,
         repositories,
     } = read::<Answered>(MINTED, &answer.body)?;
-    let token = Secret::new(name, token);
-    if narrowed.is_some_and(|narrowed| !narrowed.holds(&permissions, &repositories)) {
-        return Err(Unminted::Wide(token));
-    }
-    Ok(InstallationToken {
-        token,
+    let minted = InstallationToken {
+        token: Secret::new(name, token),
         expires: expires_at,
         installation: found.id,
         app: found.app,
+    };
+    Ok((minted, permissions, repositories))
+}
+
+/// A token minted at `api` through `http` for `installation`, the App
+/// asserting itself with `jwt`, named `name`, holding every permission of
+/// the installation on each of its repositories.
+///
+/// # Errors
+///
+/// Where the installation is not found, or no token is minted for it.
+pub async fn minted(
+    http: &dyn DynHttp,
+    installation: (&str, Installation<'_>, Option<u64>),
+    asserted: (&str, &Secret),
+) -> Result<InstallationToken, Unminted> {
+    mint(http, installation, asserted, None)
+        .await
+        .map(|(minted, _, _)| minted)
+}
+
+/// A token minted at `api` through `http` for `installation`, the App
+/// asserting itself with `jwt`, named `name`, holding the permissions and
+/// repository `narrowed` names alone; or, where GitHub's answer says it
+/// holds more, that token as [`Wide`], never to be used.
+///
+/// # Errors
+///
+/// Where the installation is not found, or no token is minted for it.
+pub async fn minted_narrowed(
+    http: &dyn DynHttp,
+    installation: (&str, Installation<'_>, Option<u64>),
+    asserted: (&str, &Secret),
+    narrowed: &Narrowed,
+) -> Result<Result<InstallationToken, Wide>, Unminted> {
+    let (minted, permissions, repositories) =
+        mint(http, installation, asserted, Some(narrowed)).await?;
+    Ok(if narrowed.holds(&permissions, &repositories) {
+        Ok(minted)
+    } else {
+        Err(Wide(minted.token))
     })
 }
 
