@@ -7,9 +7,12 @@ on:
   pull_request:
   push:
     branches: [main]
-  # The nightly run, and a run started by hand, mutate the whole workspace.
+  # The nightly run mutates what changed since the last green scheduled run;
+  # the weekly run, and a run started by hand, the whole workspace
+  # (.github/scripts/mutated.py, ADR-0070).
   schedule:
-    - cron: "17 2 * * *"
+    - cron: "17 2 * * 0-5"
+    - cron: "17 2 * * 6"
   workflow_dispatch:
   # The release runs the whole gate on the commit its tag was verified at,
   # before it publishes (ADR-0012).
@@ -392,17 +395,47 @@ jobs:
           fi
           tail -n 1 "${RUNNER_TEMP}/fixtures.log"
 
-  # A pull request mutates what its diff touches; the nightly run, a run
-  # started by hand and a release's gate mutate the whole workspace; a push
-  # to main mutates nothing, its pull request having mutated its diff. Any
-  # missed mutant fails its shard (ADR-0008).
+  # What the mutants jobs mutate: a pull request its diff; the nightly run
+  # the crates changed since the last green scheduled run on main and their
+  # dependents; the weekly run, a run started by hand and a release's gate
+  # the whole workspace; a push to main nothing, its pull request having
+  # mutated its diff (ADR-0008, ADR-0070).
+  mutants-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      shards: ${{ steps.scope.outputs.shards }}
+      wasm: ${{ steps.scope.outputs.wasm }}
+      wasi: ${{ steps.scope.outputs.wasi }}
+      fastly: ${{ steps.scope.outputs.fastly }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SCHEDULE: ${{ github.event.schedule }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/mutated.py
+
+  # Any missed mutant fails its shard; a scheduled run's shards run four at
+  # a time (ADR-0070).
   mutants-shard:
     name: mutants shard ${{ matrix.shard }}
-    if: &mutates ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+    needs: mutants-scope
+    if: ${{ needs.mutants-scope.outputs.shards != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
+      max-parallel: ${{ github.event_name == 'schedule' && 4 || 12 }}
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     services: *postgres
@@ -426,14 +459,16 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ strategy.job-total }}
+          MUTATED: ${{ needs.mutants-scope.outputs.shards }}
         run: |
           set -euo pipefail
+          read -r -a mutated <<< "$MUTATED"
           scope=()
           if [ "$EVENT" = "pull_request" ]; then
             git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
             scope=(--in-diff "${RUNNER_TEMP}/change.diff")
           fi
-          cargo mutants --workspace --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin --exclude 'crates/herald-wasm/src/js/**' --exclude 'crates/herald-wasi/**' --exclude 'crates/herald-fastly/**' --exclude 'crates/herald-spin/**' "${scope[@]}"
+          cargo mutants "${mutated[@]}" --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin --exclude 'crates/herald-wasm/src/js/**' --exclude 'crates/herald-wasi/**' --exclude 'crates/herald-fastly/**' --exclude 'crates/herald-spin/**' "${scope[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -444,7 +479,8 @@ jobs:
   # The wasm module's JavaScript glue builds for wasm32 alone, so its
   # mutants are judged by its tests under Node.
   mutants-wasm:
-    if: *mutates
+    needs: mutants-scope
+    if: ${{ needs.mutants-scope.outputs.wasm == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -485,7 +521,8 @@ jobs:
   # The component's and service's ports are judged by their tests under wasmtime
   # and Viceroy, as the wasm glue's are under Node.
   mutants-compute:
-    if: *mutates
+    needs: mutants-scope
+    if: ${{ needs.mutants-scope.outputs.wasi == 'true' || needs.mutants-scope.outputs.fastly == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -522,6 +559,8 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           CARGO_TARGET_WASM32_WASIP2_RUNNER: wasmtime run -Shttp --env HERALD_TEST_BASE=http://127.0.0.1:8099
           CARGO_TARGET_WASM32_WASIP1_RUNNER: viceroy run -C ${{ github.workspace }}/deploy/fastly/fastly.toml --
+          WASI: ${{ needs.mutants-scope.outputs.wasi }}
+          FASTLY: ${{ needs.mutants-scope.outputs.fastly }}
         run: |
           set -euo pipefail
           scope=()
@@ -529,12 +568,16 @@ jobs:
             git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
             scope=(--in-diff "${RUNNER_TEMP}/change.diff")
           fi
-          cargo mutants --package herald-wasi --no-shuffle --test-tool cargo \
-            --cargo-arg=--target=wasm32-wasip2 \
-            --file 'crates/herald-wasi/src/component/h*.rs' --exclude 'crates/herald-wasi/src/component/handler.rs' "${scope[@]}"
-          cargo mutants --package herald-fastly --no-shuffle --test-tool cargo \
-            --cargo-arg=--target=wasm32-wasip1 \
-            --file 'crates/herald-fastly/src/compute/[hk]*.rs' "${scope[@]}"
+          if [ "$WASI" = "true" ]; then
+            cargo mutants --package herald-wasi --no-shuffle --test-tool cargo \
+              --cargo-arg=--target=wasm32-wasip2 \
+              --file 'crates/herald-wasi/src/component/h*.rs' --exclude 'crates/herald-wasi/src/component/handler.rs' "${scope[@]}"
+          fi
+          if [ "$FASTLY" = "true" ]; then
+            cargo mutants --package herald-fastly --no-shuffle --test-tool cargo \
+              --cargo-arg=--target=wasm32-wasip1 \
+              --file 'crates/herald-fastly/src/compute/[hk]*.rs' "${scope[@]}"
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -542,24 +585,26 @@ jobs:
           path: mutants.out
           retention-days: 7
 
+  # A job the scope gave nothing to mutate is skipped, and passes.
   mutants:
-    needs: [mutants-shard, mutants-wasm, mutants-compute]
+    needs: [mutants-scope, mutants-shard, mutants-wasm, mutants-compute]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - env:
+          SCOPE: ${{ needs.mutants-scope.result }}
           SHARDS: ${{ needs.mutants-shard.result }}
           WASM: ${{ needs.mutants-wasm.result }}
           COMPUTE: ${{ needs.mutants-compute.result }}
-          EVENT: ${{ github.event_name }}
-          REF: ${{ github.ref }}
         run: |
-          if [ "$EVENT/$REF" = "push/refs/heads/main" ] && [ "$SHARDS/$WASM/$COMPUTE" = "skipped/skipped/skipped" ]; then
-            echo "A push to main is mutated by its pull request, in its diff, and by the nightly run, in the whole workspace."
-            exit 0
-          fi
-          if [ "$SHARDS" != "success" ] || [ "$WASM" != "success" ] || [ "$COMPUTE" != "success" ]; then
-            echo "::error::A mutants job ended ${SHARDS}/${WASM}/${COMPUTE}; its mutants.out artifact names each mutant that survived."
+          if [ "$SCOPE" != "success" ]; then
+            echo "::error::The mutants scope ended ${SCOPE}, so nothing it names was mutated."
             exit 1
           fi
+          for result in "$SHARDS" "$WASM" "$COMPUTE"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::A mutants job ended ${SHARDS}/${WASM}/${COMPUTE}; its mutants.out artifact names each mutant that survived."
+              exit 1
+            fi
+          done
