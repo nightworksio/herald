@@ -2,7 +2,7 @@ use jiff::Timestamp;
 
 use super::*;
 use crate::queue::tests::pull;
-use crate::queue::{Board, Bots, View, board};
+use crate::queue::{Board, Bots, Failure, View, board};
 
 fn keys(value: &Value) -> Vec<String> {
     let mut keys: Vec<String> = value
@@ -152,4 +152,47 @@ fn a_row_shows_what_was_decided_of_it_by_slot() {
         .unwrap();
     assert_eq!(decided.get_attr("priority").unwrap().to_string(), "high");
     assert_eq!(keys(&decided), ["priority"]);
+}
+
+#[test]
+fn a_failing_check_shows_its_name_count_state_and_the_pull_requests_it_fails_on() {
+    let mut board = shown();
+    board.failures.push(Failure {
+        check: "test".to_owned(),
+        pulls: vec![("o/app".to_owned(), 7), ("o/app".to_owned(), 9)],
+        broken: true,
+        flips: 2,
+        flaky: true,
+    });
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let failure = value
+        .get_attr("failures")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert_eq!(
+        keys(&failure),
+        ["broken", "check", "count", "flaky", "flips", "pulls"]
+    );
+    let read: Vec<String> = ["check", "count", "broken", "flips", "flaky"]
+        .iter()
+        .map(|key| failure.get_attr(key).unwrap().to_string())
+        .collect();
+    assert_eq!(read, ["test", "2", "True", "2", "True"]);
+    let pull = failure
+        .get_attr("pulls")
+        .unwrap()
+        .get_item_by_index(1)
+        .unwrap();
+    assert_eq!(keys(&pull), ["number", "repository"]);
+    assert_eq!(
+        (
+            pull.get_attr("repository").unwrap().to_string(),
+            pull.get_attr("number").unwrap().to_string()
+        ),
+        ("o/app".to_owned(), "9".to_owned())
+    );
 }

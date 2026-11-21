@@ -370,19 +370,36 @@ private = false
 /// `store` keeping `o/open#1`, whose check `test` fails on its head `h1`
 /// and failed then passed on it an hour before noon, listed at noon.
 fn flaky(store: &Failing) {
-    use herald_core::{Checks, Flip, KeptPull, PullKey, Reconciled, RepositoryKey};
+    use herald_core::{Checks, Reconciled};
     use herald_ports::Pulls as _;
-    let repository = RepositoryKey {
+    keep(store, 1, Checks::Failed(vec!["test".to_owned()]));
+    let mark = Reconciled {
+        repository: Some(repository()),
+        at: Some(NOON),
+        ..Reconciled::default()
+    };
+    pollster::block_on(store.put_reconciled(&SourceName::new("open"), &mark, None)).unwrap();
+}
+
+fn repository() -> herald_core::RepositoryKey {
+    herald_core::RepositoryKey {
         host: "github.com".to_owned(),
         id: "1".to_owned(),
-    };
+    }
+}
+
+/// `store` keeping `o/open#<number>` on its head `h1` with `checks`, its
+/// check `test` having failed then passed on it an hour before noon.
+fn keep(store: &Failing, number: u64, checks: herald_core::Checks) {
+    use herald_core::{Flip, KeptPull, PullKey};
+    use herald_ports::Pulls as _;
     let pull = herald_core::Pull {
         project: "open".to_owned(),
         repository: "o/open".to_owned(),
         visibility: herald_core::Visibility::Public,
-        number: 1,
+        number,
         title: "Change".to_owned(),
-        url: "https://github.com/o/open/pull/1".to_owned(),
+        url: format!("https://github.com/o/open/pull/{number}"),
         author: Some("ana".to_owned()),
         bot: false,
         draft: false,
@@ -391,7 +408,7 @@ fn flaky(store: &Failing) {
         updated: hours(-1),
         review: herald_core::Review::Approved,
         reviewers: Vec::new(),
-        checks: Checks::Failed(vec!["test".to_owned()]),
+        checks,
         mergeable: herald_core::Mergeable::Clean,
         queued: false,
         forge: None,
@@ -406,17 +423,11 @@ fn flaky(store: &Failing) {
         }],
     };
     let key = PullKey {
-        repository: repository.clone(),
-        number: 1,
+        repository: repository(),
+        number,
     };
     let record = KeptPull::read(None, key, pull, NOON);
     pollster::block_on(store.put_pull(&record, None)).unwrap();
-    let mark = Reconciled {
-        repository: Some(repository),
-        at: Some(NOON),
-        ..Reconciled::default()
-    };
-    pollster::block_on(store.put_reconciled(&SourceName::new("open"), &mark, None)).unwrap();
 }
 
 #[test]
@@ -487,6 +498,35 @@ fn a_rule_plans_a_re_run_of_a_flaky_check_once_a_run_and_head_to_its_private_rou
     ]);
     let swept = round(&config, &store, &again, hours(1));
     assert_eq!(announced(&swept[0])[0].1, [("plans".to_owned(), false)]);
+}
+
+#[test]
+fn a_flaky_check_no_failed_run_ran_is_planned_with_the_reason_and_a_passing_pull_request_is_not() {
+    let config = config(PLANS);
+    let store = healthy();
+    flaky(&store);
+    keep(&store, 2, herald_core::Checks::Passed);
+    let script = Script::answering(&[
+        (
+            "/repos/o/open/actions/runs?head_sha=h1&status=failure&per_page=5",
+            200,
+            r#"{"workflow_runs":[]}"#,
+        ),
+        POSTED,
+    ]);
+    let swept = round(&config, &store, &script, NOON);
+    assert_eq!(
+        announced(&swept[0]),
+        [(
+            "rerun/flaky/github.com/o/open/pull/1/test/h1/none".to_owned(),
+            vec![("plans".to_owned(), true)]
+        )]
+    );
+    let plan = String::from_utf8(script.bodies().last().unwrap().clone())
+        .unwrap()
+        .replace('\\', "");
+    assert!(plan.contains("herald has nothing to re-run"), "{plan}");
+    assert_eq!(script.seen().len(), 2);
 }
 
 #[test]

@@ -3,7 +3,9 @@
 //! and every mistake named by its key.
 
 use herald_config::{Config, NUDGE_TEMPLATE, QUEUE_TEMPLATE, load};
-use herald_core::{Kind, MOST_NUDGES, MOST_RUNS, Pinning, SourceName, Stages, TemplateName};
+use herald_core::{
+    Kind, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, Pinning, SourceName, Stages, TemplateName,
+};
 use jiff::SignedDuration;
 use jiff::civil::Time;
 
@@ -339,6 +341,9 @@ flaky = { rerun = true, mode = "plan" }
 stages = ["2d"]
 flaky = { rerun = true, runs = 2 }
 
+[rules.most]
+flaky = { rerun = true, runs = 100 }
+
 [[routes]]
 id = "plans"
 sources = ["flaky"]
@@ -355,6 +360,7 @@ private = true
         (None, true, MOST_RUNS)
     );
     assert_eq!(config.rules["both"].runs, 2);
+    assert_eq!(config.rules["most"].runs, MOST_RUNS_ALLOWED);
     assert!(config.rules["both"].stages.is_some() && config.rules["both"].rerun);
     assert_eq!(config.routes[0].route.filter.kinds, [Kind::RERUN]);
     let error = errors(&with(

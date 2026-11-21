@@ -504,6 +504,11 @@ fn a_check_failing_then_passing_on_one_head_is_kept_as_a_flip() {
     read_failed.checks = Checks::Failed(vec!["lint".to_owned()]);
     let first = KeptPull::read(Some(&passed), key(), read_failed, at(3_400));
     assert_eq!(first.pull.flips.len(), 1);
+    let unfailed = folded(
+        first.clone(),
+        &[check("abc123", "build", Outcome::Passed, 3_450)],
+    );
+    assert_eq!(unfailed.pull.flips.len(), 1);
     let from_read = folded(
         first.clone(),
         &[check("abc123", "lint", Outcome::Passed, 3_500)],

@@ -57,9 +57,15 @@ fn a_check_that_flipped_within_the_window_often_enough_is_a_flaky_candidate() {
         ..failing(1, &["test"])
     };
     let view = View::default();
-    let failures = view
-        .triage
-        .failures(&rows(&view, std::slice::from_ref(&flipped), now));
+    let shown = rows(&view, std::slice::from_ref(&flipped), now);
+    let kept: Vec<(&str, i64)> = shown[0]
+        .pull
+        .flips
+        .iter()
+        .map(|flip| (flip.check.as_str(), flip.at.as_second()))
+        .collect();
+    assert_eq!(kept, [("test", recent), ("lint", recent)]);
+    let failures = view.triage.failures(&shown);
     assert_eq!((failures[0].flips, failures[0].flaky), (1, true));
     let strict = View {
         triage: Triage {
