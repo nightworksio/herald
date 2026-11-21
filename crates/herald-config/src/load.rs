@@ -61,6 +61,20 @@ pub(crate) struct Loader<'t> {
     errors: Vec<ConfigError>,
 }
 
+impl<'t> Loader<'t> {
+    /// A loader of the file `file` holding `text`, reading kinds by
+    /// `kinds`, with nothing found yet.
+    fn new(file: &'t str, text: &'t str, kinds: &'t Kinds) -> Self {
+        Self {
+            file,
+            text,
+            kinds,
+            specs: KindSpecs::default(),
+            errors: Vec::new(),
+        }
+    }
+}
+
 impl Loader<'_> {
     fn error(&mut self, span: &Range<usize>, path: &str, message: impl Into<String>) {
         let (line, column) = position(self.text, span.start);
@@ -258,13 +272,7 @@ pub fn load(
     read: &dyn Fn(&str) -> Result<String, String>,
     kinds: &Kinds,
 ) -> Result<Config, Errors> {
-    let mut loader = Loader {
-        file,
-        text,
-        kinds,
-        specs: KindSpecs::default(),
-        errors: Vec::new(),
-    };
+    let mut loader = Loader::new(file, text, kinds);
     let (root, syntax) = DeTable::parse_recoverable(text);
     for error in syntax {
         loader.error(&error.span().unwrap_or(0..0), "", error.message());
@@ -294,8 +302,11 @@ pub fn load(
     let named = listed.keys().map(String::as_str).collect();
     let reports = loader.reports(sections.reports, boarded, &views, (&sources, &named));
     let rules = loader.rules(sections.rules, &views, (&sources, &named), &reports);
-    let github_apps = loader.github_apps(sections.github_apps, store.as_ref());
-    loader.installed((&sources, &source_spans), &github_apps);
+    let github_apps = loader.apps_of(
+        sections.github_apps,
+        store.as_ref(),
+        (&sources, &source_spans),
+    );
     let routes = loader.every_route(
         sections.routes,
         &destinations,
@@ -324,37 +335,41 @@ pub fn load(
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
     };
-    Ok(Config {
-        store,
-        retention,
-        attempts,
-        render,
-        marker_key,
-        destinations: destinations
-            .into_iter()
-            .map(|(name, (destination, _))| (name, destination))
-            .collect(),
-        sources,
-        routes: routes.into_iter().map(|read| read.config).collect(),
-        templates,
-        apps,
-        github_apps,
-        views,
-        reports,
-        rules,
-        models,
-        tasks,
-        schedule,
-        server,
-        federation,
-        peers,
-        http,
-        announce,
-        run,
-        doctor,
-        kinds: loader.specs,
-        secret_keys,
-    })
+    written::apart(
+        Config {
+            store,
+            retention,
+            attempts,
+            render,
+            marker_key,
+            destinations: destinations
+                .into_iter()
+                .map(|(name, (destination, _))| (name, destination))
+                .collect(),
+            sources,
+            routes: routes.into_iter().map(|read| read.config).collect(),
+            templates,
+            apps,
+            github_apps,
+            views,
+            reports,
+            rules,
+            models,
+            tasks,
+            schedule,
+            server,
+            federation,
+            peers,
+            http,
+            announce,
+            run,
+            doctor,
+            kinds: std::mem::take(&mut loader.specs),
+            secret_keys,
+        },
+        loader,
+        &source_spans,
+    )
 }
 
 mod apps;
@@ -378,3 +393,4 @@ mod sources;
 mod store;
 mod templates;
 mod views;
+mod written;

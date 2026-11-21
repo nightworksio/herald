@@ -162,6 +162,14 @@ impl<'a, H: Http, C: Clock> Budgeted<'a, H, C> {
         }
     }
 
+    /// Whether a send was refused unsent, as the run's budget ended.
+    pub(crate) fn unsent(&self) -> bool {
+        self.refused
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some()
+    }
+
     /// The stop a read that failed as `unpolled` ends with: the budget's,
     /// where it refused a send, and else what the forge's answer says.
     pub(crate) fn halted(&self, unpolled: Unpolled) -> Stop {

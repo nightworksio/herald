@@ -83,6 +83,7 @@ fn a_store_keeps_every_kind_itself_and_says_nothing_where_its_kind_keeps_the_def
     assert!(store.keeps_decisions());
     assert!(store.keeps_pulls());
     assert!(store.keeps_recalls());
+    assert!(store.keeps_actions());
     assert!(store.keeps_tokens());
     assert_eq!(store.note(), None);
     assert_eq!(store.withheld(), None);

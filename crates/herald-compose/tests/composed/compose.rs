@@ -3,6 +3,7 @@
 
 mod pages;
 mod reports;
+mod reran;
 mod work;
 
 use std::collections::BTreeMap;

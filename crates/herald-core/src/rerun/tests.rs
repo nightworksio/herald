@@ -6,8 +6,10 @@ fn a_plan_names_its_check_evidence_and_exact_call_and_is_announced_once_a_run_an
     let pull = pull();
     let rerun = Rerun {
         run: "42".to_owned(),
+        job: "420".to_owned(),
         page: "https://github.com/nightworksio/herald/actions/runs/42".to_owned(),
-        call: "POST https://api.github.com/repos/nightworksio/herald/actions/runs/42/rerun-failed-jobs".to_owned(),
+        call: "POST https://api.github.com/repos/nightworksio/herald/actions/jobs/420/rerun"
+            .to_owned(),
     };
     let plan = RerunPlan {
         pull: &pull,

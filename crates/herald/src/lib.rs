@@ -38,6 +38,7 @@ mod peers;
 mod preview;
 mod queueing;
 mod release;
+mod rerunning;
 mod serving;
 mod setup;
 mod signals;
@@ -280,6 +281,13 @@ async fn answered(
         }) => {
             let asked = (report.as_str(), route.as_deref(), seen.as_deref());
             let done = orphaning::cleared(config, vars, connect, asked, out);
+            finished(done.await, err)
+        }
+        Reading::Rerun {
+            rule, apply, job, ..
+        } => {
+            let done =
+                rerunning::rerunning(config, vars, connect, (rule.as_deref(), apply, &job), out);
             finished(done.await, err)
         }
         Reading::Queue {

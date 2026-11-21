@@ -85,3 +85,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0065](0065-a-view-triages-failing-checks-and-a-rule-plans-a-re-run-of-a-flaky-one.md) | A view triages failing checks, and a rule plans a re-run of a flaky one | Accepted |
 | [0066](0066-a-view-shows-its-repositories-ci-capacity.md) | A view shows its repositories' CI capacity | Accepted |
 | [0067](0067-a-view-shows-its-repositories-advisories-to-private-routes-alone.md) | A view shows its repositories' advisories to private routes alone | Accepted |
+| [0068](0068-an-operator-signed-in-at-the-forge-re-runs-a-planned-job-once.md) | An operator signed in at the forge re-runs a planned job once | Accepted |

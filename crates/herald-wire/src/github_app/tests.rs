@@ -163,3 +163,152 @@ fn an_app_installed_nowhere_or_refused_mints_nothing_and_says_why() {
     assert_eq!(Unminted::Unreachable("down".to_owned()).to_string(), "down");
     assert_eq!(Unminted::Unreadable("odd".to_owned()).to_string(), "odd");
 }
+
+fn narrowed_token(permissions: &Value, repositories: &Value) -> Value {
+    let mut answer = token();
+    answer["permissions"] = permissions.clone();
+    answer["repositories"] = repositories.clone();
+    answer
+}
+
+/// What a narrowed mint answered `answered` minted, or why not.
+type Narrowing = Result<Result<InstallationToken, Wide>, Unminted>;
+
+fn mint_narrowed(answered: &Value) -> (ScriptedHttp, Narrowing) {
+    let scripted = ScriptedHttp::new(vec![answer(201, answered)]);
+    let minted = pollster::block_on(minted_narrowed(
+        &scripted,
+        (API, Installation::Fixed(9), None),
+        ("herald", &jwt_of()),
+        &rerunning("r"),
+    ));
+    (scripted, minted)
+}
+
+#[test]
+fn a_narrowed_token_names_its_permissions_and_repositories_and_a_whole_one_sends_no_body() {
+    let narrowed = rerunning("r");
+    assert_eq!(
+        serde_json::from_str::<Value>(narrowed.body()).unwrap(),
+        json!({ "permissions": { "actions": "write" }, "repositories": ["r"] })
+    );
+    let (scripted, held) = mint_narrowed(&narrowed_token(
+        &json!({ "actions": "write", "metadata": "read" }),
+        &json!([{ "name": "r", "full_name": "o/r" }]),
+    ));
+    assert_eq!(held.unwrap().unwrap().installation, 9);
+    let request = &scripted.requests()[0];
+    assert_eq!(request.body, narrowed.body().as_bytes());
+    assert!(request.headers.iter().any(|(name, value)| {
+        name == "Content-Type" && value.expose() == herald_core::media::JSON
+    }));
+    let scripted = ScriptedHttp::new(vec![answer(201, &token())]);
+    mint(&scripted, Installation::Fixed(9), None).unwrap();
+    assert_eq!(scripted.requests()[0].body, b"");
+}
+
+#[test]
+fn a_narrowed_token_holding_more_than_re_running_on_the_one_repository_is_refused() {
+    let one = json!([{ "name": "r" }]);
+    let actions = json!({ "actions": "write" });
+    assert!(matches!(
+        mint_narrowed(&narrowed_token(&actions, &one)).1,
+        Ok(Ok(_))
+    ));
+    for (permissions, repositories) in [
+        (
+            json!({ "actions": "write", "contents": "write" }),
+            one.clone(),
+        ),
+        (
+            json!({ "actions": "write", "metadata": "write" }),
+            one.clone(),
+        ),
+        (json!({ "actions": "read" }), one.clone()),
+        (json!({ "metadata": "read" }), one.clone()),
+        (json!({}), one.clone()),
+        (actions.clone(), json!([{ "name": "r" }, { "name": "s" }])),
+        (actions.clone(), json!([{ "name": "s" }])),
+        (actions.clone(), json!([])),
+    ] {
+        let (scripted, refused) = mint_narrowed(&narrowed_token(&permissions, &repositories));
+        assert!(
+            matches!(refused, Ok(Err(ref wide @ Wide(ref token))) if token.expose() == "ghs_minted" && wide.to_string().contains("holds other than actions: write") && !format!("{wide:?}").contains("ghs_minted")),
+            "{permissions} {repositories}: {refused:?}"
+        );
+        assert_eq!(scripted.requests().len(), 1);
+    }
+    let (_, unnamed) = mint_narrowed(&token());
+    assert!(matches!(unnamed, Ok(Err(_))));
+}
+
+#[test]
+fn a_token_is_revoked_with_itself_and_a_failed_revocation_is_said() {
+    for (status, revoked_now) in [(204, true), (500, false)] {
+        let wide = Wide(Secret::new("github_apps.rerun", "ghs_minted"));
+        let scripted = ScriptedHttp::new(vec![answer(status, &json!({}))]);
+        let answered = pollster::block_on(wide.revoked(&scripted, API));
+        assert_eq!(answered.is_ok(), revoked_now, "{status}: {answered:?}");
+        let requests = scripted.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, Method::Delete);
+        assert_eq!(
+            requests[0].url.expose(),
+            format!("{API}/installation/token")
+        );
+        let bearer: Vec<String> = requests[0]
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+            .map(|(_, value)| value.expose())
+            .collect();
+        assert_eq!(bearer, ["Bearer ghs_minted"]);
+    }
+}
+
+#[test]
+fn an_installation_s_app_is_named_by_its_lookup_or_asked_for_by_its_id() {
+    let scripted = ScriptedHttp::new(vec![
+        answer(200, &json!({ "id": 3, "app_id": 30 })),
+        answer(201, &token()),
+    ]);
+    let minted = mint(&scripted, Installation::Repository("o/r"), None).unwrap();
+    assert_eq!((minted.installation, minted.app), (3, Some(30)));
+    let scripted = ScriptedHttp::new(vec![answer(201, &token())]);
+    assert_eq!(
+        mint(&scripted, Installation::Fixed(9), None).unwrap().app,
+        None
+    );
+    let scripted = ScriptedHttp::new(vec![
+        answer(200, &json!({ "id": 9, "app_id": 90 })),
+        answer(200, &json!({ "id": 9 })),
+        answer(404, &json!({})),
+    ]);
+    let erased = Erased(&scripted as &dyn DynHttp);
+    let app = |id| pollster::block_on(app_of(&erased, (API, id), &jwt_of()));
+    assert_eq!(app(9), Ok(90));
+    assert!(matches!(app(9), Err(Unminted::Unreadable(ref reason)) if reason.contains("no App")));
+    assert!(app(9).is_err());
+    assert_eq!(scripted.asked()[0].0, format!("{API}/app/installations/9"));
+}
+
+#[test]
+fn an_app_lookup_or_a_revocation_that_reaches_nothing_or_reads_nothing_says_so() {
+    let unreached = ScriptedHttp::new(Vec::new());
+    let erased = Erased(&unreached as &dyn DynHttp);
+    assert_eq!(
+        pollster::block_on(app_of(&erased, (API, 9), &jwt_of())),
+        Err(Unminted::Unreachable(HttpError::TimedOut.to_string()))
+    );
+    let token = Secret::new("github_apps.rerun", "ghs_minted");
+    assert_eq!(
+        pollster::block_on(revoked(&unreached, API, &token)),
+        Err(Unminted::Unreachable(HttpError::TimedOut.to_string()))
+    );
+    let unread = ScriptedHttp::new(vec![answer(200, &json!({ "id": "x" }))]);
+    let erased = Erased(&unread as &dyn DynHttp);
+    assert!(matches!(
+        pollster::block_on(app_of(&erased, (API, 9), &jwt_of())),
+        Err(Unminted::Unreadable(_))
+    ));
+}

@@ -81,7 +81,10 @@ impl<'c, H> Sources<'c, H> {
 /// # Errors
 ///
 /// Where the view reads a source this run does not reach.
-fn sources<'c, H>(connected: &'c Connected<H>, view: &ViewConfig) -> Result<Sources<'c, H>, Stop> {
+pub(crate) fn sources<'c, H>(
+    connected: &'c Connected<H>,
+    view: &ViewConfig,
+) -> Result<Sources<'c, H>, Stop> {
     view.sources
         .iter()
         .map(|name| {
@@ -128,7 +131,7 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
 /// the view and the store say (ADR-0061), and the overviews it shows
 /// (ADR-0066); the first source that could not be read, and the run's
 /// budget, stopping it.
-async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
+pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     (config, reached, ports): (&Config, &Sources<'_, H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
 ) -> Result<Read, Stop> {

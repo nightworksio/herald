@@ -309,7 +309,11 @@ impl Http for World {
         {
             return Ok(state.variable(request.method, name, &body));
         }
-        for base in ["https://gitlab.com/api/v4", "https://codeberg.org/api/v1"] {
+        for base in [
+            "https://gitlab.com/api/v4",
+            "https://codeberg.org/api/v1",
+            "https://github.com",
+        ] {
             if let Some(path) = url.strip_prefix(base) {
                 return Ok(match state.forge.get(path) {
                     Some((status, body)) => answer(*status, &serde_json::from_str(body).unwrap()),

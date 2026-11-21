@@ -53,5 +53,4 @@ the forge, never by a rule on its own.
 - A plan costs at most `runs + 1` requests on GitHub and one on GitLab;
   doctor names the bound for each rule.
 - Making the planned call, behind an operator's forge sign-in, a named
-  write credential and checks immediately before the call, is a decision
-  of its own.
+  write credential and checks immediately before the call, is ADR-0068.

@@ -21,6 +21,23 @@ fn client_id(id: &str) -> bool {
 }
 
 impl Loader<'_> {
+    /// The GitHub Apps `value` gives, each checked against the sources of
+    /// `sourced` that read or write as one.
+    pub(super) fn apps_of(
+        &mut self,
+        value: Option<Value<'_>>,
+        store: Option<&ConfiguredStore>,
+        sourced: (
+            &BTreeMap<SourceName, Source>,
+            &BTreeMap<SourceName, Range<usize>>,
+        ),
+    ) -> BTreeMap<String, GithubApp> {
+        let apps = self.github_apps(value, store);
+        self.installed(sourced, &apps);
+        self.written(sourced, &apps);
+        apps
+    }
+
     /// Each App of `[github_apps]`.
     pub(super) fn github_apps(
         &mut self,

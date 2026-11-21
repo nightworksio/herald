@@ -14,7 +14,7 @@ use herald_core::{
 use super::*;
 use crate::erased::Erased;
 use crate::store::Keeper;
-use crate::store::Recalls as _;
+use crate::store::{Actions as _, Recalls as _};
 
 const NAMESPACE: &str = "namespace";
 
@@ -200,6 +200,23 @@ impl crate::Recalls for Refusing {
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(refused("put_advised"))
+    }
+}
+
+impl crate::Actions for Refusing {
+    async fn action(
+        &self,
+        _: &herald_core::RunKey,
+    ) -> Result<Option<Versioned<herald_core::RerunRecord>>, StoreError> {
+        Err(refused("action"))
+    }
+
+    async fn put_action(
+        &self,
+        _: &herald_core::RerunRecord,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_action"))
     }
 }
 
@@ -447,7 +464,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 16]
+            [holding; 17]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -829,5 +846,33 @@ fn an_erased_store_hands_the_names_of_advised_reports_to_the_one_it_erases() {
             answered(erased.put_advised(&named, None)),
         ],
         [Some(refused("advised")), Some(refused("put_advised"))]
+    );
+}
+
+#[test]
+fn an_erased_store_hands_the_record_of_each_re_run_to_the_one_it_erases() {
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    let key = herald_core::RunKey {
+        api: "https://api.github.com".to_owned(),
+        repository: "o/r".to_owned(),
+        run: "1".to_owned(),
+        job: "10".to_owned(),
+        head: "abc".to_owned(),
+    };
+    let action = herald_core::RerunRecord {
+        key: key.clone(),
+        operator: "octocat".to_owned(),
+        credential: "HERALD_RERUN".to_owned(),
+        at: Timestamp::UNIX_EPOCH,
+        reruns: 0,
+        outcome: herald_core::Reran::Calling,
+    };
+    assert_eq!(
+        [
+            answered(erased.action(&key)),
+            answered(erased.put_action(&action, None)),
+        ],
+        [Some(refused("action")), Some(refused("put_action"))]
     );
 }

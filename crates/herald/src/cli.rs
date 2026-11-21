@@ -113,6 +113,25 @@ pub(crate) enum Reading {
         #[arg(long)]
         private: bool,
     },
+    /// List a rule's plans to re-run a flaky check, the default; or, with
+    /// --apply, sign in at the forge and re-run each job --job names, once,
+    /// with the source's write credential (ADR-0068).
+    Rerun {
+        /// The rule, as `[rules.<name>]` names it; every rule that plans
+        /// re-runs where absent.
+        rule: Option<String>,
+        /// List the plans: nothing is re-run and no write credential is
+        /// read.
+        #[arg(long, conflicts_with = "apply")]
+        plan: bool,
+        /// Sign in at the forge and re-run each job --job names, where the
+        /// plan still holds it on that head.
+        #[arg(long, requires = "job")]
+        apply: bool,
+        /// A job to re-run, as the plan prints it: <job>@<head>.
+        #[arg(long, value_name = "JOB@HEAD", requires = "apply")]
+        job: Vec<String>,
+    },
     /// Say what you did by hand about a living post's possibly orphaned
     /// parts, which doctor names (ADR-0067).
     #[command(subcommand)]

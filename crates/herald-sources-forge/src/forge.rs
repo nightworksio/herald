@@ -683,7 +683,7 @@ pub(crate) fn segments(path: &str) -> String {
 /// What a request names a tag.
 pub(crate) const TAG: &str = "tag";
 /// What a request names the repository it asks of.
-const REPOSITORY: &str = "repository's path";
+pub(crate) const REPOSITORY: &str = "repository's path";
 /// What a request names the owner it asks of.
 pub(crate) const OWNER: &str = "owner";
 /// What a request names a commit or tag object.

@@ -3,8 +3,8 @@
 //! sources (ADR-0058).
 
 use herald_flows::{
-    Federation, FeedShown, GrantShown, OwnKey, Pulls, PushShown, RunShown, Shown, SourceShown,
-    federation,
+    Federation, FeedShown, GrantShown, Here, OwnKey, Pulls, PushShown, RunShown, Shown,
+    SourceShown, federation, secrets,
 };
 use herald_peers::keys::fingerprint;
 use herald_peers::multibase::ed25519_public;
@@ -178,4 +178,27 @@ fn doctor_shows_the_instance_s_feeds_pushes_and_herald_sources() {
         ]
     );
     assert_eq!(shown.routes, [0, 1]);
+}
+
+#[test]
+fn a_host_that_does_not_announce_is_not_asked_for_the_pages_default_token() {
+    let config = loaded(
+        r#"version = 1
+[store]
+kind = "sqlite"
+[federation]
+domain = "herald.example"
+keys = [{ secret = "HERALD_FED_KEY" }]
+[federation.pages]
+url = "https://herald.example"
+"#,
+    );
+    assert!(config.secrets_read().contains("GITHUB_TOKEN"));
+    let here = Here {
+        online: true,
+        ..Here::default()
+    };
+    let found = pollster::block_on(secrets(&config, &FakeSecrets::default(), &here));
+    let asked: Vec<&str> = found.gaps.iter().map(|gap| gap.feature.as_str()).collect();
+    assert_eq!(asked, ["reading the secret HERALD_FED_KEY"]);
 }

@@ -10,7 +10,7 @@ use herald_config::{BUILT_IN_VIEW, Config, Uses};
 use herald_core::{Advisories, Board, Row, Showing, WITHHELD, view_json, waited};
 
 use super::cli::QueueFormat;
-use super::output::say;
+use super::output::{say, say_json};
 use super::stores::composed;
 use super::{Connect, DONE};
 
@@ -125,7 +125,7 @@ pub(crate) async fn queueing(
         .await
         .map_err(|stop| why(&stop))?;
     match format {
-        QueueFormat::Json => say(
+        QueueFormat::Json => say_json(
             out,
             &view_json(Showing {
                 view,

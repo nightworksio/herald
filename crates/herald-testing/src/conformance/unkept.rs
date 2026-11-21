@@ -1,11 +1,11 @@
 use herald_core::{
     Cursor, DestinationName, Entry, RouteId, Schedule, SourceName, State, Subscription,
 };
+use herald_ports::{Actions, Decisions, Pulls, Recalls};
 use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
     Store, StoreError, Subscriptions, Waiting,
 };
-use herald_ports::{Decisions, Pulls, Recalls};
 
 use super::{Checks, GITHUB, NOON, announced, key};
 
@@ -60,6 +60,9 @@ pub(super) async fn unkept<S: Store>(store: &S, checks: &mut Checks) {
     }
     if store.recalls().is_none() {
         recalls(&store.recalls(), checks).await;
+    }
+    if store.actions().is_none() {
+        actions(&store.actions(), checks).await;
     }
 }
 
@@ -432,5 +435,17 @@ pub(super) async fn inboxes(store: &impl Inboxes, checks: &mut Checks) {
         store.forget_deliveries(&published).await,
         Held::Inboxes,
         "forget_deliveries",
+    );
+}
+
+pub(super) async fn actions(store: &impl Actions, checks: &mut Checks) {
+    let key = super::actions::run("1", "10", "unkept");
+    refused(checks, store.action(&key).await, Held::Actions, "action");
+    let action = super::actions::action(key, herald_core::Reran::Calling);
+    refused(
+        checks,
+        store.put_action(&action, None).await,
+        Held::Actions,
+        "put_action",
     );
 }

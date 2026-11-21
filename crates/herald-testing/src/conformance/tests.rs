@@ -8,6 +8,7 @@ use jiff::Timestamp;
 use super::*;
 use crate::FakeStore;
 
+mod actions;
 mod cursors;
 mod decisions;
 mod forgets;
@@ -137,6 +138,12 @@ enum Fault {
     OverwritesAnyRecallsVersion,
     OverwritesAStaleRecallsVersion,
     KeepsTheFirstRecalls,
+    HoldsAnUnwrittenAction,
+    OverwritesAnyActionVersion,
+    OverwritesAStaleActionVersion,
+    KeepsTheFirstAction,
+    SharesActionsAcrossHeads,
+    SharesActionsAcrossJobs,
 }
 
 struct Faulty {

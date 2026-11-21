@@ -89,6 +89,11 @@ pub enum Uses {
     Serves,
 }
 
+impl Uses {
+    /// Every use, once each.
+    pub const ALL: [Self; 3] = [Self::Announces, Self::Polls, Self::Serves];
+}
+
 impl Config {
     /// The version of the config this herald reads, as `version` writes it.
     pub const VERSION: i64 = 1;
@@ -155,7 +160,24 @@ impl Config {
     /// The name of every secret the config names, once each.
     #[must_use]
     pub fn secrets(&self) -> BTreeSet<&str> {
-        let mut secrets = self.secrets_used(Uses::Serves);
+        self.secrets_beside(self.secrets_used(Uses::Serves))
+    }
+
+    /// The name of every secret a run of any use reads, its store's and
+    /// each model's among them, once each; a source's write credential is
+    /// read by an apply alone, so it is not among them.
+    #[must_use]
+    pub fn secrets_read(&self) -> BTreeSet<&str> {
+        self.secrets_beside(
+            Uses::ALL
+                .into_iter()
+                .flat_map(|uses| self.secrets_used(uses))
+                .collect(),
+        )
+    }
+
+    /// `secrets` with the store's and each model's.
+    fn secrets_beside<'a>(&'a self, mut secrets: BTreeSet<&'a str>) -> BTreeSet<&'a str> {
         secrets.extend(self.store.secrets());
         secrets.extend(
             self.models

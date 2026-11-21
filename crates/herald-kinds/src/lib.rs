@@ -15,6 +15,7 @@ mod pulling;
 mod pushing;
 mod queue;
 mod reach;
+mod rerunning;
 mod session;
 mod setup;
 mod source;
@@ -33,6 +34,9 @@ pub use pulling::{Instance, Origin, Peering, PublicKey, Pull, Pulling, Receive, 
 pub use pushing::{IdTokens, Peered, Presented, Proving, Pushed, Pushing};
 pub use queue::{Asked, MOST_OPEN, MOST_PULLS, Most, Plan, Queue, QueueCost, Relisted, Scope};
 pub use reach::{Audience, Posts, Probe, Reach, Reached, Signing, UNADVISED, UnreadPosts};
+pub use rerunning::{
+    Device, Granted, Polled, Rerunner, RunNow, SignIn, UNSIGNED, UNWRITTEN, WriteCredential,
+};
 pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};
 pub use source::{

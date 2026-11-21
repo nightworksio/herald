@@ -56,6 +56,12 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         true
     }
 
+    /// Whether it keeps the record of each re-run an operator applies,
+    /// written before the call, so an apply may run on it (ADR-0068).
+    fn keeps_actions(&self) -> bool {
+        true
+    }
+
     /// Whether it keeps each webhook delivery it admits, so a replay is
     /// refused before it reaches a parser (ADR-0013).
     fn keeps_deliveries(&self) -> bool {

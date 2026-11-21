@@ -4259,6 +4259,26 @@
         "actions"
       ]
     },
+    "Permission": {
+      "description": "The least a signed-in operator must be allowed to do on a repository\nfor herald to re-run a job of it on their word.",
+      "oneOf": [
+        {
+          "description": "Push to it: GitHub's write role or above, GitLab's Developer role or\nabove.",
+          "type": "string",
+          "const": "write"
+        },
+        {
+          "description": "Maintain it: GitHub's maintain role or above, GitLab's Maintainer\nrole or above.",
+          "type": "string",
+          "const": "maintain"
+        },
+        {
+          "description": "Administer it: GitHub's admin role, GitLab's Owner role.",
+          "type": "string",
+          "const": "admin"
+        }
+      ]
+    },
     "Pin": {
       "description": "Whether a route pins, and how it finds its earlier pin.",
       "anyOf": [
@@ -5054,6 +5074,35 @@
         "sha256"
       ]
     },
+    "SignIn": {
+      "description": "How an operator signs in at the forge to apply a re-run, by the forge's\nOAuth device flow (ADR-0068).",
+      "type": "object",
+      "properties": {
+        "client_id": {
+          "description": "The client id of the GitHub App, OAuth application or GitLab\napplication with the device flow turned on; never that of the App\na `write` names. A private GitHub repository needs a GitHub App's\nclient id: its user token holds that App's read permissions alone.\nA GitHub App must be installed on the repository's account and hold\nno permission but read, its account permissions among them.",
+          "type": "string"
+        },
+        "least": {
+          "description": "The least the operator must be allowed on the repository: \"write\"\n(GitHub's write role, GitLab's Developer role, or above), \"maintain\"\nor \"admin\"; \"write\" where absent.",
+          "$ref": "#/$defs/Permission"
+        },
+        "scopes": {
+          "description": "The scopes asked for, each one that only reads: on GitHub\n`read:user` or `read:org`, none where absent; on GitLab `read_api`,\n`read_user`, `openid`, `profile` or `email`, `[\"read_api\"]` where\nabsent. The operator's token only reads who they are and what they\nmay do on the repository; a scope that writes does not load.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "web": {
+          "description": "The web root the device flow is asked at; where absent, the API's:\n`https://github.com` for `https://api.github.com`, a GHE.com\ntenant's `https://acme.ghe.com` for `https://api.acme.ghe.com`, and\na GitHub Enterprise Server's or a self-managed GitLab's host for an\nAPI ending in `/api/v3` or `/api/v4`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "client_id"
+      ]
+    },
     "Signal": {
       "description": "What a source announces of a repository.",
       "oneOf": [
@@ -5559,6 +5608,10 @@
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
               "$ref": "#/$defs/Runs"
             },
+            "sign_in": {
+              "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
+              "$ref": "#/$defs/SignIn"
+            },
             "signals": {
               "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
@@ -5619,6 +5672,10 @@
             "webhook": {
               "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). An owner source takes its repositories' and its\norganization's deliveries, and announces one only where the owner's\nlast membership record holds the repository when its work runs.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "write": {
+              "description": "The credential an operator's `herald rerun --apply` re-runs a\nplanned job with, apart from `token` and `app`: never read by a\npoll, a report or the server (ADR-0068). A stolen write credential\nre-runs without herald, so give it nothing but re-running.",
+              "$ref": "#/$defs/Write"
             }
           },
           "additionalProperties": false,
@@ -5871,6 +5928,10 @@
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
               "$ref": "#/$defs/Runs"
             },
+            "sign_in": {
+              "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
+              "$ref": "#/$defs/SignIn"
+            },
             "signals": {
               "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
@@ -5931,6 +5992,10 @@
             "webhook": {
               "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). An owner source takes its repositories' and its\norganization's deliveries, and announces one only where the owner's\nlast membership record holds the repository when its work runs.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "write": {
+              "description": "The credential an operator's `herald rerun --apply` re-runs a\nplanned job with, apart from `token` and `app`: never read by a\npoll, a report or the server (ADR-0068). A stolen write credential\nre-runs without herald, so give it nothing but re-running.",
+              "$ref": "#/$defs/Write"
             }
           },
           "additionalProperties": false,
@@ -6183,6 +6248,10 @@
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
               "$ref": "#/$defs/Runs"
             },
+            "sign_in": {
+              "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
+              "$ref": "#/$defs/SignIn"
+            },
             "signals": {
               "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
@@ -6243,6 +6312,10 @@
             "webhook": {
               "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). An owner source takes its repositories' and its\norganization's deliveries, and announces one only where the owner's\nlast membership record holds the repository when its work runs.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "write": {
+              "description": "The credential an operator's `herald rerun --apply` re-runs a\nplanned job with, apart from `token` and `app`: never read by a\npoll, a report or the server (ADR-0068). A stolen write credential\nre-runs without herald, so give it nothing but re-running.",
+              "$ref": "#/$defs/Write"
             }
           },
           "additionalProperties": false,
@@ -8350,6 +8423,27 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Write": {
+      "description": "The credential a source re-runs planned runs with, apart from the one\nit reads with (ADR-0068).",
+      "type": "object",
+      "properties": {
+        "app": {
+          "description": "The GitHub App re-runs are made as, by the name of its\n`[github_apps.<name>]` table, in place of `token`: an App other\nthan the one the source reads as, best installed with `actions:\nwrite` alone on the repositories concerned.",
+          "type": "string"
+        },
+        "installation": {
+          "description": "The id of the App's installation tokens are minted for; looked up\non the owner, or on the repository, where absent.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 1
+        },
+        "token": {
+          "description": "A token that may re-run the repository's workflow runs or retry its\npipelines, other than the one the source reads with.",
+          "$ref": "#/$defs/SecretRef"
         }
       },
       "additionalProperties": false

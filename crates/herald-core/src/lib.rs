@@ -50,6 +50,7 @@ mod queue;
 mod rate;
 mod render;
 pub mod report;
+mod reran;
 mod rerun;
 mod retention;
 mod revision;
@@ -160,6 +161,7 @@ pub use render::{
 pub use report::{
     REPORT_PREFIX, ReportSchedule, living_identity, report_event, report_identity, zone,
 };
+pub use reran::{Permission, Reran, RerunRecord, RunKey};
 pub use rerun::{MOST_RUNS, MOST_RUNS_ALLOWED, RERUN_PREFIX, Rerun, RerunPlan, rerun_event};
 pub use retention::Retention;
 pub use revision::{

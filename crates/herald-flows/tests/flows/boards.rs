@@ -370,38 +370,56 @@ private = false
 /// `store` keeping `o/open#1` titled `title`, whose check `test` fails on
 /// its head `h1` and failed then passed on it an hour before noon, listed
 /// at noon.
-fn flaky(store: &Failing, title: &str) {
+pub(crate) fn flaky(store: &Failing, title: &str) {
+    flaky_on(store, ("open", "github.com", "o/open"), title);
+}
+
+/// `store` keeping the pull request 1 of `repository` at `host` titled
+/// `title`, read by the source `source`, whose check `test` fails on its
+/// head `h1` and failed then passed on it an hour before noon, listed at
+/// noon.
+pub(crate) fn flaky_on(
+    store: &Failing,
+    (source, host, repository): (&str, &str, &str),
+    title: &str,
+) {
     use herald_core::{Checks, Reconciled};
     use herald_ports::Pulls as _;
-    keep(store, (1, title), Checks::Failed(vec!["test".to_owned()]));
+    let failed = Checks::Failed(vec!["test".to_owned()]);
+    keep(store, (host, repository), (1, title), failed);
     let mark = Reconciled {
-        repository: Some(repository()),
+        repository: Some(key(host)),
         at: Some(NOON),
         ..Reconciled::default()
     };
-    pollster::block_on(store.put_reconciled(&SourceName::new("open"), &mark, None)).unwrap();
+    pollster::block_on(store.put_reconciled(&SourceName::new(source), &mark, None)).unwrap();
 }
 
-fn repository() -> herald_core::RepositoryKey {
+fn key(host: &str) -> herald_core::RepositoryKey {
     herald_core::RepositoryKey {
-        host: "github.com".to_owned(),
+        host: host.to_owned(),
         id: "1".to_owned(),
     }
 }
 
-/// `store` keeping `o/open#<number>` titled `title` on its head `h1` with
-/// `checks`, its check `test` having failed then passed on it an hour
-/// before noon.
-fn keep(store: &Failing, (number, title): (u64, &str), checks: herald_core::Checks) {
+/// `store` keeping `<repository>#<number>` at `host` titled `title` on its
+/// head `h1` with `checks`, its check `test` having failed then passed on
+/// it an hour before noon.
+fn keep(
+    store: &Failing,
+    (host, repository): (&str, &str),
+    (number, title): (u64, &str),
+    checks: herald_core::Checks,
+) {
     use herald_core::{Flip, KeptPull, PullKey};
     use herald_ports::Pulls as _;
     let pull = herald_core::Pull {
         project: "open".to_owned(),
-        repository: "o/open".to_owned(),
+        repository: repository.to_owned(),
         visibility: herald_core::Visibility::Public,
         number,
         title: title.to_owned(),
-        url: format!("https://github.com/o/open/pull/{number}"),
+        url: format!("https://{host}/{repository}/pull/{number}"),
         author: Some("ana".to_owned()),
         bot: false,
         draft: false,
@@ -424,11 +442,11 @@ fn keep(store: &Failing, (number, title): (u64, &str), checks: herald_core::Chec
             at: hours(-1),
         }],
     };
-    let key = PullKey {
-        repository: repository(),
+    let pulled = PullKey {
+        repository: key(host),
         number,
     };
-    let record = KeptPull::read(None, key, pull, NOON);
+    let record = KeptPull::read(None, pulled, pull, NOON);
     pollster::block_on(store.put_pull(&record, None)).unwrap();
 }
 
@@ -442,8 +460,9 @@ fn a_rule_plans_a_re_run_of_a_flaky_check_once_a_run_and_head_to_its_private_rou
         { "id": 43, "html_url": "https://github.com/o/open/actions/runs/43" }
     ] })
     .to_string();
-    let jobs =
-        |name: &str| json!({ "jobs": [{ "name": name, "conclusion": "failure" }] }).to_string();
+    let jobs = |name: &str| {
+        json!({ "jobs": [{ "id": 420, "name": name, "conclusion": "failure" }] }).to_string()
+    };
     let (failing, other) = (jobs("test"), jobs("lint"));
     let script = Script::answering(&[
         (
@@ -476,9 +495,7 @@ fn a_rule_plans_a_re_run_of_a_flaky_check_once_a_run_and_head_to_its_private_rou
         .replace('\\', "");
     assert!(
         plan.contains("o/open#1: test looks flaky")
-            && plan.contains(
-                "POST https://api.github.com/repos/o/open/actions/runs/42/rerun-failed-jobs"
-            ),
+            && plan.contains("POST https://api.github.com/repos/o/open/actions/jobs/420/rerun"),
         "{plan}"
     );
     let again = Script::answering(&[
@@ -507,7 +524,12 @@ fn a_flaky_check_no_failed_run_ran_is_planned_with_the_reason_and_a_passing_pull
     let config = config(PLANS);
     let store = healthy();
     flaky(&store, "Change");
-    keep(&store, (2, "Change"), herald_core::Checks::Passed);
+    keep(
+        &store,
+        ("github.com", "o/open"),
+        (2, "Change"),
+        herald_core::Checks::Passed,
+    );
     let script = Script::answering(&[
         (
             "/repos/o/open/actions/runs?head_sha=h1&status=failure&per_page=5",
@@ -574,7 +596,8 @@ fn a_plan_charges_each_request_it_makes_and_stops_where_the_budget_ends() {
         { "id": 43, "html_url": "https://github.com/o/open/actions/runs/43" }
     ] })
     .to_string();
-    let jobs = json!({ "jobs": [{ "name": "lint", "conclusion": "failure" }] }).to_string();
+    let jobs =
+        json!({ "jobs": [{ "id": 421, "name": "lint", "conclusion": "failure" }] }).to_string();
     let script = Script::answering(&[
         (
             "/repos/o/open/actions/runs?head_sha=h1&status=failure&per_page=5",

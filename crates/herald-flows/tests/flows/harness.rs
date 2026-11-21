@@ -15,6 +15,7 @@ use herald_ports::{
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
 
+mod actions;
 mod pending;
 mod pulls;
 mod recalls;
@@ -301,6 +302,11 @@ pub(crate) enum Fault {
     ReadsRecalls,
     WritesRecalls,
     RecallsConflict,
+    KeepsNoActions,
+    ReadsActions,
+    WritesActions,
+    ActionsConflict,
+    SettlesNoAction,
     OneAtATime,
     /// Every read of a source's members after the first fails.
     ReadsMembersOnce,
@@ -765,6 +771,7 @@ impl Keeper for Failing {
             Held::Decisions => self.fault != Fault::KeepsNoDecisions,
             Held::Pulls => self.fault != Fault::KeepsNoPulls,
             Held::Recalls => self.fault != Fault::KeepsNoRecalls,
+            Held::Actions => self.fault != Fault::KeepsNoActions,
             Held::Pending => self.fault != Fault::KeepsNoPending,
             Held::Published => self.fault != Fault::KeepsNoPublished,
             _ => true,

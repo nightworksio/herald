@@ -17,6 +17,7 @@ mod pages;
 mod peers;
 mod poll;
 mod queue;
+mod rerun;
 mod runs;
 mod secrets;
 mod server;

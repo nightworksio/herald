@@ -137,6 +137,9 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.signals(), Vec::new());
     assert_eq!(source.hooked(&[], b"{}"), Ok(Hooked::Nothing(UNHOOKED)));
     assert_eq!(source.folded(&[], b"{}"), Ok(None));
+    assert_eq!(source.write(), None);
+    assert_eq!(source.signing(), Err(crate::UNSIGNED));
+    assert_eq!(source.rerunner(None).map(|_| ()), Err(crate::UNWRITTEN));
 }
 
 #[test]
