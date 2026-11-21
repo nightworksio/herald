@@ -1,9 +1,10 @@
-use std::sync::{Arc, PoisonError};
+use std::sync::{Arc, OnceLock, PoisonError};
 
 use herald_ports::{Changed, Secret, Sql, SqlError, Statement, Value};
 use jiff::SignedDuration;
 use tokio::sync::Mutex;
 use tokio_postgres::config::SslMode;
+use tokio_postgres::error::{DbError, Severity};
 use tokio_postgres::types::{ToSql, Type};
 use tokio_postgres::{Client, Config, Row};
 use tokio_postgres_rustls::MakeRustlsConnect;
@@ -29,31 +30,75 @@ impl std::fmt::Debug for NativePostgres {
     }
 }
 
-/// The connection, and why it closed once it has.
+/// Why a closed connection closed when neither the database nor the
+/// connection said.
+const UNSAID: &str = "the database closed it";
+
+/// The connection, and why it closed once it has: the fatal error the
+/// database answered a statement with, else what ended the connection.
 struct Held {
     client: Client,
-    closed: Arc<std::sync::Mutex<Option<String>>>,
+    ended: Arc<std::sync::Mutex<Option<String>>>,
+    fatal: OnceLock<String>,
 }
 
 impl Held {
     async fn made(config: &Config, tls: &MakeRustlsConnect) -> Result<Self, SqlError> {
         let (client, connection) = config.connect(tls.clone()).await.map_err(failed)?;
-        let closed = Arc::new(std::sync::Mutex::new(None));
-        let said = Arc::clone(&closed);
+        let ended = Arc::new(std::sync::Mutex::new(None));
+        let said = Arc::clone(&ended);
         tokio::spawn(async move {
             if let Err(error) = connection.await {
                 *said.lock().unwrap_or_else(PoisonError::into_inner) = Some(chain(&error));
             }
         });
-        Ok(Self { client, closed })
+        Ok(Self {
+            client,
+            ended,
+            fatal: OnceLock::new(),
+        })
     }
 
     fn why_closed(&self) -> String {
-        self.closed
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take()
-            .unwrap_or_else(|| "the database closed it".to_owned())
+        let ended = self.ended.lock().unwrap_or_else(PoisonError::into_inner);
+        self.fatal
+            .get()
+            .or(ended.as_ref())
+            .map_or(UNSAID, String::as_str)
+            .to_owned()
+    }
+
+    fn refused(&self, unanswered: Unanswered) -> SqlError {
+        match unanswered {
+            Unanswered::Said(error) => {
+                if let Some(Severity::Fatal | Severity::Panic) =
+                    error.as_db_error().and_then(DbError::parsed_severity)
+                {
+                    self.fatal.get_or_init(|| chain(&error));
+                }
+                failed(error)
+            }
+            Unanswered::Unread(error) => error,
+        }
+    }
+}
+
+/// Why a transaction was not answered: what the database or the
+/// connection said, or a row that could not be read.
+enum Unanswered {
+    Said(tokio_postgres::Error),
+    Unread(SqlError),
+}
+
+impl From<tokio_postgres::Error> for Unanswered {
+    fn from(error: tokio_postgres::Error) -> Self {
+        Self::Said(error)
+    }
+}
+
+impl From<SqlError> for Unanswered {
+    fn from(error: SqlError) -> Self {
+        Self::Unread(error)
     }
 }
 
@@ -160,38 +205,40 @@ impl Sql for NativePostgres {
                     ))
                 })?;
         }
-        let transaction = held.client.transaction().await.map_err(failed)?;
-        let mut answers = Vec::with_capacity(statements.len());
-        for statement in &statements {
-            let prepared = transaction.prepare(&statement.sql).await.map_err(failed)?;
-            let params: Vec<Box<dyn ToSql + Sync + Send>> =
-                statement.params.iter().map(bound).collect();
-            let borrowed: Vec<&(dyn ToSql + Sync)> = params
-                .iter()
-                .map(|param| param.as_ref() as &(dyn ToSql + Sync))
-                .collect();
-            if prepared.columns().is_empty() {
-                let changed = transaction
-                    .execute(&prepared, &borrowed)
-                    .await
-                    .map_err(failed)?;
-                answers.push(Changed {
-                    rows: vec![],
-                    changed,
-                });
-            } else {
-                let found = transaction
-                    .query(&prepared, &borrowed)
-                    .await
-                    .map_err(failed)?;
-                let rows = found
-                    .iter()
-                    .map(|row| (0..row.len()).map(|column| read(row, column)).collect())
-                    .collect::<Result<_, _>>()?;
-                answers.push(Changed { rows, changed: 0 });
-            }
-        }
-        transaction.commit().await.map_err(failed)?;
-        Ok(answers)
+        let answered = answered(&mut held.client, &statements).await;
+        answered.map_err(|unanswered| held.refused(unanswered))
     }
+}
+
+async fn answered(
+    client: &mut Client,
+    statements: &[Statement],
+) -> Result<Vec<Changed>, Unanswered> {
+    let transaction = client.transaction().await?;
+    let mut answers = Vec::with_capacity(statements.len());
+    for statement in statements {
+        let prepared = transaction.prepare(&statement.sql).await?;
+        let params: Vec<Box<dyn ToSql + Sync + Send>> =
+            statement.params.iter().map(bound).collect();
+        let borrowed: Vec<&(dyn ToSql + Sync)> = params
+            .iter()
+            .map(|param| param.as_ref() as &(dyn ToSql + Sync))
+            .collect();
+        if prepared.columns().is_empty() {
+            let changed = transaction.execute(&prepared, &borrowed).await?;
+            answers.push(Changed {
+                rows: vec![],
+                changed,
+            });
+        } else {
+            let found = transaction.query(&prepared, &borrowed).await?;
+            let rows = found
+                .iter()
+                .map(|row| (0..row.len()).map(|column| read(row, column)).collect())
+                .collect::<Result<_, SqlError>>()?;
+            answers.push(Changed { rows, changed: 0 });
+        }
+    }
+    transaction.commit().await?;
+    Ok(answers)
 }
