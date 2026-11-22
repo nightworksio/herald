@@ -161,8 +161,9 @@ pub(super) fn codeowned(
         reference: reference.map(str::to_owned),
     };
     let file = Codeowners::read(Dialect::GitHub, "* @o/all\n", 1);
-    KeptCodeowners::of(key, ("CODEOWNERS", etag), &file, ((4096, 1), at))
-        .ok_or_else(|| StoreError::corrupt("a one-line CODEOWNERS file is not kept"))
+    KeptCodeowners::of(key, ("CODEOWNERS", etag), &file, ((4096, 1), at)).ok_or(
+        StoreError::corrupt("a one-line CODEOWNERS file is not kept"),
+    )
 }
 
 /// Whether each CODEOWNERS file a source read is kept by source,
