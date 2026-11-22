@@ -148,6 +148,10 @@ pub(super) async fn reconciled<S: Pulls>(
     Ok(())
 }
 
+/// The letters past `feature/` of a branch whose escaped name passes the
+/// 255 bytes a file system's name may hold.
+pub(super) const LONG_BRANCH: usize = 120;
+
 /// A CODEOWNERS file read at `reference` by the source `source`, kept as
 /// read at `at` with the validator `etag`.
 pub(super) fn codeowned(
@@ -202,6 +206,16 @@ pub(super) async fn codeowners<S: Pulls>(
                 .await?
                 .is_some_and(|kept| kept.value == other),
         "a CODEOWNERS file was not the one written last under its key",
+    );
+    let branch = format!("feature/{}", "ü".repeat(LONG_BRANCH));
+    let long = codeowned(("herald", Some(&branch)), "\"5\"", last)?;
+    checks.written(store.put_codeowners(&long, None).await?);
+    checks.ensure(
+        store
+            .codeowners(&long.key)
+            .await?
+            .is_some_and(|kept| kept.value == long),
+        "a CODEOWNERS file of a long branch name was not kept",
     );
     store.expire_pulls(last).await?;
     checks.ensure(

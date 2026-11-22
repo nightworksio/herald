@@ -131,6 +131,7 @@ enum Fault {
     ExpiresNoCodeowners,
     ExpiresEveryCodeowners,
     ForgetsTheDefaultBranchCodeowners,
+    ForgetsALongBranchCodeowners,
     OverwritesAnyPullVersion,
     OverwritesAStalePullVersion,
     KeepsTheFirstPull,

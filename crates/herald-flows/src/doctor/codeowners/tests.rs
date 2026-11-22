@@ -1,5 +1,4 @@
 use herald_core::{Codeowners, Dialect, MOST_AREAS_READ};
-use herald_kinds::Found;
 
 use super::*;
 
@@ -99,5 +98,60 @@ fn doctor_names_most_areas_where_a_file_names_more_areas_than_the_source_reads()
         [
             "The source repo reads none of its CODEOWNERS file .github/CODEOWNERS, so its pull requests fall in no area: it names 2 areas, and the source reads at most 1; raise most_areas, at most 2000."
         ]
+    );
+}
+
+#[test]
+fn doctor_says_a_file_the_store_keeps_no_record_of_is_read_in_full_every_round() {
+    let codeowning = |most: usize| Codeowning {
+        paths: places(),
+        reference: herald_core::CodeownersRef::Default,
+        most,
+        most_areas: MOST_AREAS_READ,
+    };
+    let key = || CodeownersKey {
+        source: SourceName::new("repo"),
+        repository: "o/r".to_owned(),
+        reference: None,
+    };
+    let at = Timestamp::UNIX_EPOCH;
+    let unvalidated = found("* @org/web\n", 1024);
+    assert_eq!(
+        unkept("repo", (key(), &unvalidated), (&codeowning(1024), at)).as_deref(),
+        Some(
+            "The source repo's forge gives its CODEOWNERS file .github/CODEOWNERS no validator, so the store keeps no record of it and it is read in full every round."
+        )
+    );
+    let validated = |text: &str, most: usize| {
+        let mut validated = found(text, most);
+        validated.etag = Some("\"1\"".to_owned());
+        validated
+    };
+    assert_eq!(
+        unkept(
+            "repo",
+            (key(), &validated("* @org/web\n", 1024)),
+            (&codeowning(1024), at)
+        ),
+        None
+    );
+    assert_eq!(
+        unkept(
+            "repo",
+            (key(), &validated("* @org/web\n", 64)),
+            (&codeowning(64), at)
+        )
+        .as_deref(),
+        Some(
+            "The store keeps no record of the source repo's CODEOWNERS file .github/CODEOWNERS, so it is read in full every round: the record would be longer than its most_codeowners of 64 bytes."
+        )
+    );
+    assert_eq!(
+        unkept(
+            "repo",
+            (key(), &found("* @org/web\n", 4)),
+            (&codeowning(4), at)
+        ),
+        None
     );
 }

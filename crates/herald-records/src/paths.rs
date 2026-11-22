@@ -196,15 +196,28 @@ pub(crate) fn repository_pulls(repository: &herald_core::RepositoryKey) -> Strin
 
 pub(crate) const CODEOWNERS: &str = "codeowners";
 
+/// The most bytes a kept CODEOWNERS file's segment is written with before
+/// its digest names it instead (ADR-0076).
+const MOST_NAMED: usize = 128;
+
 /// Where the CODEOWNERS file keyed `key` is kept: every file in one
-/// directory, its source, repository and branch written as one segment.
+/// directory, its source, repository and branch written as one segment,
+/// or past [`MOST_NAMED`] bytes as that segment's digest, which holds no
+/// `~` where the segment holds two.
 pub(crate) fn codeowners(key: &herald_core::CodeownersKey) -> String {
     let reference = key
         .reference
         .as_ref()
         .map_or_else(String::new, |reference| format!("@{reference}"));
-    let named = format!("{}\n{}\n{reference}", key.source.as_str(), key.repository);
-    format!("{CODEOWNERS}/{}.json", segment(&named))
+    let named = segment(&format!(
+        "{}\n{}\n{reference}",
+        key.source.as_str(),
+        key.repository
+    ));
+    if named.len() > MOST_NAMED {
+        return format!("{CODEOWNERS}/{}.json", herald_core::digest(&named));
+    }
+    format!("{CODEOWNERS}/{named}.json")
 }
 
 /// Where the reconcile of `source` stands.
@@ -253,5 +266,34 @@ mod tests {
         assert_eq!(key("s", "o/r", None), "codeowners/s~0ao~2fr~0a.json");
         assert_ne!(key("s", "o/r", Some("")), key("s", "o/r", None));
         assert_ne!(key("s/o", "r", None), key("s", "o/r", None));
+    }
+
+    #[test]
+    fn a_codeowners_file_named_past_the_most_bytes_is_kept_by_its_digest() {
+        let key = |reference: &str| {
+            codeowners(&herald_core::CodeownersKey {
+                source: SourceName::new("s"),
+                repository: "o/r".to_owned(),
+                reference: Some(reference.to_owned()),
+            })
+        };
+        let start = segment("s\no/r\n@");
+        let most = "a".repeat(MOST_NAMED - start.len());
+        assert_eq!(key(&most), format!("codeowners/{start}{most}.json"));
+        let past = format!("{most}a");
+        let named = format!("{start}{past}");
+        assert_eq!(
+            key(&past),
+            format!("codeowners/{}.json", herald_core::digest(&named))
+        );
+        let long = "ü".repeat(200);
+        assert_eq!(
+            key(&long),
+            format!(
+                "codeowners/{}.json",
+                herald_core::digest(&segment(&format!("s\no/r\n@{long}")))
+            )
+        );
+        assert_ne!(key(&long), key(&"ö".repeat(200)));
     }
 }

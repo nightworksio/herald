@@ -1,10 +1,13 @@
 //! What doctor finds online in the CODEOWNERS file each source reading
-//! areas from one reads: each line herald skips, by number and why, and a
-//! file it reads none of (ADR-0073).
+//! areas from one reads: each line herald skips, by number and why, a
+//! file it reads none of (ADR-0073), and a file the store keeps no record
+//! of, so that it is read in full every round (ADR-0074, ADR-0076).
 
 use herald_config::Config;
-use herald_kinds::Unpolled;
+use herald_core::{CodeownersKey, KeptCodeowners, SourceName};
+use herald_kinds::{Codeowning, Found, Unpolled};
 use herald_ports::{DynHttp, Http};
+use jiff::Timestamp;
 
 use super::Findings;
 use crate::Connected;
@@ -14,9 +17,14 @@ pub const MOST_SKIPPED_NAMED: usize = 20;
 
 /// What each source of `config` reading areas from CODEOWNERS finds in
 /// the file of the one repository it reads, at its default branch,
-/// through `connected`; a source reading an owner's repositories reads
-/// each member's file only as a view reads it.
-pub async fn codeowners<H: Http>(config: &Config, connected: &Connected<H>) -> Findings {
+/// through `connected` at `at`; a source reading an owner's repositories
+/// reads each member's file only as a view reads it.
+pub async fn codeowners<H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    at: Timestamp,
+) -> Findings {
+    let keeps = config.store.keeps_pulls();
     let mut findings = Findings::default();
     let reached = connected.sources.iter().filter_map(|(prepared, http)| {
         let source = config.sources.get(&prepared.name)?;
@@ -46,9 +54,47 @@ pub async fn codeowners<H: Http>(config: &Config, connected: &Connected<H>) -> F
                 (&codeowning, None),
             )
             .await;
+        let key = CodeownersKey {
+            source: SourceName::new(name),
+            repository: repository.to_lowercase(),
+            reference: None,
+        };
+        let unkept = match &read {
+            Ok(Some(found)) if keeps => unkept(name, (key, found), (&codeowning, at)),
+            _ => None,
+        };
         findings.notes.extend(said(name, read, &codeowning.paths));
+        findings.notes.extend(unkept);
     }
     findings
+}
+
+/// What doctor says of the source `name`'s CODEOWNERS file `found`, kept
+/// under `key`, where the store keeps no record of it, read under
+/// `codeowning` at `at`.
+fn unkept(
+    name: &str,
+    (key, found): (CodeownersKey, &Found),
+    (codeowning, at): (&Codeowning, Timestamp),
+) -> Option<String> {
+    let path = found.path.as_str();
+    if found.file.refused().is_some() {
+        return None;
+    }
+    let Some(etag) = found.etag.as_deref() else {
+        return Some(format!(
+            "The source {name}'s forge gives its CODEOWNERS file {path} no validator, so the store keeps no record of it and it is read in full every round."
+        ));
+    };
+    let read = (codeowning.bounds(), at);
+    KeptCodeowners::of(key, (path, etag), &found.file, read)
+        .is_none()
+        .then(|| {
+            format!(
+                "The store keeps no record of the source {name}'s CODEOWNERS file {path}, so it is read in full every round: the record would be longer than its most_codeowners of {} bytes.",
+                codeowning.most
+            )
+        })
 }
 
 /// What doctor says of the source `name`'s CODEOWNERS file as `read`

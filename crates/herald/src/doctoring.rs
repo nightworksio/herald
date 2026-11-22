@@ -300,7 +300,9 @@ async fn findings(
                     )
                     .await,
                 );
-                findings.extend(herald_flows::codeowners(config, composed.connected()).await);
+                findings.extend(
+                    herald_flows::codeowners(config, composed.connected(), SystemClock.now()).await,
+                );
                 if asked.post {
                     let tried = composed.run(Posting).await;
                     findings.extend(posted(config, &tried));
