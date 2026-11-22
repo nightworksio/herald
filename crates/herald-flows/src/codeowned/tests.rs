@@ -250,3 +250,45 @@ fn a_file_at_no_place_names_no_area_and_the_default_branch_is_read_where_the_sou
     let none = pollster::block_on(codeowned.areas((&plain, None), ("g/p", None, Some(&docs))));
     assert_eq!(none, Ok(Vec::new()));
 }
+
+#[test]
+fn a_table_names_areas_by_path_and_an_owner_of_known_kind_is_looked_up_never() {
+    let table: Zoning = serde_json::from_value(serde_json::json!({ "docs": ["*.md"] })).unwrap();
+    let tabled = Source::new(ForgeSource {
+        forge: Forge::GitLab,
+        options: SourceOptions {
+            repository: Some("g/p".to_owned()),
+            areas: Some(table),
+            ..SourceOptions::default()
+        },
+        names: None,
+    });
+    let docs = changed(&["a.md"]);
+    let mut codeowned = Codeowned::default();
+    let areas = pollster::block_on(codeowned.areas((&tabled, None), ("g/p", None, Some(&docs))));
+    assert_eq!(areas.map(names), Ok(vec!["docs".to_owned()]));
+    let served = Served {
+        file: Some("*.md @@maintainer @g/sub\n".to_owned()),
+        people: &[],
+        read: Mutex::new(Vec::new()),
+        looked: Mutex::new(Vec::new()),
+    };
+    let http = ScriptedHttp::new(Vec::new());
+    let areas = pollster::block_on(codeowned.areas(
+        (&source(), Some((&served, &http))),
+        ("g/p", None, Some(&docs)),
+    ))
+    .unwrap();
+    let shown: Vec<(&str, AreaKind)> = areas
+        .iter()
+        .map(|area| (area.name.as_str(), area.kind))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("@@maintainer", AreaKind::Role),
+            ("@g/sub", AreaKind::Group)
+        ]
+    );
+    assert!(served.looked.lock().unwrap().is_empty());
+}

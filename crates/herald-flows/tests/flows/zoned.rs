@@ -347,25 +347,32 @@ fn an_event_naming_no_head_or_from_a_source_naming_no_areas_falls_in_none() {
 /// `team` taking what kept paths give `@org/web`, the route `person` what
 /// delivered paths give `@ana`.
 fn codeowned() -> Config {
-    let text = r#"version = 1
+    codeowned_with("")
+}
+
+/// [`codeowned`], its source also given `keys`.
+fn codeowned_with(keys: &str) -> Config {
+    let text = format!(
+        r#"version = 1
 [store]
 kind = "sqlite"
 [destinations.discord]
 kind = "discord"
-token = { secret = "HERALD_DISCORD_TOKEN" }
+token = {{ secret = "HERALD_DISCORD_TOKEN" }}
 [sources.gate]
 kind = "github"
 repository = "o/r"
 signals = ["pull-request"]
-token = { secret = "HERALD_FORGE_TOKEN" }
+token = {{ secret = "HERALD_FORGE_TOKEN" }}
 areas = "codeowners"
+{keys}
 [[routes]]
 id = "team"
 sources = ["gate"]
 destination = "discord"
 channel = "1566200000000000100"
 template = "t"
-match = { areas = ["@org/web"] }
+match = {{ areas = ["@org/web"] }}
 [[routes]]
 id = "person"
 sources = ["gate"]
@@ -373,14 +380,15 @@ destination = "discord"
 channel = "1566200000000000100"
 template = "t"
 area_paths = "delivery"
-match = { areas = ["@ana"] }
+match = {{ areas = ["@ana"] }}
 [templates.t]
-title = "{{ event.title }}"
-body = "zone {% if event.origin.areas %}{{ event.origin.areas | join(' ') }}{% else %}none{% endif %} enoz"
-"#;
+title = "{{{{ event.title }}}}"
+body = "zone {{% if event.origin.areas %}}{{{{ event.origin.areas | join(' ') }}}}{{% else %}}none{{% endif %}} enoz"
+"#
+    );
     load(
         "herald.toml",
-        text,
+        &text,
         &|_| Err("no file".to_owned()),
         &crate::harness::kinds(),
     )
@@ -453,4 +461,22 @@ fn an_event_whose_codeowners_cannot_be_read_falls_in_no_area() {
         Vec::<String>::new()
     );
     assert_eq!(script.seen().len(), 3);
+}
+
+#[test]
+fn a_codeowners_file_at_no_place_of_the_default_branch_leaves_an_event_in_no_area() {
+    let config = codeowned_with("codeowners_ref = \"default\"");
+    let store = healthy();
+    kept(&store, "c0ffee", &["web/index.html"], true);
+    let script = Script::answering(&[
+        (FILE_AT_DEFAULT, 404, "{}"),
+        ("/repos/o/r/contents/CODEOWNERS", 404, "{}"),
+        ("/repos/o/r/contents/docs/CODEOWNERS", 404, "{}"),
+        (FILES, 200, r#"[{"filename": "web/index.html"}]"#),
+    ]);
+    assert_eq!(
+        announced(&config, &store, &script, &based("dev")),
+        Vec::<String>::new()
+    );
+    assert_eq!(script.seen().len(), 4);
 }
