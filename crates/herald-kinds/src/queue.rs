@@ -276,6 +276,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_codeowning_s_bounds_are_its_most_bytes_then_its_most_areas() {
+        let codeowning = Codeowning {
+            paths: Vec::new(),
+            reference: herald_core::CodeownersRef::Base,
+            most: 7,
+            most_areas: 3,
+        };
+        assert_eq!(codeowning.bounds(), (7, 3));
+    }
+
+    #[test]
     fn a_relisting_gives_the_pull_requests_it_listed_and_none_where_nothing_changed() {
         assert_eq!(Relisted::Unchanged.pulls(), Vec::<Pull>::new());
         let listed = Relisted::Listed {

@@ -36,6 +36,7 @@ export function host(vars) {
     },
     async fetch(request) {
       if (request.url.includes("down")) throw new Error("down");
+      if (request.url.includes("larger")) return { status: 200, headers: [], larger: true };
       const said = `${request.method} ${request.url} ${request.headers.length} ${request.body.length}`;
       return {
         status: 200,
@@ -367,10 +368,10 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
         })
     );
     let small = Request::new(Method::Get, SecretText::plain("https://api.example/v1")).at_most(3);
-    assert!(matches!(
-        http.send(small).await,
-        Err(HttpError::Unreachable { .. })
-    ));
+    assert_eq!(http.send(small).await, Err(HttpError::Larger { most: 3 }));
+    let larger =
+        Request::new(Method::Get, SecretText::plain("https://api.example/larger")).at_most(9);
+    assert_eq!(http.send(larger).await, Err(HttpError::Larger { most: 9 }));
     let public = hosted.connect(Base::Public, &Outbound::default()).unwrap();
     let fetched = public
         .send(Request::new(

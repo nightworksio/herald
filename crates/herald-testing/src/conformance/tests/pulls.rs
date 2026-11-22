@@ -122,6 +122,7 @@ impl Pulls for Faulty {
                 value: codeowned(("herald", None), "held", NOON)?,
                 version: Version(1),
             })),
+            Fault::ForgetsTheDefaultBranchCodeowners if key.reference.is_none() => Ok(None),
             Fault::SharesCodeowners => {
                 let shared = CodeownersKey {
                     source: SourceName::new("herald"),
@@ -223,6 +224,10 @@ fn a_store_that_breaks_its_promises_on_pull_requests_is_refused() {
         ),
         (
             Fault::ExpiresEveryCodeowners,
+            "a CODEOWNERS file read at the expiry was forgotten",
+        ),
+        (
+            Fault::ForgetsTheDefaultBranchCodeowners,
             "a CODEOWNERS file read at the expiry was forgotten",
         ),
     ]);

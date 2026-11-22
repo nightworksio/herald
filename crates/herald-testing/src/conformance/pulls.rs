@@ -4,7 +4,7 @@ use herald_core::{
 };
 use herald_ports::{Pulls, StoreError, Version, Written};
 
-use super::{Checks as Checked, NOON};
+use super::{CODEOWNED, Checks as Checked, NOON};
 
 /// The repository of id `id` on github.com.
 pub(super) fn repository(id: &str) -> RepositoryKey {
@@ -173,10 +173,7 @@ pub(super) async fn codeowners<S: Pulls>(
     store: &S,
     checks: &mut Checked,
 ) -> Result<(), StoreError> {
-    let (first, last) = (
-        NOON + jiff::SignedDuration::from_hours(2),
-        NOON + jiff::SignedDuration::from_hours(3),
-    );
+    let (first, last) = CODEOWNED;
     let read = codeowned(("herald", Some("main")), "\"1\"", first)?;
     checks.ensure(
         store.codeowners(&read.key).await?.is_none(),
