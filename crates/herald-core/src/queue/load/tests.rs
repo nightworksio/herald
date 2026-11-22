@@ -329,3 +329,11 @@ fn a_load_is_counted_only_from_the_rows_it_is_given() {
     assert_eq!(Load::default().window, LOAD_WINDOW);
     assert!(!Load::default().unknown_teams);
 }
+
+#[test]
+fn a_window_is_a_week_where_none_is_named_and_from_a_day_to_ninety_days() {
+    let day = SignedDuration::from_hours(24);
+    assert_eq!(LOAD_WINDOW, day * 7);
+    assert_eq!(SHORTEST_LOAD_WINDOW, day);
+    assert_eq!(LONGEST_LOAD_WINDOW, day * 90);
+}
