@@ -121,6 +121,9 @@ class Scope(unittest.TestCase):
         self.assertEqual(found.outputs(), {"shards": "", "wasm": "false", "wasi": "false", "fastly": "false"})
 
 
+FORGE_PLACES = frozenset({".github/CODEOWNERS"})
+
+
 class Repository(unittest.TestCase):
     def test_the_workflow_is_scheduled_on_the_nightly_and_the_weekly_cron_alone(self):
         workflow = (mutated.ROOT / ".github" / "workflows" / mutated.WORKFLOW).read_text(encoding="utf-8")
@@ -137,7 +140,7 @@ class Repository(unittest.TestCase):
             f"{path}: {match.group(1)}"
             for path in (mutated.ROOT / "crates").rglob("*.rs")
             for match in literal.finditer(path.read_text(encoding="utf-8"))
-            if mutated.unread(match.group(1))
+            if mutated.unread(match.group(1)) and match.group(1) not in FORGE_PLACES
         ]
         self.assertEqual(found, [])
 

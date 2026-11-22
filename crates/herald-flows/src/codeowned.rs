@@ -45,13 +45,11 @@ impl Codeowned {
         (source, reach): (&Source, Option<Reach<'_>>),
         (repository, base, changed): Placed<'_>,
     ) -> Result<Vec<Area>, Unpolled> {
-        let codeowning = match source.areas(repository) {
-            None => return Ok(Vec::new()),
-            Some(Zoning::Paths(areas)) => return Ok(areas.of_changed(changed)),
-            Some(Zoning::Codeowners) => source.codeowning(repository),
-        };
-        let Some(codeowning) = codeowning else {
-            return Ok(Vec::new());
+        let Some(codeowning) = source.codeowning(repository) else {
+            return Ok(match source.areas(repository) {
+                Some(Zoning::Paths(areas)) => areas.of_changed(changed),
+                Some(Zoning::Codeowners) | None => Vec::new(),
+            });
         };
         let (queue, http) = reach.ok_or_else(|| Unpolled::Unreadable(UNQUEUED.to_owned()))?;
         let reference = match codeowning.reference {

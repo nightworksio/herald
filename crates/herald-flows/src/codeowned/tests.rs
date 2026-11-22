@@ -14,9 +14,9 @@ use super::*;
 /// counting what it is asked.
 #[derive(Debug)]
 struct Served {
-    file: String,
+    file: Option<String>,
     people: &'static [&'static str],
-    read: Mutex<usize>,
+    read: Mutex<Vec<Option<String>>>,
     looked: Mutex<Vec<String>>,
 }
 
@@ -91,15 +91,15 @@ impl Queue for Served {
     fn codeowners<'a>(
         &'a self,
         _: &'a dyn DynHttp,
-        _: (&'a str, Option<&'a str>),
+        (_, reference): (&'a str, Option<&'a str>),
         _: &'a Codeowning,
     ) -> Boxed<'a, Result<Option<Found>, Unpolled>> {
-        *self.read.lock().unwrap() += 1;
-        let found = Found {
+        self.read.lock().unwrap().push(reference.map(str::to_owned));
+        let found = self.file.as_ref().map(|file| Found {
             path: "CODEOWNERS".to_owned(),
-            file: Codeowners::read(Dialect::GitLab, &self.file),
-        };
-        Box::pin(async move { Ok(Some(found)) })
+            file: Codeowners::read(Dialect::GitLab, file),
+        });
+        Box::pin(async move { Ok(found) })
     }
     fn named<'a>(
         &'a self,
@@ -119,9 +119,14 @@ impl Queue for Served {
 }
 
 fn source() -> Source {
+    source_at(None)
+}
+
+fn source_at(reference: Option<herald_core::CodeownersRef>) -> Source {
     let options = SourceOptions {
         repository: Some("g/p".to_owned()),
         areas: Some(Zoning::Codeowners),
+        codeowners_ref: reference,
         ..SourceOptions::default()
     };
     Source::new(ForgeSource {
@@ -141,9 +146,9 @@ fn changed(paths: &[&str]) -> Changed {
 #[test]
 fn each_gitlab_name_a_pull_request_names_is_looked_up_once_a_round_and_the_file_read_once() {
     let served = Served {
-        file: "*.md @ana @web @gone\n*.rs @ana @unmet\n".to_owned(),
+        file: Some("*.md @ana @web @gone\n*.rs @ana @unmet\n".to_owned()),
         people: &["@ana"],
-        read: Mutex::new(0),
+        read: Mutex::new(Vec::new()),
         looked: Mutex::new(Vec::new()),
     };
     let http = ScriptedHttp::new(Vec::new());
@@ -169,7 +174,7 @@ fn each_gitlab_name_a_pull_request_names_is_looked_up_once_a_round_and_the_file_
             ]
         );
     }
-    assert_eq!(*served.read.lock().unwrap(), 1);
+    assert_eq!(*served.read.lock().unwrap(), [Some("main".to_owned())]);
     assert_eq!(*served.looked.lock().unwrap(), ["@ana", "@gone", "@web"]);
     let none =
         pollster::block_on(codeowned.areas((&source, None), ("g/p", Some("dev"), Some(&docs))));
@@ -182,9 +187,9 @@ fn only_the_first_names_of_a_file_are_looked_up() {
         .map(|at| format!("@n{at}"))
         .collect();
     let served = Served {
-        file: format!("*.md {}\n", written.join(" ")),
+        file: Some(format!("*.md {}\n", written.join(" "))),
         people: &[],
-        read: Mutex::new(0),
+        read: Mutex::new(Vec::new()),
         looked: Mutex::new(Vec::new()),
     };
     let http = ScriptedHttp::new(Vec::new());
@@ -212,4 +217,36 @@ fn only_the_first_names_of_a_file_are_looked_up() {
             .count(),
         MOST_CODEOWNERS_LOOKUPS
     );
+}
+
+#[test]
+fn a_file_at_no_place_names_no_area_and_the_default_branch_is_read_where_the_source_says() {
+    let served = Served {
+        file: None,
+        people: &[],
+        read: Mutex::new(Vec::new()),
+        looked: Mutex::new(Vec::new()),
+    };
+    let http = ScriptedHttp::new(Vec::new());
+    let reach: Reach<'_> = (&served, &http);
+    let mut codeowned = Codeowned::default();
+    let docs = changed(&["a.md"]);
+    let source = source_at(Some(herald_core::CodeownersRef::Default));
+    for base in ["main", "dev"] {
+        let areas = pollster::block_on(
+            codeowned.areas((&source, Some(reach)), ("g/p", Some(base), Some(&docs))),
+        );
+        assert_eq!(areas, Ok(Vec::new()));
+    }
+    assert_eq!(*served.read.lock().unwrap(), [None]);
+    let plain = Source::new(ForgeSource {
+        forge: Forge::GitLab,
+        options: SourceOptions {
+            repository: Some("g/p".to_owned()),
+            ..SourceOptions::default()
+        },
+        names: None,
+    });
+    let none = pollster::block_on(codeowned.areas((&plain, None), ("g/p", None, Some(&docs))));
+    assert_eq!(none, Ok(Vec::new()));
 }
