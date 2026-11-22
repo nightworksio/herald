@@ -643,3 +643,40 @@ fn an_owner_s_member_s_changed_paths_are_read_from_that_member_once() {
         assert_eq!(asked, [wanted], "{forge:?}");
     }
 }
+
+#[test]
+fn an_owner_s_member_reads_its_own_codeowners_and_names_are_looked_up_under_the_owner_s_api() {
+    let scoped = scoped(Forge::GitLab, true);
+    assert_eq!(herald_kinds::Queue::repository(&scoped), None);
+    let codeowning = herald_kinds::Codeowning {
+        paths: vec!["CODEOWNERS".to_owned()],
+        reference: herald_core::CodeownersRef::Default,
+        most: 1024,
+    };
+    let http = ScriptedHttp::new(vec![answer(404, &json!({}))]);
+    let found = pollster::block_on(herald_kinds::Queue::codeowners(
+        &scoped,
+        &http,
+        ("o/app", None),
+        &codeowning,
+    ))
+    .unwrap();
+    assert!(found.is_none());
+    let http_group = ScriptedHttp::new(vec![answer(200, &json!([])), answer(200, &json!({}))]);
+    let kind = pollster::block_on(herald_kinds::Queue::named(&scoped, &http_group, "@o"));
+    assert_eq!(kind, Ok(herald_core::AreaKind::Group));
+    let asked: Vec<String> = http
+        .asked()
+        .into_iter()
+        .chain(http_group.asked())
+        .map(|(url, _)| url)
+        .collect();
+    assert_eq!(
+        asked,
+        [
+            "https://gitlab.com/api/v4/projects/o%2Fapp/repository/files/CODEOWNERS/raw?ref=HEAD",
+            "https://gitlab.com/api/v4/users?username=o",
+            "https://gitlab.com/api/v4/groups/o"
+        ]
+    );
+}

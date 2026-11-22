@@ -989,6 +989,7 @@ fn a_gitlab_owner_s_members_take_project_hooks_only_beside_its_webhook() {
 mod alerts;
 mod app;
 mod areas;
+mod codeowners;
 mod issues;
 mod packages;
 mod pulls;

@@ -21,7 +21,13 @@ fn line(row: &Row) -> String {
     let areas = if row.pull.areas.is_empty() {
         String::new()
     } else {
-        format!(", in {}", row.pull.areas.join(", "))
+        let names: Vec<&str> = row
+            .pull
+            .areas
+            .iter()
+            .map(|area| area.name.as_str())
+            .collect();
+        format!(", in {}", names.join(", "))
     };
     format!(
         "  {}#{}  {}: {}, waited {}{stale}{areas}  {}",

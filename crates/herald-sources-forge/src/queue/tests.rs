@@ -661,3 +661,51 @@ fn a_delivered_pull_request_s_changed_paths_are_read_once_through_the_configured
     );
     assert!(failed.is_err());
 }
+
+#[test]
+fn a_queued_repository_reads_its_codeowners_and_looks_names_up_through_the_configured_api_base() {
+    let options = SourceOptions {
+        repository: Some("o/r".to_owned()),
+        api: Some("https://gitlab.example/api/v4".to_owned()),
+        ..SourceOptions::default()
+    };
+    let queued = Queued {
+        origin: Origin::new(Forge::GitLab, &options, "o/r"),
+        token: Some(Token::Named(Secret::new("TOKEN", "t"))),
+        project: "r".to_owned(),
+        graphql: String::new(),
+    };
+    assert_eq!(herald_kinds::Queue::repository(&queued), Some("o/r"));
+    let codeowning = herald_kinds::Codeowning {
+        paths: vec![".gitlab/CODEOWNERS".to_owned()],
+        reference: herald_core::CodeownersRef::Base,
+        most: 1024,
+    };
+    let http = ScriptedHttp::new(vec![
+        Response {
+            status: 200,
+            headers: Vec::new(),
+            body: b"* @web\n".to_vec(),
+        },
+        answer(200, &json!([{ "id": 1 }])),
+    ]);
+    let found = pollster::block_on(herald_kinds::Queue::codeowners(
+        &queued,
+        &http,
+        ("o/r", Some("main")),
+        &codeowning,
+    ))
+    .unwrap()
+    .unwrap();
+    assert_eq!(found.path, ".gitlab/CODEOWNERS");
+    let kind = pollster::block_on(herald_kinds::Queue::named(&queued, &http, "@web"));
+    assert_eq!(kind, Ok(herald_core::AreaKind::Person));
+    let asked: Vec<String> = http.asked().into_iter().map(|(url, _)| url).collect();
+    assert_eq!(
+        asked,
+        [
+            "https://gitlab.example/api/v4/projects/o%2Fr/repository/files/.gitlab%2FCODEOWNERS/raw?ref=main",
+            "https://gitlab.example/api/v4/users?username=web"
+        ]
+    );
+}

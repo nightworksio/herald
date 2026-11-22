@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use herald_core::{Areas, Glob, Reach, RouteId};
+use herald_core::{Glob, Reach, RouteId, Zoning};
 
 use super::{Override, Sets, SourceOptions, sets_areas, sets_routes, sets_routes_only};
 
@@ -53,10 +53,11 @@ impl SourceOptions {
             .collect()
     }
 
-    /// The areas of the repository named `name`, its path's last part: the
-    /// narrowest override's that sets them, or the source's (ADR-0071).
+    /// How the areas of the repository named `name`, its path's last
+    /// part, are named: the narrowest override's way that sets one, or the
+    /// source's (ADR-0071, ADR-0073).
     #[must_use]
-    pub fn areas_of(&self, name: &str) -> Option<&Areas> {
+    pub fn areas_of(&self, name: &str) -> Option<&Zoning> {
         self.narrowest(name, sets_areas)
             .and_then(|chosen| chosen.areas.as_ref())
             .or(self.areas.as_ref())
@@ -72,7 +73,7 @@ impl SourceOptions {
                     .values()
                     .filter_map(|chosen| chosen.areas.as_ref()),
             )
-            .flat_map(Areas::names)
+            .flat_map(Zoning::names)
             .map(str::to_owned)
             .collect()
     }

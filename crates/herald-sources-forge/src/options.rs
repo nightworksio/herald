@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Areas, Duration, Glob, Prefer, PrereleaseRule, SecretRef, Signal, Size, Visibility,
-    path_of_names, web_url,
+    CodeownersRef, Duration, Glob, Prefer, PrereleaseRule, SecretRef, Signal, Size, Visibility,
+    Zoning, path_of_names, web_url,
 };
 use herald_wire::{PARSE_LIMIT, Reading};
 
@@ -11,6 +11,7 @@ use crate::Forge;
 
 pub(crate) use alerts::AlertChoice;
 pub use alerts::{ALERT_ACTIONS, AlertAction, Alerts, Severity, Tool};
+pub use codeowners::{MOST_CODEOWNERS_PATH, MOST_CODEOWNERS_PATHS};
 pub use discovery::Discovery;
 pub use hooks::MemberHooks;
 pub(crate) use issues::IssueChoice;
@@ -52,9 +53,15 @@ pub struct Override {
     /// the routes that name the source; false where absent.
     pub routes_only: Option<bool>,
     /// Their areas, as the source's `areas` writes them, in place of the
-    /// source's; the source's where absent (ADR-0071).
-    #[schemars(with = "Option<BTreeMap<String, Vec<String>>>")]
-    pub areas: Option<Areas>,
+    /// source's; the source's where absent (ADR-0071, ADR-0073).
+    #[schemars(with = "Option<codeowners::Zones>")]
+    pub areas: Option<Zoning>,
+    /// Where their CODEOWNERS file is looked for, as the source's
+    /// `codeowners` writes it; the source's where absent (ADR-0073).
+    pub codeowners: Option<Vec<String>>,
+    /// The branch their CODEOWNERS file is read at, as the source's
+    /// `codeowners_ref` writes it; the source's where absent (ADR-0073).
+    pub codeowners_ref: Option<CodeownersRef>,
 }
 
 /// A forge source's options in `herald.toml` (ADR-0006, ADR-0029, ADR-0030).
@@ -196,9 +203,27 @@ pub struct SourceOptions {
     /// a path over 1024 falling in none. A view reading the source reads
     /// the paths each pull request's head changes, as one predicting
     /// conflicts does, and each row names its areas; none where absent
-    /// (ADR-0071).
-    #[schemars(with = "Option<BTreeMap<String, Vec<String>>>")]
-    pub areas: Option<Areas>,
+    /// (ADR-0071). Or "codeowners": each owner the repository's CODEOWNERS
+    /// file names for a changed path, a team, a group, a role or a login,
+    /// never an email, and each GitLab section, is an area (ADR-0073).
+    #[schemars(with = "Option<codeowners::Zones>")]
+    pub areas: Option<Zoning>,
+    /// Where a repository's CODEOWNERS file is looked for, in order, the
+    /// first found read: at most 8 paths in the repository; where absent,
+    /// the forge's own places in its own order: GitHub `.github/`, the
+    /// root, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the
+    /// root, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073).
+    pub codeowners: Option<Vec<String>>,
+    /// The branch a repository's CODEOWNERS file is read at: "base", the
+    /// branch each pull request merges into, or "default", the
+    /// repository's default branch; where absent, the one the forge
+    /// applies: "base" on GitHub and GitLab, "default" on Forgejo (Gitea
+    /// applies "base": set it there) (ADR-0073).
+    pub codeowners_ref: Option<CodeownersRef>,
+    /// The most of a CODEOWNERS file read, a longer file read as none;
+    /// "128KiB" where absent, and at most "3MiB", GitHub's own limit
+    /// (ADR-0073).
+    pub most_codeowners: Option<Size>,
     /// How an owner source finds the repositories that join or leave it:
     /// listing the owner each round ("list"), or only where it holds no
     /// listing, its selection changed or a delivery said the owner's
@@ -340,15 +365,25 @@ const fn sets_areas(chosen: &Override) -> bool {
     chosen.areas.is_some()
 }
 
+const fn sets_codeowners(chosen: &Override) -> bool {
+    chosen.codeowners.is_some()
+}
+
+const fn sets_codeowners_ref(chosen: &Override) -> bool {
+    chosen.codeowners_ref.is_some()
+}
+
 /// Each key of an override that the narrowest glob naming a repository
 /// gives it, and whether an override sets it.
-const OVERRIDDEN: [(&str, Sets); 6] = [
+const OVERRIDDEN: [(&str, Sets); 8] = [
     ("project", sets_project),
     ("signals", sets_signals),
     ("prerelease", sets_prerelease),
     ("routes", sets_routes),
     ("routes_only", sets_routes_only),
     ("areas", sets_areas),
+    ("codeowners", sets_codeowners),
+    ("codeowners_ref", sets_codeowners_ref),
 ];
 
 /// Two of `globs` as narrow as each other that could both name one
@@ -412,6 +447,7 @@ impl SourceOptions {
         self.pulls_check()?;
         self.issues_check(forge)?;
         self.write_check(forge)?;
+        self.codeowners_check()?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -444,6 +480,7 @@ impl SourceOptions {
 
 mod alerts;
 mod app;
+mod codeowners;
 mod discovery;
 mod hooks;
 mod issues;

@@ -12,6 +12,11 @@ fn table(areas: &[(&str, &[&str])]) -> BTreeMap<String, Vec<String>> {
         .collect()
 }
 
+fn named(areas: Vec<Area>) -> Vec<String> {
+    assert!(areas.iter().all(|area| area.kind == AreaKind::Paths));
+    areas.into_iter().map(|area| area.name).collect()
+}
+
 fn changed(paths: &[&str], whole: bool) -> Changed {
     Changed {
         paths: paths.iter().map(|path| (*path).to_owned()).collect(),
@@ -32,14 +37,14 @@ fn a_pull_request_falls_in_each_area_one_of_its_paths_matches_in_name_order() {
         &["packages/UI/button.ts", "docs/guide.md", "Cargo.lock"],
         false,
     );
-    assert_eq!(areas.of_changed(Some(&read)), ["docs", "web"]);
-    assert_eq!(areas.of_changed(None), Vec::<String>::new());
+    assert_eq!(named(areas.of_changed(Some(&read))), ["docs", "web"]);
+    assert_eq!(named(areas.of_changed(None)), Vec::<String>::new());
     let none = Vec::<String>::new();
     assert_eq!(
-        areas.of_changed(Some(&changed(&["Cargo.lock"], true))),
+        named(areas.of_changed(Some(&changed(&["Cargo.lock"], true)))),
         none
     );
-    assert_eq!(Areas::default().of_changed(Some(&read)), none);
+    assert_eq!(named(Areas::default().of_changed(Some(&read))), none);
 }
 
 #[test]
@@ -58,13 +63,19 @@ fn a_path_longer_than_the_most_matched_falls_in_no_area() {
     let areas = Areas::of(table(&[("all", &["*"])])).unwrap();
     let longest = "a".repeat(MOST_AREA_PATH);
     let longer = "a".repeat(MOST_AREA_PATH + 1);
-    assert_eq!(areas.of_changed(Some(&changed(&[&longest], true))), ["all"]);
     assert_eq!(
-        areas.of_changed(Some(&changed(&[&longer], true))),
+        named(areas.of_changed(Some(&changed(&[&longest], true)))),
+        ["all"]
+    );
+    assert_eq!(
+        named(areas.of_changed(Some(&changed(&[&longer], true)))),
         Vec::<String>::new()
     );
     let wide = "é".repeat(MOST_AREA_PATH);
-    assert_eq!(areas.of_changed(Some(&changed(&[&wide], true))), ["all"]);
+    assert_eq!(
+        named(areas.of_changed(Some(&changed(&[&wide], true)))),
+        ["all"]
+    );
 }
 
 #[test]
@@ -131,4 +142,44 @@ fn a_table_names_at_most_the_most_areas_and_globs() {
             MOST_AREA_GLOBS + 10
         )
     );
+}
+
+#[test]
+fn a_source_s_areas_are_a_table_of_globs_or_codeowners() {
+    let globbed: Zoning = serde_json::from_value(serde_json::json!({ "web": ["web/**"] })).unwrap();
+    assert_eq!(
+        globbed,
+        Zoning::Paths(Areas::of(table(&[("web", &["web/**"])])).unwrap())
+    );
+    assert_eq!(globbed.names().collect::<Vec<_>>(), ["web"]);
+    let read: Zoning = serde_json::from_value(serde_json::json!("codeowners")).unwrap();
+    assert_eq!(read, Zoning::Codeowners);
+    assert_eq!(read.names().count(), 0);
+    let refused = serde_json::from_value::<Zoning>(serde_json::json!("owners")).unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "\"owners\" names no way to read areas; give a table of path globs, or \"codeowners\""
+    );
+    let empty = serde_json::from_value::<Zoning>(serde_json::json!({ "web": [] })).unwrap_err();
+    assert_eq!(
+        empty.to_string(),
+        "the area \"web\" names no path; give it a glob such as \"web/**\""
+    );
+}
+
+#[test]
+fn each_kind_of_area_is_written_as_its_json_marks_it() {
+    let kinds = [
+        (AreaKind::Paths, "paths"),
+        (AreaKind::Team, "team"),
+        (AreaKind::Group, "group"),
+        (AreaKind::Person, "person"),
+        (AreaKind::Role, "role"),
+        (AreaKind::Section, "section"),
+        (AreaKind::Name, "name"),
+    ];
+    for (kind, name) in kinds {
+        assert_eq!(kind.name(), name);
+        assert_eq!(serde_json::to_value(kind).unwrap(), serde_json::json!(name));
+    }
 }

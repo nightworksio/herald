@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::*;
 
 fn changed(paths: &[&str]) -> Changed {
@@ -283,4 +285,131 @@ fn a_path_past_its_most_characters_and_unread_paths_fall_to_no_one() {
     let empty = Codeowners::read(Dialect::GitHub, "# nothing\n\n");
     assert_eq!(empty.owning(Some(&changed(&["x"]))), Owned::default());
     assert_eq!(empty.refused(), None);
+}
+
+fn kinds(
+    read: &Codeowners,
+    paths: &[&str],
+    resolved: &[(&str, AreaKind)],
+) -> Vec<(String, AreaKind)> {
+    let owned = read.owning(Some(&changed(paths)));
+    read.areas(&owned, |name| {
+        resolved
+            .iter()
+            .find(|(known, _)| *known == name)
+            .map(|(_, kind)| *kind)
+    })
+    .into_iter()
+    .map(|area| (area.name, area.kind))
+    .collect()
+}
+
+fn area(name: &str, kind: AreaKind) -> (String, AreaKind) {
+    (name.to_owned(), kind)
+}
+
+#[test]
+fn teams_people_roles_and_sections_are_areas_and_an_email_never_is() {
+    let github = Codeowners::read(Dialect::GitHub, "* @org/web @alice docs@example.com\n");
+    assert_eq!(
+        kinds(&github, &["a.rs"], &[]),
+        [
+            area("@alice", AreaKind::Person),
+            area("@org/web", AreaKind::Team)
+        ]
+    );
+    let gitlab = Codeowners::read(
+        Dialect::GitLab,
+        "[Docs] @@maintainer\n*.md @group/sub @known @unknown @asked me@example.com\n",
+    );
+    assert_eq!(
+        kinds(
+            &gitlab,
+            &["guide.md"],
+            &[("@known", AreaKind::Person), ("@asked", AreaKind::Group)]
+        ),
+        [
+            area("@asked", AreaKind::Group),
+            area("@group/sub", AreaKind::Group),
+            area("@known", AreaKind::Person),
+            area("@unknown", AreaKind::Name),
+            area("Docs", AreaKind::Section)
+        ]
+    );
+    assert_eq!(gitlab.undecided(), ["@known", "@unknown", "@asked"]);
+    assert_eq!(github.undecided(), Vec::<&str>::new());
+    let forgejo = Codeowners::read(Dialect::Forgejo, ".*\\.md @org/docs @bob\n");
+    assert_eq!(
+        kinds(&forgejo, &["a.md"], &[]),
+        [
+            area("@bob", AreaKind::Person),
+            area("@org/docs", AreaKind::Team)
+        ]
+    );
+}
+
+#[test]
+fn a_name_that_cannot_name_an_area_is_never_looked_up_and_a_name_two_lines_write_is_once() {
+    let long = format!("@{}", "a".repeat(crate::queue::MOST_AREA_NAME));
+    let gitlab = Codeowners::read(
+        Dialect::GitLab,
+        &format!("*.md @twice {long}\n*.rs @twice @@developer\n"),
+    );
+    assert_eq!(gitlab.undecided(), ["@twice"]);
+    assert_eq!(
+        kinds(&gitlab, &["a.md", "b.rs"], &[]),
+        [
+            area("@@developer", AreaKind::Role),
+            area("@twice", AreaKind::Name)
+        ]
+    );
+}
+
+#[test]
+fn a_file_longer_than_the_source_reads_is_refused_before_it_is_read() {
+    let text = "* @org/web\n";
+    let read = Codeowners::within(Dialect::GitHub, text.as_bytes(), text.len());
+    assert_eq!(read.refused(), None);
+    assert_eq!(owners(&read, &["a"]), ["@org/web"]);
+    let refused = Codeowners::within(Dialect::GitHub, text.as_bytes(), text.len() - 1);
+    assert_eq!(
+        refused.refused(),
+        Some(
+            "it is longer than 10 bytes, the most the source reads; raise most_codeowners, at most 3145728"
+        )
+    );
+    assert_eq!(owners(&refused, &["a"]), Vec::<String>::new());
+    assert_eq!(refused.skipped(), &[] as &[Skipped]);
+    assert_eq!(MOST_CODEOWNERS_READ, 131_072);
+}
+
+#[test]
+fn a_file_naming_more_areas_than_a_table_may_is_refused() {
+    let lines = |count: usize| -> String {
+        let mut lines = String::new();
+        for at in 0..count {
+            let _ = writeln!(lines, "/{at} @person{at} person{at}@example.com");
+        }
+        lines
+    };
+    let most = Codeowners::read(Dialect::GitHub, &lines(MOST_AREAS));
+    assert_eq!(most.refused(), None);
+    assert_eq!(owners(&most, &["0"]), ["@person0", "person0@example.com"]);
+    let more = Codeowners::read(Dialect::GitHub, &lines(MOST_AREAS + 1));
+    assert_eq!(
+        more.refused(),
+        Some("it names 201 areas, and at most 200 are read")
+    );
+    assert_eq!(owners(&more, &["0"]), Vec::<String>::new());
+    let mut sections = String::new();
+    for at in 0..MOST_AREAS {
+        let _ = writeln!(sections, "[S{at}]\n/{at} @same");
+    }
+    let sectioned = Codeowners::read(Dialect::GitLab, &sections);
+    assert_eq!(
+        sectioned.refused(),
+        Some("it names 201 areas, and at most 200 are read")
+    );
+    let unnamed = format!("[ padded ]\n/x @same\n{}", lines(MOST_AREAS - 1));
+    assert_eq!(Codeowners::read(Dialect::GitLab, &unnamed).refused(), None);
 }

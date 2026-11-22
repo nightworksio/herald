@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 
 use herald_config::{Config, Uses, load};
 use herald_core::{
-    Attribute, COMMIT, Changed, Draft, Event, KeptPull, Kind, NUMBER, Origin, PULL_LINK, PullKey,
-    RepositoryKey, SIGNAL, Signal, SourceName, Visibility,
+    Attribute, BASE, COMMIT, Changed, Draft, Event, KeptPull, Kind, NUMBER, Origin, PULL_LINK,
+    PullKey, RepositoryKey, SIGNAL, Signal, SourceName, Visibility,
 };
 use herald_flows::{Budget, Ports, announce, prepare};
 use herald_ports::Pulls;
@@ -341,4 +341,116 @@ fn an_event_naming_no_head_or_from_a_source_naming_no_areas_falls_in_none() {
         ),
         Vec::<String>::new()
     );
+}
+
+/// The config whose source `gate` reads areas from CODEOWNERS: the route
+/// `team` taking what kept paths give `@org/web`, the route `person` what
+/// delivered paths give `@ana`.
+fn codeowned() -> Config {
+    let text = r#"version = 1
+[store]
+kind = "sqlite"
+[destinations.discord]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[sources.gate]
+kind = "github"
+repository = "o/r"
+signals = ["pull-request"]
+token = { secret = "HERALD_FORGE_TOKEN" }
+areas = "codeowners"
+[[routes]]
+id = "team"
+sources = ["gate"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "t"
+match = { areas = ["@org/web"] }
+[[routes]]
+id = "person"
+sources = ["gate"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "t"
+area_paths = "delivery"
+match = { areas = ["@ana"] }
+[templates.t]
+title = "{{ event.title }}"
+body = "zone {% if event.origin.areas %}{{ event.origin.areas | join(' ') }}{% else %}none{% endif %} enoz"
+"#;
+    load(
+        "herald.toml",
+        text,
+        &|_| Err("no file".to_owned()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+}
+
+/// [`event`], public, of a pull request merging into `base`.
+fn based(base: &str) -> Event {
+    let draft = Draft {
+        identity: "github.com/1/pull/4/opened".to_owned(),
+        kind: Kind::PULL_REQUEST,
+        project: "r".to_owned(),
+        title: "Pull request #4 opened: Add a page".to_owned(),
+        body: String::new(),
+        links: BTreeMap::from([(
+            PULL_LINK.to_owned(),
+            "https://github.com/o/r/pull/4".to_owned(),
+        )]),
+        attributes: BTreeMap::from([
+            (
+                SIGNAL.to_owned(),
+                Attribute::Text(Signal::PullRequest.name().to_owned()),
+            ),
+            (NUMBER.to_owned(), Attribute::Number(4.into())),
+            (COMMIT.to_owned(), Attribute::Text("c0ffee".to_owned())),
+            (BASE.to_owned(), Attribute::Text(base.to_owned())),
+        ]),
+        occurred: NOON,
+    };
+    let origin = event(Visibility::Public).origin().unwrap().clone();
+    Event::normalise(draft).unwrap().from_origin(origin)
+}
+
+const FILE_AT_DEFAULT: &str = "/repos/o/r/contents/.github/CODEOWNERS";
+
+#[test]
+fn an_event_s_owners_are_read_from_codeowners_at_each_route_s_paths_and_branch() {
+    let config = codeowned();
+    let store = healthy();
+    kept(&store, "c0ffee", &["web/index.html"], true);
+    let script = Script::answering(&[
+        (FILE_AT_DEFAULT, 200, "web/ @org/web\n"),
+        (FILES, 200, r#"[{"filename": "web/index.html"}]"#),
+        (
+            "/repos/o/r/contents/.github/CODEOWNERS?ref=dev",
+            200,
+            "web/ @ana user@example.com\n",
+        ),
+        POSTED,
+        POSTED,
+    ]);
+    assert_eq!(
+        announced(&config, &store, &script, &based("dev")),
+        ["team @\u{200b}org\\\\/web", "person @\u{200b}ana"]
+    );
+}
+
+#[test]
+fn an_event_whose_codeowners_cannot_be_read_falls_in_no_area() {
+    let config = codeowned();
+    let store = healthy();
+    kept(&store, "c0ffee", &["web/index.html"], true);
+    let script = Script::answering(&[
+        (FILE_AT_DEFAULT, 500, "{}"),
+        (FILES, 200, r#"[{"filename": "web/index.html"}]"#),
+        (FILE_AT_DEFAULT, 500, "{}"),
+    ]);
+    assert_eq!(
+        announced(&config, &store, &script, &event(Visibility::Public)),
+        Vec::<String>::new()
+    );
+    assert_eq!(script.seen().len(), 3);
 }

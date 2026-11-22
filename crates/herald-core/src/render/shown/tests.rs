@@ -409,3 +409,34 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
         ["capacity", "unread"]
     );
 }
+
+#[test]
+fn a_row_names_each_area_with_its_kind() {
+    let now = Timestamp::from_second(30 * 24 * 60 * 60).unwrap();
+    let owned = crate::queue::Pull {
+        areas: vec![
+            crate::queue::Area {
+                name: "@alice".to_owned(),
+                kind: crate::queue::AreaKind::Person,
+            },
+            crate::queue::Area {
+                name: "web".to_owned(),
+                kind: crate::queue::AreaKind::Paths,
+            },
+        ],
+        ..pull()
+    };
+    let board = board(&View::default(), &[owned], now);
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let json = serde_json::to_value(&value).unwrap();
+    assert_eq!(
+        json["groups"][0]["rows"][0]["areas"],
+        serde_json::json!([
+            { "name": "@alice", "kind": "person" },
+            { "name": "web", "kind": "paths" }
+        ])
+    );
+}

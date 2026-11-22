@@ -6,6 +6,17 @@ use herald_flows::Here;
 use super::{loaded, on, server};
 
 fn area_notes(view: &str, paths: &str) -> Vec<String> {
+    notes_of(
+        "[sources.site.areas]\nweb = [\"web/**\"]",
+        view,
+        paths,
+        "The route",
+    )
+}
+
+/// The notes starting `start` doctor says of a config whose source `site`
+/// names its areas by `areas`.
+fn notes_of(areas: &str, view: &str, paths: &str, start: &str) -> Vec<String> {
     let config = loaded(&format!(
         r#"version = 1
 [store]
@@ -17,8 +28,7 @@ token = {{ secret = "HERALD_DISCORD_TOKEN" }}
 kind = "github"
 repository = "o/site"
 signals = ["pull-request"]
-[sources.site.areas]
-web = ["web/**"]
+{areas}
 [[routes]]
 id = "web"
 sources = ["site"]
@@ -42,7 +52,7 @@ body = "{{{{ event.body }}}}"
     on(&config, &server(), &Here::default())
         .notes
         .into_iter()
-        .filter(|note| note.starts_with("The route"))
+        .filter(|note| note.starts_with(start))
         .collect()
 }
 
@@ -70,5 +80,30 @@ fn a_route_reading_paths_at_delivery_names_the_request_each_event_costs() {
         read[0].starts_with("The route web reads the paths each pull request event's pull request changes from the forge as the event is delivered: one request more for each"),
         "{}",
         read[0]
+    );
+}
+
+#[test]
+fn a_route_of_a_codeowners_source_names_the_file_s_request_and_the_source_where_it_reads() {
+    let areas = "areas = \"codeowners\"";
+    for paths in ["", "area_paths = \"delivery\""] {
+        let routed = notes_of(areas, "", paths, "The route");
+        assert_eq!(routed.len(), 1, "{routed:?}");
+        assert!(
+            routed[0].contains(
+                "; a source of it reads areas from CODEOWNERS: one request more for each event"
+            ),
+            "{}",
+            routed[0]
+        );
+    }
+    let plain = area_notes("", "");
+    assert!(!plain[0].contains("CODEOWNERS"), "{}", plain[0]);
+    let sourced = notes_of(areas, "", "", "The source site reads areas");
+    assert_eq!(sourced.len(), 1, "{sourced:?}");
+    assert!(
+        sourced[0].starts_with("The source site reads areas from each repository's CODEOWNERS file at the branch each pull request merges into"),
+        "{}",
+        sourced[0]
     );
 }

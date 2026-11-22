@@ -201,7 +201,7 @@ fn a_nudge_names_no_author_or_login_the_forge_did_not_and_keeps_a_private_reposi
 
 #[test]
 fn a_pull_request_in_several_areas_is_nudged_once_and_the_most_counts_pull_requests() {
-    let areas = vec!["api".to_owned(), "docs".to_owned(), "web".to_owned()];
+    let areas = crate::queue::of_paths(&["api", "docs", "web"]);
     let pulls = [
         Pull {
             areas: areas.clone(),

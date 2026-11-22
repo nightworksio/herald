@@ -1,5 +1,6 @@
 use super::*;
 use crate::bump::Bump;
+use crate::queue::area::{Area, AreaKind, of_paths};
 use crate::queue::tests::pull;
 use crate::queue::{Checks, Mergeable, Review};
 
@@ -367,11 +368,11 @@ fn rows_group_by_repository_author_or_nothing() {
 fn rows_group_under_each_of_their_areas_and_a_view_narrows_by_area() {
     let pulls = [
         Pull {
-            areas: vec!["api".to_owned(), "web".to_owned()],
+            areas: of_paths(&["api", "web"]),
             ..waited(1, 1)
         },
         Pull {
-            areas: vec!["docs".to_owned()],
+            areas: of_paths(&["docs"]),
             ..waited(2, 2)
         },
         waited(3, 3),
@@ -415,12 +416,12 @@ fn rows_group_under_each_of_their_areas_and_a_view_narrows_by_area() {
 fn a_board_s_distinct_rows_hold_each_pull_request_once_however_many_groups_show_it() {
     let pulls = [
         Pull {
-            areas: vec!["api".to_owned(), "web".to_owned()],
+            areas: of_paths(&["api", "web"]),
             ..waited(1, 1)
         },
         Pull {
             url: "https://gitlab.com/o/r/-/merge_requests/1".to_owned(),
-            areas: vec!["web".to_owned()],
+            areas: of_paths(&["web"]),
             ..waited(2, 1)
         },
         bot("chore(deps): bump serde from 1.0.0 to 1.0.1", "o/r", 2),
@@ -439,6 +440,39 @@ fn a_board_s_distinct_rows_hold_each_pull_request_once_however_many_groups_show_
     assert_eq!(distinct.len(), 3, "{distinct:?}");
     assert_eq!(shown.total(), 3);
     assert_eq!(Board::default().distinct_rows(), Vec::<&Row>::new());
+}
+
+#[test]
+fn a_pull_request_two_owners_own_is_one_row_under_each_and_counted_once() {
+    let owned = |name: &str, kind: AreaKind| Area {
+        name: name.to_owned(),
+        kind,
+    };
+    let pulls = [Pull {
+        areas: vec![
+            owned("@alice", AreaKind::Person),
+            owned("@org/web", AreaKind::Team),
+            owned("@org/web", AreaKind::Section),
+        ],
+        ..waited(1, 1)
+    }];
+    let view = View {
+        group_by: GroupBy::Area,
+        ..View::default()
+    };
+    let shown = board_of(&view, &pulls);
+    assert_eq!(names(&shown), ["@alice", "@org/web"]);
+    assert_eq!(numbers(&shown), [vec![1], vec![1]]);
+    assert_eq!(shown.distinct_rows().len(), 1);
+    assert_eq!(shown.total(), 1);
+    let narrowed = board_of(
+        &View {
+            areas: globs(&["@alice"]),
+            ..View::default()
+        },
+        &pulls,
+    );
+    assert_eq!(narrowed.total(), 1);
 }
 
 #[test]

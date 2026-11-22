@@ -13,6 +13,7 @@ use herald_kinds::{Bound, Carried, Registering};
 use crate::acting::{Claimed, Projects};
 
 mod areas;
+mod codeowners;
 mod federation;
 mod layer;
 mod online;
@@ -21,6 +22,7 @@ mod recalls;
 mod tasks;
 mod views;
 
+pub use codeowners::{MOST_SKIPPED_NAMED, codeowners};
 pub use federation::{
     Federation, FeedShown, GrantShown, OwnKey, PeerShown, Pulls, PushShown, Reached, RunShown,
     Shown, SourceShown, federation,
@@ -831,6 +833,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     views::kept(config, &mut findings);
     views::stated(config, &mut findings.notes);
     areas::routed(config, &mut findings.notes);
+    areas::codeowned(config, &mut findings.notes);
     tasks::decided(config, here, &mut findings.notes);
     peers::signed(config, &mut findings.notes);
     peers::bound(config, &mut findings);

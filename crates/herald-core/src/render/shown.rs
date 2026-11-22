@@ -44,7 +44,11 @@ fn row_value(row: &Row) -> Value {
         waited_seconds => row.waited.as_secs(),
         stale => row.stale,
         overlaps => row.overlaps.clone(),
-        areas => pull.areas.clone(),
+        areas => pull
+            .areas
+            .iter()
+            .map(|area| context! { name => area.name.as_str(), kind => area.kind.name() })
+            .collect::<Vec<_>>(),
         decided => row
             .decided
             .iter()

@@ -11,6 +11,10 @@ const UNKNOWN: &str = "a pull request event whose paths are not all known, more 
 /// What doctor says of a route reading paths at delivery.
 const DELIVERY: &str = "reads the paths each pull request event's pull request changes from the forge as the event is delivered: one request more for each, through its source's token, API base and the run's request budget, one page of at most 100 paths, a failed read leaving the event in no area";
 
+/// What doctor says of a route one of whose sources reads areas from
+/// CODEOWNERS (ADR-0073).
+const CODEOWNED: &str = "a source of it reads areas from CODEOWNERS: one request more for each event, for its repository's file, through the source's token, API base and the run's request budget, a file that cannot be read leaving the event in no area";
+
 /// The sources of `config`'s that no view reads kept, of `sources`.
 fn unkept<'a>(config: &Config, sources: &'a [SourceName]) -> Vec<&'a str> {
     let keeps = config.store.keeps_pulls();
@@ -26,6 +30,16 @@ fn unkept<'a>(config: &Config, sources: &'a [SourceName]) -> Vec<&'a str> {
         .collect()
 }
 
+/// Each note on each source of `config` that reads areas from CODEOWNERS
+/// (ADR-0073).
+pub(super) fn codeowned(config: &Config, notes: &mut Vec<String>) {
+    for (name, source) in &config.sources {
+        for note in source.codeowners_notes() {
+            notes.push(format!("The source {} {note}.", name.as_str()));
+        }
+    }
+}
+
 /// Each note on each route of `config` that narrows by areas.
 pub(super) fn routed(config: &Config, notes: &mut Vec<String>) {
     for route in &config.routes {
@@ -34,8 +48,19 @@ pub(super) fn routed(config: &Config, notes: &mut Vec<String>) {
             continue;
         }
         let id = route.id.as_str();
+        let codeowned = route
+            .filter
+            .sources
+            .iter()
+            .filter_map(|source| config.sources.get(source))
+            .any(|source| source.codeowned());
+        let filed = if codeowned {
+            format!("; {CODEOWNED}")
+        } else {
+            String::new()
+        };
         let note = match route.filter.area_paths {
-            AreaPaths::Delivery => format!("The route {id} {DELIVERY}; {UNKNOWN}."),
+            AreaPaths::Delivery => format!("The route {id} {DELIVERY}{filed}; {UNKNOWN}."),
             AreaPaths::Kept => {
                 let unkept = unkept(config, &route.filter.sources);
                 let kept = if unkept.is_empty() {
@@ -47,7 +72,7 @@ pub(super) fn routed(config: &Config, notes: &mut Vec<String>) {
                     )
                 };
                 format!(
-                    "The route {id} takes each pull request event's areas from the paths kept for that pull request where its kept head is the event's, no request more{kept}; {UNKNOWN}."
+                    "The route {id} takes each pull request event's areas from the paths kept for that pull request where its kept head is the event's, no request more for the paths{kept}{filed}; {UNKNOWN}."
                 )
             }
         };

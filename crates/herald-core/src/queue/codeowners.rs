@@ -5,8 +5,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use regex::{RegexBuilder, RegexSet, RegexSetBuilder, SetMatches};
+use serde::Deserialize;
 
-use super::area::unnamed;
+use super::area::{Area, AreaKind, MOST_AREAS, unnamed};
 use super::{Changed, MOST_AREA_PATH};
 use crate::Size;
 
@@ -19,6 +20,25 @@ use line::{heading, owners, words};
 /// The most bytes of a CODEOWNERS file herald reads: GitHub's own limit,
 /// past which GitHub does not read the file either.
 pub const MOST_CODEOWNERS: usize = 3 * Size::MIB;
+
+/// The most bytes of a CODEOWNERS file a source reads where its
+/// `most_codeowners` is absent.
+pub const MOST_CODEOWNERS_READ: usize = 128 * Size::KIB;
+
+/// The most distinct GitLab top-level `@name`s of one file looked up as a
+/// group or a person: each costs up to two requests the first time a
+/// source meets it, and a name past it is an area of kind name.
+pub const MOST_CODEOWNERS_LOOKUPS: usize = 50;
+
+/// The branch a repository's CODEOWNERS file is read at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeownersRef {
+    /// The branch the pull request merges into.
+    Base,
+    /// The repository's default branch.
+    Default,
+}
 
 /// The most lines of a CODEOWNERS file herald reads: each line is matched
 /// against every changed path of every pull request read.
@@ -216,9 +236,49 @@ fn compiles(expression: &str) -> Result<(), String> {
 }
 
 impl Codeowners {
+    /// A file of `dialect`'s forge herald reads none of, as `why` says.
+    fn refusing(dialect: Dialect, why: String) -> Self {
+        Self {
+            dialect,
+            rules: Vec::new(),
+            set: None,
+            sections: Vec::new(),
+            skipped: Vec::new(),
+            refused: Some(why),
+        }
+    }
+
+    /// The CODEOWNERS file `body`, written for `dialect`'s forge, read
+    /// only where it is at most `most` bytes.
+    #[must_use]
+    pub fn within(dialect: Dialect, body: &[u8], most: usize) -> Self {
+        if body.len() > most {
+            return Self::refusing(
+                dialect,
+                format!(
+                    "it is longer than {most} bytes, the most the source reads; raise most_codeowners, at most {MOST_CODEOWNERS}"
+                ),
+            );
+        }
+        Self::read(dialect, &String::from_utf8_lossy(body))
+    }
+
     /// The CODEOWNERS file `text`, written for `dialect`'s forge.
     #[must_use]
     pub fn read(dialect: Dialect, text: &str) -> Self {
+        if text.len() > MOST_CODEOWNERS {
+            return Self::refusing(
+                dialect,
+                format!("it is longer than {MOST_CODEOWNERS} bytes, GitHub's own limit"),
+            );
+        }
+        let lines = text.lines().count();
+        if lines > MOST_CODEOWNERS_LINES {
+            return Self::refusing(
+                dialect,
+                format!("it has {lines} lines, and at most {MOST_CODEOWNERS_LINES} are read"),
+            );
+        }
         let mut read = Self {
             dialect,
             rules: Vec::new(),
@@ -227,19 +287,6 @@ impl Codeowners {
             skipped: Vec::new(),
             refused: None,
         };
-        if text.len() > MOST_CODEOWNERS {
-            read.refused = Some(format!(
-                "it is longer than {MOST_CODEOWNERS} bytes, GitHub's own limit"
-            ));
-            return read;
-        }
-        let lines = text.lines().count();
-        if lines > MOST_CODEOWNERS_LINES {
-            read.refused = Some(format!(
-                "it has {lines} lines, and at most {MOST_CODEOWNERS_LINES} are read"
-            ));
-            return read;
-        }
         let mut reading = Reading {
             dialect,
             rules: Vec::new(),
@@ -268,6 +315,13 @@ impl Codeowners {
             Ok(set) => {
                 read.set = Some(set);
                 read.rules = reading.rules;
+                let named = read.named();
+                if named > MOST_AREAS {
+                    return Self::refusing(
+                        dialect,
+                        format!("it names {named} areas, and at most {MOST_AREAS} are read"),
+                    );
+                }
             }
             Err(_) => {
                 read.refused = Some(format!(
@@ -276,6 +330,70 @@ impl Codeowners {
             }
         }
         read
+    }
+
+    /// How many distinct areas its lines and sections can name.
+    fn named(&self) -> usize {
+        let owners = self
+            .rules
+            .iter()
+            .flat_map(|rule| &rule.owners)
+            .filter(|owner| !matches!(owner, CodeOwner::Email(_)))
+            .map(CodeOwner::written);
+        let sections = self
+            .sections
+            .iter()
+            .skip(1)
+            .map(String::as_str)
+            .filter(|name| unnamed(name).is_none());
+        owners.chain(sections).collect::<BTreeSet<_>>().len()
+    }
+
+    /// Each GitLab top-level `@name` its lines write, once, in the file's
+    /// order: what only a lookup tells a group from a person.
+    #[must_use]
+    pub fn undecided(&self) -> Vec<&str> {
+        let mut seen = BTreeSet::new();
+        self.rules
+            .iter()
+            .flat_map(|rule| &rule.owners)
+            .filter_map(|owner| match owner {
+                CodeOwner::Either(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .filter(|name| seen.insert(*name))
+            .collect()
+    }
+
+    /// The areas `owned` names, in name order: each team, group, role and
+    /// person, and each section that names an area; never an email; a GitLab `@name` of
+    /// the kind `resolved` tells, or of kind name where it tells none
+    /// (ADR-0073).
+    #[must_use]
+    pub fn areas(&self, owned: &Owned, resolved: impl Fn(&str) -> Option<AreaKind>) -> Vec<Area> {
+        let owners = owned.owners.iter().filter_map(|owner| {
+            let kind = match owner {
+                CodeOwner::Team(_) if self.dialect == Dialect::GitLab => AreaKind::Group,
+                CodeOwner::Team(_) => AreaKind::Team,
+                CodeOwner::Person(_) => AreaKind::Person,
+                CodeOwner::Either(name) => resolved(name).unwrap_or(AreaKind::Name),
+                CodeOwner::Role(_) => AreaKind::Role,
+                CodeOwner::Email(_) => return None,
+            };
+            Some(Area {
+                name: owner.written().to_owned(),
+                kind,
+            })
+        });
+        let sections = owned.sections.iter().map(|name| Area {
+            name: name.clone(),
+            kind: AreaKind::Section,
+        });
+        owners
+            .chain(sections)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     /// The lines herald skips, in the file's order.

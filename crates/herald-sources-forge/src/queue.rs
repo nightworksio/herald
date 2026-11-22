@@ -11,6 +11,7 @@ use crate::{Forge, Origin, Token};
 
 pub(crate) mod advisory;
 pub(crate) mod capacity;
+mod codeowners;
 mod detail;
 mod github;
 mod gitlab;
@@ -440,6 +441,32 @@ impl herald_kinds::Queue for Queued {
         pulls: Vec<Pull>,
     ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
         Box::pin(async move { self.asking(asked).completed(&Erased(http), pulls).await })
+    }
+
+    fn repository(&self) -> Option<&str> {
+        Some(self.origin.path())
+    }
+
+    fn codeowners<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (_, reference): (&'a str, Option<&'a str>),
+        codeowning: &'a herald_kinds::Codeowning,
+    ) -> herald_ports::Boxed<'a, Result<Option<herald_kinds::Found>, Unpolled>> {
+        Box::pin(async move {
+            let reading = (&self.origin, self.token.as_ref());
+            codeowners::found(&Erased(http), reading, reference, codeowning).await
+        })
+    }
+
+    fn named<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        name: &'a str,
+    ) -> herald_ports::Boxed<'a, Result<herald_core::AreaKind, Unpolled>> {
+        Box::pin(async move {
+            codeowners::named(&Erased(http), (&self.origin, self.token.as_ref()), name).await
+        })
     }
 }
 

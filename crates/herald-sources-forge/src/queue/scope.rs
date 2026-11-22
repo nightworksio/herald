@@ -494,6 +494,34 @@ impl herald_kinds::Queue for Scoped {
                 .await
         })
     }
+
+    fn repository(&self) -> Option<&str> {
+        None
+    }
+
+    fn codeowners<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (repository, reference): (&'a str, Option<&'a str>),
+        codeowning: &'a herald_kinds::Codeowning,
+    ) -> herald_ports::Boxed<'a, Result<Option<herald_kinds::Found>, Unpolled>> {
+        Box::pin(async move {
+            let origin = self.origin(repository);
+            let reading = (&origin, self.token.as_ref());
+            super::codeowners::found(&Erased(http), reading, reference, codeowning).await
+        })
+    }
+
+    fn named<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        name: &'a str,
+    ) -> herald_ports::Boxed<'a, Result<herald_core::AreaKind, Unpolled>> {
+        Box::pin(async move {
+            let reading = (&self.root, self.token.as_ref());
+            super::codeowners::named(&Erased(http), reading, name).await
+        })
+    }
 }
 
 /// The most of `open` pull requests one query over an owner's repositories

@@ -20,6 +20,7 @@ pub(super) struct State {
     pub(super) seen: Vec<String>,
     pub(super) failing: Option<Method>,
     pub(super) forge: BTreeMap<String, (u16, String)>,
+    pub(super) raw: BTreeMap<String, String>,
     pub(super) cache: BTreeMap<String, Vec<u8>>,
     pub(super) variables: BTreeMap<String, String>,
     pub(super) items: BTreeMap<(String, String), Value>,
@@ -65,6 +66,13 @@ impl State {
         }
         if let Some((status, body)) = self.forge.get(path) {
             return answer(*status, &serde_json::from_str(body).unwrap_or(Value::Null));
+        }
+        if let Some(text) = self.raw.get(path) {
+            return Response {
+                status: 200,
+                headers: Vec::new(),
+                body: text.clone().into_bytes(),
+            };
         }
         if let (Method::Get, Some(directory)) = (
             method,
