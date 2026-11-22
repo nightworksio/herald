@@ -12,6 +12,7 @@ use herald_kinds::{Bound, Carried, Registering};
 
 use crate::acting::{Claimed, Projects};
 
+mod areas;
 mod federation;
 mod layer;
 mod online;
@@ -829,6 +830,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     views::reported(config, &mut findings.notes);
     views::kept(config, &mut findings);
     views::stated(config, &mut findings.notes);
+    areas::routed(config, &mut findings.notes);
     tasks::decided(config, here, &mut findings.notes);
     peers::signed(config, &mut findings.notes);
     peers::bound(config, &mut findings);

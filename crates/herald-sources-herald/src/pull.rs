@@ -387,6 +387,7 @@ impl Pulled {
             topics: Vec::new(),
             properties: BTreeMap::new(),
             visibility: Visibility::Public,
+            areas: None,
             source: None,
         }
         .checked()
@@ -488,6 +489,7 @@ fn made(maker: &Maker<'_>) -> Origin {
         topics: Vec::new(),
         properties: BTreeMap::new(),
         visibility: Visibility::Public,
+        areas: None,
         source: None,
     }
 }

@@ -590,3 +590,74 @@ fn reading_changed_paths_costs_a_request_a_pull_request_read_in_full_but_on_grap
     let few = herald_kinds::Most { open: 5, pulls: 20 };
     assert_eq!(cost(Forge::Forgejo, true, few).files, 5);
 }
+
+/// The paths a queued repository on `forge` behind the API base `api`
+/// reads pull request 7 to change from `answer`, and the address it asked.
+fn changed_at(
+    forge: Forge,
+    api: &str,
+    answer: Response,
+) -> (Result<herald_core::Changed, Unpolled>, Vec<String>) {
+    let options = SourceOptions {
+        repository: Some("o/r".to_owned()),
+        api: Some(api.to_owned()),
+        ..SourceOptions::default()
+    };
+    let queued = Queued {
+        origin: Origin::new(forge, &options, "o/r"),
+        token: Some(Token::Named(Secret::new("TOKEN", "t"))),
+        project: "r".to_owned(),
+        graphql: "https://ghe.example/api/graphql".to_owned(),
+    };
+    let http = ScriptedHttp::new(vec![answer]);
+    let changed = pollster::block_on(herald_kinds::Queue::changed(&queued, &http, ("o/r", 7)));
+    let asked = http.asked().into_iter().map(|(url, _)| url).collect();
+    (changed, asked)
+}
+
+#[test]
+fn a_delivered_pull_request_s_changed_paths_are_read_once_through_the_configured_api_base() {
+    let few = json!([{"filename": "web/a.ts"}, {"new_path": "docs/b.md", "old_path": "b.md"}]);
+    for (forge, api, wanted) in [
+        (
+            Forge::GitHub,
+            "https://ghe.example/api/v3",
+            "https://ghe.example/api/v3/repos/o/r/pulls/7/files?per_page=100",
+        ),
+        (
+            Forge::GitLab,
+            "https://gitlab.example/api/v4",
+            "https://gitlab.example/api/v4/projects/o%2Fr/merge_requests/7/diffs?per_page=100",
+        ),
+        (
+            Forge::Forgejo,
+            "https://git.example/api/v1",
+            "https://git.example/api/v1/repos/o/r/pulls/7/files?limit=100",
+        ),
+    ] {
+        let (changed, asked) = changed_at(forge, api, answer(200, &few));
+        let changed = changed.unwrap();
+        assert_eq!(asked, [wanted], "{forge:?}");
+        assert!(changed.whole, "{forge:?}");
+        assert_eq!(
+            changed.paths.into_iter().collect::<Vec<_>>(),
+            ["b.md", "docs/b.md", "web/a.ts"],
+            "{forge:?}"
+        );
+    }
+    let full: Vec<Value> = (0..PAGE)
+        .map(|index| json!({"filename": format!("f{index}")}))
+        .collect();
+    let (changed, _) = changed_at(
+        Forge::GitHub,
+        "https://ghe.example/api/v3",
+        answer(200, &json!(full)),
+    );
+    assert!(!changed.unwrap().whole);
+    let (failed, _) = changed_at(
+        Forge::GitHub,
+        "https://ghe.example/api/v3",
+        answer(404, &json!({})),
+    );
+    assert!(failed.is_err());
+}

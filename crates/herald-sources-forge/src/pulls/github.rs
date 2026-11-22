@@ -18,6 +18,7 @@ pub(super) const HOOK: &str = "pull_request";
 struct Branch {
     #[serde(rename = "ref")]
     name: String,
+    sha: Option<String>,
 }
 
 /// A pull request, as GitHub and Forgejo describe it.
@@ -66,6 +67,7 @@ impl Pull {
             bot: self.user.bot(),
             author: Some(self.user.login),
             base: self.base.map(|branch| branch.name),
+            commit: self.head.as_ref().and_then(|branch| branch.sha.clone()),
             head: self.head.map(|branch| branch.name),
             draft: self.draft,
             merged_by: self.merged_by.map(|user| user.login),

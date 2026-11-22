@@ -166,6 +166,15 @@ pub trait Queue: fmt::Debug + Send + Sync {
         most: usize,
     ) -> Boxed<'a, Result<Plan, Unpolled>>;
 
+    /// The paths pull request `pull.1` of the repository at the full path
+    /// `pull.0` changes, as far as one page of them lists, asked
+    /// through `http` as the event of it is delivered (ADR-0072).
+    fn changed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        pull: (&'a str, u64),
+    ) -> Boxed<'a, Result<herald_core::Changed, Unpolled>>;
+
     /// The queued and running CI of the repositories `capacity` names,
     /// `read` being how the view asks and the repositories it shows a pull
     /// request of: those shown, or the members its scope holds; each

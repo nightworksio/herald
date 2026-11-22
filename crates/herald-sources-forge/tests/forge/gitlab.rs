@@ -121,6 +121,7 @@ fn a_release_hook_of_the_source_s_project_announces_its_release() {
                     topics: vec![],
                     properties: std::collections::BTreeMap::new(),
                     visibility: herald_core::Visibility::Public,
+                    areas: None,
                     source: None,
                 })
         ))

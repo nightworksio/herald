@@ -392,6 +392,7 @@ fn pulled() -> BTreeMap<String, AttributeSpec> {
         (BOT, AttributeType::Flag, false),
         (BASE, AttributeType::Text, false),
         (HEAD, AttributeType::Text, false),
+        (COMMIT, AttributeType::Text, false),
         (DRAFT, AttributeType::Flag, false),
         (MERGED_BY, AttributeType::Text, false),
         (LABELS, AttributeType::Text, false),

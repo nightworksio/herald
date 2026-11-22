@@ -126,6 +126,20 @@ pub enum Prereleases {
     Only,
 }
 
+/// Where a route narrowing by areas reads the paths a pull request's head
+/// changes, which its event's areas are those of (ADR-0072).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum AreaPaths {
+    /// From the pull request as herald keeps it, where its head is the
+    /// event's: no request more, and no areas where they are not kept.
+    #[default]
+    Kept,
+    /// From the forge as the event is delivered: one request more for each
+    /// pull request event the route may take.
+    Delivery,
+}
+
 /// The events a route takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Filter {
@@ -140,6 +154,8 @@ pub struct Filter {
     pub versions: Option<Pattern>,
     /// What of an event it narrows its sources' events by.
     pub matching: Match,
+    /// Where it reads the paths an event's areas are those of.
+    pub area_paths: AreaPaths,
 }
 
 impl Filter {
@@ -303,6 +319,7 @@ pub(crate) mod tests {
                 prereleases: Prereleases::Include,
                 versions: None,
                 matching: Match::default(),
+                area_paths: AreaPaths::Kept,
             },
             destination: DestinationName::new("discord"),
             template: Some(TemplateName::new("package-release")),

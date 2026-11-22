@@ -55,6 +55,8 @@ pub enum Problem {
     OriginPath,
     /// The origin has no id.
     OriginId,
+    /// The origin names more areas than a source's table may.
+    OriginAreas,
 }
 
 impl fmt::Display for Problem {
@@ -74,6 +76,7 @@ impl fmt::Display for Problem {
                 "the event's origin.owner or origin.repository is not a path of names joined by '/'"
             }
             Self::OriginId => "the event's origin has no id",
+            Self::OriginAreas => "the event's origin.areas names more areas than a source may",
         })
     }
 }

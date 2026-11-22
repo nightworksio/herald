@@ -177,7 +177,10 @@ pub fn event(
     .map_err(UnreadEvent::Problem)?;
     spec.check(event.attributes()).map_err(UnreadEvent::Unfit)?;
     match written.origin {
-        Some(origin) => Ok(event.from_origin(origin.checked().map_err(UnreadEvent::Problem)?)),
+        Some(mut origin) => {
+            origin.areas = None;
+            Ok(event.from_origin(origin.checked().map_err(UnreadEvent::Problem)?))
+        }
         None => Ok(event),
     }
 }

@@ -57,7 +57,7 @@ fn pull(number: u64, state: &str, extra: &Value) -> Value {
         "html_url": format!("{PAGE}/pull/{number}"),
         "user": { "login": "dependabot[bot]", "type": "Bot" },
         "created_at": "2026-11-18T08:00:00Z", "updated_at": "2026-11-18T10:00:00Z",
-        "base": { "ref": "main" }, "head": { "ref": "bump" },
+        "base": { "ref": "main" }, "head": { "ref": "bump", "sha": "c0ffee" },
         "labels": [{ "name": "deps" }, { "name": "ci" }],
     });
     pull.as_object_mut()
@@ -92,10 +92,15 @@ fn a_pull_request_s_event_carries_what_it_is() {
     assert_eq!(
         keys,
         [
-            "action", "author", "base", "bot", "draft", "head", "labels", "number", "signal"
+            "action", "author", "base", "bot", "commit", "draft", "head", "labels", "number",
+            "signal"
         ]
     );
     assert_eq!(event.attributes()["bot"], Attribute::Flag(true));
+    assert_eq!(
+        event.attributes()["commit"],
+        Attribute::Text("c0ffee".to_owned())
+    );
     assert_eq!(
         event.attributes()["labels"],
         Attribute::Text("deps, ci".to_owned())
@@ -403,7 +408,7 @@ fn a_poll_reads_each_forge_s_newest_pull_requests_under_their_validators() {
             "state": state, "author": { "username": "renovate-bot" }, "merged_by": { "username": "ann" },
             "merged_at": "2026-11-18T11:00:00Z", "closed_at": "2026-11-18T12:00:00Z",
             "created_at": "2026-11-18T08:00:00Z", "updated_at": null, "labels": ["deps"],
-            "source_branch": "renovate/x", "target_branch": "main",
+            "source_branch": "renovate/x", "target_branch": "main", "sha": format!("5ha{iid}"),
         })
     };
     let gitlab = ScriptedHttp::new(vec![answer(
@@ -440,6 +445,10 @@ fn a_poll_reads_each_forge_s_newest_pull_requests_under_their_validators() {
                 &Attribute::Flag(true)
             ),
         ]
+    );
+    assert_eq!(
+        found.events[0].attribute(COMMIT),
+        Some(&Attribute::Text("5ha1".to_owned()))
     );
     let forgejo = ScriptedHttp::new(vec![answer(200, &json!([]), None)]);
     polled(&asking(Forge::Forgejo), &forgejo, None).unwrap();
@@ -526,4 +535,22 @@ fn a_delivery_that_cannot_be_read_names_its_forge_s_event_and_a_person_is_no_bot
         .event
         .unwrap();
     assert_eq!(opened.attributes()["bot"], Attribute::Flag(false));
+}
+
+#[test]
+fn a_merge_request_s_event_names_its_head_commit_where_the_hook_does() {
+    let committed = json!({ "object_attributes": {
+        "iid": 3, "title": "Add feature", "url": "https://gitlab.com/group/web/-/merge_requests/3",
+        "action": "open", "created_at": "2026-11-18T08:00:00Z", "last_commit": { "id": "f00d" },
+    } });
+    let commit = |extra: &Value| {
+        delivered(Forge::GitLab, &gitlab_hook("open", extra), &every())
+            .unwrap()
+            .event
+            .unwrap()
+            .attribute(COMMIT)
+            .cloned()
+    };
+    assert_eq!(commit(&committed), Some(Attribute::Text("f00d".to_owned())));
+    assert_eq!(commit(&json!({})), None);
 }

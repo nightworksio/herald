@@ -170,8 +170,8 @@ pub use revision::{
     regrouped, replaced, resumes, revise, revised,
 };
 pub use route::{
-    Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, Reach, RoleId, Route,
-    SecretRef, SourceName, TemplateName, Thread, route,
+    AreaPaths, Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, Reach, RoleId,
+    Route, SecretRef, SourceName, TemplateName, Thread, route,
 };
 pub use signal::{EDITED, Prefer, PrereleaseRule, SIGNAL, Signal, Validators, WITHDRAWN};
 pub use size::Size;

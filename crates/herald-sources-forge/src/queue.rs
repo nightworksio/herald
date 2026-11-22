@@ -223,13 +223,26 @@ impl Opened<'_> {
         pull: &mut Pull,
     ) -> Result<(), Unpolled> {
         if self.files {
-            let path = detail::files_path(self.origin.forge(), pull.number);
-            let asked = self.origin.get(&path, self.token)?;
-            let body = self.asked(http, asked, detail::FILES).await?;
-            let parse = self.origin.reading().parse;
-            pull.files = Some(detail::files(&body, parse).map_err(Unpolled::unreadable)?);
+            pull.files = Some(self.files_of(http, pull.number).await?);
         }
         Ok(())
+    }
+
+    /// The paths pull request `number` changes, its first page of them.
+    ///
+    /// # Errors
+    ///
+    /// Where the page could not be asked or read.
+    pub async fn files_of(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        number: u64,
+    ) -> Result<herald_core::Changed, Unpolled> {
+        let path = detail::files_path(self.origin.forge(), number);
+        let asked = self.origin.get(&path, self.token)?;
+        let body = self.asked(http, asked, detail::FILES).await?;
+        let parse = self.origin.reading().parse;
+        detail::files(&body, parse).map_err(Unpolled::unreadable)
     }
 
     /// How its GraphQL requests read their answers.
@@ -387,6 +400,18 @@ impl herald_kinds::Queue for Queued {
         Box::pin(async move {
             self.asking(Asked::default())
                 .planned(&Erased(http), (head, check), most)
+                .await
+        })
+    }
+
+    fn changed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (_, number): (&'a str, u64),
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Changed, Unpolled>> {
+        Box::pin(async move {
+            self.asking(Asked::default())
+                .files_of(&Erased(http), number)
                 .await
         })
     }

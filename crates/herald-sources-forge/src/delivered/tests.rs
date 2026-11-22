@@ -117,6 +117,7 @@ fn a_repository_the_api_answers_with_is_the_origin_of_its_events() {
             topics: vec!["media".to_owned()],
             properties: BTreeMap::from([("team".to_owned(), vec!["media".to_owned()])]),
             visibility: Visibility::Internal,
+            areas: None,
             source: None,
         }
     );

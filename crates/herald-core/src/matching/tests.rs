@@ -174,3 +174,47 @@ fn nothing_not_takes_is_taken() {
     assert!(!narrowed.takes(&attempted(1)));
     assert!(!narrowed.admits("php-mutation-gate", None));
 }
+
+/// The sample event from the sample origin, its areas `areas`.
+fn zoned(areas: Option<&[&str]>) -> Event {
+    let mut origin = origin();
+    origin.areas = areas.map(names);
+    event().from_origin(origin)
+}
+
+#[test]
+fn areas_take_an_event_in_one_of_them_and_never_one_whose_areas_are_not_known() {
+    let matching = Match {
+        areas: globs(&["WEB*"]),
+        ..Match::default()
+    };
+    assert!(matching.reads_origin());
+    assert!(matching.reads_areas());
+    assert!(matching.takes(&zoned(Some(&["docs", "web-app"]))));
+    assert!(!matching.takes(&zoned(Some(&["docs"]))));
+    assert!(!matching.takes(&zoned(Some(&[]))));
+    assert!(!matching.takes(&zoned(None)));
+    assert!(!matching.takes(&event()));
+    assert!(matching.admits("php-mutation-gate", Some(&origin())));
+    assert!(!Match::default().reads_areas());
+}
+
+#[test]
+fn areas_under_not_refuse_an_event_in_one_of_them_or_whose_areas_are_not_known() {
+    let matching = Match {
+        not: Some(Box::new(Match {
+            areas: globs(&["secret"]),
+            ..Match::default()
+        })),
+        ..Match::default()
+    };
+    assert!(matching.reads_areas());
+    assert!(!matching.reads_origin());
+    assert!(!matching.takes(&zoned(Some(&["web", "secret"]))));
+    assert!(!matching.takes(&zoned(None)));
+    assert!(matching.takes(&zoned(Some(&["web"]))));
+    assert!(matching.takes(&zoned(Some(&[]))));
+    assert!(matching.takes(&event()));
+    assert!(matching.admits("php-mutation-gate", Some(&origin())));
+    assert!(matching.admits("php-mutation-gate", None));
+}

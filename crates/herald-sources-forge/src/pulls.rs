@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    ACTION, AUTHOR, Attribute, BASE, BOT, Cursor, DRAFT, Draft, Event, HEAD, Kind, LABELS,
+    ACTION, AUTHOR, Attribute, BASE, BOT, COMMIT, Cursor, DRAFT, Draft, Event, HEAD, Kind, LABELS,
     MERGED_BY, NUMBER, PULL_LINK, SIGNAL, Signal,
 };
 use herald_kinds::Unpolled;
@@ -52,6 +52,7 @@ pub(crate) struct ForgePull {
     pub(crate) bot: bool,
     pub(crate) base: Option<String>,
     pub(crate) head: Option<String>,
+    pub(crate) commit: Option<String>,
     pub(crate) draft: bool,
     pub(crate) merged_by: Option<String>,
     pub(crate) labels: Vec<String>,
@@ -111,6 +112,7 @@ impl ForgePull {
             (AUTHOR, self.author),
             (BASE, self.base),
             (HEAD, self.head),
+            (COMMIT, self.commit),
             (MERGED_BY, self.merged_by),
             (LABELS, labels),
         ];

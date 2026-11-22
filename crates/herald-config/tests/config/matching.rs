@@ -3,7 +3,7 @@
 //! them named by key.
 
 use herald_config::load;
-use herald_core::{Glob, Reach, RouteId};
+use herald_core::{AreaPaths, Glob, Reach, RouteId};
 use herald_sources_forge::ForgeSource;
 
 const HEAD: &str = r#"version = 1
@@ -271,4 +271,64 @@ fn a_template_reading_the_origin_loads_only_where_every_event_the_route_takes_ha
         error.contains("templates.origin.title: it does not render a sample"),
         "{error}"
     );
+}
+
+const AREAS: &str = "[sources.site]\nkind = \"github\"\nrepository = \"nightworksio/site\"\n\n[sources.site.areas]\nweb = [\"web/**\"]\ndocs = [\"*.md\"]\n\n";
+
+#[test]
+fn a_route_narrows_by_the_areas_its_sources_name_read_where_it_says() {
+    let config = loaded(&format!(
+        "{AREAS}{}{}{}",
+        route(
+            "web",
+            "\"site\"",
+            "t",
+            "match = { areas = [\"WEB\"], not = { areas = [\"d*\"] } }"
+        ),
+        route(
+            "read",
+            "\"site\", \"gate\"",
+            "t",
+            "area_paths = \"delivery\"\nmatch = { areas = [\"docs\"] }"
+        ),
+        route("all", "\"site\"", "t", "")
+    ))
+    .unwrap();
+    let web = &config.routes[1].route.filter;
+    assert_eq!(web.matching.areas, [Glob::new("WEB").unwrap()]);
+    assert_eq!(
+        web.matching.not.as_deref().unwrap().areas,
+        [Glob::new("d*").unwrap()]
+    );
+    assert_eq!(web.area_paths, AreaPaths::Kept);
+    let read = &config.routes[2].route.filter;
+    assert_eq!(read.matching.areas, [Glob::new("docs").unwrap()]);
+    assert_eq!(read.area_paths, AreaPaths::Delivery);
+    assert_eq!(config.routes[3].route.filter.area_paths, AreaPaths::Kept);
+    assert!(!config.routes[3].route.filter.matching.reads_areas());
+}
+
+#[test]
+fn a_route_s_area_its_sources_do_not_name_and_a_read_at_delivery_for_no_area_are_refused() {
+    let error = loaded(&format!(
+        "{AREAS}{}{}{}",
+        route(
+            "web",
+            "\"site\"",
+            "t",
+            "match = { areas = [\"web\", \"api\"], not = { areas = [\"[\"] } }"
+        ),
+        route("bare", "\"gate\"", "t", "match = { areas = [\"web\"] }"),
+        route("idle", "\"site\"", "t", "area_paths = \"delivery\"")
+    ))
+    .unwrap_err();
+    for wanted in [
+        "routes[1].match.areas[1]: \"api\" matches no area the route's sources name; the areas are \"docs\", \"web\"",
+        "routes[1].match.not.areas[0]",
+        "routes[2].match.areas[0]: \"web\" matches no area the route's sources name; they name none; give a source an areas table",
+        "routes[3].area_paths: a route reads paths at delivery only for a match naming areas",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
+    assert!(!error.contains("routes[1].match.areas[0]"), "{error}");
 }

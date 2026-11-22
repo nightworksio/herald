@@ -45,6 +45,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `boards.<name>` | table | A route to a Discord destination. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.channel` | string | The channel's id. A bot needs one; a webhook posts where it was made. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
@@ -64,6 +65,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -100,6 +102,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `boards.<name>` | table | A route to a Mastodon destination. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.content_warning` | string | The content warning each status is shown behind. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
@@ -121,6 +124,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
 | `boards.<name>.link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -155,6 +159,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `boards.<name>` | table | A route to a Matrix destination. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
 | `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
@@ -172,6 +177,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -205,6 +211,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `boards.<name>` | table | A route to a Slack destination. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.channel` | string | The channel's id, such as `C0123456789`, which the bot has joined. A bot needs one; a webhook posts where it was made. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
@@ -223,6 +230,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -258,6 +266,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 |---------|------|--------------|
 | `boards.<name>` | table | A route announcing as one of herald's own ActivityPub actors. |
 | `boards.<name>.actor` | string | The actor the route announces as, such as `php-mutation-gate`, which is followed as `@php-mutation-gate@<domain>`; or a template naming each project's own actor from `event.project`, such as `{{ event.project }}`. A project whose name is no actor's name is not announced on the route. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.content_warning` | string | The content warning each Note is shown behind. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
@@ -277,6 +286,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.language` | string | The language each Note is written in, as an ISO 639 code. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -310,6 +320,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `boards.<name>` | table | A route publishing its events to a feed of herald's own. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
 | `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
@@ -327,6 +338,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -359,6 +371,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `boards.<name>` | table | A route pushing its events to a peer's herald source. |
+| `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
 | `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
@@ -376,6 +389,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `boards.<name>.late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `boards.<name>.match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `boards.<name>.match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `boards.<name>.match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `boards.<name>.match.attributes.<name>` | array of string |  |
 | `boards.<name>.match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -813,6 +827,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].channel` | string | The channel's id. A bot needs one; a webhook posts where it was made. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
@@ -831,6 +846,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -865,6 +881,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].content_warning` | string | The content warning each status is shown behind. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
@@ -885,6 +902,7 @@ Which events go where, rendered how.
 | `routes[].link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -917,6 +935,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
@@ -933,6 +952,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -964,6 +984,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].channel` | string | The channel's id, such as `C0123456789`, which the bot has joined. A bot needs one; a webhook posts where it was made. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
@@ -981,6 +1002,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -1014,6 +1036,7 @@ Which events go where, rendered how.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `routes[].actor` | string | The actor the route announces as, such as `php-mutation-gate`, which is followed as `@php-mutation-gate@<domain>`; or a template naming each project's own actor from `event.project`, such as `{{ event.project }}`. A project whose name is no actor's name is not announced on the route. |
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].content_warning` | string | The content warning each Note is shown behind. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
@@ -1032,6 +1055,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -1063,6 +1087,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
@@ -1079,6 +1104,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -1109,6 +1135,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
@@ -1125,6 +1152,7 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].living` | boolean | Whether it keeps one post of each report it takes, edited each window where the destination edits and posted anew each window where it cannot; it names only reports among its sources. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.areas` | array of string | The areas, as globs ignoring case, any one of which the pull request an event is of falls in, each matching an area one of the route's sources names; an event whose areas are not known is not taken, and under `not` is never taken (ADR-0072). |
 | `routes[].match.attributes` | table | The attributes of the event's kind, every one of which it carries with one of the values given for it, as text and ignoring case, such as `conclusion = ["failure", "timed_out"]`; any value where none is given. |
 | `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
@@ -2137,6 +2165,10 @@ Who decides whether a follow of herald's actors is taken.
 ### ArchiveAfter
 
 How long a quiet thread stays open before Discord archives it: one of the four lengths Discord takes.
+
+### AreaPaths
+
+Where a route narrowing by areas reads the paths a pull request's head changes, which its event's areas are those of (ADR-0072).
 
 ### Attempts
 

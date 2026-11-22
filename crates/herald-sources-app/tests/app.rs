@@ -95,10 +95,10 @@ mod app {
         let written = |origin: &str| {
             format!(r#"{{"id":"1","project":"herald","title":"Deployed","origin":{origin}}}"#)
         };
-        let origin = r#"{"forge":"github","host":"ghe.example:8443","owner":"nightworksio","repository":"nightworksio/herald","id":"7","topics":["release"],"properties":{"team":["core"]},"visibility":"internal"}"#;
+        let named = r#"{"forge":"github","host":"ghe.example:8443","owner":"nightworksio","repository":"nightworksio/herald","id":"7","topics":["release"],"properties":{"team":["core"]},"visibility":"internal"}"#;
         let read = event(
             "ci",
-            written(origin).as_bytes(),
+            written(named).as_bytes(),
             now(),
             &KindSpecs::default(),
         )
@@ -107,6 +107,16 @@ mod app {
         assert_eq!(origin.host, "ghe.example:8443");
         assert_eq!(origin.visibility, herald_core::Visibility::Internal);
         assert_eq!(read.bounded_by(), Some(herald_core::Visibility::Internal));
+        let zoned = named.replace("\"visibility\"", "\"areas\":[\"web\"],\"visibility\"");
+        let unzoned = event(
+            "ci",
+            written(&zoned).as_bytes(),
+            now(),
+            &KindSpecs::default(),
+        )
+        .unwrap();
+        assert_eq!(unzoned.origin().unwrap().areas, None);
+        assert_eq!(unzoned.origin().unwrap().topics, ["release"]);
         let bare = event(
             "ci",
             br#"{"id":"1","project":"herald","title":"Deployed"}"#,

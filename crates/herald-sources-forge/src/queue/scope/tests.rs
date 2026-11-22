@@ -618,3 +618,28 @@ fn github_s_search_is_asked_for_no_more_than_it_lists() {
     assert_eq!(queried(Forge::GitHub, SEARCHED + 1), SEARCHED);
     assert_eq!(queried(Forge::GitLab, SEARCHED + 1), SEARCHED + 1);
 }
+
+#[test]
+fn an_owner_s_member_s_changed_paths_are_read_from_that_member_once() {
+    for (forge, wanted) in [
+        (
+            Forge::GitHub,
+            "https://api.github.com/repos/o/app/pulls/7/files?per_page=100",
+        ),
+        (
+            Forge::Forgejo,
+            "https://codeberg.org/api/v1/repos/o/app/pulls/7/files?limit=100",
+        ),
+    ] {
+        let http = ScriptedHttp::new(vec![answer(200, &json!([{"filename": "web/a.ts"}]))]);
+        let changed = pollster::block_on(scoped(forge, true).changed(&http, ("o/app", 7))).unwrap();
+        assert!(changed.whole, "{forge:?}");
+        assert_eq!(
+            changed.paths.into_iter().collect::<Vec<_>>(),
+            ["web/a.ts"],
+            "{forge:?}"
+        );
+        let asked: Vec<String> = http.asked().into_iter().map(|(url, _)| url).collect();
+        assert_eq!(asked, [wanted], "{forge:?}");
+    }
+}

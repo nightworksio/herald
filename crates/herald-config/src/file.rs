@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::{
-    AttributeSpec, Duration, Edits, GroupLate, GroupMode, GroupUntil, Inbound, Kind, LateRelease,
-    LinkSpec, Pinning, Prereleases, Rate, Sandbox, SecretRef, Size, Withdraw,
+    AreaPaths, AttributeSpec, Duration, Edits, GroupLate, GroupMode, GroupUntil, Inbound, Kind,
+    LateRelease, LinkSpec, Pinning, Prereleases, Rate, Sandbox, SecretRef, Size, Withdraw,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -249,6 +249,14 @@ pub(crate) struct RouteFile {
     /// absent.
     #[serde(default, rename = "match")]
     pub(crate) matching: MatchFile,
+    /// Where the paths a pull request's head changes are read, which the
+    /// areas its `match` narrows by are those of: `kept`, from the pull
+    /// request as herald keeps it where its head is the event's, no request
+    /// more; or `delivery`, from the forge as the event is delivered, one
+    /// request more for each pull request event (ADR-0072).
+    #[serde(default)]
+    #[schemars(with = "Option<AreaPaths>")]
+    pub(crate) area_paths: Option<Spanned<AreaPaths>>,
     /// How it gathers the events that share a key into one announcement;
     /// each event is announced alone where absent.
     pub(crate) group: Option<GroupFile>,
@@ -296,6 +304,13 @@ pub(crate) struct MatchFile {
     #[serde(default)]
     #[schemars(with = "Option<BTreeMap<String, Vec<String>>>", example = MatchFile::ATTRIBUTES)]
     pub(crate) attributes: Option<Spanned<BTreeMap<String, Vec<String>>>>,
+    /// The areas, as globs ignoring case, any one of which the pull request
+    /// an event is of falls in, each matching an area one of the route's
+    /// sources names; an event whose areas are not known is not taken, and
+    /// under `not` is never taken (ADR-0072).
+    #[serde(default)]
+    #[schemars(with = "Vec<String>")]
+    pub(crate) areas: Vec<Spanned<String>>,
     /// What is never taken, written as a match is, whatever the rest of the
     /// match takes, such as `not = { attributes = { trigger = ["pull_request"] } }`.
     #[serde(default)]
@@ -313,6 +328,7 @@ impl MatchFile {
             && self.hosts.is_empty()
             && self.topics.is_empty()
             && self.properties.is_empty()
+            && self.areas.is_empty()
             && self
                 .attributes
                 .as_ref()
@@ -356,7 +372,7 @@ impl PinFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 19] = [
+pub(crate) const ROUTE_KEYS: [&str; 20] = [
     "id",
     "sources",
     "kinds",
@@ -376,6 +392,7 @@ pub(crate) const ROUTE_KEYS: [&str; 19] = [
     "match",
     "group",
     "living",
+    "area_paths",
 ];
 
 /// A template: its title, and its body inline or in a file beside the config.
