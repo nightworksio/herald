@@ -6,7 +6,7 @@ use jiff::Timestamp;
 
 use super::{Fault, Faulty, refused};
 use crate::conformance::NOON;
-use crate::conformance::pulls::{codeowned, kept, repository};
+use crate::conformance::pulls::{LONG_BRANCH, codeowned, kept, repository};
 
 impl Pulls for Faulty {
     async fn pull(&self, key: &PullKey) -> Result<Option<Versioned<KeptPull>>, StoreError> {
@@ -123,6 +123,14 @@ impl Pulls for Faulty {
                 version: Version(1),
             })),
             Fault::ForgetsTheDefaultBranchCodeowners if key.reference.is_none() => Ok(None),
+            Fault::ForgetsALongBranchCodeowners
+                if key
+                    .reference
+                    .as_ref()
+                    .is_some_and(|reference| reference.len() > LONG_BRANCH) =>
+            {
+                Ok(None)
+            }
             Fault::SharesCodeowners => {
                 let shared = CodeownersKey {
                     source: SourceName::new("herald"),
@@ -229,6 +237,10 @@ fn a_store_that_breaks_its_promises_on_pull_requests_is_refused() {
         (
             Fault::ForgetsTheDefaultBranchCodeowners,
             "a CODEOWNERS file read at the expiry was forgotten",
+        ),
+        (
+            Fault::ForgetsALongBranchCodeowners,
+            "a CODEOWNERS file of a long branch name was not kept",
         ),
     ]);
 }

@@ -224,8 +224,10 @@ or one the store cannot read, is read again in full. As the names are known
 only as each file is read, a view's or a route's `areas` of such a source
 are taken as written. `herald doctor` names where and at which branch
 each source reads, and `herald doctor --online` names each line of a
-repository source's file herald skips, by number and why, and a file it
-reads none of. A file that cannot be read stops the view, named by its
+repository source's file herald skips, by number and why, a file it
+reads none of, and a file the store would keep no record of (its forge
+gives no validator, or the record would be longer than
+`most_codeowners`), which is read in full every round (ADR-0076). A file that cannot be read stops the view, named by its
 source alone unless the output is said private.
 
 ### Live or kept
