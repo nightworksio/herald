@@ -50,12 +50,19 @@ internal repository's rows reach only the surfaces that may see them
    where the people known to be folded into it are `least_team` or more;
    otherwise there is no "other", and doctor says why and names each
    team below the number.
-5. **Load is counted from what a surface shows.** `herald queue` counts
-   the rows it prints, after its withholding, so nothing of a private or
-   internal repository is counted without `--private` or `[cli] private`;
-   a report counts the rows each route is shown, so a public route is
-   shown the load of public repositories' rows alone. No load is carried
-   past the rows it was counted from.
+5. **A count is made only from rows the surface shows.** `herald queue`
+   counts the rows it prints, after `Printed` withholds a private or
+   internal repository's rows, so nothing of one is counted without
+   `--private` or `[cli] private`; a report counts the rows each route is
+   shown, after its audiences are parted, so a public route is shown the
+   load of public repositories' rows alone. `Printed` stays the one place
+   a row is withheld, and no load is carried past the rows it was counted
+   from. A withheld pull request changes no figure: the flows test
+   `a_public_route_is_shown_the_load_of_the_public_rows_alone` counts a
+   team asked on both a public and a private pull request as 2 on the
+   private route and 1 on the public one, and the `herald` test
+   `a_private_repository_s_load_names_no_team_area_or_login_and_counts_nothing_unless_said_private`
+   shows an empty load without `--private`.
 
 ## Consequences
 
