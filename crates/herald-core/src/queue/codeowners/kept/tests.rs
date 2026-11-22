@@ -136,6 +136,30 @@ fn a_kept_file_whose_patterns_do_not_pair_or_compile_reads_back_as_none() {
 }
 
 #[test]
+fn a_kept_file_holding_more_lines_or_areas_than_it_was_read_under_reads_back_as_none() {
+    let (_, kept) = kept(
+        Dialect::GitHub,
+        "a @x @y
+",
+    );
+    assert!(kept.file().is_some());
+    let mut named = kept.clone();
+    named.most.1 = 2;
+    assert!(named.file().is_some());
+    named.most.1 = 1;
+    assert!(named.file().is_none());
+    let mut long = kept.clone();
+    let (rule, pattern) = (long.file.rules[0].clone(), long.file.patterns[0].clone());
+    long.most.1 = usize::MAX;
+    long.file.rules = vec![rule; MOST_CODEOWNERS_LINES];
+    long.file.patterns = vec![pattern; MOST_CODEOWNERS_LINES];
+    assert!(long.file().is_some());
+    long.file.rules.push(long.file.rules[0].clone());
+    long.file.patterns.push(long.file.patterns[0].clone());
+    assert!(long.file().is_none());
+}
+
+#[test]
 fn the_kept_form_is_pinned_to_its_number() {
     let (_, kept) = kept(Dialect::GitLab, "[Docs] @docs\ndocs/ @@maintainer\n");
     let written = serde_json::to_value(&kept).expect("written");

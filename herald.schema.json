@@ -5654,7 +5654,7 @@
               "minimum": 0
             },
             "most_codeowners": {
-              "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
+              "description": "The most of a CODEOWNERS file downloaded and read, a longer file\nrefused unread; \"128KiB\" where absent, and at most \"3MiB\", GitHub's\nown limit (ADR-0073, ADR-0074).",
               "$ref": "#/$defs/Size"
             },
             "most_listed": {
@@ -5999,7 +5999,7 @@
               "minimum": 0
             },
             "most_codeowners": {
-              "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
+              "description": "The most of a CODEOWNERS file downloaded and read, a longer file\nrefused unread; \"128KiB\" where absent, and at most \"3MiB\", GitHub's\nown limit (ADR-0073, ADR-0074).",
               "$ref": "#/$defs/Size"
             },
             "most_listed": {
@@ -6344,7 +6344,7 @@
               "minimum": 0
             },
             "most_codeowners": {
-              "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
+              "description": "The most of a CODEOWNERS file downloaded and read, a longer file\nrefused unread; \"128KiB\" where absent, and at most \"3MiB\", GitHub's\nown limit (ADR-0073, ADR-0074).",
               "$ref": "#/$defs/Size"
             },
             "most_listed": {

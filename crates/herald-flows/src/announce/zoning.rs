@@ -9,7 +9,7 @@ use herald_core::{
     AreaPaths, Attribute, BASE, COMMIT, Changed, Event, NUMBER, Origin, PULL_LINK, PullKey,
     RepositoryKey, SourceName,
 };
-use herald_kinds::{Queue, Source};
+use herald_kinds::Queue;
 use herald_ports::{Clock, DynHttp, Http, Pulls, Store};
 
 use super::{Ports, Within};
@@ -82,21 +82,20 @@ fn pulled(event: &Event) -> Option<(PullKey, &Origin, Option<&str>)> {
     ))
 }
 
-/// The names of the areas `source` names the paths `changed` lists fall
-/// in, in the repository at `repository` merging into `base`, reading its
-/// CODEOWNERS file through `reach` where it reads areas from one, where
+/// The names of the areas the source of `codeowned` names the paths
+/// `changed` lists fall in, in the repository at `repository` merging into
+/// `base`, reading its CODEOWNERS file where it reads areas from one, where
 /// `changed` lists every path; none where it does not, or the file could
 /// not be read.
 async fn fallen<P: Pulls>(
     codeowned: &mut Codeowned<'_, P>,
-    (source, reach): (&Source, Option<Reach<'_>>),
     (repository, base, changed): (&str, Option<&str>, &Changed),
 ) -> Option<Vec<String>> {
     if !changed.whole {
         return None;
     }
     codeowned
-        .areas((source, reach), (repository, base, Some(changed)))
+        .areas((repository, base, Some(changed)))
         .await
         .ok()
         .map(names)
@@ -141,7 +140,10 @@ pub(super) async fn zoned<S: Store, C: Clock, G, H: Http>(
     let reach: Option<Reach<'_>> = queued
         .zip(http.as_ref())
         .map(|((queue, _), http)| (queue.as_ref(), http as &dyn DynHttp));
-    let mut codeowned = Codeowned::new((ports.store.pulls(), source, ports.clock.now()));
+    let mut codeowned = Codeowned::new(
+        (source, named, reach),
+        (ports.store.pulls(), ports.clock.now()),
+    );
     let held = match (kept, commit, ports.store.pulls()) {
         (true, Some(commit), Some(pulls)) => match pulls.pull(&key).await {
             Ok(Some(held)) => {
@@ -155,14 +157,7 @@ pub(super) async fn zoned<S: Store, C: Clock, G, H: Http>(
         .as_ref()
         .and_then(|pull| Some((pull.files.as_ref()?, pull.base.as_deref())))
     {
-        Some((changed, base)) => {
-            fallen(
-                &mut codeowned,
-                (named, reach),
-                (&origin.repository, base, changed),
-            )
-            .await
-        }
+        Some((changed, base)) => fallen(&mut codeowned, (&origin.repository, base, changed)).await,
         None => None,
     };
     let delivered = match reach.filter(|_| delivered) {
@@ -172,12 +167,7 @@ pub(super) async fn zoned<S: Store, C: Clock, G, H: Http>(
                     Some(Attribute::Text(base)) => Some(base.as_str()),
                     _ => None,
                 };
-                fallen(
-                    &mut codeowned,
-                    (named, reach),
-                    (&origin.repository, base, &changed),
-                )
-                .await
+                fallen(&mut codeowned, (&origin.repository, base, &changed)).await
             }
             Err(_) => None,
         },

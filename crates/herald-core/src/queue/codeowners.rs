@@ -267,14 +267,21 @@ impl Codeowners {
     pub fn within(dialect: Dialect, body: &[u8], most: (usize, usize)) -> Self {
         let (most, most_areas) = most;
         if body.len() > most {
-            return Self::refusing(
-                dialect,
-                format!(
-                    "it is longer than {most} bytes, the most the source reads; raise most_codeowners, at most {MOST_CODEOWNERS}"
-                ),
-            );
+            return Self::longer(dialect, most);
         }
         Self::read(dialect, &String::from_utf8_lossy(body), most_areas)
+    }
+
+    /// A file of `dialect`'s forge longer than the `most` bytes its source
+    /// reads, refused unread.
+    #[must_use]
+    pub fn longer(dialect: Dialect, most: usize) -> Self {
+        Self::refusing(
+            dialect,
+            format!(
+                "it is longer than {most} bytes, the most the source reads; raise most_codeowners, at most {MOST_CODEOWNERS}"
+            ),
+        )
     }
 
     /// The CODEOWNERS file `text`, written for `dialect`'s forge, read

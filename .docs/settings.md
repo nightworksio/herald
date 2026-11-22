@@ -1319,7 +1319,7 @@ A GitHub repository's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>.most_areas` | integer | The most areas the source reads a repository's table or CODEOWNERS file naming: a table naming more is refused as the config is read, a file naming more is refused whole as it is read, and doctor says so; 200 where absent, and at most 2000, since each area is a group of a board and is matched against every changed path (ADR-0074). |
-| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file read, a longer file read as none; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073). |
+| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file downloaded and read, a longer file refused unread; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073, ADR-0074). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
@@ -1441,7 +1441,7 @@ A GitLab project's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>.most_areas` | integer | The most areas the source reads a repository's table or CODEOWNERS file naming: a table naming more is refused as the config is read, a file naming more is refused whole as it is read, and doctor says so; 200 where absent, and at most 2000, since each area is a group of a board and is matched against every changed path (ADR-0074). |
-| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file read, a longer file read as none; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073). |
+| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file downloaded and read, a longer file refused unread; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073, ADR-0074). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
@@ -1563,7 +1563,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>.most_areas` | integer | The most areas the source reads a repository's table or CODEOWNERS file naming: a table naming more is refused as the config is read, a file naming more is refused whole as it is read, and doctor says so; 200 where absent, and at most 2000, since each area is a group of a board and is matched against every changed path (ADR-0074). |
-| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file read, a longer file read as none; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073). |
+| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file downloaded and read, a longer file refused unread; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073, ADR-0074). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |

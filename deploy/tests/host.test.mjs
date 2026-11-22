@@ -60,6 +60,9 @@ test("a fetch follows no redirect and sends no body with a GET", async () => {
   assert.equal(new TextDecoder().decode(moved.body), "GET ");
   const posted = await send({ method: "POST", url: `${base}/`, headers: [["x-a", "1"]], body: new TextEncoder().encode("hi"), most: 100 });
   assert.equal(new TextDecoder().decode(posted.body), "POST hi");
+  const larger = await send({ method: "POST", url: `${base}/`, headers: [], body: new TextEncoder().encode("hi"), most: 2 });
+  assert.equal(larger.larger, true);
+  assert.equal(larger.body, undefined);
   server.close();
 });
 

@@ -52,11 +52,16 @@ export function composeOnce(compose) {
   };
 }
 
+export class Larger extends Error {
+  constructor(most) {
+    super(`the response is larger than ${most} bytes`);
+  }
+}
+
 export async function capped(response, most) {
-  const larger = () => new Error(`the response is larger than ${most} bytes`);
-  if (Number(response.headers.get("content-length") ?? 0) > most) throw larger();
+  if (Number(response.headers.get("content-length") ?? 0) > most) throw new Larger(most);
   const body = await upTo(response.body, most);
-  if (body.length > most) throw larger();
+  if (body.length > most) throw new Larger(most);
   return body;
 }
 
@@ -69,11 +74,13 @@ export function fetching(fetcher = globalThis.fetch) {
       redirect: "manual",
       signal: AbortSignal.timeout(asked.timeout ?? TIMEOUT),
     });
-    return {
-      status: response.status,
-      headers: [...response.headers],
-      body: await capped(response, asked.most),
-    };
+    const answered = { status: response.status, headers: [...response.headers] };
+    try {
+      return { ...answered, body: await capped(response, asked.most) };
+    } catch (error) {
+      if (error instanceof Larger) return { ...answered, larger: true };
+      throw error;
+    }
   };
 }
 

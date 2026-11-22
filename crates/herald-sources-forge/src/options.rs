@@ -220,9 +220,9 @@ pub struct SourceOptions {
     /// applies: "base" on GitHub and GitLab, "default" on Forgejo (Gitea
     /// applies "base": set it there) (ADR-0073).
     pub codeowners_ref: Option<CodeownersRef>,
-    /// The most of a CODEOWNERS file read, a longer file read as none;
-    /// "128KiB" where absent, and at most "3MiB", GitHub's own limit
-    /// (ADR-0073).
+    /// The most of a CODEOWNERS file downloaded and read, a longer file
+    /// refused unread; "128KiB" where absent, and at most "3MiB", GitHub's
+    /// own limit (ADR-0073, ADR-0074).
     pub most_codeowners: Option<Size>,
     /// The most areas the source reads a repository's table or
     /// CODEOWNERS file naming: a table naming more is refused as the

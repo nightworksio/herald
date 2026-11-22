@@ -38,7 +38,11 @@ fn served(file: Option<String>, people: &'static [&'static str]) -> Served {
 const UNKEPT: Option<&Unkept> = None;
 
 fn keeping<P>(pulls: Option<&P>) -> Keeping<'_, P> {
-    (pulls, &FORGE, Timestamp::UNIX_EPOCH)
+    (pulls, Timestamp::UNIX_EPOCH)
+}
+
+fn reading<'a>(source: &'a Source, reach: Option<Reach<'a>>) -> Reading<'a> {
+    (&FORGE, source, reach)
 }
 
 static FORGE: std::sync::LazyLock<SourceName> =
@@ -188,14 +192,12 @@ fn each_gitlab_name_a_pull_request_names_is_looked_up_once_a_round_and_the_file_
     );
     let http = ScriptedHttp::new(Vec::new());
     let source = source();
-    let mut codeowned = Codeowned::new(keeping(UNKEPT));
     let reach: Reach<'_> = (&served, &http);
+    let mut codeowned = Codeowned::new(reading(&source, Some(reach)), keeping(UNKEPT));
     let docs = changed(&["a.md"]);
     for _ in 0..2 {
-        let areas = pollster::block_on(
-            codeowned.areas((&source, Some(reach)), ("g/p", Some("main"), Some(&docs))),
-        )
-        .unwrap();
+        let areas =
+            pollster::block_on(codeowned.areas(("g/p", Some("main"), Some(&docs)))).unwrap();
         let shown: Vec<(&str, AreaKind)> = areas
             .iter()
             .map(|area| (area.name.as_str(), area.kind))
@@ -211,8 +213,8 @@ fn each_gitlab_name_a_pull_request_names_is_looked_up_once_a_round_and_the_file_
     }
     assert_eq!(*served.read.lock().unwrap(), [Some("main".to_owned())]);
     assert_eq!(*served.looked.lock().unwrap(), ["@ana", "@gone", "@web"]);
-    let none =
-        pollster::block_on(codeowned.areas((&source, None), ("g/p", Some("dev"), Some(&docs))));
+    let mut unqueued = Codeowned::new(reading(&source, None), keeping(UNKEPT));
+    let none = pollster::block_on(unqueued.areas(("g/p", Some("dev"), Some(&docs))));
     assert_eq!(none, Err(Unpolled::Unreadable(UNQUEUED.to_owned())));
 }
 
@@ -224,13 +226,10 @@ fn only_the_first_names_of_a_file_are_looked_up() {
     let served = served(Some(format!("*.md {}\n", written.join(" "))), &[]);
     let http = ScriptedHttp::new(Vec::new());
     let source = source();
-    let mut codeowned = Codeowned::new(keeping(UNKEPT));
     let reach: Reach<'_> = (&served, &http);
-    let areas = pollster::block_on(codeowned.areas(
-        (&source, Some(reach)),
-        ("g/p", None, Some(&changed(&["a.md"]))),
-    ))
-    .unwrap();
+    let mut codeowned = Codeowned::new(reading(&source, Some(reach)), keeping(UNKEPT));
+    let areas =
+        pollster::block_on(codeowned.areas(("g/p", None, Some(&changed(&["a.md"]))))).unwrap();
     assert_eq!(served.looked.lock().unwrap().len(), MOST_CODEOWNERS_LOOKUPS);
     let last = format!("@n{MOST_CODEOWNERS_LOOKUPS}");
     assert_eq!(
@@ -254,13 +253,11 @@ fn a_file_at_no_place_names_no_area_and_the_default_branch_is_read_where_the_sou
     let served = served(None, &[]);
     let http = ScriptedHttp::new(Vec::new());
     let reach: Reach<'_> = (&served, &http);
-    let mut codeowned = Codeowned::new(keeping(UNKEPT));
     let docs = changed(&["a.md"]);
     let source = source_at(Some(herald_core::CodeownersRef::Default));
+    let mut codeowned = Codeowned::new(reading(&source, Some(reach)), keeping(UNKEPT));
     for base in ["main", "dev"] {
-        let areas = pollster::block_on(
-            codeowned.areas((&source, Some(reach)), ("g/p", Some(base), Some(&docs))),
-        );
+        let areas = pollster::block_on(codeowned.areas(("g/p", Some(base), Some(&docs))));
         assert_eq!(areas, Ok(Vec::new()));
     }
     assert_eq!(*served.read.lock().unwrap(), [None]);
@@ -272,7 +269,8 @@ fn a_file_at_no_place_names_no_area_and_the_default_branch_is_read_where_the_sou
         },
         names: None,
     });
-    let none = pollster::block_on(codeowned.areas((&plain, None), ("g/p", None, Some(&docs))));
+    let mut unzoned = Codeowned::new(reading(&plain, None), keeping(UNKEPT));
+    let none = pollster::block_on(unzoned.areas(("g/p", None, Some(&docs))));
     assert_eq!(none, Ok(Vec::new()));
 }
 
@@ -289,16 +287,14 @@ fn a_table_names_areas_by_path_and_an_owner_of_known_kind_is_looked_up_never() {
         names: None,
     });
     let docs = changed(&["a.md"]);
-    let mut codeowned = Codeowned::new(keeping(UNKEPT));
-    let areas = pollster::block_on(codeowned.areas((&tabled, None), ("g/p", None, Some(&docs))));
+    let mut by_table = Codeowned::new(reading(&tabled, None), keeping(UNKEPT));
+    let areas = pollster::block_on(by_table.areas(("g/p", None, Some(&docs))));
     assert_eq!(areas.map(names), Ok(vec!["docs".to_owned()]));
     let served = served(Some("*.md @@maintainer @g/sub\n".to_owned()), &[]);
     let http = ScriptedHttp::new(Vec::new());
-    let areas = pollster::block_on(codeowned.areas(
-        (&source(), Some((&served, &http))),
-        ("g/p", None, Some(&docs)),
-    ))
-    .unwrap();
+    let source = source();
+    let mut codeowned = Codeowned::new(reading(&source, Some((&served, &http))), keeping(UNKEPT));
+    let areas = pollster::block_on(codeowned.areas(("g/p", None, Some(&docs)))).unwrap();
     let shown: Vec<(&str, AreaKind)> = areas
         .iter()
         .map(|area| (area.name.as_str(), area.kind))
@@ -328,12 +324,10 @@ fn a_file_read_in_full_is_kept_and_asked_for_again_by_its_validator_the_next_rou
         ("g/p", "\"v2\""),
     ] {
         served.etag = Some(etag);
-        let mut codeowned = Codeowned::new(keeping(pulls));
-        let areas = pollster::block_on(codeowned.areas(
-            (&source, Some((&served, &http))),
-            (repository, Some("main"), Some(&docs)),
-        ))
-        .unwrap();
+        let mut codeowned =
+            Codeowned::new(reading(&source, Some((&served, &http))), keeping(pulls));
+        let areas =
+            pollster::block_on(codeowned.areas((repository, Some("main"), Some(&docs)))).unwrap();
         assert_eq!(names(areas), ["@ana"]);
     }
     let v1 = Some("\"v1\"".to_owned());
@@ -361,23 +355,17 @@ fn a_file_without_a_validator_or_with_no_store_is_read_in_full_each_round() {
     let store = FakeStore::default();
     let docs = changed(&["a.md"]);
     for _ in 0..2 {
-        let mut codeowned = Codeowned::new(keeping(store.pulls()));
-        pollster::block_on(codeowned.areas(
-            (&source, Some((&unvalidated, &http))),
-            ("g/p", Some("main"), Some(&docs)),
-        ))
-        .unwrap();
+        let reach: Reach<'_> = (&unvalidated, &http);
+        let mut codeowned = Codeowned::new(reading(&source, Some(reach)), keeping(store.pulls()));
+        pollster::block_on(codeowned.areas(("g/p", Some("main"), Some(&docs)))).unwrap();
     }
     assert_eq!(*unvalidated.asked.lock().unwrap(), [None, None]);
     let mut validated = served(Some("*.md @ana\n".to_owned()), &[]);
     validated.etag = Some("e");
     for _ in 0..2 {
-        let mut codeowned = Codeowned::new(keeping(UNKEPT));
-        pollster::block_on(codeowned.areas(
-            (&source, Some((&validated, &http))),
-            ("g/p", Some("main"), Some(&docs)),
-        ))
-        .unwrap();
+        let reach: Reach<'_> = (&validated, &http);
+        let mut codeowned = Codeowned::new(reading(&source, Some(reach)), keeping(UNKEPT));
+        pollster::block_on(codeowned.areas(("g/p", Some("main"), Some(&docs)))).unwrap();
     }
     assert_eq!(*validated.asked.lock().unwrap(), [None, None]);
 }
@@ -399,12 +387,46 @@ fn a_store_that_cannot_keep_the_file_leaves_it_read_in_full() {
         Err(StoreError::Unsupported { .. })
     ));
     for _ in 0..2 {
-        let mut codeowned = Codeowned::new(keeping(Some(&refusing)));
-        let areas = pollster::block_on(codeowned.areas(
-            (&source, Some((&served, &http))),
-            ("g/p", None, Some(&docs)),
-        ));
+        let reach: Reach<'_> = (&served, &http);
+        let mut codeowned = Codeowned::new(reading(&source, Some(reach)), keeping(Some(&refusing)));
+        let areas = pollster::block_on(codeowned.areas(("g/p", None, Some(&docs))));
         assert_eq!(areas.map(names), Ok(vec!["@ana".to_owned()]));
     }
     assert_eq!(*served.asked.lock().unwrap(), [None, None]);
+}
+
+#[test]
+fn a_gitlab_name_is_looked_up_on_each_source_s_own_forge_and_kept_apart_by_source() {
+    let on_one = served(Some("*.md @web\n".to_owned()), &["@web"]);
+    let on_other = served(Some("*.md @web\n".to_owned()), &[]);
+    let http = ScriptedHttp::new(Vec::new());
+    let (one, other) = (source(), source());
+    let other_name = SourceName::new("other");
+    let docs = changed(&["a.md"]);
+    let store = FakeStore::default();
+    let mut first = Codeowned::new(
+        reading(&one, Some((&on_one, &http))),
+        keeping(store.pulls()),
+    );
+    let mut second = Codeowned::new(
+        (&other_name, &other, Some((&on_other, &http))),
+        keeping(store.pulls()),
+    );
+    for _ in 0..2 {
+        for (codeowned, kind) in [
+            (&mut first, AreaKind::Person),
+            (&mut second, AreaKind::Group),
+        ] {
+            let areas = pollster::block_on(codeowned.areas(("g/p", None, Some(&docs)))).unwrap();
+            let shown: Vec<(&str, AreaKind)> = areas
+                .iter()
+                .map(|area| (area.name.as_str(), area.kind))
+                .collect();
+            assert_eq!(shown, [("@web", kind)]);
+        }
+    }
+    assert_eq!(*on_one.looked.lock().unwrap(), ["@web"]);
+    assert_eq!(*on_other.looked.lock().unwrap(), ["@web"]);
+    assert_eq!(*on_one.read.lock().unwrap(), [None]);
+    assert_eq!(*on_other.read.lock().unwrap(), [None]);
 }

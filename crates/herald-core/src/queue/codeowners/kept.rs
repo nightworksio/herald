@@ -5,7 +5,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use super::{Codeowners, Dialect, Rule, Skipped, compiled};
+use super::{Codeowners, Dialect, MOST_CODEOWNERS_LINES, Rule, Skipped, compiled};
 use crate::SourceName;
 
 /// The form a kept read is written in: a record of another form is read
@@ -90,11 +90,13 @@ impl KeptCodeowners {
     }
 
     /// The file as herald read it: none where its lines and patterns do
-    /// not pair or the patterns no longer compile together.
+    /// not pair, it holds more lines than a file is read with, the
+    /// patterns no longer compile together, or it names more areas than
+    /// it was read under.
     #[must_use]
     pub fn file(&self) -> Option<Codeowners> {
         let form = self.file.clone();
-        if form.rules.len() != form.patterns.len() {
+        if form.rules.len() != form.patterns.len() || form.rules.len() > MOST_CODEOWNERS_LINES {
             return None;
         }
         let set = if form.patterns.is_empty() {
@@ -102,14 +104,15 @@ impl KeptCodeowners {
         } else {
             Some(compiled(&form.patterns).ok()?)
         };
-        Some(Codeowners {
+        let file = Codeowners {
             dialect: form.dialect,
             rules: form.rules,
             set,
             sections: form.sections,
             skipped: form.skipped,
             refused: form.refused,
-        })
+        };
+        (file.named() <= self.most.1).then_some(file)
     }
 }
 

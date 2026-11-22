@@ -224,8 +224,7 @@ fn failed(error: reqwest::Error) -> HttpError {
 }
 
 async fn read(mut response: reqwest::Response, most: usize) -> Result<Response, HttpError> {
-    let larger =
-        || HttpError::unreachable(format_args!("the response is larger than {most} bytes"));
+    let larger = || HttpError::Larger { most };
     if response
         .content_length()
         .is_some_and(|length| usize::try_from(length).map_or(true, |length| length > most))

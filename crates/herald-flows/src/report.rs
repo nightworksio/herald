@@ -16,6 +16,7 @@ use jiff::Timestamp;
 
 use crate::announce::{Outcome, Ports, Stop, Within, announce_within};
 use crate::budget::Budgeted;
+use crate::codeowned::Codeowned;
 use crate::deciding::decided_rows;
 use crate::halted::Halted;
 use crate::poll::{Fresh, Remembered, Sweep, Swept, remembered, stored};
@@ -184,19 +185,11 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?
         };
         if let Some(source) = source {
-            let keeping = (ports.store.pulls(), name, ports.clock.now());
-            let mut codeowned = crate::codeowned::Codeowned::new(keeping);
-            for pull in &mut read {
-                let placed = (
-                    pull.repository.as_str(),
-                    pull.base.as_deref(),
-                    pull.files.as_ref(),
-                );
-                pull.areas = codeowned
-                    .areas((source, Some((queue.as_ref(), http))), placed)
-                    .await
-                    .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?;
-            }
+            let keeping = (ports.store.pulls(), ports.clock.now());
+            Codeowned::new((name, source, Some((queue.as_ref(), http))), keeping)
+                .zone(&mut read)
+                .await
+                .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?;
         }
         if let Some(capacity) = view.capacity {
             let shown = herald_core::rows(&view.view, &read, ports.clock.now());

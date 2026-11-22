@@ -547,10 +547,7 @@ fn a_key_s_document_is_read_no_further_than_the_bounds_let_it() {
     };
     assert_eq!(
         reason,
-        format!(
-            "the host could not be reached: the response is larger than {} bytes",
-            owned.len() - 1
-        )
+        format!("the response is larger than {} bytes", owned.len() - 1)
     );
 }
 

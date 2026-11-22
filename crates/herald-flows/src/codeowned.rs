@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
     Area, AreaKind, Changed, CodeOwner, CodeownersKey, CodeownersRef, KeptCodeowners,
-    MOST_CODEOWNERS_LOOKUPS, SourceName, Zoning,
+    MOST_CODEOWNERS_LOOKUPS, Pull, SourceName, Zoning,
 };
 use herald_kinds::{Codeowning, Found, Queue, Source, Unpolled};
 use herald_ports::{DynHttp, Pulls};
@@ -21,18 +21,23 @@ const UNQUEUED: &str = "the source reads no queue of pull requests to read CODEO
 /// A source's queue and the HTTP it is asked through.
 pub(crate) type Reach<'a> = (&'a dyn Queue, &'a dyn DynHttp);
 
-/// Where one source's CODEOWNERS reads are kept between rounds: the
-/// store's pull requests where it keeps them, the source's name, and when
-/// the round reads.
-pub(crate) type Keeping<'s, P> = (Option<&'s P>, &'s SourceName, Timestamp);
+/// The one source whose areas are read: its name, its settings, and its
+/// queue with the HTTP it is asked through where it reads one.
+pub(crate) type Reading<'s> = (&'s SourceName, &'s Source, Option<Reach<'s>>);
+
+/// Where a source's CODEOWNERS reads are kept between rounds: the store's
+/// pull requests where it keeps them, and when the round reads.
+pub(crate) type Keeping<'s, P> = (Option<&'s P>, Timestamp);
 
 /// What one source's CODEOWNERS reads found in a round: each file by its
 /// repository and branch, none where it is at none of the places looked
-/// at, and the kind each GitLab `@name` was looked up as.
+/// at, and the kind each GitLab `@name` was looked up as on that source's
+/// forge.
 pub(crate) struct Codeowned<'s, P> {
+    reading: Reading<'s>,
+    keeping: Keeping<'s, P>,
     files: BTreeMap<(String, Option<String>), Option<Found>>,
     names: BTreeMap<String, AreaKind>,
-    keeping: Keeping<'s, P>,
 }
 
 /// A pull request as its areas are read: its repository's full path, the
@@ -41,28 +46,31 @@ pub(crate) struct Codeowned<'s, P> {
 pub(crate) type Placed<'a> = (&'a str, Option<&'a str>, Option<&'a Changed>);
 
 impl<'s, P: Pulls> Codeowned<'s, P> {
-    /// A round's reads, kept as `keeping` says.
-    pub(crate) fn new(keeping: Keeping<'s, P>) -> Self {
+    /// A round's reads of the one source `reading` names, kept as
+    /// `keeping` says.
+    pub(crate) fn new(reading: Reading<'s>, keeping: Keeping<'s, P>) -> Self {
         Self {
+            reading,
+            keeping,
             files: BTreeMap::new(),
             names: BTreeMap::new(),
-            keeping,
         }
     }
 
-    /// The areas the pull request `placed` falls in by `source`, reading
-    /// its repository's CODEOWNERS file through `reach` where the source
-    /// reads areas from it: none where the source names no areas, the
-    /// file is at none of the places looked at, or it is refused.
+    /// The areas the pull request `placed` falls in by the source, reading
+    /// its repository's CODEOWNERS file through the source's queue where
+    /// the source reads areas from it: none where the source names no
+    /// areas, the file is at none of the places looked at, or it is
+    /// refused.
     ///
     /// # Errors
     ///
     /// Where the file is to be read and could not be.
     pub(crate) async fn areas(
         &mut self,
-        (source, reach): (&Source, Option<Reach<'_>>),
         (repository, base, changed): Placed<'_>,
     ) -> Result<Vec<Area>, Unpolled> {
+        let (_, source, reach) = self.reading;
         let Some(codeowning) = source.codeowning(repository) else {
             return Ok(match source.areas(repository) {
                 Some(Zoning::Paths(areas)) => areas.of_changed(changed),
@@ -103,6 +111,23 @@ impl<'s, P: Pulls> Codeowned<'s, P> {
         }
         Ok(found.file.areas(&owned, |name| names.get(name).copied()))
     }
+
+    /// Each of `pulls` with the areas it falls in by the source.
+    ///
+    /// # Errors
+    ///
+    /// Where a file is to be read and could not be.
+    pub(crate) async fn zone(mut self, pulls: &mut [Pull]) -> Result<(), Unpolled> {
+        for pull in pulls {
+            let placed = (
+                pull.repository.as_str(),
+                pull.base.as_deref(),
+                pull.files.as_ref(),
+            );
+            pull.areas = self.areas(placed).await?;
+        }
+        Ok(())
+    }
 }
 
 impl<P: Pulls> Codeowned<'_, P> {
@@ -117,7 +142,8 @@ impl<P: Pulls> Codeowned<'_, P> {
         (repository, reference): (&str, Option<&str>),
         codeowning: &Codeowning,
     ) -> Result<Option<Found>, Unpolled> {
-        let (pulls, source, at) = self.keeping;
+        let (pulls, at) = self.keeping;
+        let (source, ..) = self.reading;
         let key = CodeownersKey {
             source: source.clone(),
             repository: repository.to_lowercase(),

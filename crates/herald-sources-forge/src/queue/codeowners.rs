@@ -1,9 +1,11 @@
 //! A repository's CODEOWNERS file read from its forge, and a GitLab
 //! top-level `@name` looked up as a group or a person (ADR-0073).
 
-use herald_core::{AreaKind, Codeowners, Dialect, KeptCodeowners, status, unreserved};
+use herald_core::{
+    AreaKind, Codeowners, Dialect, KeptCodeowners, MOST_CODEOWNERS_READ, status, unreserved,
+};
 use herald_kinds::{Codeowning, Found, Unpolled};
-use herald_ports::{DynHttp, Erased, Http as _};
+use herald_ports::{DynHttp, Erased, Http as _, HttpError};
 use herald_wire::answered;
 
 use crate::{Forge, Origin, Token};
@@ -32,7 +34,10 @@ pub(crate) const fn dialect(forge: Forge) -> Dialect {
 /// where it is at none. The place `codeowning.1` was kept from, where it
 /// was read under the same dialect and bounds, is asked conditionally,
 /// and an unchanged file there is the kept one, neither downloaded nor
-/// read (ADR-0074).
+/// read (ADR-0074). No more of an answer is downloaded than
+/// `codeowning.most` bytes, or the bytes a file is read by default where
+/// that is more, so a forge's error answer still reads: a longer file is
+/// refused unread.
 ///
 /// # Errors
 ///
@@ -51,8 +56,19 @@ pub(crate) async fn found(
             .filter(|kept| kept.path == *path)
             .map(|kept| kept.etag.as_str());
         let answer = loop {
-            let asked = origin.file_request((path, reference), token, etag)?;
-            let answer = http.send(asked).await.map_err(Unpolled::unreachable)?;
+            let asked = origin
+                .file_request((path, reference), token, etag)?
+                .at_most(codeowning.most.max(MOST_CODEOWNERS_READ));
+            let answer = match http.send(asked).await {
+                Err(HttpError::Larger { .. }) => {
+                    return Ok(Some(Found {
+                        path: path.clone(),
+                        file: Codeowners::longer(dialect, codeowning.most),
+                        etag: None,
+                    }));
+                }
+                sent => sent.map_err(Unpolled::unreachable)?,
+            };
             if etag.is_none() || !Forge::unchanged(&answer) {
                 break answer;
             }

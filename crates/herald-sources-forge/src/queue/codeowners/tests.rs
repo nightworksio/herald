@@ -257,6 +257,67 @@ fn a_gitlab_name_is_a_person_a_group_or_a_name_by_at_most_two_lookups() {
     );
 }
 
+/// A transport refusing, as every runtime's does, an answer longer than
+/// its request reads.
+struct Capped(ScriptedHttp);
+
+impl herald_ports::Http for Capped {
+    async fn send(&self, request: herald_ports::Request) -> Result<Response, HttpError> {
+        let most = request.most;
+        let answer = self.0.send(request).await?;
+        if answer.body.len() > most {
+            return Err(HttpError::Larger { most });
+        }
+        Ok(answer)
+    }
+}
+
+#[test]
+fn no_more_of_a_file_than_the_source_reads_is_downloaded_and_a_longer_one_is_refused_unread() {
+    let most = herald_core::MOST_CODEOWNERS_READ + 16;
+    let body = format!("*.md @docs\n#{}\n", "x".repeat(most - 12));
+    let token = Token::Named(Secret::new("TOKEN", "t"));
+    let asked = |places: &Codeowning, answers: Vec<Response>| {
+        let http = Capped(ScriptedHttp::new(answers));
+        let read = pollster::block_on(found(
+            &Erased(&http),
+            (&origin(Forge::GitHub), Some(&token)),
+            None,
+            (places, None),
+        ));
+        let most: Vec<usize> = http
+            .0
+            .requests()
+            .iter()
+            .map(|request| request.most)
+            .collect();
+        (read.unwrap().unwrap(), most)
+    };
+    let (refused, read) = asked(
+        &codeowning(&["CODEOWNERS"], most),
+        vec![tagged(200, &body, "\"v1\"")],
+    );
+    assert_eq!(read, [most]);
+    assert_eq!(refused.path, "CODEOWNERS");
+    assert_eq!(refused.etag, None);
+    let longer = Codeowners::longer(Dialect::GitHub, most);
+    assert_eq!(refused.file.refused(), longer.refused());
+    let (whole, _) = asked(
+        &codeowning(&["CODEOWNERS"], most + 1),
+        vec![tagged(200, &body, "\"v1\"")],
+    );
+    assert_eq!(whole.file.refused(), None);
+    assert_eq!(whole.etag.as_deref(), Some("\"v1\""));
+    let missing = format!("{{\"message\":\"{}\"}}", "n".repeat(64));
+    let (second, read) = asked(
+        &codeowning(&[".github/CODEOWNERS", "CODEOWNERS"], 8),
+        vec![text(404, &missing), text(200, "* @a\n")],
+    );
+    let default = herald_core::MOST_CODEOWNERS_READ;
+    assert_eq!(read, [default, default]);
+    assert_eq!(second.path, "CODEOWNERS");
+}
+
 #[test]
 fn the_kept_place_is_asked_by_its_validator_and_an_unchanged_file_is_the_kept_one() {
     let places = codeowning(&[".github/CODEOWNERS", "CODEOWNERS"], 4096);

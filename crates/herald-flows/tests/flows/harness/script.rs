@@ -139,9 +139,7 @@ impl Http for Script {
             return Err(HttpError::Unconnected { reason: body });
         }
         if body.len() > request.most {
-            return Err(HttpError::Unreachable {
-                reason: format!("the response is larger than {} bytes", request.most),
-            });
+            return Err(HttpError::Larger { most: request.most });
         }
         let headers = self
             .heads

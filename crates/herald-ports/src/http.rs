@@ -438,6 +438,12 @@ pub enum HttpError {
     },
     /// The host did not answer in time.
     TimedOut,
+    /// The response's body is larger than the request reads, so none of it
+    /// is held.
+    Larger {
+        /// The most bytes the request reads.
+        most: usize,
+    },
 }
 
 impl fmt::Display for HttpError {
@@ -448,6 +454,7 @@ impl fmt::Display for HttpError {
                 write!(f, "the host could not be reached: {reason}")
             }
             Self::TimedOut => f.write_str("the host did not answer in time"),
+            Self::Larger { most } => write!(f, "the response is larger than {most} bytes"),
         }
     }
 }
@@ -847,5 +854,8 @@ mod tests {
         assert!(HttpError::Refused { url: String::new() }.unsent());
         assert!(!HttpError::unreachable("reset").unsent());
         assert!(!HttpError::TimedOut.unsent());
+        let larger = HttpError::Larger { most: 4 };
+        assert_eq!(larger.to_string(), "the response is larger than 4 bytes");
+        assert!(!larger.unsent());
     }
 }

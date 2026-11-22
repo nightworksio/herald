@@ -94,10 +94,7 @@ pub fn public_address(text: &str) -> bool {
 /// Where the body is larger.
 pub fn received(request: &Request, response: Response) -> Result<Response, HttpError> {
     if response.body.len() > request.most {
-        return Err(HttpError::unreachable(format_args!(
-            "the response is larger than {} bytes",
-            request.most
-        )));
+        return Err(HttpError::Larger { most: request.most });
     }
     Ok(response)
 }
@@ -241,9 +238,7 @@ mod tests {
         assert_eq!(received(&request, response(b"ok")), Ok(response(b"ok")));
         assert_eq!(
             received(&request, response(b"big")),
-            Err(HttpError::Unreachable {
-                reason: "the response is larger than 2 bytes".to_owned()
-            })
+            Err(HttpError::Larger { most: 2 })
         );
     }
 }
