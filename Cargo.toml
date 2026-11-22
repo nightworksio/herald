@@ -58,6 +58,7 @@ herald-wasm = { path = "crates/herald-wasm" }
 herald-wire = { path = "crates/herald-wire" }
 cargo_metadata = "0.23"
 minijinja = { version = "3", default-features = false, features = ["builtins", "fuel", "multi_template", "serde"] }
+regex = { version = "1", default-features = false, features = ["std", "unicode", "perf-dfa"] }
 quick-xml = { version = "0.42", default-features = false }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 unicode-segmentation = "1"

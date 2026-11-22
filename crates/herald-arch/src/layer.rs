@@ -84,6 +84,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "jiff",
             "minijinja",
             "pulldown-cmark",
+            "regex",
             "schemars",
             "serde",
             "serde_json",
