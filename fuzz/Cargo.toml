@@ -144,3 +144,10 @@ path = "fuzz_targets/areas.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "codeowners"
+path = "fuzz_targets/codeowners.rs"
+test = false
+doc = false
+bench = false

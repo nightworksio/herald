@@ -40,7 +40,7 @@ pub struct Areas {
 }
 
 /// Why `name` cannot name an area, where it cannot.
-fn unnamed(name: &str) -> Option<String> {
+pub(super) fn unnamed(name: &str) -> Option<String> {
     if name.trim().is_empty() || name.trim() != name {
         Some(format!(
             "\"{name}\" is no area name; give one without spaces around it"

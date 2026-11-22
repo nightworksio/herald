@@ -11,6 +11,7 @@ use crate::members::Visibility;
 
 mod advisory;
 mod area;
+mod codeowners;
 mod kept;
 mod overlap;
 mod overview;
@@ -24,6 +25,11 @@ pub use advisory::{
 };
 pub use area::{
     Areas, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS,
+};
+pub use codeowners::{
+    CodeOwner, Codeowners, Dialect, MOST_CODEOWNERS, MOST_CODEOWNERS_LINES,
+    MOST_CODEOWNERS_PATTERN, MOST_LINE_OWNERS, MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned,
+    RULES_CACHE, Skipped,
 };
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,

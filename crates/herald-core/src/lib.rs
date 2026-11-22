@@ -146,13 +146,15 @@ pub use published::{Feed, FeedItem, PeerKeys, Publication, PublishedKeys};
 pub use queue::{
     ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
     AdvisoriesFrom, Advisory, Areas, Batch, Board, Bots, CAPACITY_REPOSITORIES, Capacity, Changed,
-    Checks, Closed, Deciding, Described, Failure, Flip, Folded, Folding, GroupBy, Grouped, Head,
-    KeptPull, Lifecycle, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
-    MOST_ADVISORY_REPOSITORIES, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH,
-    MOST_AREAS, MOST_CAPACITY_REPOSITORIES, MOST_FLIPS, Mergeable, Outcome, Overviews, Printed,
-    Pull, PullKey, RECALLED, Ran, Read, Reason, Reconciled, RepositoryKey, Review, Reviewed, Row,
-    Rules, Running, Showing, Since, Surface, Triage, Turn, Unread, Verdict, View, WITHHELD,
-    advises, board, grouped, overlaps, rows,
+    Checks, Closed, CodeOwner, Codeowners, Deciding, Described, Dialect, Failure, Flip, Folded,
+    Folding, GroupBy, Grouped, Head, KeptPull, Lifecycle, MOST_ADVISED_REPORTS, MOST_ADVISORIES,
+    MOST_ADVISORIES_ALLOWED, MOST_ADVISORY_REPOSITORIES, MOST_AREA_GLOB, MOST_AREA_GLOBS,
+    MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS, MOST_CAPACITY_REPOSITORIES, MOST_CODEOWNERS,
+    MOST_CODEOWNERS_LINES, MOST_CODEOWNERS_PATTERN, MOST_FLIPS, MOST_LINE_OWNERS,
+    MOST_RULE_COMPILED, MOST_RULES_COMPILED, Mergeable, Outcome, Overviews, Owned, Printed, Pull,
+    PullKey, RECALLED, RULES_CACHE, Ran, Read, Reason, Reconciled, RepositoryKey, Review, Reviewed,
+    Row, Rules, Running, Showing, Since, Skipped, Surface, Triage, Turn, Unread, Verdict, View,
+    WITHHELD, advises, board, grouped, overlaps, rows,
 };
 pub use rate::{Per, Rate};
 pub use render::{
