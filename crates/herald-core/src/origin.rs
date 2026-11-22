@@ -39,7 +39,8 @@ pub struct Origin {
     pub visibility: Visibility,
     /// The areas of its repository the pull request it is of falls in,
     /// where every path that pull request's head changes is known; none
-    /// where they are not, which a route narrowing by areas never takes
+    /// where they are not, which a route narrowing by areas never takes.
+    /// herald alone names them: an app's are dropped as it is read
     /// (ADR-0072).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub areas: Option<Vec<String>>,

@@ -117,7 +117,7 @@
       "type": "object",
       "properties": {
         "areas": {
-          "description": "The areas of its repository the pull request it is of falls in,\nwhere every path that pull request's head changes is known; none\nwhere they are not, which a route narrowing by areas never takes\n(ADR-0072).",
+          "description": "The areas of its repository the pull request it is of falls in,\nwhere every path that pull request's head changes is known; none\nwhere they are not, which a route narrowing by areas never takes.\nherald alone names them: an app's are dropped as it is read\n(ADR-0072).",
           "type": [
             "array",
             "null"

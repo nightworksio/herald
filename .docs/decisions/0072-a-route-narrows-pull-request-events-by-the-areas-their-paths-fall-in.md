@@ -43,8 +43,14 @@ mode keeps (ADR-0061, ADR-0063), or one more request to the forge.
    event's origin, so they reach only the routes the event itself
    reaches: a private or internal repository's event, and its areas,
    only the routes said private while `[doctor] private_to_public =
-   "refuse"`. Paths are carried by no event. An app's or a peer's event
-   may name at most 200 areas.
+   "refuse"`. Paths are carried by no event.
+6. **herald alone names an event's areas.** No sender chooses them, so
+   none steers an event into an area-narrowed route or, under `not`,
+   out of one: a forge source's origins start with none and herald
+   fills them as above; an app's `origin.areas` is dropped as its event
+   is read, an app naming no areas table; a peer's envelope names only
+   the forge, host and repository of its origin. An origin read back
+   from herald's own records holds at most 200 areas.
 
 ## Consequences
 
