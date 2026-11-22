@@ -47,7 +47,7 @@ pub const MOST_RULES_COMPILED: usize = 16 * Size::MIB;
 /// [`MOST_CODEOWNERS_LINES`] lines needs about this many, and matches five
 /// times slower with half. Past it matching goes on by a slower engine,
 /// still in time linear in the path's length.
-pub const RULES_CACHE: usize = 16 * Size::MIB;
+pub const RULES_CACHE: usize = 16_777_216;
 
 /// Which forge's CODEOWNERS a file is written for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

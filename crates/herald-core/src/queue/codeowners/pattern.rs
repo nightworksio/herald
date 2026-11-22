@@ -3,6 +3,7 @@
 //! translated, a Forgejo pattern already is one.
 
 use std::fmt::Write as _;
+use std::str::Chars;
 
 /// Any run of characters within one path segment.
 const SEGMENT: &str = "[^/]*";
@@ -16,70 +17,65 @@ fn literal(out: &mut String, character: char) {
     out.push_str(&regex::escape(character.encode_utf8(&mut buffer)));
 }
 
-/// `segment`'s `*`, `?`, `[...]` classes and `\`-escaped characters, as
+/// `segment`'s `*`, `?`, `[...]` classes and `\\`-escaped characters, as
 /// a regular expression none of whose parts crosses a `/`.
 fn segment(out: &mut String, segment: &str) {
-    let characters: Vec<char> = segment.chars().collect();
-    let mut at = 0;
-    while let Some(&character) = characters.get(at) {
-        at += 1;
+    let mut characters = segment.chars();
+    while let Some(character) = characters.next() {
         match character {
             '*' => out.push_str(SEGMENT),
             '?' => out.push_str(ONE),
-            '\\' => match characters.get(at) {
-                Some(&escaped) => {
-                    literal(out, escaped);
-                    at += 1;
+            '\\' => literal(out, characters.next().unwrap_or('\\')),
+            '[' => {
+                let mut within = characters.clone();
+                match class(&mut within) {
+                    Some(written) => {
+                        out.push_str(&written);
+                        characters = within;
+                    }
+                    None => literal(out, '['),
                 }
-                None => literal(out, '\\'),
-            },
-            '[' => match class(&characters, at) {
-                Some((written, after)) => {
-                    out.push_str(&written);
-                    at = after;
-                }
-                None => literal(out, '['),
-            },
+            }
             other => literal(out, other),
         }
     }
 }
 
-/// The class opening just before `at`, as `fnmatch` reads one, and where
-/// it ends: `!` or `^` first negates it, a `]` first is one of its
-/// members, `a-z` is a range, and `\` escapes; it never takes a `/`.
-fn class(characters: &[char], mut at: usize) -> Option<(String, usize)> {
-    let negated = matches!(characters.get(at), Some('!' | '^'));
+/// The class `characters` hold up to its `]`, as `fnmatch` reads one:
+/// `!` or `^` first negates it, a `]` first is one of its members, `a-z`
+/// is a range, and `\\` escapes; it never takes a `/`. None where it never
+/// closes.
+fn class(characters: &mut Chars<'_>) -> Option<String> {
+    let mut ahead = characters.clone();
+    let negated = matches!(ahead.next(), Some('!' | '^'));
     if negated {
-        at += 1;
+        *characters = ahead;
     }
     let mut members = String::new();
     let mut first = true;
     loop {
-        let mut character = *characters.get(at)?;
-        at += 1;
+        let mut character = characters.next()?;
         if character == ']' && !first {
             break;
         }
         first = false;
         if character == '\\' {
-            character = *characters.get(at)?;
-            at += 1;
+            character = characters.next()?;
         }
         let _ = write!(members, "\\x{{{:X}}}", u32::from(character));
-        if let (Some('-'), Some(&end)) = (characters.get(at), characters.get(at + 1))
+        let mut ahead = characters.clone();
+        if let (Some('-'), Some(end)) = (ahead.next(), ahead.next())
             && end != ']'
         {
             let _ = write!(members, "-\\x{{{:X}}}", u32::from(end));
-            at += 2;
+            *characters = ahead;
         }
     }
-    let written = if negated {
+    Some(if negated {
         format!("[^{members}/]")
     } else {
         format!("[[{members}]&&[^/]]")
-    };
-    Some((written, at))
+    })
 }
 
 /// The regular expression GitHub's `pattern` matches a path by, following

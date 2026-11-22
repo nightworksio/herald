@@ -211,7 +211,6 @@ fn headed(opened: &str) -> Result<Heading, String> {
     let after = after
         .strip_prefix('[')
         .and_then(|counted| counted.split_once(']'))
-        .filter(|(count, _)| !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit()))
         .map_or(after, |(_, rest)| rest);
     Ok(Heading {
         name: name.to_owned(),
