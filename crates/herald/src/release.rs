@@ -141,17 +141,13 @@ pub(super) async fn tagged(
         tag_event_of(&origin, &http, (tag, token), rule)
             .await
             .map(Some)
-            .map_err(|unpolled| match unpolled {
-                Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason) => reason,
-            })
+            .map_err(Unpolled::into_reason)
     };
     if !signals.takes(Signal::Release) {
         return tag_event().await;
     }
     let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
-    let said = |unpolled| match unpolled {
-        Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason) => reason,
-    };
+    let said = Unpolled::into_reason;
     let request = origin.release_request(tag, token).map_err(said)?;
     let answer = asked(request).await?;
     if answer.status == herald_core::status::NOT_FOUND && signals.takes(Signal::Tag) {

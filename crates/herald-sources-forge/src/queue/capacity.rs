@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use super::{Opened, PAGE};
 use crate::Forge;
+use crate::limited::limited;
 
 /// What a listing that filled its page says of the runs it counts.
 pub const MORE: &str = "a listing held more than";
@@ -241,6 +242,9 @@ impl Opened<'_> {
         for (listing, queued, page) in &listings {
             let asked = self.origin.get(listing, self.token)?;
             let answer = http.send(asked).await.map_err(Unpolled::unreachable)?;
+            if let Some(limited) = limited(self.origin.forge(), self.runs_what(), &answer) {
+                return Err(limited);
+            }
             let refused = match (self.origin.forge(), answer.status) {
                 (Forge::Forgejo, 404) => Some(FORGEJO_UNLISTED),
                 (_, 404) => Some(UNSEEN),

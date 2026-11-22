@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
 use herald_keys::ed25519_of;
-use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted, Unpolled};
+use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted};
 use herald_ports::{Algorithm, DynHttp, Http, SecretError, Secrets, Signer, Tokens};
 use jiff::Timestamp;
 
@@ -242,11 +242,11 @@ async fn hooks<H: Http>(
         match expand.hooked(http, member, url).await {
             Ok(true) => {}
             Ok(false) => unhooked.push(member.path.as_str()),
-            Err(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason)) => {
+            Err(unpolled) => {
                 findings.gaps.push(gap(
                     &format!("{}'s webhooks", member.path),
                     format!("sources.{name}.member_hooks"),
-                    reason,
+                    unpolled.into_reason(),
                 ));
             }
         }
@@ -391,12 +391,12 @@ async fn owned<H: Http, G: Signer>(
                     .mistakes
                     .push(format!("The source {name}: {reason}."));
             }
-            Err(Unlisted::Failed(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason))) => {
+            Err(Unlisted::Failed(unpolled)) => {
                 let key = expand.owner_key();
                 findings.gaps.push(gap(
                     &format!("listing the {key} of the source \"{name}\""),
                     format!("sources.{name}.{key}"),
-                    reason,
+                    unpolled.into_reason(),
                 ));
             }
         }

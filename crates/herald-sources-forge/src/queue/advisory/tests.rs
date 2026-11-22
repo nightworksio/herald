@@ -412,6 +412,23 @@ fn a_gitlab_project_s_open_vulnerabilities_are_paged_by_cursor() {
 }
 
 #[test]
+fn a_rate_limit_stops_an_advisory_read_and_is_never_named_a_refusal() {
+    let limited = answer(403, &json!({ "message": "API rate limit exceeded" }));
+    for (forge, answer) in [
+        (Forge::GitHub, limited),
+        (Forge::GitLab, answer(429, &json!({}))),
+    ] {
+        let http = ScriptedHttp::new(vec![answer]);
+        let advising = advising(AdvisoriesFrom::Owner, (20, 1000));
+        let queue = queued(forge);
+        let queue: &dyn herald_kinds::Queue = &queue;
+        let read = queue.advisories(&http, (Asked::default(), &[]), advising);
+        let read = pollster::block_on(read);
+        assert!(matches!(read, Err(Unpolled::RateLimited(_))), "{forge:?}");
+    }
+}
+
+#[test]
 fn gitlab_answering_no_vulnerabilities_or_refusing_reads_as_unread_never_clean() {
     for refusal in [
         answer(

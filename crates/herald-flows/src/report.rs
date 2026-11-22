@@ -9,7 +9,7 @@ use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
     Advised, Advisories, Board, Cursor, Given, Identity, Listed, Loads, Overviews, Printed, Pull,
     RouteId, Row, Showing, SourceName, Surface, Teams, Unread, Visibility, advises, grouped,
-    joined, report_event, steps, teams_reach,
+    joined, report_event, steps, teams_reach, teams_reach_each,
 };
 use herald_kinds::{Asked, Queue, Scope, Teamed};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -413,7 +413,7 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     let mut shown = grouped(&part.view.view, part.rows.to_vec());
     shown.overviews = part.overviews.seen_by(part.visibility);
     shown.overviews.advisories = part.advisories;
-    let teamed = part.routes.iter().all(|id| teams_reach(config.surface(id)));
+    let teamed = teams_reach_each(part.routes.iter().map(|id| config.surface(id)));
     let unread = Teams::new();
     let teams = joined(&config.teams, if teamed { part.teams } else { &unread });
     shown.overviews.load = part

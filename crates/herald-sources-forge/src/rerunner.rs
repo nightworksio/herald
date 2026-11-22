@@ -409,11 +409,9 @@ impl ForgeRerunner {
     ) -> Result<T, Unpolled> {
         succeeded(api, self.operators(url, token), (what, self.parse))
             .await
-            .map_err(
-                |(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason))| {
-                    Unpolled::Unreadable(format!("{UNINSTALLED}: {reason}"))
-                },
-            )
+            .map_err(|unpolled| {
+                Unpolled::Unreadable(format!("{UNINSTALLED}: {}", unpolled.into_reason()))
+            })
     }
 
     /// Every installation a GitHub App's user `token` reaches, asked

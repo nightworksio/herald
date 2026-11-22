@@ -1,10 +1,11 @@
 //! What doctor finds online of each source reading its forge's own teams:
-//! a forge that refuses them, named with the permission its token needs
-//! (ADR-0077). No team, member or figure is said, since doctor's output is
+//! a forge that refuses them, named with the permission its token needs,
+//! and one whose rate limit was reached, which stops the read (ADR-0077).
+//! No team, member or figure is said, since doctor's output is
 //! no private surface.
 
 use herald_config::Config;
-use herald_kinds::Teamed;
+use herald_kinds::{Teamed, Unpolled};
 use herald_ports::{DynHttp, Http};
 
 use super::{Findings, gap};
@@ -32,7 +33,8 @@ pub async fn forge_teams<H: Http>(config: &Config, connected: &Connected<H>) -> 
             Ok(Teamed::Refused(permission)) => format!(
                 "the forge refused to list the teams of the organization or group owning its repositories, or their members, or the owner is no organization or group; its token needs {permission}. Until then each view's load counts the config's teams alone"
             ),
-            Err(_) => "the forge's teams could not be read, so a view showing its load stops where it reads them".to_owned(),
+            Err(Unpolled::RateLimited(_)) => "the forge's rate limit was reached reading its teams, so a view showing its load stops where it reads them until the limit resets, and never counts the config's teams in their place".to_owned(),
+            Err(Unpolled::Unreachable(_) | Unpolled::Unreadable(_)) => "the forge's teams could not be read, so a view showing its load stops where it reads them".to_owned(),
         };
         findings.gaps.push(gap(
             &format!("reading the teams of the source \"{name}\""),

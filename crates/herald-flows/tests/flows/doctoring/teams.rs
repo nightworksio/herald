@@ -1,6 +1,6 @@
 //! What doctor finds online of each source reading its forge's teams: a
-//! forge refusing them named with the permission, and no team, member or
-//! figure said (ADR-0077).
+//! forge refusing them named with the permission, one whose rate limit was
+//! reached said apart, and no team, member or figure said (ADR-0077).
 
 use herald_config::Uses;
 use herald_flows::{forge_teams, prepare};
@@ -10,7 +10,7 @@ use super::loaded;
 use crate::harness::{Script, UNCONNECTED, secrets};
 
 #[test]
-fn doctor_names_the_permission_a_forge_refusing_its_teams_needs_and_says_no_team() {
+fn doctor_names_the_permission_a_forge_refusing_its_teams_needs_a_rate_limit_and_says_no_team() {
     let config = loaded(
         r#"version = 1
 [store]
@@ -36,6 +36,11 @@ repository = "d/w"
 api = "https://gitlab.example/api/v4"
 teams = "forge"
 token = { secret = "HERALD_FORGE_TOKEN" }
+[sources.e]
+kind = "github"
+repository = "e/v"
+teams = "forge"
+token = { secret = "HERALD_FORGE_TOKEN" }
 "#,
     );
     let script = Script::answering(&[
@@ -55,6 +60,11 @@ token = { secret = "HERALD_FORGE_TOKEN" }
             UNCONNECTED,
             "down",
         ),
+        (
+            "/orgs/e/teams?per_page=100&page=1",
+            403,
+            r#"{"message":"API rate limit exceeded for installation ID 7."}"#,
+        ),
     ]);
     let secrets = secrets().with("HERALD_FORGE_TOKEN", "t");
     let prepared =
@@ -62,7 +72,10 @@ token = { secret = "HERALD_FORGE_TOKEN" }
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let found = pollster::block_on(forge_teams(&config, &connected));
     let keys: Vec<&str> = found.gaps.iter().map(|gap| gap.key.as_str()).collect();
-    assert_eq!(keys, ["sources.a.teams", "sources.d.teams"]);
+    assert_eq!(
+        keys,
+        ["sources.a.teams", "sources.d.teams", "sources.e.teams"]
+    );
     assert!(
         found.gaps[0].why.contains("read:org")
             && found.gaps[0].why.contains("config's teams alone"),
@@ -74,11 +87,19 @@ token = { secret = "HERALD_FORGE_TOKEN" }
         "{}",
         found.gaps[1].why
     );
+    assert!(
+        found.gaps[2].why.contains("rate limit was reached")
+            && found.gaps[2]
+                .why
+                .contains("never counts the config's teams"),
+        "{}",
+        found.gaps[2].why
+    );
     assert_eq!(
         found.notes,
         ["The source b reads its forge's teams for each view showing its load."]
     );
     let said = format!("{found:?}");
     assert!(!said.contains("secret"), "{said}");
-    assert_eq!(script.seen().len(), 4);
+    assert_eq!(script.seen().len(), 5);
 }

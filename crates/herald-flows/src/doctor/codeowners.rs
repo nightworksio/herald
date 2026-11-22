@@ -122,6 +122,11 @@ fn said(
                 "The source {name} could not read its CODEOWNERS file: its forge's answer could not be read."
             )];
         }
+        Err(Unpolled::RateLimited(_)) => {
+            return vec![format!(
+                "The source {name} could not read its CODEOWNERS file: its forge's rate limit was reached."
+            )];
+        }
     };
     let path = found.path.as_str();
     if let Some(why) = found.file.refused() {

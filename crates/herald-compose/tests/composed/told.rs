@@ -356,6 +356,7 @@ fn a_chore_says_what_became_of_its_thread() {
 fn a_stop_says_why_and_steps_are_named() {
     assert_eq!(told::why(&Stop::Source("down".to_owned())), "down");
     assert_eq!(told::why(&Stop::Limit("near".to_owned())), "near");
+    assert_eq!(told::why(&Stop::RateLimited("spent".to_owned())), "spent");
     assert_eq!(told::why(&Stop::Unread("unread".to_owned())), "unread");
     assert_eq!(
         told::steps(&[

@@ -46,6 +46,7 @@ impl Halted {
             Stop::Marker(_) => Stop::Marker(short("a marker could not be computed")),
             Stop::Proof(_) => Stop::Proof(short("an envelope could not be proved")),
             Stop::Source(_) => Stop::Source(short("its forge's answer could not be read")),
+            Stop::RateLimited(_) => Stop::RateLimited(short("its forge's rate limit was reached")),
             Stop::Limit(_) => Stop::Limit(short("the run's limit on time or requests was near")),
         }
     }
@@ -71,6 +72,7 @@ mod tests {
             Stop::Marker(NAMED.to_owned()),
             Stop::Proof(NAMED.to_owned()),
             Stop::Source(NAMED.to_owned()),
+            Stop::RateLimited(NAMED.to_owned()),
             Stop::Limit(NAMED.to_owned()),
         ];
         let mut kinds = Vec::new();
@@ -90,7 +92,10 @@ mod tests {
             kinds.push(text);
         }
         kinds.dedup();
-        assert_eq!(kinds.len(), 9);
+        assert_eq!(kinds.len(), 10);
+        assert!(kinds[8].ends_with(&format!(
+            "could not be read: its forge's rate limit was reached; {UNSAID_FAILURE}\")"
+        )));
         let after = Stop::RetryAfter(SignedDuration::from_secs(5));
         assert_eq!(
             Halted::of(&source, after.clone()).said(Printed::Withheld),

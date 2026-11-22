@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::forge::{OWNER, whole};
+use crate::limited::limited;
 use crate::{Forge, Origin, Token};
 
 /// What a forge's listing of teams is called in an error.
@@ -70,7 +71,7 @@ pub(crate) fn note(forge: Forge) -> String {
         Forge::Forgejo => "its organization's teams, each named org/team",
     };
     format!(
-        "reads {which}, for each view showing its load, each round it is read: at most {MOST_FORGE_TEAMS} teams, each with at most {MOST_TEAM_MEMBERS} members, by at most {} requests, none conditional, since herald keeps no team. Their members' logins are held for the round alone, to tell which team a review request or a review counts for, and are never shown or kept; a team the config names keeps the config's members. A forge team's name and figures reach only a route that says private = true and herald queue with --private or [cli] private. Its token needs {}; a forge that refuses leaves the load to the config's teams, so an area only a forge team gives members to folds, and herald doctor --online names the permission.",
+        "reads {which}, for each view showing its load, each round it is read: at most {MOST_FORGE_TEAMS} teams, each with at most {MOST_TEAM_MEMBERS} members, by at most {} requests, none conditional, since herald keeps no team. Their members' logins are held for the round alone, to tell which team a review request or a review counts for, and are never shown or kept; a team the config names keeps the config's members. A forge team's name and figures reach only a route that says private = true and herald queue with --private or [cli] private. Its token needs {}; a forge that refuses leaves the load to the config's teams, so an area only a forge team gives members to folds, and herald doctor --online names the permission; a forge whose rate limit is reached stops the view's read until the limit resets, never folding.",
         cost(forge),
         permission(forge)
     )
@@ -144,6 +145,9 @@ async fn paged<T: DeserializeOwned>(
         let answer = http.send(request).await.map_err(|_| {
             Unpolled::Unreachable(format!("the forge's {what} could not be reached"))
         })?;
+        if let Some(limited) = limited(forge, what, &answer) {
+            return Err(limited);
+        }
         if REFUSED.contains(&answer.status) {
             return Ok(None);
         }
