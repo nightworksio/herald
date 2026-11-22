@@ -603,3 +603,41 @@ members = ["fay", "FAY@github.com"]
         .unwrap();
     assert!(whole.ends_with("toward \"other\"."), "{whole}");
 }
+
+#[test]
+fn doctor_says_a_source_reading_its_forge_s_teams_costs_reaches_private_surfaces_alone_and_needs_a_permission()
+ {
+    let text = |teams: &str, load: &str| {
+        format!(
+            r#"version = 1
+[store]
+kind = "sqlite"
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+api = "https://ghe.example/api/v3"
+teams = "{teams}"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+[views.queue]
+{load}
+[reports.daily]
+"#
+        )
+    };
+    let note = |teams: &str, load: &str| {
+        on(&loaded(&text(teams, load)), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .find(|note| note.starts_with("The source graphed reads"))
+    };
+    let said = note("forge", "load = {}").unwrap();
+    assert!(
+        said.contains("at most 100 teams, each with at most 500 members, by at most 501 requests")
+            && said.contains("only a route that says private = true and herald queue with --private or [cli] private")
+            && said.contains("read:org")
+            && said.contains("GitHub Enterprise Server and GHE.com"),
+        "{said}"
+    );
+    assert_eq!(note("config", "load = {}"), None);
+    assert_eq!(note("forge", ""), None);
+}

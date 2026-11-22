@@ -131,6 +131,27 @@ pub const fn advises(surface: Surface) -> bool {
     }
 }
 
+/// Whether a forge's own teams may count toward a load leaving herald
+/// through `surface`: who is in an organization's teams is the
+/// organization's, and can be secret, whatever repository a row is of, so
+/// only where the surface itself says it is private: a route that says
+/// `private = true`, and `herald queue` with `--private` or `[cli] private`
+/// (ADR-0077).
+#[must_use]
+pub const fn teams_reach(surface: Surface) -> bool {
+    match surface {
+        Surface::Route { private, .. } => private,
+        Surface::Queue { private } => !matches!(private, Printed::Withheld),
+        Surface::Digest
+        | Surface::Feed
+        | Surface::Push
+        | Surface::Rule
+        | Surface::Told
+        | Surface::Doctor
+        | Surface::Api => false,
+    }
+}
+
 /// How private the operator said `herald queue`'s or `herald rerun`'s
 /// output is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

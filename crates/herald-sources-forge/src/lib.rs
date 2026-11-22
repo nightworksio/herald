@@ -43,8 +43,8 @@ pub use options::{
     ISSUE_ACTIONS, IssueAction, Issues, KEEP_MEMBERS, KEY, MOST_CODEOWNERS_PATH,
     MOST_CODEOWNERS_PATHS, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, MemberHooks, Members,
     Override, PULL_ACTIONS, PackageVisibility, PullAction, Pulls, RUN_ACTIONS, RUN_FROM, RunAction,
-    RunFrom, Runs, Severity, SignIn, Signals, SourceOptions, TAG_WINDOW, Tool, Transport, Values,
-    Write,
+    RunFrom, Runs, Severity, SignIn, Signals, SourceOptions, TAG_WINDOW, TeamsFrom, Tool,
+    Transport, Values, Write,
 };
 pub use polled::tag_event_of;
 pub use queue::{MOST_OPEN, MOST_PULLS, Opened, PAGE, PER_PULL, Queued, ReadPath, cost};

@@ -681,3 +681,23 @@ fn an_owner_s_member_reads_its_own_codeowners_and_names_are_looked_up_under_the_
         ]
     );
 }
+
+#[test]
+fn an_owner_source_reads_its_owner_s_teams_once_under_its_api() {
+    let scoped = scoped(Forge::GitHub, true);
+    assert_eq!(scoped.team_owner(), "https://api.github.com o");
+    let http = ScriptedHttp::new(vec![answer(403, &json!({}))]);
+    assert_eq!(
+        pollster::block_on(scoped.teams(&http)),
+        Ok(herald_kinds::Teamed::Refused(
+            super::super::teams::permission(Forge::GitHub)
+        ))
+    );
+    assert_eq!(
+        http.asked()
+            .into_iter()
+            .map(|(url, _)| url)
+            .collect::<Vec<_>>(),
+        ["https://api.github.com/orgs/o/teams?per_page=100&page=1"]
+    );
+}

@@ -777,6 +777,8 @@ fn a_pull_reaches_its_feed_s_origin_alone_and_checks_nothing_of_its_own() {
     assert_eq!(plain.codeowning("o/r"), None);
     assert!(!plain.codeowned());
     assert_eq!(plain.codeowners_notes(), Vec::<String>::new());
+    assert!(!plain.forge_teams());
+    assert_eq!(plain.teams_note(), None);
     assert_eq!(
         crate::Most::default(),
         crate::Most {

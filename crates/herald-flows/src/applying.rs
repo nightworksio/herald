@@ -151,7 +151,7 @@ pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
         .filter_map(|(name, rule)| Some((name, rule, config.views.get(&rule.watch.view)?)));
     for (name, rule, view) in viewed {
         let sources = sources(connected, view)?;
-        let read = read_pulls((config, &sources, ports), view)
+        let read = read_pulls((config, &sources, ports), (view, false))
             .await
             .map_err(|halted| halted.said(printed))?;
         let (pulls, held) = printed.printed(read.pulls);

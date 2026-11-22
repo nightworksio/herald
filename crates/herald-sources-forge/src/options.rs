@@ -28,6 +28,7 @@ pub use pulls::{PULL_ACTIONS, PullAction, Pulls};
 pub(crate) use runs::RunChoice;
 pub use runs::{Conclusion, RUN_ACTIONS, RUN_FROM, RunAction, RunFrom, Runs};
 pub use signals::{EDITS_DEPTH, Signals, TAG_WINDOW};
+pub use teams::TeamsFrom;
 pub use transport::{FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, Transport};
 pub use write::{
     FORGEJO_UNWRITTEN, GITHUB_SCOPES, GITLAB_SCOPES, SignIn, Write, read_only, unread,
@@ -231,6 +232,24 @@ pub struct SourceOptions {
     /// area is a group of a board and is matched against every changed
     /// path (ADR-0074).
     pub most_areas: Option<usize>,
+    /// Where the teams a view's load counts come from: the config's
+    /// `[teams.<name>]` alone ("config"), or also the forge's own teams of
+    /// the organization or group owning the source's repositories
+    /// ("forge"), a team the config names keeping the config's members.
+    /// Each round a view showing its load reads the source, it reads at
+    /// most 100 teams, each with at most 500 members, by one request a
+    /// page; the members' logins are held for the round alone, never shown
+    /// or kept, and a forge team's name and figures reach only a route that
+    /// says `private = true` and `herald queue` with `--private` or
+    /// `[cli] private`. GitHub's teams are each `org/team`, needing
+    /// Members: read as a GitHub App or fine-grained token, or `read:org` as
+    /// a classic token, on GitHub Enterprise Server and GHE.com too;
+    /// GitLab's are the group and each group under it, by full path,
+    /// needing `read_api`, self-managed included; Forgejo's and Gitea's are
+    /// each `org/team`, needing `read:organization`. A forge that refuses folds
+    /// the load as "config" does, and `herald doctor --online` names the
+    /// permission; "config" where absent (ADR-0077).
+    pub teams: Option<TeamsFrom>,
     /// How an owner source finds the repositories that join or leave it:
     /// listing the owner each round ("list"), or only where it holds no
     /// listing, its selection changed or a delivery said the owner's
@@ -497,6 +516,7 @@ mod packages;
 mod pulls;
 mod runs;
 mod signals;
+mod teams;
 #[cfg(test)]
 mod tests;
 mod transport;

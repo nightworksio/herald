@@ -40,6 +40,11 @@ pub const MOST_TEAM_MEMBERS: usize = 500;
 /// The most characters a member's login holds, GitLab's longest username.
 pub const MOST_LOGIN: usize = 255;
 
+/// The most teams one source reads of its forge where it says
+/// `teams = "forge"`, each with at most [`MOST_TEAM_MEMBERS`] members
+/// (ADR-0077).
+pub const MOST_FORGE_TEAMS: usize = 100;
+
 /// How a view counts its load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Load {
@@ -114,7 +119,8 @@ impl TeamMember {
     }
 }
 
-/// A team the config names: its members.
+/// A team the config names, or one a forge read for the round: its
+/// members.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Team {
     members: BTreeSet<TeamMember>,
@@ -158,13 +164,28 @@ impl Team {
     }
 }
 
-/// The teams a config names, by name.
+/// Teams, by name.
 pub type Teams = BTreeMap<String, Team>;
 
 /// `name` as a team, an area and a review request compare it: without its
 /// leading `@`s and case.
 fn bare(name: &str) -> String {
     name.trim_start_matches('@').to_lowercase()
+}
+
+/// The teams of `config`, and each team of `forge` none of them is named as,
+/// compared as a review request names a team: a team the config names is
+/// the config's whatever the forge says, and of two forge teams of one
+/// name the first in name order (ADR-0077).
+#[must_use]
+pub fn joined(config: &Teams, forge: &Teams) -> Teams {
+    let mut teams = config.clone();
+    for (name, team) in forge {
+        if !teams.keys().any(|named| bare(named) == bare(name)) {
+            teams.insert(name.clone(), team.clone());
+        }
+    }
+    teams
 }
 
 /// The reviews kept mode saw given on each open pull request a view read,

@@ -287,6 +287,18 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         BTreeSet::new()
     }
 
+    /// Whether a view showing its load reads its forge's own teams beside
+    /// the config's (ADR-0077).
+    fn forge_teams(&self) -> bool {
+        false
+    }
+
+    /// What doctor says of how it reads its forge's own teams, where it
+    /// reads them, after its name (ADR-0077).
+    fn teams_note(&self) -> Option<String> {
+        None
+    }
+
     /// What polls it, reading with `token` where it has one, and watching
     /// what it announced for an edit where `edits` says a route edits its
     /// posts (ADR-0034).

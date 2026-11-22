@@ -81,6 +81,33 @@ fn every_surface_is_listed_once_and_decided() {
 }
 
 #[test]
+fn a_forge_s_teams_reach_a_private_route_and_a_queue_said_private_alone() {
+    let reached: Vec<Surface> = Surface::ALL
+        .into_iter()
+        .filter(|s| teams_reach(*s))
+        .collect();
+    assert_eq!(
+        reached,
+        [
+            Surface::Route {
+                private: true,
+                recallable: true,
+            },
+            Surface::Route {
+                private: true,
+                recallable: false,
+            },
+            Surface::Queue {
+                private: Printed::Asked
+            },
+            Surface::Queue {
+                private: Printed::Configured
+            },
+        ]
+    );
+}
+
+#[test]
 fn a_section_is_shown_to_a_private_surface_alone_and_withheld_whole_elsewhere() {
     let found = found();
     for surface in Surface::ALL {

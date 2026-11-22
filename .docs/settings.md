@@ -1368,6 +1368,7 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
+| `sources.<name>.teams` | [TeamsFrom](#teamsfrom) | Where the teams a view's load counts come from: the config's `[teams.<name>]` alone ("config"), or also the forge's own teams of the organization or group owning the source's repositories ("forge"), a team the config names keeping the config's members. Each round a view showing its load reads the source, it reads at most 100 teams, each with at most 500 members, by one request a page; the members' logins are held for the round alone, never shown or kept, and a forge team's name and figures reach only a route that says `private = true` and `herald queue` with `--private` or `[cli] private`. GitHub's teams are each `org/team`, needing Members: read as a GitHub App or fine-grained token, or `read:org` as a classic token, on GitHub Enterprise Server and GHE.com too; GitLab's are the group and each group under it, by full path, needing `read_api`, self-managed included; Forgejo's and Gitea's are each `org/team`, needing `read:organization`. A forge that refuses folds the load as "config" does, and `herald doctor --online` names the permission; "config" where absent (ADR-0077). |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
@@ -1490,6 +1491,7 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
+| `sources.<name>.teams` | [TeamsFrom](#teamsfrom) | Where the teams a view's load counts come from: the config's `[teams.<name>]` alone ("config"), or also the forge's own teams of the organization or group owning the source's repositories ("forge"), a team the config names keeping the config's members. Each round a view showing its load reads the source, it reads at most 100 teams, each with at most 500 members, by one request a page; the members' logins are held for the round alone, never shown or kept, and a forge team's name and figures reach only a route that says `private = true` and `herald queue` with `--private` or `[cli] private`. GitHub's teams are each `org/team`, needing Members: read as a GitHub App or fine-grained token, or `read:org` as a classic token, on GitHub Enterprise Server and GHE.com too; GitLab's are the group and each group under it, by full path, needing `read_api`, self-managed included; Forgejo's and Gitea's are each `org/team`, needing `read:organization`. A forge that refuses folds the load as "config" does, and `herald doctor --online` names the permission; "config" where absent (ADR-0077). |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
@@ -1612,6 +1614,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
+| `sources.<name>.teams` | [TeamsFrom](#teamsfrom) | Where the teams a view's load counts come from: the config's `[teams.<name>]` alone ("config"), or also the forge's own teams of the organization or group owning the source's repositories ("forge"), a team the config names keeping the config's members. Each round a view showing its load reads the source, it reads at most 100 teams, each with at most 500 members, by one request a page; the members' logins are held for the round alone, never shown or kept, and a forge team's name and figures reach only a route that says `private = true` and `herald queue` with `--private` or `[cli] private`. GitHub's teams are each `org/team`, needing Members: read as a GitHub App or fine-grained token, or `read:org` as a classic token, on GitHub Enterprise Server and GHE.com too; GitLab's are the group and each group under it, by full path, needing `read_api`, self-managed included; Forgejo's and Gitea's are each `org/team`, needing `read:organization`. A forge that refuses folds the load as "config" does, and `herald doctor --online` names the permission; "config" where absent (ADR-0077). |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
@@ -2437,6 +2440,10 @@ How Docker Hub lists a repository's tags.
 ### Taking
 
 What a token an entry takes may do.
+
+### TeamsFrom
+
+Where the teams a view's load counts come from.
 
 ### TokenAlgorithm
 
