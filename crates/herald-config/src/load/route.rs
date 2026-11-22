@@ -147,7 +147,6 @@ impl Loader<'_> {
         let repositories = globs(file.repositories, "repositories");
         let owners = globs(file.owners, "owners");
         let areas = self.areas(file.areas, at, known);
-        sound &= areas.is_some();
         let attributes = file.attributes.map_or_else(BTreeMap::new, |attributes| {
             let span = attributes.span();
             let attributes = attributes.into_inner();
@@ -170,6 +169,7 @@ impl Loader<'_> {
             }
             attributes
         });
+        let areas = areas?;
         sound.then_some(Match {
             projects,
             repositories,
@@ -179,7 +179,7 @@ impl Loader<'_> {
             topics: file.topics,
             properties: file.properties,
             attributes,
-            areas: areas.unwrap_or_default(),
+            areas,
             not: None,
         })
     }
