@@ -73,6 +73,17 @@ fn a_repository_reads_codeowners_as_its_narrowest_override_says_or_its_forge_doe
         })
     );
     assert!(!owner("acme").codeowned());
+    let plain = crate::ForgeSource {
+        forge: Forge::GitHub,
+        options: SourceOptions {
+            repository: Some("acme/site".to_owned()),
+            ..SourceOptions::default()
+        },
+        names: None,
+    };
+    let plain: &dyn herald_kinds::SourceConfig = &plain;
+    assert!(!plain.codeowned());
+    assert_eq!(plain.codeowning("acme/site"), None);
 }
 
 #[test]

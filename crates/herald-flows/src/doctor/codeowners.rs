@@ -20,14 +20,12 @@ pub async fn codeowners<H: Http>(config: &Config, connected: &Connected<H>) -> F
     let mut findings = Findings::default();
     for (prepared, http) in &connected.sources {
         let name = prepared.name.as_str();
-        let Some(source) = config
+        let Some((source, queue)) = config
             .sources
             .get(&prepared.name)
             .filter(|source| source.codeowned())
+            .zip(prepared.queue.as_ref())
         else {
-            continue;
-        };
-        let Some(queue) = &prepared.queue else {
             continue;
         };
         let Some(repository) = queue.repository() else {
@@ -36,13 +34,12 @@ pub async fn codeowners<H: Http>(config: &Config, connected: &Connected<H>) -> F
             ));
             continue;
         };
-        let Some(codeowning) = source.codeowning(repository) else {
-            continue;
-        };
-        let read = queue
-            .codeowners(http as &dyn DynHttp, (repository, None), &codeowning)
-            .await;
-        findings.notes.extend(said(name, read, &codeowning.paths));
+        if let Some(codeowning) = source.codeowning(repository) {
+            let read = queue
+                .codeowners(http as &dyn DynHttp, (repository, None), &codeowning)
+                .await;
+            findings.notes.extend(said(name, read, &codeowning.paths));
+        }
     }
     findings
 }
