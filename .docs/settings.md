@@ -2076,6 +2076,14 @@ The closed-set questions views ask of models where their rules cannot tell, by n
 | `tasks.<name>.options` | table | The options it may be answered with, each a key and what it means. |
 | `tasks.<name>.options.<name>` | string |  |
 
+## `teams`
+
+The teams a view's load counts, by name: each named as a review request and a CODEOWNERS file name it, such as `org/team`, at most 200.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `teams.<name>.members` | array of string | Its members, each a login, or `login@host` for one forge's login alone, at most 500. |
+
 ## `templates`
 
 The templates routes render with, by name.
@@ -2136,6 +2144,10 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.group_by` | [GroupBy](#groupby) | What it groups its rows by: "turn" where absent. |
 | `views.<name>.labels` | array of string | The labels, any one of which a pull request it shows carries, each a glob ignoring case; every pull request where empty. |
 | `views.<name>.listed_visibility` | boolean | Whether a live read through a REST listing without a token, as of GitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may see a repository from what the listing states of it, rather than taking each of its rows as private: false where absent. It never widens a kept record, a read with a token, a GitLab listing, or an owner's rows, which its membership record names. |
+| `views.<name>.load` | table | Its load overview, per team and per area and never per person: the review requests open now on the rows it shows, and the reviews given on them over `window` where every source is read kept. Off where absent; `load = {}` shows it as shipped. |
+| `views.<name>.load.least_team` | integer | The fewest people a team or an area is shown by name with: 3 where absent, from 3 to 50. A team of fewer members, a person's area, a GitLab name no lookup told apart, and a team, group or role area of fewer known members fold into "other", which shows only where the people folded into it are as many. |
+| `views.<name>.load.unknown_teams` | boolean | Whether a team, group or role area that no `[teams.<name>]` of its name gives members to is shown as it is: false where absent, and it folds. Such an area may be one person. A person's area always folds. |
+| `views.<name>.load.window` | [Duration](#duration) | How far back reviews given count: "7d" where absent, from "1d" to "90d". |
 | `views.<name>.mode` | [ViewMode](#viewmode) | Where it reads its pull requests: "auto" where absent, kept of each source that takes webhooks where the store keeps pull requests and live otherwise; "live" from the forge each time; or "kept" from the records the store keeps, folded from webhooks and reconciled with a listing. |
 | `views.<name>.most_advisories` | integer | The most open advisories its overview reads, a page of 100 a request: 1000 where absent, at most 10000. Past it the section says more were open. |
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |

@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::{Config, ViewConfig, ViewMode};
 use herald_core::{
-    Folded, Folding, KeptPull, Pull, PullKey, Reconciled, RepositoryKey, SourceName, Visibility,
+    Folded, Folding, Given, KeptPull, Pull, PullKey, Reconciled, RepositoryKey, SourceName,
+    Visibility,
 };
 use herald_kinds::{Asked, Expand, Queue, Relisted, Scope};
 use herald_ports::{Clock, Cursors, Pulls, Signer, Store, StoreError, Version, Versioned, Written};
@@ -63,12 +64,13 @@ pub(crate) fn folds<S: Store>((config, store): (&Config, &S), source: &SourceNam
 /// through `queue` and `http`, at most `view.most.pulls` where `detailed`
 /// says each takes requests of its own. An owner source's are those of the
 /// repositories `asked.scope` holds, each seen as its membership record
-/// says where that is stricter (ADR-0062).
+/// says where that is stricter (ADR-0062). Beside them, the reviews kept on
+/// each (ADR-0075).
 pub(crate) async fn kept_pulls<S: Store, C: Clock, G: Signer, H: Halting>(
     ports: &Ports<'_, S, C, G>,
     (source, queue, http): (&SourceName, &dyn Queue, &H),
     (view, asked, detailed): (&ViewConfig, Asked<'_>, bool),
-) -> Result<Vec<Pull>, Stop> {
+) -> Result<(Vec<Pull>, Given), Stop> {
     let pulls = ports
         .store
         .pulls()
@@ -94,12 +96,20 @@ pub(crate) async fn kept_pulls<S: Store, C: Clock, G: Signer, H: Halting>(
         open.extend(
             kept.into_iter()
                 .filter(|kept| kept.value.open())
-                .map(|kept| narrowed(kept.value, seen).pull),
+                .map(|kept| narrowed(kept.value, seen)),
         );
     }
-    open.sort_by_key(|pull| std::cmp::Reverse(pull.updated));
+    open.sort_by_key(|kept| std::cmp::Reverse(kept.pull.updated));
     open.truncate(view.most.open);
-    Ok(open)
+    let mut given = Given::default();
+    let open = open
+        .into_iter()
+        .map(|kept| {
+            given.add(&kept.pull, &kept.reviews);
+            kept.pull
+        })
+        .collect();
+    Ok((open, given))
 }
 
 /// The repositories `held` names that a view reads, each with who its

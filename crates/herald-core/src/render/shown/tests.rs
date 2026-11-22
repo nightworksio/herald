@@ -352,7 +352,10 @@ fn a_private_surface_reads_each_advisory_by_its_allowlist() {
         board: &board,
     });
     let overviews = value.get_attr("overviews").unwrap();
-    assert_eq!(keys(&overviews), ["advisories", "capacity", "unread"]);
+    assert_eq!(
+        keys(&overviews),
+        ["advisories", "capacity", "load", "unread"]
+    );
     let advisories = overviews.get_attr("advisories").unwrap();
     assert_eq!(keys(&advisories), ["count", "more", "open", "unread"]);
     assert_eq!(advisories.get_attr("count").unwrap().to_string(), "1");
@@ -394,7 +397,7 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
         board: &board,
     });
     let overviews = value.get_attr("overviews").unwrap();
-    assert_eq!(keys(&overviews), ["capacity", "unread", "withheld"]);
+    assert_eq!(keys(&overviews), ["capacity", "load", "unread", "withheld"]);
     assert_eq!(
         overviews.get_attr("withheld").unwrap().to_string(),
         crate::queue::WITHHELD
@@ -406,7 +409,7 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
     });
     assert_eq!(
         keys(&plain.get_attr("overviews").unwrap()),
-        ["capacity", "unread"]
+        ["capacity", "load", "unread"]
     );
 }
 
@@ -439,4 +442,77 @@ fn a_row_names_each_area_with_its_kind() {
             { "name": "web", "kind": "paths" }
         ])
     );
+}
+
+#[test]
+fn a_view_shows_its_load_by_team_and_area_with_its_allowlisted_keys() {
+    use crate::queue::{Area, AreaKind, Loaded, Loads};
+    let mut board = shown();
+    let load = |board: &Board| {
+        view_value(Showing {
+            view: "queue",
+            board,
+        })
+        .get_attr("overviews")
+        .unwrap()
+        .get_attr("load")
+        .unwrap()
+    };
+    assert!(load(&board).is_none());
+    let count = Loaded {
+        requested: 4,
+        reviewed: 2,
+    };
+    board.overviews.load = Some(Loads {
+        teams: vec![("acme/platform".to_owned(), count)],
+        areas: vec![(
+            Area {
+                name: "backend".to_owned(),
+                kind: AreaKind::Paths,
+            },
+            count,
+        )],
+        other: Some(count),
+        reviewed: true,
+    });
+    let shown = load(&board);
+    assert_eq!(keys(&shown), ["areas", "other", "teams"]);
+    let team = shown
+        .get_attr("teams")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert_eq!(keys(&team), ["name", "requested", "reviewed"]);
+    let area = shown
+        .get_attr("areas")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert_eq!(keys(&area), ["kind", "name", "requested", "reviewed"]);
+    let read: Vec<String> = [
+        team.get_attr("name"),
+        team.get_attr("requested"),
+        team.get_attr("reviewed"),
+        area.get_attr("name"),
+        area.get_attr("kind"),
+        shown.get_attr("other").unwrap().get_attr("reviewed"),
+    ]
+    .into_iter()
+    .map(|value| value.unwrap().to_string())
+    .collect();
+    assert_eq!(read, ["acme/platform", "4", "2", "backend", "paths", "2"]);
+    board.overviews.load = Some(Loads {
+        other: None,
+        reviewed: false,
+        ..board.overviews.load.clone().unwrap()
+    });
+    let live = load(&board);
+    assert!(live.get_attr("other").unwrap().is_none());
+    let team = live
+        .get_attr("teams")
+        .unwrap()
+        .get_item_by_index(0)
+        .unwrap();
+    assert!(team.get_attr("reviewed").unwrap().is_none());
+    assert_eq!(team.get_attr("requested").unwrap().to_string(), "4");
 }

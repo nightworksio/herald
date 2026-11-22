@@ -132,6 +132,13 @@
         "$ref": "#/$defs/Task"
       }
     },
+    "teams": {
+      "description": "The teams a view's load counts, by name: each named as a review\nrequest and a CODEOWNERS file name it, such as `org/team`, at most\n200.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Team"
+      }
+    },
     "templates": {
       "description": "The templates routes render with, by name.",
       "type": "object",
@@ -3390,6 +3397,29 @@
           "const": "skip"
         }
       ]
+    },
+    "Load": {
+      "description": "How a view's load overview counts.",
+      "type": "object",
+      "properties": {
+        "least_team": {
+          "description": "The fewest people a team or an area is shown by name with: 3 where\nabsent, from 3 to 50. A team of fewer members, a person's area, a\nGitLab name no lookup told apart, and a team, group or role area of\nfewer known members fold into \"other\", which shows only where the\npeople folded into it are as many.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 50,
+          "minimum": 3
+        },
+        "unknown_teams": {
+          "description": "Whether a team, group or role area that no `[teams.<name>]` of its\nname gives members to is shown as it is: false where absent, and it\nfolds. Such an area may be one person. A person's area always folds.",
+          "type": "boolean",
+          "default": false
+        },
+        "window": {
+          "description": "How far back reviews given count: \"7d\" where absent, from \"1d\" to\n\"90d\".",
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false
     },
     "LockLease": {
       "description": "How long the store's lock holds before it is taken as abandoned, \"10m\" by default and at most \"40m\".",
@@ -8145,6 +8175,24 @@
         "options"
       ]
     },
+    "Team": {
+      "description": "`[teams.<name>]`: a team, its name as a review request and a\nCODEOWNERS file name it, such as `org/team` for `@org/team`.",
+      "type": "object",
+      "properties": {
+        "members": {
+          "description": "Its members, each a login, or `login@host` for one forge's login\nalone, at most 500.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 500
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "members"
+      ]
+    },
     "Template": {
       "description": "A template: its title, and its body inline or in a file beside the config.",
       "type": "object",
@@ -8478,6 +8526,10 @@
           "description": "Whether a live read through a REST listing without a token, as of\nGitHub, GitHub Enterprise Server, GHE.com or Forgejo, takes who may\nsee a repository from what the listing states of it, rather than\ntaking each of its rows as private: false where absent. It never\nwidens a kept record, a read with a token, a GitLab listing, or an\nowner's rows, which its membership record names.",
           "type": "boolean",
           "default": false
+        },
+        "load": {
+          "description": "Its load overview, per team and per area and never per person: the\nreview requests open now on the rows it shows, and the reviews\ngiven on them over `window` where every source is read kept. Off\nwhere absent; `load = {}` shows it as shipped.",
+          "$ref": "#/$defs/Load"
         },
         "mode": {
           "description": "Where it reads its pull requests: \"auto\" where absent, kept of each\nsource that takes webhooks where the store keeps pull requests and\nlive otherwise; \"live\" from the forge each time; or \"kept\" from the\nrecords the store keeps, folded from webhooks and reconciled with a\nlisting.",

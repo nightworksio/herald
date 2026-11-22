@@ -9,10 +9,11 @@ use std::ops::Range;
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
     ADVISORY_REPOSITORIES, Advising, AdvisoriesFrom, Bots, BumpPattern, CAPACITY_REPOSITORIES,
-    Capacity, Deciding, Duration, Glob, GroupBy, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
-    MOST_ADVISORY_REPOSITORIES, MOST_CAPACITY_REPOSITORIES, MOST_NUDGES, MOST_RUNS,
-    MOST_RUNS_ALLOWED, MOST_STAGES, ReportSchedule, Rules, Slot, SourceName, Stages, Triage, View,
-    zone,
+    Capacity, Deciding, Duration, Glob, GroupBy, LEAST_TEAM, LONGEST_LOAD_WINDOW, Load,
+    MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED, MOST_ADVISORY_REPOSITORIES,
+    MOST_CAPACITY_REPOSITORIES, MOST_LEAST_TEAM, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED,
+    MOST_STAGES, MOST_TEAMS, ReportSchedule, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages,
+    Team, Teams, Triage, View, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -25,7 +26,7 @@ use crate::models::Task;
 use crate::views::{
     AdvisoriesFromFile, BUILT_IN_VIEW, BotsFile, CapacityFrom, DecidingFile, DecidingName,
     GroupByFile, OverviewName, RULE_KEYS, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile,
-    ViewConfig, ViewFile, ViewMode,
+    TeamFile, ViewConfig, ViewFile, ViewMode,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -248,6 +249,7 @@ impl Loader<'_> {
     ) -> ViewConfig {
         let capacity = self.capacity(&file, (path, span));
         let advisories = self.advising(&file, (path, span));
+        let load = self.load(&file, (path, span));
         let shipped = View::default();
         let mut bumps = Vec::new();
         for (index, text) in file.bumps.iter().enumerate() {
@@ -310,7 +312,75 @@ impl Loader<'_> {
             conflicts: file.conflicts,
             capacity,
             advisories,
+            load,
         }
+    }
+
+    /// How the view `file` at `path` counts its load, where it shows one
+    /// (ADR-0075).
+    fn load(&mut self, file: &ViewFile, (path, span): (&str, &Range<usize>)) -> Option<Load> {
+        let written = file.load.as_ref()?;
+        let shipped = Load::default();
+        let window = written.window.map_or(shipped.window, |window| window.0);
+        if !(SHORTEST_LOAD_WINDOW..=LONGEST_LOAD_WINDOW).contains(&window) {
+            let (shortest, longest) = (
+                Duration(SHORTEST_LOAD_WINDOW).written(),
+                Duration(LONGEST_LOAD_WINDOW).written(),
+            );
+            self.error(
+                span,
+                &format!("{path}.load.window"),
+                format!("a load counts reviews given over a window from {shortest} to {longest}, such as window = \"7d\""),
+            );
+        }
+        let least_team = written.least_team.unwrap_or(shipped.least_team);
+        let refused = if least_team < LEAST_TEAM {
+            Some(format!(
+                "a load never shows a team or an area of fewer than {LEAST_TEAM} people by name, so no row is one person's; give least_team = {LEAST_TEAM} or more"
+            ))
+        } else if least_team > MOST_LEAST_TEAM {
+            Some(format!(
+                "a load's least_team is at most {MOST_LEAST_TEAM}, such as least_team = {LEAST_TEAM}"
+            ))
+        } else {
+            None
+        };
+        if let Some(refused) = refused {
+            self.error(span, &format!("{path}.load.least_team"), refused);
+        }
+        Some(Load {
+            window,
+            least_team,
+            unknown_teams: written.unknown_teams,
+        })
+    }
+
+    /// Each team of `[teams]`, by name (ADR-0075).
+    pub(super) fn teams(&mut self, value: Option<Value<'_>>) -> Teams {
+        let span = value.as_ref().map_or(0..0, Value::span);
+        let named = self.named(value, "teams");
+        if named.len() > MOST_TEAMS {
+            self.error(
+                &span,
+                "teams",
+                format!("a config names at most {MOST_TEAMS} teams"),
+            );
+        }
+        let mut teams = Teams::new();
+        for (name, value) in named {
+            let path = format!("teams.{name}");
+            let span = value.span();
+            let Some(file) = self.typed::<TeamFile>(value, &path) else {
+                continue;
+            };
+            match Team::of(&name, &file.members) {
+                Ok(team) => {
+                    teams.insert(name, team);
+                }
+                Err(reason) => self.error(&span, &path, reason),
+            }
+        }
+        teams
     }
 
     /// How the view `file` at `path` reads its advisories, where it shows
@@ -407,6 +477,7 @@ impl Loader<'_> {
                 conflicts: false,
                 capacity: None,
                 advisories: None,
+                load: None,
             },
         )]);
         for (name, value) in self.named(value, "views") {

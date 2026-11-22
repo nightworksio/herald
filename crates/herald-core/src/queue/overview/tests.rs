@@ -41,6 +41,7 @@ fn overviews() -> Overviews {
         }],
         heads: vec![head("o/app", "h1")],
         advisories: None,
+        load: None,
     }
 }
 
@@ -73,6 +74,11 @@ fn an_audience_sees_only_the_runs_and_unread_repositories_it_may_see() {
     assert_eq!(public.capacity.as_ref().map(Vec::len), Some(3));
     assert_eq!(public.unread, []);
     assert_eq!(overviews().seen_by(Visibility::Private), overviews());
+    let counted = Overviews {
+        load: Some(crate::queue::Loads::default()),
+        ..overviews()
+    };
+    assert_eq!(counted.seen_by(Visibility::Private).load, None);
     assert_eq!(
         Overviews::default().seen_by(Visibility::Public),
         Overviews::default()
