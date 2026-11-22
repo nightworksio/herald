@@ -424,8 +424,20 @@ impl SourceConfig for ForgeSource {
         crate::folding::folded(self.forge, (name, payload), of).map_err(|error| error.to_string())
     }
 
-    fn areas(&self, repository: &str) -> Option<&herald_core::Areas> {
+    fn areas(&self, repository: &str) -> Option<&herald_core::Zoning> {
         self.options.areas_of(named(repository))
+    }
+
+    fn codeowning(&self, repository: &str) -> Option<herald_kinds::Codeowning> {
+        self.options.codeowning_of(self.forge, named(repository))
+    }
+
+    fn codeowned(&self) -> bool {
+        self.options.codeowned()
+    }
+
+    fn codeowners_notes(&self) -> Vec<String> {
+        self.options.codeowners_notes(self.forge)
     }
 
     fn area_names(&self) -> std::collections::BTreeSet<String> {

@@ -179,6 +179,47 @@ areas in each of their groups. A table holds at most 200 areas and 1000
 globs; a changed path longer than 1024 characters falls in no area. A
 private repository's areas are withheld with its rows.
 
+Each row's `areas` in JSON names each area with its kind: `paths` for a
+table's area, and the kinds below for CODEOWNERS.
+
+#### Areas from CODEOWNERS
+
+`areas = "codeowners"` reads each repository's CODEOWNERS file in place
+of a table (ADR-0073), as its forge reads it:
+
+```toml
+[sources.monorepo]
+kind = "gitlab"
+repository = "acme/monorepo"
+areas = "codeowners"
+```
+
+Each owner a line names for a changed path is an area: a team
+(`@org/team`, kind `team`), a GitLab group (`group`), a role
+(`@@developer`, `role`) or a login (`person`), and so is each GitLab
+section (`section`). An email is never an area. A GitLab top-level
+`@name` may be a group or a person, which the file does not tell: herald
+looks each up once a run, at most 50 names a file, and one it cannot tell
+is of kind `name`. A login is an area of one person, so its JSON kind
+`person` tells a consumer a person's group from a team's.
+
+| Key | Where | Default |
+|---|---|---|
+| `codeowners` | source, override | the forge's own places in its own order: GitHub `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS`; GitLab `CODEOWNERS`, `docs/CODEOWNERS`, `.gitlab/CODEOWNERS`; Forgejo `CODEOWNERS`, `docs/CODEOWNERS`, `.gitea/CODEOWNERS`, `.forgejo/CODEOWNERS`; at most 8 |
+| `codeowners_ref` | source, override | the branch the forge applies: `"base"`, the branch the pull request merges into, on GitHub and GitLab; `"default"`, the default branch, on Forgejo. Gitea applies `"base"`: set it there |
+| `most_codeowners` | source | `"128KiB"`, at most `"3MiB"`; a longer file is read as none |
+
+The first place a file is found at is read, once a round per repository
+and branch, through the source's token and API base; where the branch a
+pull request merges into is not known, the default branch is read. A
+file naming more than 200 areas is read as none. As the names are known
+only as each file is read, a view's or a route's `areas` of such a source
+are taken as written. `herald doctor` names where and at which branch
+each source reads, and `herald doctor --online` names each line of a
+repository source's file herald skips, by number and why, and a file it
+reads none of. A file that cannot be read stops the view, named by its
+source alone unless the output is said private.
+
 ### Live or kept
 
 A view reads each source live, from the forge each time, or kept, from

@@ -554,7 +554,7 @@ fn a_private_repository_s_areas_conflicts_flaky_check_runs_and_unread_line_are_p
     );
     assert_eq!(
         read["groups"][0]["rows"][0]["areas"],
-        json!(["merger-launch"])
+        json!([{ "name": "merger-launch", "kind": "paths" }])
     );
     assert_eq!(read["failures"][0]["pulls"][0]["number"], 7041);
     assert_eq!(read["overviews"]["capacity"]["queued"], 100);
@@ -586,6 +586,91 @@ fn a_private_repository_s_areas_conflicts_flaky_check_runs_and_unread_line_are_p
     for named in SECRET_NAMED.iter().chain([&SECRET_PATH]) {
         assert!(!said.contains(named), "{named}: {said}");
     }
+}
+
+/// Where `secret_kept`'s repository's CODEOWNERS file is read, at the
+/// branch its pull requests merge into.
+const SECRET_CODEOWNERS: &str = "/repos/acme/secret-plans/contents/.github/CODEOWNERS?ref=main";
+
+/// The owners `secret_kept`'s repository's CODEOWNERS file names, which no
+/// output prints unless it is said private.
+const SECRET_OWNERS: [&str; 3] = ["merger-team", "ana-secret", "ana@example.com"];
+
+/// The config reading `secret_kept`'s repository's areas from its
+/// CODEOWNERS file, kept.
+fn codeowned() -> String {
+    let config = CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"acme/secret-plans\"\nareas = \"codeowners\"\n",
+    );
+    format!(
+        "{config}[views.kept]\nsources = [\"cli\"]\nmode = \"kept\"\nreconcile = \"1d\"\ngroup_by = \"area\"\n"
+    )
+}
+
+#[test]
+fn a_private_repository_s_codeowners_areas_are_printed_nowhere_unless_said_private() {
+    let setup = setup(&codeowned());
+    let world = World::default();
+    secret_kept(&world);
+    world.state.lock().unwrap().raw.insert(
+        SECRET_CODEOWNERS.to_owned(),
+        "plans/ @acme/merger-team @ana-secret ana@example.com\n".to_owned(),
+    );
+    let printed = |args: &[&str]| {
+        let run = herald(&setup, &world, args);
+        assert_eq!(run.code, DONE, "{}", run.err);
+        format!("{}{}", run.out, run.err)
+    };
+    let json = printed(&["queue", "kept", "--format", "json", "--private"]);
+    let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        read["groups"][0]["rows"][0]["areas"],
+        json!([
+            { "name": "@acme/merger-team", "kind": "team" },
+            { "name": "@ana-secret", "kind": "person" }
+        ])
+    );
+    assert_eq!(read["total"], 2);
+    assert!(!json.contains("ana@example.com"), "{json}");
+    let table = printed(&["queue", "kept", "--private"]);
+    assert!(
+        table.contains("in @acme/merger-team, @ana-secret"),
+        "{table}"
+    );
+    let said = format!(
+        "{}{}",
+        printed(&["queue", "kept"]),
+        printed(&["queue", "kept", "--format", "json"])
+    );
+    for named in SECRET_OWNERS.iter().chain(&SECRET_NAMED) {
+        assert!(!said.contains(named), "{named}: {said}");
+    }
+}
+
+#[test]
+fn a_codeowners_read_that_fails_names_only_its_source_unless_the_output_is_said_private() {
+    let setup = setup(&codeowned());
+    let world = World::default();
+    secret_kept(&world);
+    world
+        .state
+        .lock()
+        .unwrap()
+        .forge
+        .insert(SECRET_CODEOWNERS.to_owned(), (403, "{}".to_owned()));
+    let short = herald(&setup, &world, &["queue", "kept"]);
+    assert_eq!(short.code, STOPPED);
+    assert_eq!(
+        short.err.trim(),
+        format!(
+            "the source \"cli\" could not be read: its forge's answer could not be read; {}",
+            herald_flows::UNSAID_FAILURE
+        )
+    );
+    let full = herald(&setup, &world, &["queue", "kept", "--private"]);
+    assert_eq!(full.code, STOPPED);
+    assert!(full.err.contains("answered with 403"), "{}", full.err);
 }
 
 #[test]

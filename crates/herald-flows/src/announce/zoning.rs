@@ -3,14 +3,18 @@
 //! the forge as the event is delivered (ADR-0072).
 
 use herald_config::Config;
+use std::sync::Arc;
+
 use herald_core::{
-    AreaPaths, Areas, Attribute, COMMIT, Changed, Event, NUMBER, Origin, PULL_LINK, PullKey,
+    AreaPaths, Attribute, BASE, COMMIT, Changed, Event, NUMBER, Origin, PULL_LINK, PullKey,
     RepositoryKey, SourceName,
 };
-use herald_ports::{Clock, Http, Pulls, Store};
+use herald_kinds::{Queue, Source};
+use herald_ports::{Clock, DynHttp, Http, Pulls, Store};
 
 use super::{Ports, Within};
 use crate::budget::Budgeted;
+use crate::codeowned::{Codeowned, Reach, names};
 use crate::prepare::{Connected, PreparedRoute};
 
 /// The event as each route narrowing by areas sees it: with the areas its
@@ -78,10 +82,24 @@ fn pulled(event: &Event) -> Option<(PullKey, &Origin, Option<&str>)> {
     ))
 }
 
-/// The areas of `areas` the paths `changed` lists fall in, where it lists
-/// every one; none where it does not.
-fn fallen(areas: &Areas, changed: &Changed) -> Option<Vec<String>> {
-    changed.whole.then(|| areas.of_changed(Some(changed)))
+/// The names of the areas `source` names the paths `changed` lists fall
+/// in, in the repository at `repository` merging into `base`, reading its
+/// CODEOWNERS file through `reach` where it reads areas from one, where
+/// `changed` lists every path; none where it does not, or the file could
+/// not be read.
+async fn fallen(
+    codeowned: &mut Codeowned,
+    (source, reach): (&Source, Option<Reach<'_>>),
+    (repository, base, changed): (&str, Option<&str>, &Changed),
+) -> Option<Vec<String>> {
+    if !changed.whole {
+        return None;
+    }
+    codeowned
+        .areas((source, reach), (repository, base, Some(changed)))
+        .await
+        .ok()
+        .map(names)
 }
 
 /// `event` with its origin naming `areas`.
@@ -111,32 +129,59 @@ pub(super) async fn zoned<S: Store, C: Clock, G, H: Http>(
     let Some((key, origin, commit)) = pulled(event).filter(|_| kept || delivered) else {
         return Zoned::default();
     };
-    let Some(areas) = config
+    let Some(named) = config
         .sources
         .get(source)
-        .and_then(|named| named.areas(&origin.repository))
+        .filter(|named| named.areas(&origin.repository).is_some())
     else {
         return Zoned::default();
     };
-    let kept = match (kept, commit, ports.store.pulls()) {
+    let queued = queued(connected, (source, &origin.repository));
+    let http = queued.map(|(_, http)| Budgeted::new(http, ports.budget, ports.clock));
+    let reach: Option<Reach<'_>> = queued
+        .zip(http.as_ref())
+        .map(|((queue, _), http)| (queue.as_ref(), http as &dyn DynHttp));
+    let mut codeowned = Codeowned::default();
+    let held = match (kept, commit, ports.store.pulls()) {
         (true, Some(commit), Some(pulls)) => match pulls.pull(&key).await {
-            Ok(Some(held)) => held
-                .value
-                .pull
-                .files
-                .as_ref()
-                .filter(|_| held.value.pull.head.as_deref() == Some(commit))
-                .and_then(|changed| fallen(areas, changed)),
+            Ok(Some(held)) => {
+                Some(held.value.pull).filter(|pull| pull.head.as_deref() == Some(commit))
+            }
             _ => None,
         },
         _ => None,
     };
-    let delivered = if delivered {
-        read(connected, ports, (source, &origin.repository, key.number))
+    let kept = match held
+        .as_ref()
+        .and_then(|pull| Some((pull.files.as_ref()?, pull.base.as_deref())))
+    {
+        Some((changed, base)) => {
+            fallen(
+                &mut codeowned,
+                (named, reach),
+                (&origin.repository, base, changed),
+            )
             .await
-            .and_then(|changed| fallen(areas, &changed))
-    } else {
-        None
+        }
+        None => None,
+    };
+    let delivered = match reach.filter(|_| delivered) {
+        Some((queue, http)) => match queue.changed(http, (&origin.repository, key.number)).await {
+            Ok(changed) => {
+                let base = match event.attribute(BASE) {
+                    Some(Attribute::Text(base)) => Some(base.as_str()),
+                    _ => None,
+                };
+                fallen(
+                    &mut codeowned,
+                    (named, reach),
+                    (&origin.repository, base, &changed),
+                )
+                .await
+            }
+            Err(_) => None,
+        },
+        None => None,
     };
     Zoned {
         kept: kept.map(|areas| with_areas(event, origin, areas)),
@@ -144,21 +189,17 @@ pub(super) async fn zoned<S: Store, C: Clock, G, H: Http>(
     }
 }
 
-/// The paths pull request `number` of `repository` changes, read once
-/// through `source`'s own queue and reach under the run's budget; none
-/// where `source` reads no such repository or the read failed.
-async fn read<S, C: Clock, G, H: Http>(
-    connected: &Connected<H>,
-    ports: &Ports<'_, S, C, G>,
-    (source, repository, number): (&SourceName, &str, u64),
-) -> Option<Changed> {
-    let (queue, http) = connected.sources.iter().find_map(|(prepared, http)| {
+/// The queue of `source` that reads the repository at `repository`, with
+/// the HTTP it is asked through.
+fn queued<'c, H>(
+    connected: &'c Connected<H>,
+    (source, repository): (&SourceName, &str),
+) -> Option<(&'c Arc<dyn Queue>, &'c H)> {
+    connected.sources.iter().find_map(|(prepared, http)| {
         prepared
             .queue
             .as_ref()
             .filter(|queue| prepared.name == *source && queue.holds(repository))
             .map(|queue| (queue, http))
-    })?;
-    let http = Budgeted::new(http, ports.budget, ports.clock);
-    queue.changed(&http, (repository, number)).await.ok()
+    })
 }

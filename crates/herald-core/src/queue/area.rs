@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::Changed;
 use crate::glob::Glob;
@@ -37,6 +37,102 @@ pub const MOST_AREA_PATH: usize = 1024;
 #[serde(try_from = "BTreeMap<String, Vec<String>>")]
 pub struct Areas {
     named: Vec<(String, Vec<Glob>)>,
+}
+
+/// What an area names, as a row's JSON marks it: a consumer tells a
+/// person from a team by it (ADR-0073).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AreaKind {
+    /// An area a source's table names by path globs.
+    Paths,
+    /// A team a CODEOWNERS line names, `@org/team`.
+    Team,
+    /// A GitLab group a CODEOWNERS line names.
+    Group,
+    /// A person a CODEOWNERS line names by login.
+    Person,
+    /// A GitLab role a CODEOWNERS line names, `@@developer`.
+    Role,
+    /// A GitLab CODEOWNERS section.
+    Section,
+    /// A GitLab `@name` no lookup told a group or a person.
+    Name,
+}
+
+impl AreaKind {
+    /// The kind as a row's JSON and a template write it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Paths => "paths",
+            Self::Team => "team",
+            Self::Group => "group",
+            Self::Person => "person",
+            Self::Role => "role",
+            Self::Section => "section",
+            Self::Name => "name",
+        }
+    }
+}
+
+/// An area a pull request falls in: its name, as a view's and a route's
+/// globs match it, and what it names.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Area {
+    /// Its name.
+    pub name: String,
+    /// What it names.
+    pub kind: AreaKind,
+}
+
+/// How a source names a repository's areas: by its own table of path
+/// globs, or by the repository's CODEOWNERS file (ADR-0071, ADR-0073).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "Zoned")]
+pub enum Zoning {
+    /// By path globs.
+    Paths(Areas),
+    /// By the owners and GitLab sections of its CODEOWNERS file.
+    Codeowners,
+}
+
+/// The word naming CODEOWNERS as where a source's areas come from.
+pub const CODEOWNERS: &str = "codeowners";
+
+/// A source's `areas` as written: a table of path globs, or a word.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Zoned {
+    Word(String),
+    Table(BTreeMap<String, Vec<String>>),
+}
+
+impl TryFrom<Zoned> for Zoning {
+    type Error = String;
+
+    fn try_from(written: Zoned) -> Result<Self, String> {
+        match written {
+            Zoned::Word(word) if word == CODEOWNERS => Ok(Self::Codeowners),
+            Zoned::Word(word) => Err(format!(
+                "\"{word}\" names no way to read areas; give a table of path globs, or \"{CODEOWNERS}\""
+            )),
+            Zoned::Table(table) => Areas::of(table).map(Self::Paths),
+        }
+    }
+}
+
+impl Zoning {
+    /// The names its table gives, none where CODEOWNERS names them as
+    /// it is read.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        match self {
+            Self::Paths(areas) => Some(areas),
+            Self::Codeowners => None,
+        }
+        .into_iter()
+        .flat_map(Areas::names)
+    }
 }
 
 /// Why `name` cannot name an area, where it cannot.
@@ -115,7 +211,7 @@ impl Areas {
     /// The areas any of `changed`'s paths falls in, in name order: none
     /// where its paths were not read.
     #[must_use]
-    pub fn of_changed(&self, changed: Option<&Changed>) -> Vec<String> {
+    pub fn of_changed(&self, changed: Option<&Changed>) -> Vec<Area> {
         let paths: Vec<&String> = changed
             .into_iter()
             .flat_map(|changed| &changed.paths)
@@ -128,7 +224,10 @@ impl Areas {
                     .iter()
                     .any(|path| globs.iter().any(|glob| glob.matches(path)))
             })
-            .map(|(name, _)| name.clone())
+            .map(|(name, _)| Area {
+                name: name.clone(),
+                kind: AreaKind::Paths,
+            })
             .collect()
     }
 }
@@ -139,6 +238,18 @@ impl TryFrom<BTreeMap<String, Vec<String>>> for Areas {
     fn try_from(table: BTreeMap<String, Vec<String>>) -> Result<Self, String> {
         Self::of(table)
     }
+}
+
+/// Areas of kind paths, each of `names`.
+#[cfg(test)]
+pub(crate) fn of_paths(names: &[&str]) -> Vec<Area> {
+    names
+        .iter()
+        .map(|name| Area {
+            name: (*name).to_owned(),
+            kind: AreaKind::Paths,
+        })
+        .collect()
 }
 
 #[cfg(test)]

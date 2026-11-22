@@ -23,13 +23,16 @@ pub use advisory::{
     AdvisoriesFrom, Advisory, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
     MOST_ADVISORY_REPOSITORIES, Printed, RECALLED, Surface, WITHHELD, advises,
 };
+#[cfg(test)]
+pub(crate) use area::of_paths;
 pub use area::{
-    Areas, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS,
+    Area, AreaKind, Areas, CODEOWNERS, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME,
+    MOST_AREA_PATH, MOST_AREAS, Zoning,
 };
 pub use codeowners::{
-    CodeOwner, Codeowners, Dialect, MOST_CODEOWNERS, MOST_CODEOWNERS_LINES,
-    MOST_CODEOWNERS_PATTERN, MOST_LINE_OWNERS, MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned,
-    RULES_CACHE, Skipped,
+    CodeOwner, Codeowners, CodeownersRef, Dialect, MOST_CODEOWNERS, MOST_CODEOWNERS_LINES,
+    MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_PATTERN, MOST_CODEOWNERS_READ, MOST_LINE_OWNERS,
+    MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned, RULES_CACHE, Skipped,
 };
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
@@ -202,7 +205,7 @@ pub struct Pull {
     /// The areas its changed paths fall in, by its source's areas, as the
     /// view reading it named them (ADR-0071).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub areas: Vec<String>,
+    pub areas: Vec<Area>,
     /// Each time one of its checks failed and then passed on one head,
     /// the newest last, as kept mode saw it (ADR-0065).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

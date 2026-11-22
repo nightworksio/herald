@@ -6,8 +6,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{
-    Areas, Cursor, Event, EventsRead, Folding, Grant, Kind, Listed, Listing, Origin, Owner, Polled,
-    Reach, RouteId, Scheme, SecretRef, Visibility,
+    Cursor, Event, EventsRead, Folding, Grant, Kind, Listed, Listing, Origin, Owner, Polled, Reach,
+    RouteId, Scheme, SecretRef, Visibility, Zoning,
 };
 use herald_ports::{Base, Boxed, DynHttp};
 use jiff::{SignedDuration, Timestamp};
@@ -258,11 +258,28 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
-    /// The areas it names the paths of the repository at the full path
-    /// `repository` by: the narrowest override's that sets them, or its
-    /// own; none where it names none (ADR-0071).
-    fn areas(&self, _repository: &str) -> Option<&Areas> {
+    /// How it names the areas of the repository at the full path
+    /// `repository`: the narrowest override's way that sets one, or its
+    /// own; none where it names none (ADR-0071, ADR-0073).
+    fn areas(&self, _repository: &str) -> Option<&Zoning> {
         None
+    }
+
+    /// How it reads the CODEOWNERS file of the repository at the full path
+    /// `repository`, where its areas are read from one (ADR-0073).
+    fn codeowning(&self, _repository: &str) -> Option<crate::Codeowning> {
+        None
+    }
+
+    /// Whether it or one of its overrides reads areas from CODEOWNERS, so
+    /// their names are known only as each file is read (ADR-0073).
+    fn codeowned(&self) -> bool {
+        false
+    }
+
+    /// What doctor says of how it reads CODEOWNERS (ADR-0073).
+    fn codeowners_notes(&self) -> Vec<String> {
+        Vec::new()
     }
 
     /// The name of each area it or one of its overrides names (ADR-0071).

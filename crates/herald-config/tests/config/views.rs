@@ -441,3 +441,17 @@ fn a_view_s_area_matching_none_its_sources_name_is_refused() {
     }
     assert!(!error.contains("views.web.areas[0]"), "{error}");
 }
+
+#[test]
+fn a_view_reading_a_codeowners_source_takes_any_area_as_written() {
+    let config = loaded(&with(
+        "[sources.site]\nkind = \"github\"\nrepository = \"nightworksio/site\"\nareas = \"codeowners\"\n\n[views.web]\nsources = [\"site\"]\nareas = [\"@org/web\", \"Docs\"]\ngroup_by = \"area\"\n\n[reports.daily]\nview = \"web\"\n",
+    ));
+    let areas: Vec<&str> = config.views["web"]
+        .view
+        .areas
+        .iter()
+        .map(Glob::as_str)
+        .collect();
+    assert_eq!(areas, ["@org/web", "Docs"]);
+}

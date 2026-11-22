@@ -92,7 +92,7 @@ impl Loader<'_> {
         &mut self,
         mut file: MatchFile,
         path: &str,
-        (kinds, known): (&BTreeSet<Kind>, &BTreeSet<String>),
+        (kinds, known): (&BTreeSet<Kind>, Option<&BTreeSet<String>>),
     ) -> Option<Match> {
         let at = format!("{path}.match");
         let not = file.not.take().map(|not| {
@@ -122,7 +122,7 @@ impl Loader<'_> {
         &mut self,
         file: MatchFile,
         at: &str,
-        (kinds, known): (&BTreeSet<Kind>, &BTreeSet<String>),
+        (kinds, known): (&BTreeSet<Kind>, Option<&BTreeSet<String>>),
     ) -> Option<Match> {
         let mut sound = true;
         let mut globs = |written: Vec<Spanned<String>>, key: &str| -> Vec<Glob> {
@@ -206,21 +206,30 @@ impl Loader<'_> {
     }
 
     /// The area globs `written` at `at`, each matching an area of `named`,
-    /// the areas the route's sources name; none where one cannot be read or
+    /// the areas the route's sources name, or any where one reads them from
+    /// CODEOWNERS as each file is read; none where one cannot be read or
     /// matches no area.
     fn areas(
         &mut self,
         written: Vec<Spanned<String>>,
         at: &str,
-        named: &BTreeSet<String>,
+        named: Option<&BTreeSet<String>>,
     ) -> Option<Vec<Glob>> {
-        let listed: Vec<&str> = named.iter().map(String::as_str).collect();
+        let listed: Vec<&str> = named
+            .iter()
+            .flat_map(|named| named.iter())
+            .map(String::as_str)
+            .collect();
         let mut sound = true;
         let mut areas = Vec::with_capacity(written.len());
         for (index, text) in written.into_iter().enumerate() {
             let key = format!("{at}.areas[{index}]");
             match Glob::new(text.get_ref()) {
-                Ok(glob) if named.iter().any(|name| glob.matches(name)) => areas.push(glob),
+                Ok(glob)
+                    if named.is_none_or(|named| named.iter().any(|name| glob.matches(name))) =>
+                {
+                    areas.push(glob);
+                }
                 Ok(glob) => {
                     let known = if listed.is_empty() {
                         "they name none; give a source an areas table".to_owned()
@@ -695,7 +704,8 @@ impl Loader<'_> {
         let sample_kinds = self.sample_kinds(taken, &path, sources, others)?;
         let filter_sources = named_sources(&route.sources);
         let known = area_names(&filter_sources, sources);
-        let matching = self.matching(route.matching, &path, (&sample_kinds, &known))?;
+        let known = (!codeowned(&filter_sources, sources)).then_some(&known);
+        let matching = self.matching(route.matching, &path, (&sample_kinds, known))?;
         let area_paths = self.area_paths(route.area_paths, &path, &matching);
         let origins = filter_sources
             .iter()
@@ -795,6 +805,15 @@ fn named_sources(written: &[Spanned<String>]) -> Vec<SourceName> {
         .iter()
         .map(|source| SourceName::new(source.get_ref()))
         .collect()
+}
+
+/// Whether one of the sources `named` of `sources` reads areas from
+/// CODEOWNERS, whose names are known only as each file is read (ADR-0073).
+fn codeowned(named: &[SourceName], sources: &BTreeMap<SourceName, Source>) -> bool {
+    named
+        .iter()
+        .filter_map(|name| sources.get(name))
+        .any(|source| source.codeowned())
 }
 
 /// The areas the sources `named` of `sources` name.

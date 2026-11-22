@@ -154,7 +154,8 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
             None
         };
         let source = config.sources.get(name);
-        let zoned = source.is_some_and(|source| !source.area_names().is_empty());
+        let zoned =
+            source.is_some_and(|source| !source.area_names().is_empty() || source.codeowned());
         let asked = Asked {
             most: view.most,
             scope: members.as_ref().map(|(owner, members)| Scope {
@@ -182,10 +183,19 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .await
                 .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?
         };
-        for pull in &mut read {
-            pull.areas = source
-                .and_then(|source| source.areas(&pull.repository))
-                .map_or_else(Vec::new, |areas| areas.of_changed(pull.files.as_ref()));
+        if let Some(source) = source {
+            let mut codeowned = crate::codeowned::Codeowned::default();
+            for pull in &mut read {
+                let placed = (
+                    pull.repository.as_str(),
+                    pull.base.as_deref(),
+                    pull.files.as_ref(),
+                );
+                pull.areas = codeowned
+                    .areas((source, Some((queue.as_ref(), http))), placed)
+                    .await
+                    .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?;
+            }
         }
         if let Some(capacity) = view.capacity {
             let shown = herald_core::rows(&view.view, &read, ports.clock.now());

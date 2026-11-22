@@ -1274,9 +1274,10 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
-| `sources.<name>.areas` | table | The areas of its repositories, each a name and the path globs, as `include` writes them, any of which a changed path falls in it by, such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas and 1000 globs, each name and glob at most 128 and 256 characters, a path over 1024 falling in none. A view reading the source reads the paths each pull request's head changes, as one predicting conflicts does, and each row names its areas; none where absent (ADR-0071). |
-| `sources.<name>.areas.<name>` | array of string |  |
+| `sources.<name>.areas` | [Zones](#zones) | The areas of its repositories, each a name and the path globs, as `include` writes them, any of which a changed path falls in it by, such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas and 1000 globs, each name and glob at most 128 and 256 characters, a path over 1024 falling in none. A view reading the source reads the paths each pull request's head changes, as one predicting conflicts does, and each row names its areas; none where absent (ADR-0071). Or "codeowners": each owner the repository's CODEOWNERS file names for a changed path, a team, a group, a role or a login, never an email, and each GitLab section, is an area (ADR-0073). |
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.codeowners` | array of string | Where a repository's CODEOWNERS file is looked for, in order, the first found read: at most 8 paths in the repository; where absent, the forge's own places in its own order: GitHub `.github/`, the root, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the root, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073). |
+| `sources.<name>.codeowners_ref` | [CodeownersRef](#codeownersref) | The branch a repository's CODEOWNERS file is read at: "base", the branch each pull request merges into, or "default", the repository's default branch; where absent, the one the forge applies: "base" on GitHub and GitLab, "default" on Forgejo (Gitea applies "base": set it there) (ADR-0073). |
 | `sources.<name>.discovery` | [Discovery](#discovery) | How an owner source finds the repositories that join or leave it: listing the owner each round ("list"), or only where it holds no listing, its selection changed or a delivery said the owner's repositories changed ("push"); "list" where absent. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
@@ -1317,6 +1318,7 @@ A GitHub repository's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file read, a longer file read as none; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
@@ -1340,8 +1342,9 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories` | table | What the source makes of the repositories each glob names, as `include` writes them; where several name one repository, the narrowest that sets a key gives it. |
-| `sources.<name>.repositories.<name>.areas` | table | Their areas, as the source's `areas` writes them, in place of the source's; the source's where absent (ADR-0071). |
-| `sources.<name>.repositories.<name>.areas.<name>` | array of string |  |
+| `sources.<name>.repositories.<name>.areas` | [Zones](#zones) | Their areas, as the source's `areas` writes them, in place of the source's; the source's where absent (ADR-0071, ADR-0073). |
+| `sources.<name>.repositories.<name>.codeowners` | array of string | Where their CODEOWNERS file is looked for, as the source's `codeowners` writes it; the source's where absent (ADR-0073). |
+| `sources.<name>.repositories.<name>.codeowners_ref` | [CodeownersRef](#codeownersref) | The branch their CODEOWNERS file is read at, as the source's `codeowners_ref` writes it; the source's where absent (ADR-0073). |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
@@ -1392,9 +1395,10 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
-| `sources.<name>.areas` | table | The areas of its repositories, each a name and the path globs, as `include` writes them, any of which a changed path falls in it by, such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas and 1000 globs, each name and glob at most 128 and 256 characters, a path over 1024 falling in none. A view reading the source reads the paths each pull request's head changes, as one predicting conflicts does, and each row names its areas; none where absent (ADR-0071). |
-| `sources.<name>.areas.<name>` | array of string |  |
+| `sources.<name>.areas` | [Zones](#zones) | The areas of its repositories, each a name and the path globs, as `include` writes them, any of which a changed path falls in it by, such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas and 1000 globs, each name and glob at most 128 and 256 characters, a path over 1024 falling in none. A view reading the source reads the paths each pull request's head changes, as one predicting conflicts does, and each row names its areas; none where absent (ADR-0071). Or "codeowners": each owner the repository's CODEOWNERS file names for a changed path, a team, a group, a role or a login, never an email, and each GitLab section, is an area (ADR-0073). |
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.codeowners` | array of string | Where a repository's CODEOWNERS file is looked for, in order, the first found read: at most 8 paths in the repository; where absent, the forge's own places in its own order: GitHub `.github/`, the root, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the root, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073). |
+| `sources.<name>.codeowners_ref` | [CodeownersRef](#codeownersref) | The branch a repository's CODEOWNERS file is read at: "base", the branch each pull request merges into, or "default", the repository's default branch; where absent, the one the forge applies: "base" on GitHub and GitLab, "default" on Forgejo (Gitea applies "base": set it there) (ADR-0073). |
 | `sources.<name>.discovery` | [Discovery](#discovery) | How an owner source finds the repositories that join or leave it: listing the owner each round ("list"), or only where it holds no listing, its selection changed or a delivery said the owner's repositories changed ("push"); "list" where absent. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
@@ -1435,6 +1439,7 @@ A GitLab project's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file read, a longer file read as none; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
@@ -1458,8 +1463,9 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories` | table | What the source makes of the repositories each glob names, as `include` writes them; where several name one repository, the narrowest that sets a key gives it. |
-| `sources.<name>.repositories.<name>.areas` | table | Their areas, as the source's `areas` writes them, in place of the source's; the source's where absent (ADR-0071). |
-| `sources.<name>.repositories.<name>.areas.<name>` | array of string |  |
+| `sources.<name>.repositories.<name>.areas` | [Zones](#zones) | Their areas, as the source's `areas` writes them, in place of the source's; the source's where absent (ADR-0071, ADR-0073). |
+| `sources.<name>.repositories.<name>.codeowners` | array of string | Where their CODEOWNERS file is looked for, as the source's `codeowners` writes it; the source's where absent (ADR-0073). |
+| `sources.<name>.repositories.<name>.codeowners_ref` | [CodeownersRef](#codeownersref) | The branch their CODEOWNERS file is read at, as the source's `codeowners_ref` writes it; the source's where absent (ADR-0073). |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
@@ -1510,9 +1516,10 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
-| `sources.<name>.areas` | table | The areas of its repositories, each a name and the path globs, as `include` writes them, any of which a changed path falls in it by, such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas and 1000 globs, each name and glob at most 128 and 256 characters, a path over 1024 falling in none. A view reading the source reads the paths each pull request's head changes, as one predicting conflicts does, and each row names its areas; none where absent (ADR-0071). |
-| `sources.<name>.areas.<name>` | array of string |  |
+| `sources.<name>.areas` | [Zones](#zones) | The areas of its repositories, each a name and the path globs, as `include` writes them, any of which a changed path falls in it by, such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas and 1000 globs, each name and glob at most 128 and 256 characters, a path over 1024 falling in none. A view reading the source reads the paths each pull request's head changes, as one predicting conflicts does, and each row names its areas; none where absent (ADR-0071). Or "codeowners": each owner the repository's CODEOWNERS file names for a changed path, a team, a group, a role or a login, never an email, and each GitLab section, is an area (ADR-0073). |
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.codeowners` | array of string | Where a repository's CODEOWNERS file is looked for, in order, the first found read: at most 8 paths in the repository; where absent, the forge's own places in its own order: GitHub `.github/`, the root, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the root, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073). |
+| `sources.<name>.codeowners_ref` | [CodeownersRef](#codeownersref) | The branch a repository's CODEOWNERS file is read at: "base", the branch each pull request merges into, or "default", the repository's default branch; where absent, the one the forge applies: "base" on GitHub and GitLab, "default" on Forgejo (Gitea applies "base": set it there) (ADR-0073). |
 | `sources.<name>.discovery` | [Discovery](#discovery) | How an owner source finds the repositories that join or leave it: listing the owner each round ("list"), or only where it holds no listing, its selection changed or a delivery said the owner's repositories changed ("push"); "list" where absent. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
@@ -1553,6 +1560,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file read, a longer file read as none; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
@@ -1576,8 +1584,9 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories` | table | What the source makes of the repositories each glob names, as `include` writes them; where several name one repository, the narrowest that sets a key gives it. |
-| `sources.<name>.repositories.<name>.areas` | table | Their areas, as the source's `areas` writes them, in place of the source's; the source's where absent (ADR-0071). |
-| `sources.<name>.repositories.<name>.areas.<name>` | array of string |  |
+| `sources.<name>.repositories.<name>.areas` | [Zones](#zones) | Their areas, as the source's `areas` writes them, in place of the source's; the source's where absent (ADR-0071, ADR-0073). |
+| `sources.<name>.repositories.<name>.codeowners` | array of string | Where their CODEOWNERS file is looked for, as the source's `codeowners` writes it; the source's where absent (ADR-0073). |
+| `sources.<name>.repositories.<name>.codeowners_ref` | [CodeownersRef](#codeownersref) | The branch their CODEOWNERS file is read at, as the source's `codeowners_ref` writes it; the source's where absent (ADR-0073). |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
@@ -2190,6 +2199,10 @@ What a view does with a bot's pull requests.
 
 Which repositories a capacity overview reads.
 
+### CodeownersRef
+
+The branch a repository's CODEOWNERS file is read at.
+
 ### Colour
 
 A colour, written "#rrggbb".
@@ -2453,3 +2466,7 @@ Who sees a status.
 ### Withdraw
 
 What a route does with an announcement whose release the forge deleted (ADR-0048).
+
+### Zones
+
+A source's `areas` as the schema shows it.

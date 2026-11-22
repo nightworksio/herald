@@ -258,7 +258,7 @@ fn watched(
 ) {
     let costs = view.sources.iter().filter_map(|source| {
         let options = config.sources.get(source)?;
-        let zoned = !options.area_names().is_empty();
+        let zoned = !options.area_names().is_empty() || options.codeowned();
         Some((source, options.queue_cost(view.most)?, zoned))
     });
     for (source, cost, zoned) in costs {

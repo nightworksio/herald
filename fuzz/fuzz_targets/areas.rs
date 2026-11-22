@@ -31,7 +31,7 @@ fuzz_target!(|text: &str| {
     };
     let fallen = areas.of_changed(Some(&changed));
     assert!(fallen.windows(2).all(|pair| pair[0] < pair[1]));
-    assert!(fallen.iter().all(|area| names.contains(&area.as_str())));
+    assert!(fallen.iter().all(|area| names.contains(&area.name.as_str())));
     let long = Changed {
         paths: changed
             .paths

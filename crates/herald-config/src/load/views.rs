@@ -159,13 +159,21 @@ impl Loader<'_> {
 
     /// Refuses each of `areas`, the area globs the view at `path` narrows
     /// by, that matches no area one of `read`, the sources it reads, names
-    /// (ADR-0071).
+    /// (ADR-0071); none where one reads areas from CODEOWNERS, whose names
+    /// are known only as each file is read (ADR-0073).
     fn known_areas(
         &mut self,
         areas: &[Glob],
         (path, span): (&str, &Range<usize>),
         (read, sources): (&[SourceName], &BTreeMap<SourceName, Source>),
     ) {
+        if read
+            .iter()
+            .filter_map(|name| sources.get(name))
+            .any(|source| source.codeowned())
+        {
+            return;
+        }
         let named: BTreeSet<String> = read
             .iter()
             .filter_map(|name| sources.get(name))

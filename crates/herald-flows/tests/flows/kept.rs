@@ -725,10 +725,15 @@ fn a_view_reading_a_source_naming_areas_reads_changed_paths_and_names_each_row_s
         .groups
         .iter()
         .flat_map(|group| {
-            group
-                .rows
-                .iter()
-                .map(|row| (group.name.as_str(), row.pull.number, row.pull.areas.clone()))
+            group.rows.iter().map(|row| {
+                let names = row
+                    .pull
+                    .areas
+                    .iter()
+                    .map(|area| area.name.clone())
+                    .collect();
+                (group.name.as_str(), row.pull.number, names)
+            })
         })
         .collect();
     assert_eq!(
@@ -737,4 +742,104 @@ fn a_view_reading_a_source_naming_areas_reads_changed_paths_and_names_each_row_s
     );
     let asked = String::from_utf8(script.bodies()[1].clone()).unwrap();
     assert!(asked.contains("files(first: 100)"), "{asked}");
+}
+
+/// The config of a view grouping by area the source `repo` reads from its
+/// CODEOWNERS file.
+fn codeowned() -> Config {
+    let text = "version = 1\n[store]\nkind = \"sqlite\"\n[sources.repo]\nkind = \"github\"\nrepository = \"o/r\"\ntoken = { secret = \"HERALD_GITHUB_TOKEN\" }\nwebhook = { secret = \"HERALD_WEBHOOK\" }\nareas = \"codeowners\"\n[views.queue]\ngroup_by = \"area\"\nareas = [\"@*\"]\n";
+    load(
+        "herald.toml",
+        text,
+        &|_| Err("no file".to_owned()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+}
+
+fn raw(line: &str, status: u16, text: &str) -> (String, Response) {
+    (
+        line.to_owned(),
+        Response {
+            status,
+            headers: Vec::new(),
+            body: text.as_bytes().to_vec(),
+        },
+    )
+}
+
+/// A row as its group, number and each area's name and kind show it.
+type Shown<'a> = (&'a str, u64, Vec<(String, &'a str)>);
+
+const AT_BASE: &str = "/repos/o/r/contents/.github/CODEOWNERS?ref=main";
+
+#[test]
+fn a_view_reading_a_codeowners_source_names_each_row_s_owners_by_kind_reading_the_file_once() {
+    const AT: &str = "2026-10-30T11:00:00Z";
+    let store = healthy();
+    let changing = |number: u64, path: &str| {
+        let mut changing = node(number, &format!("h{number}"), AT, "SUCCESS");
+        changing["baseRefName"] = json!("main");
+        changing["files"] = json!({ "totalCount": 1, "nodes": [{ "path": path }] });
+        changing
+    };
+    let script = Script::answered(vec![
+        answer(LISTING, 200, None, &listed(&[(1, "h1", AT), (2, "h2", AT)])),
+        answer(
+            GRAPHQL,
+            200,
+            None,
+            &read(&[changing(1, "src/lib.rs"), changing(2, "Cargo.lock")]),
+        ),
+        raw(AT_BASE, 404, "{}"),
+        raw(
+            "/repos/o/r/contents/CODEOWNERS?ref=main",
+            200,
+            "src/ @org/core @ana ana@example.com\n*.md @org/docs\n",
+        ),
+    ]);
+    let board = queued(&codeowned(), &store, &script).unwrap();
+    let grouped: Vec<Shown<'_>> = board
+        .groups
+        .iter()
+        .flat_map(|group| {
+            group.rows.iter().map(|row| {
+                let areas = row
+                    .pull
+                    .areas
+                    .iter()
+                    .map(|area| (area.name.clone(), area.kind.name()))
+                    .collect();
+                (group.name.as_str(), row.pull.number, areas)
+            })
+        })
+        .collect();
+    let owned = vec![
+        ("@ana".to_owned(), "person"),
+        ("@org/core".to_owned(), "team"),
+    ];
+    assert_eq!(
+        grouped,
+        [("@ana", 1, owned.clone()), ("@org/core", 1, owned)]
+    );
+    assert_eq!(board.distinct_rows().len(), 1);
+    assert_eq!(script.seen().len(), 4);
+    let asked = String::from_utf8(script.bodies()[1].clone()).unwrap();
+    assert!(asked.contains("files(first: 100)"), "{asked}");
+}
+
+#[test]
+fn a_view_stops_where_a_codeowners_file_cannot_be_read() {
+    const AT: &str = "2026-10-30T11:00:00Z";
+    let store = healthy();
+    let mut changing = node(1, "h1", AT, "SUCCESS");
+    changing["baseRefName"] = json!("main");
+    changing["files"] = json!({ "totalCount": 1, "nodes": [{ "path": "a" }] });
+    let script = Script::answered(vec![
+        answer(LISTING, 200, None, &listed(&[(1, "h1", AT)])),
+        answer(GRAPHQL, 200, None, &read(&[changing])),
+        raw(AT_BASE, 403, "{}"),
+    ]);
+    let stopped = queued(&codeowned(), &store, &script).unwrap_err();
+    assert!(format!("{stopped:?}").contains("403"), "{stopped:?}");
 }

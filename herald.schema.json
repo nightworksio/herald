@@ -1594,6 +1594,21 @@
       },
       "additionalProperties": false
     },
+    "CodeownersRef": {
+      "description": "The branch a repository's CODEOWNERS file is read at.",
+      "oneOf": [
+        {
+          "description": "The branch the pull request merges into.",
+          "type": "string",
+          "const": "base"
+        },
+        {
+          "description": "The repository's default branch.",
+          "type": "string",
+          "const": "default"
+        }
+      ]
+    },
     "Colour": {
       "description": "A colour, written \"#rrggbb\".",
       "type": "string",
@@ -4154,14 +4169,19 @@
       "type": "object",
       "properties": {
         "areas": {
-          "description": "Their areas, as the source's `areas` writes them, in place of the\nsource's; the source's where absent (ADR-0071).",
-          "type": "object",
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "description": "Their areas, as the source's `areas` writes them, in place of the\nsource's; the source's where absent (ADR-0071, ADR-0073).",
+          "$ref": "#/$defs/Zones"
+        },
+        "codeowners": {
+          "description": "Where their CODEOWNERS file is looked for, as the source's\n`codeowners` writes it; the source's where absent (ADR-0073).",
+          "type": "array",
+          "items": {
+            "type": "string"
           }
+        },
+        "codeowners_ref": {
+          "description": "The branch their CODEOWNERS file is read at, as the source's\n`codeowners_ref` writes it; the source's where absent (ADR-0073).",
+          "$ref": "#/$defs/CodeownersRef"
         },
         "prerelease": {
           "description": "How a pre-release of theirs is told, as the source's `prerelease`\nwrites it; the source's where absent.",
@@ -4556,6 +4576,16 @@
       "description": "How many in a length of time: a number, a slash and s, m, h or d, as \"120/m\".",
       "type": "string",
       "pattern": "^0*[1-9][0-9]*/[smhd]$"
+    },
+    "Read": {
+      "description": "The word naming CODEOWNERS as where areas come from.",
+      "oneOf": [
+        {
+          "description": "Areas read from each repository's CODEOWNERS file.",
+          "type": "string",
+          "const": "codeowners"
+        }
+      ]
     },
     "ReadBack": {
       "description": "How many pages of its own posts the destination reads back, 5 by default.",
@@ -5494,14 +5524,8 @@
               "default": false
             },
             "areas": {
-              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071).",
-              "type": "object",
-              "additionalProperties": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
+              "$ref": "#/$defs/Zones"
             },
             "backfill": {
               "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
@@ -5509,6 +5533,17 @@
               "format": "uint",
               "default": 0,
               "minimum": 0
+            },
+            "codeowners": {
+              "description": "Where a repository's CODEOWNERS file is looked for, in order, the\nfirst found read: at most 8 paths in the repository; where absent,\nthe forge's own places in its own order: GitHub `.github/`, the\nroot, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the\nroot, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "codeowners_ref": {
+              "description": "The branch a repository's CODEOWNERS file is read at: \"base\", the\nbranch each pull request merges into, or \"default\", the\nrepository's default branch; where absent, the one the forge\napplies: \"base\" on GitHub and GitLab, \"default\" on Forgejo (Gitea\napplies \"base\": set it there) (ADR-0073).",
+              "$ref": "#/$defs/CodeownersRef"
             },
             "discovery": {
               "description": "How an owner source finds the repositories that join or leave it:\nlisting the owner each round (\"list\"), or only where it holds no\nlisting, its selection changed or a delivery said the owner's\nrepositories changed (\"push\"); \"list\" where absent.",
@@ -5611,6 +5646,10 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "most_codeowners": {
+              "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
+              "$ref": "#/$defs/Size"
             },
             "most_listed": {
               "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
@@ -5824,14 +5863,8 @@
               "default": false
             },
             "areas": {
-              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071).",
-              "type": "object",
-              "additionalProperties": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
+              "$ref": "#/$defs/Zones"
             },
             "backfill": {
               "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
@@ -5839,6 +5872,17 @@
               "format": "uint",
               "default": 0,
               "minimum": 0
+            },
+            "codeowners": {
+              "description": "Where a repository's CODEOWNERS file is looked for, in order, the\nfirst found read: at most 8 paths in the repository; where absent,\nthe forge's own places in its own order: GitHub `.github/`, the\nroot, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the\nroot, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "codeowners_ref": {
+              "description": "The branch a repository's CODEOWNERS file is read at: \"base\", the\nbranch each pull request merges into, or \"default\", the\nrepository's default branch; where absent, the one the forge\napplies: \"base\" on GitHub and GitLab, \"default\" on Forgejo (Gitea\napplies \"base\": set it there) (ADR-0073).",
+              "$ref": "#/$defs/CodeownersRef"
             },
             "discovery": {
               "description": "How an owner source finds the repositories that join or leave it:\nlisting the owner each round (\"list\"), or only where it holds no\nlisting, its selection changed or a delivery said the owner's\nrepositories changed (\"push\"); \"list\" where absent.",
@@ -5941,6 +5985,10 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "most_codeowners": {
+              "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
+              "$ref": "#/$defs/Size"
             },
             "most_listed": {
               "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
@@ -6154,14 +6202,8 @@
               "default": false
             },
             "areas": {
-              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071).",
-              "type": "object",
-              "additionalProperties": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
+              "$ref": "#/$defs/Zones"
             },
             "backfill": {
               "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
@@ -6169,6 +6211,17 @@
               "format": "uint",
               "default": 0,
               "minimum": 0
+            },
+            "codeowners": {
+              "description": "Where a repository's CODEOWNERS file is looked for, in order, the\nfirst found read: at most 8 paths in the repository; where absent,\nthe forge's own places in its own order: GitHub `.github/`, the\nroot, `docs/`; GitLab the root, `docs/`, `.gitlab/`; Forgejo the\nroot, `docs/`, `.gitea/`, `.forgejo/` (ADR-0073).",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "codeowners_ref": {
+              "description": "The branch a repository's CODEOWNERS file is read at: \"base\", the\nbranch each pull request merges into, or \"default\", the\nrepository's default branch; where absent, the one the forge\napplies: \"base\" on GitHub and GitLab, \"default\" on Forgejo (Gitea\napplies \"base\": set it there) (ADR-0073).",
+              "$ref": "#/$defs/CodeownersRef"
             },
             "discovery": {
               "description": "How an owner source finds the repositories that join or leave it:\nlisting the owner each round (\"list\"), or only where it holds no\nlisting, its selection changed or a delivery said the owner's\nrepositories changed (\"push\"); \"list\" where absent.",
@@ -6271,6 +6324,10 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "most_codeowners": {
+              "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
+              "$ref": "#/$defs/Size"
             },
             "most_listed": {
               "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
@@ -8594,6 +8651,25 @@
         }
       },
       "additionalProperties": false
+    },
+    "Zones": {
+      "description": "A source's `areas` as the schema shows it.",
+      "anyOf": [
+        {
+          "description": "Each area's name and the path globs a path falls in it by.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Each repository's CODEOWNERS file names its areas.",
+          "$ref": "#/$defs/Read"
+        }
+      ]
     }
   }
 }

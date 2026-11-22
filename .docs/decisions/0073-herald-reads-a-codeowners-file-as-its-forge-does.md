@@ -106,6 +106,52 @@ The forges document their dialects:
    dialects and holds the bounds: reading ends, names only lines the
    file has, in order, and a refused file, a path past its bound and
    unread paths fall to no one.
+6. **Areas from CODEOWNERS.** A source's or an override's
+   `areas = "codeowners"` names a repository's areas by its file in
+   place of a table. The areas of a pull request are each owner the
+   lines its changed paths fall to name, and each GitLab section they
+   fall in: teams, GitLab groups, roles and logins, never an email.
+   `Codeowners::areas` is the one place that says so. Each area carries
+   its kind (`paths` for a table's, `team`, `group`, `person`, `role`,
+   `section`, or `name`), which a row's JSON shows, so a consumer tells
+   a person from a team. A file naming more than 200 areas, a table's
+   bound, is refused whole.
+7. **GitLab names looked up.** A GitLab top-level `@name` is a person or
+   a group, which the file does not tell. Each distinct name a pull
+   request's lines name is looked up once a round per source, among the
+   first 50 such names of the file: GitLab's users by that username,
+   then its group of that path, through the source's token, API base
+   (self-managed GitLab) and the run's request budget, each a read any
+   `read_api` or `read_user` token, or none on a public instance, may
+   make. A name no lookup tells, one past the 50, and one whose lookup
+   failed or was refused is an area of kind `name`, never dropped.
+8. **Read where the forge reads it.** `codeowners` lists the places a
+   file is looked for, the forge's own by default in the forge's own
+   order, the first found read; `codeowners_ref` is the branch: by
+   default the one the forge applies, the base branch on GitHub and
+   GitLab and the default branch on Forgejo, whose `forgejo` kind also
+   reads Gitea, which applies the base branch (doctor tells Gitea users
+   to set `"base"`). Where a pull request's base is not known, the
+   default branch is read. Each file is read once a round per repository
+   and branch by the forge's raw-file request, at most
+   `most_codeowners` (128 KiB by default, at most 3 MiB) read, a longer
+   one refused before it is parsed. A place that is not there (404) is
+   passed; any other answer stops the read.
+9. **Private as rows are.** Areas ride the row (ADR-0069) and the event's
+   origin (ADR-0072) as a table's do, so a private or internal
+   repository's owners, logins and section names are printed only where
+   the output is said private, and a failed read is said by its source
+   and kind alone unless the output is said private. Views count each
+   pull request once however many owners' groups show it. An event's
+   areas are herald's alone, read from the kept or delivered paths as a
+   table's are, and the file read the same way.
+10. **Checked as far as can be.** A view's or route's `areas` naming a
+    source that reads CODEOWNERS is taken as written, since the names
+    are known only as each file is read. `herald doctor` names each
+    source's places, branch, cost and lookups; online, it reads a
+    repository source's file at the default branch and names each line
+    herald skips, by number and why (the first 20, the rest counted),
+    and a file herald reads none of.
 
 ## Consequences
 
@@ -115,3 +161,8 @@ The forges document their dialects:
   a part read under last-match-wins can give owners the forge does not.
 - A GitHub line using `[ ]`, `!` or `\#`, which GitHub documents as not
   working, is skipped rather than guessed at.
+- Each round reads each file again, one request per repository and
+  branch; a file that cannot be read stops the view rather than showing
+  its pull requests in no area.
+- A person is an area only by a login a file writes, so a board groups
+  by person only where a repository says who owns what by login.

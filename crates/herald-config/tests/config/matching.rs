@@ -332,3 +332,30 @@ fn a_route_s_area_its_sources_do_not_name_and_a_read_at_delivery_for_no_area_are
     }
     assert!(!error.contains("routes[1].match.areas[0]"), "{error}");
 }
+
+#[test]
+fn a_route_of_a_codeowners_source_takes_any_area_as_written() {
+    let config = loaded(&format!(
+        "[sources.site]\nkind = \"github\"\nrepository = \"nightworksio/site\"\nareas = \"codeowners\"\n\n{}",
+        route(
+            "web",
+            "\"site\"",
+            "t",
+            "match = { areas = [\"@org/web\"], not = { areas = [\"@ana\"] } }"
+        )
+    ))
+    .unwrap();
+    let web = &config.routes[1].route.filter;
+    assert_eq!(web.matching.areas, [Glob::new("@org/web").unwrap()]);
+    let refused = loaded(&format!(
+        "{AREAS}[sources.read]\nkind = \"github\"\nrepository = \"nightworksio/read\"\nareas = \"codeowners\"\n\n{}",
+        route("bare", "\"site\"", "t", "match = { areas = [\"@org/web\"] }")
+    ))
+    .unwrap_err();
+    assert!(
+        refused.contains(
+            "routes[1].match.areas[0]: \"@org/web\" matches no area the route's sources name"
+        ),
+        "{refused}"
+    );
+}

@@ -258,7 +258,8 @@ impl View {
             && named(&self.authors, pull.author.as_deref().unwrap_or_default())
             && (self.labels.is_empty()
                 || pull.labels.iter().any(|label| named(&self.labels, label)))
-            && (self.areas.is_empty() || pull.areas.iter().any(|area| named(&self.areas, area)))
+            && (self.areas.is_empty()
+                || pull.areas.iter().any(|area| named(&self.areas, &area.name)))
     }
 
     /// `pull` as a row at `now`, where the view shows it.
@@ -289,7 +290,16 @@ impl View {
             GroupBy::Turn => vec![row.state.name().to_owned()],
             GroupBy::Repository => vec![row.pull.repository.clone()],
             GroupBy::Author => vec![row.pull.author.clone().unwrap_or_default()],
-            GroupBy::Area if !row.pull.areas.is_empty() => row.pull.areas.clone(),
+            GroupBy::Area if !row.pull.areas.is_empty() => {
+                let mut names: Vec<String> = row
+                    .pull
+                    .areas
+                    .iter()
+                    .map(|area| area.name.clone())
+                    .collect();
+                names.dedup();
+                names
+            }
             GroupBy::Area | GroupBy::Nothing => vec![String::new()],
         }
     }

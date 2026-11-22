@@ -1,7 +1,8 @@
 use std::fmt;
 
 use herald_core::{
-    Advising, Advisories, Capacity, Listed, Overviews, Owner, Pull, Rerun, Validators, Visibility,
+    Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, Listed, Overviews, Owner,
+    Pull, Rerun, Validators, Visibility,
 };
 use herald_ports::{Boxed, DynHttp};
 
@@ -85,6 +86,26 @@ pub struct QueueCost {
     /// The most requests reading the paths each pull request's head
     /// changes adds a round, where a view predicts conflicts (ADR-0063).
     pub files: usize,
+}
+
+/// How a source reads a repository's CODEOWNERS file (ADR-0073).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Codeowning {
+    /// Where it looks, in order: the first found is read.
+    pub paths: Vec<String>,
+    /// The branch it reads the file at.
+    pub reference: CodeownersRef,
+    /// The most bytes of the file it reads.
+    pub most: usize,
+}
+
+/// A repository's CODEOWNERS file, where it was found, as herald read it.
+#[derive(Debug)]
+pub struct Found {
+    /// Where it was found.
+    pub path: String,
+    /// What herald read of it.
+    pub file: Codeowners,
 }
 
 /// What a reconcile's listing of a repository's open pull requests found
@@ -198,6 +219,30 @@ pub trait Queue: fmt::Debug + Send + Sync {
         read: (Asked<'a>, &'a [&'a str]),
         advising: (Advising, jiff::Timestamp),
     ) -> Boxed<'a, Result<Advisories, Unpolled>>;
+
+    /// The one repository it reads, by full path, where it reads one
+    /// rather than an owner's.
+    fn repository(&self) -> Option<&str>;
+
+    /// The CODEOWNERS file of the repository at the full path
+    /// `read.0`, at the branch `read.1` or the default branch, from the
+    /// first of `codeowning`'s paths it is found at, asked through `http`;
+    /// none where it is at none (ADR-0073).
+    fn codeowners<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        read: (&'a str, Option<&'a str>),
+        codeowning: &'a Codeowning,
+    ) -> Boxed<'a, Result<Option<Found>, Unpolled>>;
+
+    /// What the GitLab top-level `@name` `name` is, by one lookup asked
+    /// through `http`: a group, a person, or of kind name where the forge
+    /// tells neither (ADR-0073).
+    fn named<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        name: &'a str,
+    ) -> Boxed<'a, Result<AreaKind, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(
