@@ -18,28 +18,31 @@ pub const MOST_SKIPPED_NAMED: usize = 20;
 /// each member's file only as a view reads it.
 pub async fn codeowners<H: Http>(config: &Config, connected: &Connected<H>) -> Findings {
     let mut findings = Findings::default();
-    for (prepared, http) in &connected.sources {
-        let name = prepared.name.as_str();
-        let Some((source, queue)) = config
-            .sources
-            .get(&prepared.name)
-            .filter(|source| source.codeowned())
-            .zip(prepared.queue.as_ref())
-        else {
-            continue;
-        };
+    let reached = connected.sources.iter().filter_map(|(prepared, http)| {
+        let source = config.sources.get(&prepared.name)?;
+        Some((
+            prepared.name.as_str(),
+            source,
+            prepared.queue.as_ref()?,
+            http,
+        ))
+    });
+    for (name, source, queue, http) in reached {
         let Some(repository) = queue.repository() else {
-            findings.notes.push(format!(
-                "The source {name} reads an owner's repositories, so doctor reads none of their CODEOWNERS files: a line one skips leaves its owners out of that repository's areas."
-            ));
+            if source.codeowned() {
+                findings.notes.push(format!(
+                    "The source {name} reads an owner's repositories, so doctor reads none of their CODEOWNERS files: a line one skips leaves its owners out of that repository's areas."
+                ));
+            }
             continue;
         };
-        if let Some(codeowning) = source.codeowning(repository) {
-            let read = queue
-                .codeowners(http as &dyn DynHttp, (repository, None), &codeowning)
-                .await;
-            findings.notes.extend(said(name, read, &codeowning.paths));
-        }
+        let Some(codeowning) = source.codeowning(repository) else {
+            continue;
+        };
+        let read = queue
+            .codeowners(http as &dyn DynHttp, (repository, None), &codeowning)
+            .await;
+        findings.notes.extend(said(name, read, &codeowning.paths));
     }
     findings
 }

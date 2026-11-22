@@ -23,6 +23,10 @@ token = { secret = "HERALD_FORGE_TOKEN" }
 kind = "github"
 repository = "p/q"
 token = { secret = "HERALD_FORGE_TOKEN" }
+[sources.listed]
+kind = "github"
+owner = "other"
+token = { secret = "HERALD_FORGE_TOKEN" }
 [sources.single]
 kind = "github"
 repository = "o/r"
