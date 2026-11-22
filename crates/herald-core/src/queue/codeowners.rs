@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use regex::{RegexBuilder, RegexSet, RegexSetBuilder, SetMatches};
 
+use super::area::unnamed;
 use super::{Changed, MOST_AREA_PATH};
 use crate::Size;
 
@@ -63,6 +64,10 @@ pub enum Dialect {
     Forgejo,
 }
 
+/// GitLab's name for the section before any heading: a heading of that
+/// name, ignoring case, goes on with it, and it names no area.
+const DEFAULT_SECTION: &str = "codeowners";
+
 /// A line herald does not read, and why: it matches no path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
@@ -77,7 +82,8 @@ pub struct Skipped {
 pub struct Owned {
     /// Each owner a line the paths fall to names.
     pub owners: BTreeSet<CodeOwner>,
-    /// Each named GitLab section one of the paths falls in.
+    /// Each GitLab section one of the paths falls in whose name can name an
+    /// area: never the section before any heading.
     pub sections: BTreeSet<String>,
 }
 
@@ -238,7 +244,7 @@ impl Codeowners {
             dialect,
             rules: Vec::new(),
             patterns: Vec::new(),
-            sections: vec![String::new()],
+            sections: vec![DEFAULT_SECTION.to_owned()],
             section: 0,
             defaults: Vec::new(),
             skipped: Vec::new(),
@@ -338,7 +344,11 @@ impl Codeowners {
         for (section, (exempt, last)) in winning {
             if let (false, Some(rule)) = (exempt, last) {
                 owned.owners.extend(rule.owners.iter().cloned());
-                if let Some(name) = self.sections.get(section).filter(|name| !name.is_empty()) {
+                if let Some(name) = self
+                    .sections
+                    .get(section)
+                    .filter(|name| section != 0 && unnamed(name).is_none())
+                {
                     owned.sections.insert(name.clone());
                 }
             }

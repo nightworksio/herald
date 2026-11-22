@@ -17,7 +17,9 @@ The forges document their dialects:
 - GitHub: <https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners>
 - GitLab: <https://docs.gitlab.com/user/project/codeowners/>,
   <https://docs.gitlab.com/user/project/codeowners/reference/> and
-  <https://docs.gitlab.com/user/project/codeowners/advanced/>
+  <https://docs.gitlab.com/user/project/codeowners/advanced/>, and its
+  reading in `ee/lib/gitlab/code_owners/section_parser.rb` and
+  `ee/lib/gitlab/code_owners/file.rb`
 - Forgejo: <https://forgejo.org/docs/latest/user/pull-requests-and-git-flow/>,
   and its reading in `models/issues/pull.go` (`GetCodeOwnersFromReader`,
   `ParseCodeOwnersLine`, `TokenizeCodeOwnersLine`) and
@@ -46,17 +48,27 @@ The forges document their dialects:
      `/` takes everything within, and the rest is `fnmatch` with
      `FNM_PATHNAME` and `FNM_DOTMATCH` (`*`, `?` and `[...]` within one
      segment, `**/` any directories). `\` escapes, so `path\ with\
-     spaces/` is one pattern. A section heading `[Name]`, `^[Name]`
-     (optional) or `[Name][2]` (approvals) starts a section, its default
-     owners after it; sections of one name, ignoring case, are one,
-     named as first written; entries before any heading form an unnamed
-     section. In each section the last matching entry wins, an entry
-     naming no owner takes the section's defaults, and a matching `!`
-     entry takes the path out of that section alone; every section
-     applies. Owners are `@name` (a person or a top-level group, which
-     the file does not tell apart), `@group/subgroup`, `@@role` and
-     email addresses; another word is ignored, as GitLab ignores it. A
-     heading GitLab cannot read is skipped, and its entries belong to the
+     spaces/` is one pattern. A heading is read as GitLab's
+     `SectionParser::HEADER_REGEX` reads one: `[Name]` or `^[Name]`
+     (optional), the name running to its first `]`; then an approvals
+     count in brackets only where it holds digits and spaces alone
+     (`[2]`, `[ 1]`, `[]`); then default owners as far as `@`, letters,
+     digits, `_`, `.`, `-`, `/` and spaces run, the rest of the line
+     unread. So `[Name][@owner] @a` and `[Name][x] @a` start the section
+     `Name` with no default owners, as GitLab does. Sections of one name,
+     ignoring case, are one, named as first written; entries before any
+     heading are GitLab's default section, `codeowners`, which a heading
+     of that name goes on with. A section whose name cannot name an area
+     (blank, padded, too long, or holding a control character) still
+     groups its entries, as GitLab's does, and names no area. In each
+     section the last matching entry wins, an entry naming no owner takes
+     the section's defaults, and a matching `!` entry takes the path out
+     of that section alone; every section applies. Owners are `@name`
+     (a person or a top-level group, which the file does not tell
+     apart), `@group/subgroup`, `@@role` and email addresses; another
+     word is ignored, as GitLab ignores it. A
+     line starting with `[` or `^[` whose name never closes is no heading
+     to GitLab: it is skipped, and the entries after it belong to the
      section before it.
    - **Forgejo** reads each line as a Go regular expression between `^`
      and `$`, ungrouped, as Forgejo writes it; `\` escapes a space or a

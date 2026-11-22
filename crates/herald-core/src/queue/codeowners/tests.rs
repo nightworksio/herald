@@ -154,6 +154,20 @@ fn a_gitlab_exemption_takes_a_path_out_of_its_own_section_alone() {
 }
 
 #[test]
+fn a_gitlab_heading_named_codeowners_goes_on_with_the_default_section() {
+    let read = Codeowners::read(
+        Dialect::GitLab,
+        "* @g\n[Docs]\n* @d\n[CodeOwners]\n* @h\n[ ]\n* @s\n[Name][@owner] @x\n* \n",
+    );
+    assert_eq!(owners(&read, &["x"]), ["@d", "@h", "@s"]);
+    assert_eq!(sections(&read, &["x"]), ["Docs", "Name"]);
+    assert_eq!(skipped(&read), []);
+    let named = Codeowners::read(Dialect::GitLab, "[Name][@owner] @x\nx\n");
+    assert_eq!(owners(&named, &["x"]), Vec::<String>::new());
+    assert_eq!(sections(&named, &["x"]), ["Name"]);
+}
+
+#[test]
 fn gitlab_reads_entries_after_a_broken_heading_as_the_previous_sections() {
     let read = Codeowners::read(
         Dialect::GitLab,

@@ -175,11 +175,13 @@ pub(super) fn owners(words: &[String], dialect: Dialect) -> Result<Vec<CodeOwner
     Ok(owners)
 }
 
-/// A GitLab section heading: `[Name]`, `^[Name]` for an optional section,
-/// `[Name][2]` for the approvals it asks, and default owners after it.
+/// A GitLab section heading, read as GitLab's `SectionParser::HEADER_REGEX`
+/// reads one: `[Name]`, `^[Name]` for an optional section, an approvals
+/// count `[2]` of digits and spaces only, and then default owners, as far
+/// as `@`, word characters, `.`, `-`, `/` and spaces run.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Heading {
-    /// The section's name, as written.
+    /// The section's name, as written up to its first `]`.
     pub(super) name: String,
     /// The owners an entry naming none takes.
     pub(super) owners: Vec<CodeOwner>,
@@ -189,9 +191,9 @@ pub(super) struct Heading {
 ///
 /// # Errors
 ///
-/// Where its name never closes, is blank or cannot name an area, or it
-/// names too many owners: GitLab ignores such a heading and reads the
-/// entries after it as the previous section's.
+/// Where its name never closes, which GitLab does not read as a heading
+/// and reads the entries after it as the previous section's, or it names
+/// more than [`MOST_LINE_OWNERS`] default owners.
 pub(super) fn heading(line: &str) -> Option<Result<Heading, String>> {
     let opened = line.strip_prefix('^').unwrap_or(line).strip_prefix('[')?;
     Some(headed(opened))
@@ -201,20 +203,30 @@ fn headed(opened: &str) -> Result<Heading, String> {
     let Some((name, after)) = opened.split_once(']') else {
         return Err("its section heading never closes with \"]\"".to_owned());
     };
-    let name = name.trim();
-    if name.is_empty() {
-        return Err("its section heading names no section".to_owned());
-    }
-    if let Some(reason) = unnamed(name) {
-        return Err(format!("its section heading cannot name an area: {reason}"));
-    }
-    let after = after
+    let after = match after
         .strip_prefix('[')
         .and_then(|counted| counted.split_once(']'))
-        .map_or(after, |(_, rest)| rest);
+    {
+        Some((count, rest))
+            if count
+                .chars()
+                .all(|character| character.is_ascii_digit() || character.is_ascii_whitespace()) =>
+        {
+            rest
+        }
+        _ => after,
+    };
+    let defaults = after
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric()
+                || character.is_ascii_whitespace()
+                || matches!(character, '@' | '_' | '.' | '-' | '/'))
+        })
+        .next()
+        .unwrap_or(after);
     Ok(Heading {
         name: name.to_owned(),
-        owners: owners(&words(after, Dialect::GitLab), Dialect::GitLab)?,
+        owners: owners(&words(defaults, Dialect::GitLab), Dialect::GitLab)?,
     })
 }
 

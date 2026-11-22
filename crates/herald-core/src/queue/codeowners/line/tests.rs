@@ -124,6 +124,16 @@ fn a_line_names_at_most_its_owners() {
     );
 }
 
+fn defaults(line: &str) -> Vec<String> {
+    heading(line)
+        .unwrap()
+        .unwrap()
+        .owners
+        .iter()
+        .map(|owner| owner.written().to_owned())
+        .collect()
+}
+
 #[test]
 fn a_gitlab_heading_names_its_section_and_default_owners() {
     assert_eq!(
@@ -136,41 +146,42 @@ fn a_gitlab_heading_names_its_section_and_default_owners() {
     assert_eq!(
         heading("^[ Docs ][2] @a @g/x"),
         Some(Ok(Heading {
-            name: "Docs".to_owned(),
+            name: " Docs ".to_owned(),
             owners: vec![
                 CodeOwner::Either("@a".to_owned()),
                 CodeOwner::Team("@g/x".to_owned())
             ]
         }))
     );
-    for line in ["[Docs]]", "[Docs][ 1] @a", "[Docs][] @a", "[Docs][2x] @a"] {
-        assert_eq!(heading(line).unwrap().unwrap().name, "Docs", "{line}");
-    }
-    assert_eq!(
-        heading("[Docs][ 1] @a").unwrap().unwrap().owners,
-        [CodeOwner::Either("@a".to_owned())]
-    );
-    assert_eq!(
-        heading("[Docs][12]@a").unwrap().unwrap().owners,
-        [CodeOwner::Either("@a".to_owned())]
-    );
     assert_eq!(heading("docs/"), None);
     assert_eq!(heading("^docs"), None);
 }
 
 #[test]
-fn a_gitlab_heading_that_cannot_name_a_section_is_refused() {
+fn a_gitlab_heading_takes_only_digits_and_spaces_as_its_approvals() {
+    assert_eq!(defaults("^[Name][2] @a"), ["@a"]);
+    assert_eq!(defaults("[Name][12]@a"), ["@a"]);
+    assert_eq!(defaults("[Name][ 1] @a"), ["@a"]);
+    assert_eq!(defaults("[Name][] @a"), ["@a"]);
+    assert_eq!(defaults("[Name][@owner] @a path"), Vec::<String>::new());
+    assert_eq!(defaults("[Name][x] @a"), Vec::<String>::new());
+    assert_eq!(defaults("[Name][2x] @a"), Vec::<String>::new());
+    assert_eq!(defaults("[Name]] @a"), Vec::<String>::new());
+    assert_eq!(defaults("[Name] @a # @b"), ["@a"]);
+    assert_eq!(defaults("[Name] @a, @b"), ["@a"]);
+    assert_eq!(defaults("[Name] @a.b-c_d/e"), ["@a.b-c_d/e"]);
+    assert_eq!(defaults("[Name]\t@a"), ["@a"]);
+    for line in ["[Name][@owner] path", "[Name][x]", "[Name]]", "[]", "[ ]"] {
+        assert!(heading(line).unwrap().is_ok(), "{line}");
+    }
+    assert_eq!(heading("[a\u{7}b]").unwrap().unwrap().name, "a\u{7}b");
+}
+
+#[test]
+fn a_gitlab_heading_that_never_closes_or_names_too_many_owners_is_refused() {
     assert_eq!(
         heading("[Docs").unwrap().unwrap_err(),
         "its section heading never closes with \"]\""
-    );
-    assert_eq!(
-        heading("^[ ]").unwrap().unwrap_err(),
-        "its section heading names no section"
-    );
-    assert_eq!(
-        heading("[a\u{7}b]").unwrap().unwrap_err(),
-        "its section heading cannot name an area: \"a\\u{7}b\" holds a control character; remove it"
     );
     let crowded = format!(
         "[Docs] {}",
