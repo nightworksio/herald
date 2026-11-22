@@ -1,12 +1,17 @@
 use std::fmt::Write as _;
 
 use super::*;
+use crate::MOST_AREAS_READ;
 
 fn changed(paths: &[&str]) -> Changed {
     Changed {
         paths: paths.iter().map(|path| (*path).to_owned()).collect(),
         whole: true,
     }
+}
+
+fn parsed(dialect: Dialect, text: &str) -> Codeowners {
+    Codeowners::read(dialect, text, MOST_AREAS_READ)
 }
 
 fn owners(read: &Codeowners, paths: &[&str]) -> Vec<String> {
@@ -47,7 +52,7 @@ const GITHUB: &str = "\
 
 #[test]
 fn on_github_the_last_matching_line_wins() {
-    let read = Codeowners::read(Dialect::GitHub, GITHUB);
+    let read = parsed(Dialect::GitHub, GITHUB);
     assert_eq!(owners(&read, &["src/a.js"]), ["@js-owner"]);
     assert_eq!(
         owners(&read, &["README"]),
@@ -74,7 +79,7 @@ fn on_github_the_last_matching_line_wins() {
 
 #[test]
 fn a_skipped_line_matches_nothing_and_an_earlier_line_wins() {
-    let read = Codeowners::read(Dialect::GitHub, "* @a\nx[y] @b\n/x @c plain\n\\#x @d\n");
+    let read = parsed(Dialect::GitHub, "* @a\nx[y] @b\n/x @c plain\n\\#x @d\n");
     for path in ["x[y]", "x", "#x"] {
         assert_eq!(owners(&read, &[path]), ["@a"], "{path}");
     }
@@ -107,7 +112,7 @@ model/db/database-setup.md @docs-team
 
 #[test]
 fn on_gitlab_every_section_applies_and_its_last_matching_entry_wins() {
-    let read = Codeowners::read(Dialect::GitLab, GITLAB);
+    let read = parsed(Dialect::GitLab, GITLAB);
     assert_eq!(
         owners(&read, &["model/db/CHANGELOG.txt"]),
         ["@database-team", "@docs-team", "@general-approvers"]
@@ -131,7 +136,7 @@ fn on_gitlab_every_section_applies_and_its_last_matching_entry_wins() {
 
 #[test]
 fn gitlab_combines_sections_by_name_ignoring_case_keeping_the_first_case() {
-    let read = Codeowners::read(
+    let read = parsed(
         Dialect::GitLab,
         "[Documentation]\nREADME.md @docs\n[Database]\nREADME.md @database\n[DOCUMENTATION]\nREADME.md @docs2\n",
     );
@@ -144,7 +149,7 @@ fn gitlab_combines_sections_by_name_ignoring_case_keeping_the_first_case() {
 
 #[test]
 fn a_gitlab_exemption_takes_a_path_out_of_its_own_section_alone() {
-    let read = Codeowners::read(
+    let read = parsed(
         Dialect::GitLab,
         "* @g\n[Docs]\n*.md @a\n!docs/x.md\n[Other]\n!y.md\n*.md @b\n",
     );
@@ -157,21 +162,21 @@ fn a_gitlab_exemption_takes_a_path_out_of_its_own_section_alone() {
 
 #[test]
 fn a_gitlab_heading_named_codeowners_goes_on_with_the_default_section() {
-    let read = Codeowners::read(
+    let read = parsed(
         Dialect::GitLab,
         "* @g\n[Docs]\n* @d\n[CodeOwners]\n* @h\n[ ]\n* @s\n[Name][@owner] @x\n* \n",
     );
     assert_eq!(owners(&read, &["x"]), ["@d", "@h", "@s"]);
     assert_eq!(sections(&read, &["x"]), ["Docs", "Name"]);
     assert_eq!(skipped(&read), []);
-    let named = Codeowners::read(Dialect::GitLab, "[Name][@owner] @x\nx\n");
+    let named = parsed(Dialect::GitLab, "[Name][@owner] @x\nx\n");
     assert_eq!(owners(&named, &["x"]), Vec::<String>::new());
     assert_eq!(sections(&named, &["x"]), ["Name"]);
 }
 
 #[test]
 fn gitlab_reads_entries_after_a_broken_heading_as_the_previous_sections() {
-    let read = Codeowners::read(
+    let read = parsed(
         Dialect::GitLab,
         "[Docs] @d\ndocs/\n[Broken\nREADME.md\nnone/ plain\npath\\ with\\ spaces/*.md @s\n",
     );
@@ -183,14 +188,14 @@ fn gitlab_reads_entries_after_a_broken_heading_as_the_previous_sections() {
         skipped(&read),
         [(3, "its section heading never closes with \"]\"")]
     );
-    let bare = Codeowners::read(Dialect::GitLab, "[Docs]\ndocs/\n");
+    let bare = parsed(Dialect::GitLab, "[Docs]\ndocs/\n");
     assert_eq!(owners(&bare, &["docs/a"]), Vec::<String>::new());
     assert_eq!(sections(&bare, &["docs/a"]), ["Docs"]);
 }
 
 #[test]
 fn on_forgejo_every_matching_line_applies_and_a_negative_one_to_the_rest() {
-    let read = Codeowners::read(
+    let read = parsed(
         Dialect::Forgejo,
         ".*\\\\.go @a # a comment\ndocs/.* org/team\n!README\\\\.md b\n(x @c\nonly\nx a/b/c\nx\\{9999} @d\n",
     );
@@ -213,7 +218,7 @@ fn on_forgejo_every_matching_line_applies_and_a_negative_one_to_the_rest() {
         skipped(&read)[3],
         (7, "its pattern compiles to more than 262144 bytes")
     );
-    let bare = Codeowners::read(Dialect::Forgejo, " \\\n");
+    let bare = parsed(Dialect::Forgejo, " \\\n");
     assert_eq!(skipped(&bare), [(1, "it names no pattern")]);
 }
 
@@ -221,11 +226,11 @@ fn on_forgejo_every_matching_line_applies_and_a_negative_one_to_the_rest() {
 fn a_file_past_its_bounds_is_refused_whole() {
     let mut text = "* @a\n".to_owned();
     text.push_str(&"#".repeat(MOST_CODEOWNERS - text.len()));
-    let read = Codeowners::read(Dialect::GitHub, &text);
+    let read = parsed(Dialect::GitHub, &text);
     assert_eq!(read.refused(), None);
     assert_eq!(owners(&read, &["x"]), ["@a"]);
     text.push('#');
-    let read = Codeowners::read(Dialect::GitHub, &text);
+    let read = parsed(Dialect::GitHub, &text);
     assert_eq!(
         read.refused(),
         Some("it is longer than 3145728 bytes, GitHub's own limit")
@@ -233,11 +238,11 @@ fn a_file_past_its_bounds_is_refused_whole() {
     assert_eq!(owners(&read, &["x"]), Vec::<String>::new());
 
     let mut lines = "* @a\n".repeat(MOST_CODEOWNERS_LINES);
-    let read = Codeowners::read(Dialect::GitHub, &lines);
+    let read = parsed(Dialect::GitHub, &lines);
     assert_eq!(read.refused(), None);
     assert_eq!(owners(&read, &["x"]), ["@a"]);
     lines.push_str("* @b\n");
-    let read = Codeowners::read(Dialect::GitHub, &lines);
+    let read = parsed(Dialect::GitHub, &lines);
     assert_eq!(
         read.refused(),
         Some("it has 4001 lines, and at most 4000 are read")
@@ -249,7 +254,7 @@ fn a_file_past_its_bounds_is_refused_whole() {
 fn a_pattern_is_read_up_to_its_most_characters() {
     let most = "a".repeat(MOST_CODEOWNERS_PATTERN);
     let past = "b".repeat(MOST_CODEOWNERS_PATTERN + 1);
-    let read = Codeowners::read(Dialect::GitHub, &format!("{most} @a\n{past} @b\n"));
+    let read = parsed(Dialect::GitHub, &format!("{most} @a\n{past} @b\n"));
     assert_eq!(owners(&read, &[&most]), ["@a"]);
     assert_eq!(owners(&read, &[&past]), Vec::<String>::new());
     assert_eq!(
@@ -261,10 +266,10 @@ fn a_pattern_is_read_up_to_its_most_characters() {
 #[test]
 fn patterns_compiling_past_their_bound_together_are_refused_whole() {
     let line = "\\\\w{2} @a\n";
-    let few = Codeowners::read(Dialect::Forgejo, &line.repeat(2));
+    let few = parsed(Dialect::Forgejo, &line.repeat(2));
     assert_eq!(few.refused(), None);
     assert_eq!(owners(&few, &["ab"]), ["@a"]);
-    let many = Codeowners::read(Dialect::Forgejo, &format!("{}! @b\n", line.repeat(400)));
+    let many = parsed(Dialect::Forgejo, &format!("{}! @b\n", line.repeat(400)));
     assert_eq!(
         many.refused(),
         Some("its patterns compile to more than 16777216 bytes together")
@@ -275,14 +280,14 @@ fn patterns_compiling_past_their_bound_together_are_refused_whole() {
 
 #[test]
 fn a_path_past_its_most_characters_and_unread_paths_fall_to_no_one() {
-    let read = Codeowners::read(Dialect::GitHub, "* @a\n");
+    let read = parsed(Dialect::GitHub, "* @a\n");
     assert_eq!(owners(&read, &[&"x".repeat(MOST_AREA_PATH)]), ["@a"]);
     assert_eq!(
         owners(&read, &[&"x".repeat(MOST_AREA_PATH + 1)]),
         Vec::<String>::new()
     );
     assert_eq!(read.owning(None), Owned::default());
-    let empty = Codeowners::read(Dialect::GitHub, "# nothing\n\n");
+    let empty = parsed(Dialect::GitHub, "# nothing\n\n");
     assert_eq!(empty.owning(Some(&changed(&["x"]))), Owned::default());
     assert_eq!(empty.refused(), None);
 }
@@ -310,7 +315,7 @@ fn area(name: &str, kind: AreaKind) -> (String, AreaKind) {
 
 #[test]
 fn teams_people_roles_and_sections_are_areas_and_an_email_never_is() {
-    let github = Codeowners::read(Dialect::GitHub, "* @org/web @alice docs@example.com\n");
+    let github = parsed(Dialect::GitHub, "* @org/web @alice docs@example.com\n");
     assert_eq!(
         kinds(&github, &["a.rs"], &[]),
         [
@@ -318,7 +323,7 @@ fn teams_people_roles_and_sections_are_areas_and_an_email_never_is() {
             area("@org/web", AreaKind::Team)
         ]
     );
-    let gitlab = Codeowners::read(
+    let gitlab = parsed(
         Dialect::GitLab,
         "[Docs] @@maintainer\n*.md @group/sub @known @unknown @asked me@example.com\n",
     );
@@ -338,7 +343,7 @@ fn teams_people_roles_and_sections_are_areas_and_an_email_never_is() {
     );
     assert_eq!(gitlab.undecided(), ["@known", "@unknown", "@asked"]);
     assert_eq!(github.undecided(), Vec::<&str>::new());
-    let forgejo = Codeowners::read(Dialect::Forgejo, ".*\\.md @org/docs @bob\n");
+    let forgejo = parsed(Dialect::Forgejo, ".*\\.md @org/docs @bob\n");
     assert_eq!(
         kinds(&forgejo, &["a.md"], &[]),
         [
@@ -351,7 +356,7 @@ fn teams_people_roles_and_sections_are_areas_and_an_email_never_is() {
 #[test]
 fn a_name_that_cannot_name_an_area_is_never_looked_up_and_a_name_two_lines_write_is_once() {
     let long = format!("@{}", "a".repeat(crate::queue::MOST_AREA_NAME));
-    let gitlab = Codeowners::read(
+    let gitlab = parsed(
         Dialect::GitLab,
         &format!("*.md @twice {long}\n*.rs @twice @@developer\n"),
     );
@@ -368,10 +373,10 @@ fn a_name_that_cannot_name_an_area_is_never_looked_up_and_a_name_two_lines_write
 #[test]
 fn a_file_longer_than_the_source_reads_is_refused_before_it_is_read() {
     let text = "* @org/web\n";
-    let read = Codeowners::within(Dialect::GitHub, text.as_bytes(), text.len());
+    let read = Codeowners::within(Dialect::GitHub, text.as_bytes(), (text.len(), 1));
     assert_eq!(read.refused(), None);
     assert_eq!(owners(&read, &["a"]), ["@org/web"]);
-    let refused = Codeowners::within(Dialect::GitHub, text.as_bytes(), text.len() - 1);
+    let refused = Codeowners::within(Dialect::GitHub, text.as_bytes(), (text.len() - 1, 1));
     assert_eq!(
         refused.refused(),
         Some(
@@ -381,10 +386,15 @@ fn a_file_longer_than_the_source_reads_is_refused_before_it_is_read() {
     assert_eq!(owners(&refused, &["a"]), Vec::<String>::new());
     assert_eq!(refused.skipped(), &[] as &[Skipped]);
     assert_eq!(MOST_CODEOWNERS_READ, 131_072);
+    let two = "a @x\nb @y\n";
+    assert_eq!(
+        Codeowners::within(Dialect::GitHub, two.as_bytes(), (two.len(), 1)).refused(),
+        Some("it names 2 areas, and the source reads at most 1; raise most_areas, at most 2000")
+    );
 }
 
 #[test]
-fn a_file_naming_more_areas_than_a_table_may_is_refused() {
+fn a_file_naming_more_areas_than_its_source_reads_is_refused() {
     let lines = |count: usize| -> String {
         let mut lines = String::new();
         for at in 0..count {
@@ -392,24 +402,35 @@ fn a_file_naming_more_areas_than_a_table_may_is_refused() {
         }
         lines
     };
-    let most = Codeowners::read(Dialect::GitHub, &lines(MOST_AREAS));
+    let most = parsed(Dialect::GitHub, &lines(MOST_AREAS_READ));
     assert_eq!(most.refused(), None);
     assert_eq!(owners(&most, &["0"]), ["@person0", "person0@example.com"]);
-    let more = Codeowners::read(Dialect::GitHub, &lines(MOST_AREAS + 1));
+    let more = parsed(Dialect::GitHub, &lines(MOST_AREAS_READ + 1));
     assert_eq!(
         more.refused(),
-        Some("it names 201 areas, and at most 200 are read")
+        Some(
+            "it names 201 areas, and the source reads at most 200; raise most_areas, at most 2000"
+        )
     );
     assert_eq!(owners(&more, &["0"]), Vec::<String>::new());
+    let raised = Codeowners::read(
+        Dialect::GitHub,
+        &lines(MOST_AREAS_READ + 1),
+        MOST_AREAS_READ + 1,
+    );
+    assert_eq!(raised.refused(), None);
     let mut sections = String::new();
-    for at in 0..MOST_AREAS {
+    for at in 0..MOST_AREAS_READ {
         let _ = writeln!(sections, "[S{at}]\n/{at} @same");
     }
-    let sectioned = Codeowners::read(Dialect::GitLab, &sections);
+    let sectioned = parsed(Dialect::GitLab, &sections);
     assert_eq!(
         sectioned.refused(),
-        Some("it names 201 areas, and at most 200 are read")
+        Some(
+            "it names 201 areas, and the source reads at most 200; raise most_areas, at most 2000"
+        )
     );
-    let unnamed = format!("[ padded ]\n/x @same\n{}", lines(MOST_AREAS - 1));
-    assert_eq!(Codeowners::read(Dialect::GitLab, &unnamed).refused(), None);
+    let unnamed = format!("[ padded ]\n/x @same\n{}", lines(MOST_AREAS_READ - 1));
+    assert_eq!(parsed(Dialect::GitLab, &unnamed).refused(), None);
+    assert_eq!((MOST_AREAS_READ, MOST_AREAS), (200, 2000));
 }

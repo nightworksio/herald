@@ -26,6 +26,7 @@ fn codeowning(paths: &[&str], most: usize) -> Codeowning {
         paths: paths.iter().map(|path| (*path).to_owned()).collect(),
         reference: CodeownersRef::Base,
         most,
+        most_areas: 200,
     }
 }
 
@@ -39,13 +40,54 @@ fn read(
     reference: Option<&str>,
     codeowning: &Codeowning,
 ) -> Result<Option<Found>, Unpolled> {
+    read_kept(http, (forge, reference), codeowning, None)
+}
+
+fn read_kept(
+    http: &ScriptedHttp,
+    (forge, reference): (Forge, Option<&str>),
+    codeowning: &Codeowning,
+    kept: Option<&KeptCodeowners>,
+) -> Result<Option<Found>, Unpolled> {
     let token = Token::Named(Secret::new("TOKEN", "t"));
     pollster::block_on(found(
         &Erased(http),
         (&origin(forge), Some(&token)),
         reference,
-        codeowning,
+        (codeowning, kept),
     ))
+}
+
+fn tagged(status: u16, body: &str, etag: &str) -> Response {
+    Response {
+        headers: vec![("etag".to_owned(), etag.to_owned())],
+        ..text(status, body)
+    }
+}
+
+fn kept_at(path: &str, text: &str, codeowning: &Codeowning) -> KeptCodeowners {
+    let key = herald_core::CodeownersKey {
+        source: herald_core::SourceName::new("forge"),
+        repository: "o/r".to_owned(),
+        reference: None,
+    };
+    let file = Codeowners::read(Dialect::GitHub, text, codeowning.most_areas);
+    let read = (codeowning.bounds(), jiff::Timestamp::UNIX_EPOCH);
+    KeptCodeowners::of(key, (path, "\"v1\""), &file, read).expect("kept")
+}
+
+fn owners(found: &Found) -> Vec<String> {
+    let changed = herald_core::Changed {
+        paths: ["src/a.rs".to_owned()].into_iter().collect(),
+        whole: true,
+    };
+    found
+        .file
+        .owning(Some(&changed))
+        .owners
+        .iter()
+        .map(|owner| owner.written().to_owned())
+        .collect()
 }
 
 #[test]
@@ -213,4 +255,90 @@ fn a_gitlab_name_is_a_person_a_group_or_a_name_by_at_most_two_lookups() {
         looked_up(&http, Forge::GitLab, "under_score-1"),
         Ok(AreaKind::Person)
     );
+}
+
+#[test]
+fn the_kept_place_is_asked_by_its_validator_and_an_unchanged_file_is_the_kept_one() {
+    let places = codeowning(&[".github/CODEOWNERS", "CODEOWNERS"], 4096);
+    let kept = kept_at("CODEOWNERS", "src/ @org/kept\n", &places);
+    let http = ScriptedHttp::new(vec![text(404, "{}"), text(304, "")]);
+    let found = read_kept(&http, (Forge::GitHub, Some("main")), &places, Some(&kept))
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.path, "CODEOWNERS");
+    assert_eq!(found.etag, None);
+    assert_eq!(owners(&found), ["@org/kept"]);
+    let asked: Vec<Option<String>> = http.asked().into_iter().map(|(_, etag)| etag).collect();
+    assert_eq!(asked, [None, Some("\"v1\"".to_owned())]);
+}
+
+#[test]
+fn a_changed_file_at_the_kept_place_is_read_in_full_with_its_new_validator() {
+    let places = codeowning(&["CODEOWNERS"], 4096);
+    let kept = kept_at("CODEOWNERS", "src/ @org/kept\n", &places);
+    let http = ScriptedHttp::new(vec![tagged(200, "src/ @org/new\n", "\"v2\"")]);
+    let found = read_kept(&http, (Forge::GitHub, None), &places, Some(&kept))
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.etag.as_deref(), Some("\"v2\""));
+    assert_eq!(owners(&found), ["@org/new"]);
+    let full = ScriptedHttp::new(vec![tagged(200, "src/ @org/new\n", "\"v3\"")]);
+    let read = read(&full, Forge::GitHub, None, &places).unwrap().unwrap();
+    assert_eq!(read.etag.as_deref(), Some("\"v3\""));
+}
+
+#[test]
+fn a_kept_file_of_other_bounds_another_dialect_or_place_is_not_asked_by_its_validator() {
+    let places = codeowning(&["CODEOWNERS"], 4096);
+    let kept = kept_at("CODEOWNERS", "src/ @org/kept\n", &places);
+    let others = [
+        (codeowning(&["CODEOWNERS"], 4095), Forge::GitHub),
+        (
+            Codeowning {
+                most_areas: 199,
+                ..places.clone()
+            },
+            Forge::GitHub,
+        ),
+        (places.clone(), Forge::GitLab),
+        (codeowning(&["docs/CODEOWNERS"], 4096), Forge::GitHub),
+    ];
+    for (other, forge) in others {
+        let http = ScriptedHttp::new(vec![text(200, "src/ @org/new\n")]);
+        let found = read_kept(&http, (forge, None), &other, Some(&kept))
+            .unwrap()
+            .unwrap();
+        assert_eq!(owners(&found), ["@org/new"], "{forge:?}");
+        assert_eq!(http.asked()[0].1, None, "{forge:?}");
+    }
+}
+
+#[test]
+fn an_unchanged_file_whose_kept_form_does_not_read_back_is_read_again_in_full() {
+    let places = codeowning(&["CODEOWNERS"], 4096);
+    let kept = kept_at("CODEOWNERS", "src/ @org/kept\n", &places);
+    let mut written = serde_json::to_value(&kept).unwrap();
+    written["file"]["patterns"] = serde_json::json!(["("]);
+    let broken: KeptCodeowners = serde_json::from_value(written).unwrap();
+    let http = ScriptedHttp::new(vec![
+        text(304, ""),
+        tagged(200, "src/ @org/new\n", "\"v2\""),
+    ]);
+    let found = read_kept(&http, (Forge::GitHub, None), &places, Some(&broken))
+        .unwrap()
+        .unwrap();
+    assert_eq!(owners(&found), ["@org/new"]);
+    assert_eq!(found.etag.as_deref(), Some("\"v2\""));
+    let asked: Vec<Option<String>> = http.asked().into_iter().map(|(_, etag)| etag).collect();
+    assert_eq!(asked, [Some("\"v1\"".to_owned()), None]);
+}
+
+#[test]
+fn a_304_to_a_place_asked_without_a_validator_is_no_file_read() {
+    let places = codeowning(&[".github/CODEOWNERS", "CODEOWNERS"], 4096);
+    let kept = kept_at("CODEOWNERS", "src/ @org/kept\n", &places);
+    let http = ScriptedHttp::new(vec![text(304, "")]);
+    let read = read_kept(&http, (Forge::GitHub, None), &places, Some(&kept));
+    assert!(matches!(read, Err(Unpolled::Unreadable(_))), "{read:?}");
+    assert_eq!(http.asked().len(), 1);
 }

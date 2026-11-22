@@ -1,14 +1,16 @@
 //! Whatever a CODEOWNERS file holds and whatever paths a pull request
 //! changes, each forge's reading of it ends, names only lines the file
 //! has, in order, and a file it refuses, a path past the most matched and
-//! unread paths fall to no one; its areas are at most a table's, never an
-//! email, and a name no lookup told is of kind name.
+//! unread paths fall to no one; its areas are at most the source reads,
+//! never an email, and a name no lookup told is of kind name; and a file
+//! kept as read reads back owning each path as it did.
 
 #![no_main]
 
 use herald_core::{
-    AreaKind, Changed, CodeOwner, Codeowners, Dialect, MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS,
-    MOST_LINE_OWNERS, Owned,
+    AreaKind, Changed, CodeOwner, Codeowners, CodeownersKey, Dialect, KeptCodeowners,
+    MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS_READ, MOST_CODEOWNERS, MOST_LINE_OWNERS, Owned,
+    SourceName,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -29,7 +31,7 @@ fuzz_target!(|text: &str| {
     };
     let lines = file.lines().count();
     for dialect in [Dialect::GitHub, Dialect::GitLab, Dialect::Forgejo] {
-        let read = Codeowners::read(dialect, file);
+        let read = Codeowners::read(dialect, file, MOST_AREAS_READ);
         assert!(read.skipped().iter().all(|skipped| (1..=lines).contains(&skipped.line)));
         assert!(read.skipped().windows(2).all(|pair| pair[0].line < pair[1].line));
         let owned = read.owning(Some(&changed));
@@ -43,7 +45,18 @@ fuzz_target!(|text: &str| {
             assert!(owned.sections.is_empty());
         }
         let areas = read.areas(&owned, |_| None);
-        assert!(areas.len() <= MOST_AREAS);
+        assert!(areas.len() <= MOST_AREAS_READ);
+        let key = CodeownersKey {
+            source: SourceName::new("fuzz"),
+            repository: "o/r".to_owned(),
+            reference: None,
+        };
+        let most = ((MOST_CODEOWNERS, MOST_AREAS_READ), jiff::Timestamp::UNIX_EPOCH);
+        if let Some(kept) = KeptCodeowners::of(key, ("CODEOWNERS", "e"), &read, most) {
+            let again = kept.file().expect("a kept file reads back");
+            assert_eq!(again.owning(Some(&changed)), owned);
+            assert_eq!(again.refused(), read.refused());
+        }
         assert!(areas.windows(2).all(|pair| pair[0] < pair[1]));
         for owner in &owned.owners {
             let named = areas.iter().find(|area| area.name == owner.written());

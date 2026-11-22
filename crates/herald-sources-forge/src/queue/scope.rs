@@ -503,7 +503,10 @@ impl herald_kinds::Queue for Scoped {
         &'a self,
         http: &'a dyn DynHttp,
         (repository, reference): (&'a str, Option<&'a str>),
-        codeowning: &'a herald_kinds::Codeowning,
+        codeowning: (
+            &'a herald_kinds::Codeowning,
+            Option<&'a herald_core::KeptCodeowners>,
+        ),
     ) -> herald_ports::Boxed<'a, Result<Option<herald_kinds::Found>, Unpolled>> {
         Box::pin(async move {
             let origin = self.origin(repository);

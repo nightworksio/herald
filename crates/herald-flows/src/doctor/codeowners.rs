@@ -40,7 +40,11 @@ pub async fn codeowners<H: Http>(config: &Config, connected: &Connected<H>) -> F
             continue;
         };
         let read = queue
-            .codeowners(http as &dyn DynHttp, (repository, None), &codeowning)
+            .codeowners(
+                http as &dyn DynHttp,
+                (repository, None),
+                (&codeowning, None),
+            )
             .await;
         findings.notes.extend(said(name, read, &codeowning.paths));
     }

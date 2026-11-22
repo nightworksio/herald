@@ -27,12 +27,13 @@ pub use advisory::{
 pub(crate) use area::of_paths;
 pub use area::{
     Area, AreaKind, Areas, CODEOWNERS, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME,
-    MOST_AREA_PATH, MOST_AREAS, Zoning,
+    MOST_AREA_PATH, MOST_AREAS, MOST_AREAS_READ, Zoning,
 };
 pub use codeowners::{
-    CodeOwner, Codeowners, CodeownersRef, Dialect, MOST_CODEOWNERS, MOST_CODEOWNERS_LINES,
-    MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_PATTERN, MOST_CODEOWNERS_READ, MOST_LINE_OWNERS,
-    MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned, RULES_CACHE, Skipped,
+    CodeOwner, Codeowners, CodeownersKey, CodeownersRef, Dialect, KEPT_CODEOWNERS, KeptCodeowners,
+    MOST_CODEOWNERS, MOST_CODEOWNERS_LINES, MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_PATTERN,
+    MOST_CODEOWNERS_READ, MOST_LINE_OWNERS, MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned,
+    RULES_CACHE, Skipped,
 };
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,

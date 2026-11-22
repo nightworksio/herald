@@ -175,8 +175,9 @@ conflicts does, and each row's `areas` names the areas one of its paths
 falls in. A view's `areas = ["web"]` shows only pull requests in one of
 them, each glob matching an area its sources name, and
 `group_by = "area"` groups rows by area, a pull request in several
-areas in each of their groups. A table holds at most 200 areas and 1000
-globs; a changed path longer than 1024 characters falls in no area. A
+areas in each of their groups. A table holds at most the source's
+`most_areas` areas (200 where absent, at most 2000) and 1000 globs; a
+changed path longer than 1024 characters falls in no area. A
 private repository's areas are withheld with its rows.
 
 Each row's `areas` in JSON names each area with its kind: `paths` for a
@@ -208,11 +209,18 @@ is of kind `name`. A login is an area of one person, so its JSON kind
 | `codeowners` | source, override | the forge's own places in its own order: GitHub `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS`; GitLab `CODEOWNERS`, `docs/CODEOWNERS`, `.gitlab/CODEOWNERS`; Forgejo `CODEOWNERS`, `docs/CODEOWNERS`, `.gitea/CODEOWNERS`, `.forgejo/CODEOWNERS`; at most 8 |
 | `codeowners_ref` | source, override | the branch the forge applies: `"base"`, the branch the pull request merges into, on GitHub and GitLab; `"default"`, the default branch, on Forgejo. Gitea applies `"base"`: set it there |
 | `most_codeowners` | source | `"128KiB"`, at most `"3MiB"`; a longer file is read as none |
+| `most_areas` | source | `200`, at most `2000`; a table naming more is refused, a file naming more is read as none |
 
 The first place a file is found at is read, once a round per repository
 and branch, through the source's token and API base; where the branch a
 pull request merges into is not known, the default branch is read. A
-file naming more than 200 areas is read as none. As the names are known
+file naming more than `most_areas` areas is read as none, and `herald
+doctor --online` says so and names the setting. Where the store keeps
+pull requests, each file read is kept there with the validator its forge
+answered with (ADR-0074): the next round asks the place it was found at
+conditionally, and a file unchanged since costs a `304` answer and is
+neither downloaded nor read again. A kept file read under other bounds,
+or one the store cannot read, is read again in full. As the names are known
 only as each file is read, a view's or a route's `areas` of such a source
 are taken as written. `herald doctor` names where and at which branch
 each source reads, and `herald doctor --online` names each line of a

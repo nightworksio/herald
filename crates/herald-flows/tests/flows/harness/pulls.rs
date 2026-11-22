@@ -1,4 +1,6 @@
-use herald_core::{KeptPull, PullKey, Reconciled, RepositoryKey, SourceName};
+use herald_core::{
+    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+};
 use herald_ports::{Pulls, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
@@ -64,6 +66,26 @@ impl Pulls for Failing {
             .put_reconciled(source, reconciled, expected)
             .await
     }
+    async fn codeowners(
+        &self,
+        key: &CodeownersKey,
+    ) -> Result<Option<Versioned<KeptCodeowners>>, StoreError> {
+        if self.fault == Fault::ReadsCodeowners {
+            return Err(broken());
+        }
+        self.inner.codeowners(key).await
+    }
+
+    async fn put_codeowners(
+        &self,
+        kept: &KeptCodeowners,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesCodeowners {
+            return Err(broken());
+        }
+        self.inner.put_codeowners(kept, expected).await
+    }
 }
 
 impl Pulls for Refusing {
@@ -94,6 +116,21 @@ impl Pulls for Refusing {
         &self,
         _: &SourceName,
         _: &Reconciled,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn codeowners(
+        &self,
+        _: &CodeownersKey,
+    ) -> Result<Option<Versioned<KeptCodeowners>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_codeowners(
+        &self,
+        _: &KeptCodeowners,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(self.0.clone())

@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    CODEOWNERS, CodeownersRef, MOST_CODEOWNERS, MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_READ,
-    Zoning,
+    CODEOWNERS, CodeownersRef, MOST_AREAS, MOST_AREAS_READ, MOST_CODEOWNERS,
+    MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_READ, Zoning,
 };
 use herald_kinds::Codeowning;
 use schemars::JsonSchema;
@@ -132,6 +132,54 @@ impl SourceOptions {
             .map_or(MOST_CODEOWNERS_READ, |most| most.0)
     }
 
+    /// The most areas it reads a repository's table or CODEOWNERS file
+    /// naming.
+    #[must_use]
+    pub fn most_areas(&self) -> usize {
+        self.most_areas.unwrap_or(MOST_AREAS_READ)
+    }
+
+    /// Whether its `most_areas` is sound, and each of its tables names at
+    /// most that many areas.
+    fn most_areas_check(&self) -> Result<(), String> {
+        if self
+            .most_areas
+            .is_some_and(|most| !(1..=MOST_AREAS).contains(&most))
+        {
+            return Err(format!(
+                "most_areas is 1 to {MOST_AREAS}: each area is a group of a board and is matched against every changed path; give one in that range"
+            ));
+        }
+        let tables = self
+            .areas
+            .iter()
+            .map(|zoning| ("areas".to_owned(), zoning))
+            .chain(self.repositories.iter().filter_map(|(glob, chosen)| {
+                Some((
+                    format!("repositories.\"{glob}\".areas"),
+                    chosen.areas.as_ref()?,
+                ))
+            }));
+        let mut zoned = false;
+        for (key, zoning) in tables {
+            zoned = true;
+            let named = zoning.names().count();
+            if named > self.most_areas() {
+                return Err(format!(
+                    "{key} names {named} areas, and the source reads at most {}; name fewer, or raise most_areas, at most {MOST_AREAS}",
+                    self.most_areas()
+                ));
+            }
+        }
+        if self.most_areas.is_some() && !zoned {
+            return Err(
+                "most_areas is read only where areas is set; set it, or remove most_areas"
+                    .to_owned(),
+            );
+        }
+        Ok(())
+    }
+
     /// How it reads the CODEOWNERS file of the repository named `name` on
     /// `forge`, where that repository's areas are read from one.
     #[must_use]
@@ -159,11 +207,13 @@ impl SourceOptions {
             paths,
             reference,
             most: self.most_codeowners(),
+            most_areas: self.most_areas(),
         })
     }
 
     /// Whether its CODEOWNERS keys are sound.
     pub(super) fn codeowners_check(&self) -> Result<(), String> {
+        self.most_areas_check()?;
         if self
             .most_codeowners
             .is_some_and(|most| most.0 > MOST_CODEOWNERS)
@@ -219,6 +269,10 @@ impl SourceOptions {
             paths.join(", "),
             self.most_codeowners()
         )];
+        notes.push(format!(
+            "reads at most {} areas a CODEOWNERS file names, refusing a file naming more whole, which doctor names; raise most_areas, at most {MOST_AREAS}; where the store keeps pull requests, each file read is kept with its forge's validator, so one unchanged since costs a 304 answer and is neither downloaded nor read again",
+            self.most_areas()
+        ));
         if forge == Forge::GitLab {
             notes.push(format!(
                 "looks up each top-level @name of a CODEOWNERS file once a run, a group or a person, at most {MOST_CODEOWNERS_LOOKUPS} names a file, through the source's token, API base and the run's request budget; a name past them, or one a lookup cannot tell, is an area of kind name"

@@ -13,7 +13,7 @@ use herald_flows::{Budget, Ports, announce, prepare};
 use herald_ports::Pulls;
 use herald_testing::{FakeClock, FakeSigner};
 
-use crate::harness::{Failing, NOON, POSTED, Script, healthy, secrets};
+use crate::harness::{Failing, Fault, NOON, POSTED, Script, healthy, secrets};
 
 const FILES: &str = "https://api.github.com/repos/o/r/pulls/4/files?per_page=100";
 
@@ -397,8 +397,13 @@ body = "zone {{% if event.origin.areas %}}{{{{ event.origin.areas | join(' ') }}
 
 /// [`event`], public, of a pull request merging into `base`.
 fn based(base: &str) -> Event {
+    based_as(base, "github.com/1/pull/4/opened")
+}
+
+/// [`based`], its identity `identity`.
+fn based_as(base: &str, identity: &str) -> Event {
     let draft = Draft {
-        identity: "github.com/1/pull/4/opened".to_owned(),
+        identity: identity.to_owned(),
         kind: Kind::PULL_REQUEST,
         project: "r".to_owned(),
         title: "Pull request #4 opened: Add a page".to_owned(),
@@ -479,4 +484,78 @@ fn a_codeowners_file_at_no_place_of_the_default_branch_leaves_an_event_in_no_are
         Vec::<String>::new()
     );
     assert_eq!(script.seen().len(), 4);
+}
+
+/// The validator each CODEOWNERS request of `script` was asked with.
+fn validated(script: &Script) -> Vec<Option<String>> {
+    script
+        .seen()
+        .iter()
+        .zip(script.asked())
+        .filter(|(line, _)| line.contains("CODEOWNERS"))
+        .map(|(_, headers)| {
+            headers
+                .into_iter()
+                .find(|(name, _)| name == "If-None-Match")
+                .map(|(_, value)| value)
+        })
+        .collect()
+}
+
+/// Two rounds announcing a pull request event whose CODEOWNERS file is
+/// answered `"c1"` in full, then as `second` answers it, through `store`.
+fn twice(store: &Failing, second: u16) -> (Vec<String>, Script) {
+    let config = codeowned();
+    kept(store, "c0ffee", &["web/index.html"], true);
+    let first = Script::answering(&[
+        (FILE_AT_DEFAULT, 200, "web/ @org/web\n"),
+        (FILES, 200, r#"[{"filename": "web/index.html"}]"#),
+        (
+            &format!("{FILE_AT_DEFAULT}?ref=main"),
+            200,
+            "web/ @org/web\n",
+        ),
+        POSTED,
+    ])
+    .headed(&[("etag", "\"c1\"")]);
+    assert_eq!(
+        announced(&config, store, &first, &based("main")),
+        ["team @\u{200b}org\\\\/web"]
+    );
+    assert_eq!(validated(&first), [None, None]);
+    let answer = if second == 304 { "" } else { "web/ @org/web\n" };
+    let again = Script::answering(&[
+        (FILE_AT_DEFAULT, second, answer),
+        (FILES, 200, r#"[{"filename": "web/index.html"}]"#),
+        (&format!("{FILE_AT_DEFAULT}?ref=main"), second, answer),
+        POSTED,
+    ]);
+    let said = announced(
+        &config,
+        store,
+        &again,
+        &based_as("main", "github.com/1/pull/4/edited"),
+    );
+    (said, again)
+}
+
+#[test]
+fn a_codeowners_file_is_kept_and_one_unchanged_since_costs_a_304_and_no_read() {
+    let store = healthy();
+    let (said, again) = twice(&store, 304);
+    assert_eq!(said, ["team @\u{200b}org\\\\/web"]);
+    assert_eq!(
+        validated(&again),
+        [Some("\"c1\"".to_owned()), Some("\"c1\"".to_owned())]
+    );
+}
+
+#[test]
+fn a_store_that_cannot_read_or_write_a_kept_codeowners_file_reads_it_in_full() {
+    for fault in [Fault::ReadsCodeowners, Fault::WritesCodeowners] {
+        let store = Failing { fault, ..healthy() };
+        let (said, again) = twice(&store, 200);
+        assert_eq!(said, ["team @\u{200b}org\\\\/web"], "{fault:?}");
+        assert_eq!(validated(&again), [None, None], "{fault:?}");
+    }
 }

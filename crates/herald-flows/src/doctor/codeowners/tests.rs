@@ -1,12 +1,17 @@
-use herald_core::{Codeowners, Dialect};
+use herald_core::{Codeowners, Dialect, MOST_AREAS_READ};
 use herald_kinds::Found;
 
 use super::*;
 
 fn found(text: &str, most: usize) -> Found {
+    found_within(text, (most, MOST_AREAS_READ))
+}
+
+fn found_within(text: &str, most: (usize, usize)) -> Found {
     Found {
         path: ".github/CODEOWNERS".to_owned(),
         file: Codeowners::within(Dialect::GitHub, text.as_bytes(), most),
+        etag: None,
     }
 }
 
@@ -78,6 +83,21 @@ fn doctor_says_a_file_refused_missing_or_unread_without_its_forge_s_words() {
         ),
         [
             "The source repo could not read its CODEOWNERS file: its forge's answer could not be read."
+        ]
+    );
+}
+
+#[test]
+fn doctor_names_most_areas_where_a_file_names_more_areas_than_the_source_reads() {
+    let refused = said(
+        "repo",
+        Ok(Some(found_within("a @x\nb @y\n", (1024, 1)))),
+        &places(),
+    );
+    assert_eq!(
+        refused,
+        [
+            "The source repo reads none of its CODEOWNERS file .github/CODEOWNERS, so its pull requests fall in no area: it names 2 areas, and the source reads at most 1; raise most_areas, at most 2000."
         ]
     );
 }

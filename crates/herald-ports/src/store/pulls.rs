@@ -1,16 +1,19 @@
-//! The pull requests herald keeps in kept mode, and where each source's
-//! reconcile stands (ADR-0061).
+//! The pull requests herald keeps in kept mode, where each source's
+//! reconcile stands (ADR-0061), and each CODEOWNERS file a source read
+//! (ADR-0074).
 
 use std::future::{Future, ready};
 
-use herald_core::{KeptPull, PullKey, Reconciled, RepositoryKey, SourceName};
+use herald_core::{
+    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+};
 use jiff::Timestamp;
 
 use super::{Held, StoreError, Unkept, Version, Versioned, Written};
 
 /// The pull requests herald keeps, one record per pull request written
-/// with compare-and-set, and where each source's reconcile stands
-/// (ADR-0061).
+/// with compare-and-set, where each source's reconcile stands (ADR-0061),
+/// and each CODEOWNERS file a source read with its validator (ADR-0074).
 pub trait Pulls: Sync {
     /// The pull request keyed `key`, where it is kept.
     fn pull(
@@ -32,7 +35,8 @@ pub trait Pulls: Sync {
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 
-    /// Forgets every pull request that closed before `before`.
+    /// Forgets every pull request that closed before `before`, and every
+    /// CODEOWNERS file last read in full before it.
     fn expire_pulls(
         &self,
         before: Timestamp,
@@ -50,6 +54,19 @@ pub trait Pulls: Sync {
         &self,
         source: &SourceName,
         reconciled: &Reconciled,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+    /// The CODEOWNERS file keyed `key` as a source read it, where kept.
+    fn codeowners(
+        &self,
+        key: &CodeownersKey,
+    ) -> impl Future<Output = Result<Option<Versioned<KeptCodeowners>>, StoreError>> + Send;
+
+    /// Writes `kept` under its key if the stored one is at `expected`, or
+    /// absent when `expected` is `None`.
+    fn put_codeowners(
+        &self,
+        kept: &KeptCodeowners,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
@@ -92,6 +109,21 @@ impl Pulls for Unkept {
         &self,
         _: &SourceName,
         _: &Reconciled,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Pulls.unsupported()))
+    }
+
+    fn codeowners(
+        &self,
+        _: &CodeownersKey,
+    ) -> impl Future<Output = Result<Option<Versioned<KeptCodeowners>>, StoreError>> + Send {
+        ready(Err(Held::Pulls.unsupported()))
+    }
+
+    fn put_codeowners(
+        &self,
+        _: &KeptCodeowners,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         ready(Err(Held::Pulls.unsupported()))

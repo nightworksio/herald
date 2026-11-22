@@ -451,7 +451,10 @@ impl herald_kinds::Queue for Queued {
         &'a self,
         http: &'a dyn DynHttp,
         (_, reference): (&'a str, Option<&'a str>),
-        codeowning: &'a herald_kinds::Codeowning,
+        codeowning: (
+            &'a herald_kinds::Codeowning,
+            Option<&'a herald_core::KeptCodeowners>,
+        ),
     ) -> herald_ports::Boxed<'a, Result<Option<herald_kinds::Found>, Unpolled>> {
         Box::pin(async move {
             let reading = (&self.origin, self.token.as_ref());

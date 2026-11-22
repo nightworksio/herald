@@ -5524,7 +5524,7 @@
               "default": false
             },
             "areas": {
-              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most\n`most_areas` areas and 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
               "$ref": "#/$defs/Zones"
             },
             "backfill": {
@@ -5646,6 +5646,12 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "most_areas": {
+              "description": "The most areas the source reads a repository's table or\nCODEOWNERS file naming: a table naming more is refused as the\nconfig is read, a file naming more is refused whole as it is read,\nand doctor says so; 200 where absent, and at most 2000, since each\narea is a group of a board and is matched against every changed\npath (ADR-0074).",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
             },
             "most_codeowners": {
               "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
@@ -5863,7 +5869,7 @@
               "default": false
             },
             "areas": {
-              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most\n`most_areas` areas and 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
               "$ref": "#/$defs/Zones"
             },
             "backfill": {
@@ -5985,6 +5991,12 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "most_areas": {
+              "description": "The most areas the source reads a repository's table or\nCODEOWNERS file naming: a table naming more is refused as the\nconfig is read, a file naming more is refused whole as it is read,\nand doctor says so; 200 where absent, and at most 2000, since each\narea is a group of a board and is matched against every changed\npath (ADR-0074).",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
             },
             "most_codeowners": {
               "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",
@@ -6202,7 +6214,7 @@
               "default": false
             },
             "areas": {
-              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most 200 areas\nand 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
+              "description": "The areas of its repositories, each a name and the path globs, as\n`include` writes them, any of which a changed path falls in it by,\nsuch as `{ web = [\"web/**\", \"packages/ui/**\"] }`: at most\n`most_areas` areas and 1000 globs, each name and glob at most 128 and 256 characters,\na path over 1024 falling in none. A view reading the source reads\nthe paths each pull request's head changes, as one predicting\nconflicts does, and each row names its areas; none where absent\n(ADR-0071). Or \"codeowners\": each owner the repository's CODEOWNERS\nfile names for a changed path, a team, a group, a role or a login,\nnever an email, and each GitLab section, is an area (ADR-0073).",
               "$ref": "#/$defs/Zones"
             },
             "backfill": {
@@ -6324,6 +6336,12 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "most_areas": {
+              "description": "The most areas the source reads a repository's table or\nCODEOWNERS file naming: a table naming more is refused as the\nconfig is read, a file naming more is refused whole as it is read,\nand doctor says so; 200 where absent, and at most 2000, since each\narea is a group of a board and is matched against every changed\npath (ADR-0074).",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
             },
             "most_codeowners": {
               "description": "The most of a CODEOWNERS file read, a longer file read as none;\n\"128KiB\" where absent, and at most \"3MiB\", GitHub's own limit\n(ADR-0073).",

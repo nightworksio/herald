@@ -652,13 +652,14 @@ fn an_owner_s_member_reads_its_own_codeowners_and_names_are_looked_up_under_the_
         paths: vec!["CODEOWNERS".to_owned()],
         reference: herald_core::CodeownersRef::Default,
         most: 1024,
+        most_areas: 200,
     };
     let http = ScriptedHttp::new(vec![answer(404, &json!({}))]);
     let found = pollster::block_on(herald_kinds::Queue::codeowners(
         &scoped,
         &http,
         ("o/app", None),
-        &codeowning,
+        (&codeowning, None),
     ))
     .unwrap();
     assert!(found.is_none());

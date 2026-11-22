@@ -3,7 +3,10 @@
 //! does not.
 
 use crate::{Actions, Decisions, Pulls, Recalls};
-use herald_core::{AdvisedReports, Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
+use herald_core::{
+    AdvisedReports, CodeownersKey, Decided, KeptCodeowners, KeptPull, PullKey, Reconciled,
+    RepositoryKey,
+};
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
     Schedule, SourceName, State, Subscription,
@@ -249,6 +252,27 @@ impl<T: Pulls> Pulls for Option<&T> {
         match self {
             Some(kept) => kept.put_reconciled(source, reconciled, expected).await,
             None => Unkept.put_reconciled(source, reconciled, expected).await,
+        }
+    }
+
+    async fn codeowners(
+        &self,
+        key: &CodeownersKey,
+    ) -> Result<Option<Versioned<KeptCodeowners>>, StoreError> {
+        match self {
+            Some(kept) => kept.codeowners(key).await,
+            None => Unkept.codeowners(key).await,
+        }
+    }
+
+    async fn put_codeowners(
+        &self,
+        kept: &KeptCodeowners,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(held) => held.put_codeowners(kept, expected).await,
+            None => Unkept.put_codeowners(kept, expected).await,
         }
     }
 }

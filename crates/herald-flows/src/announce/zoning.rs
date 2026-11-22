@@ -87,8 +87,8 @@ fn pulled(event: &Event) -> Option<(PullKey, &Origin, Option<&str>)> {
 /// CODEOWNERS file through `reach` where it reads areas from one, where
 /// `changed` lists every path; none where it does not, or the file could
 /// not be read.
-async fn fallen(
-    codeowned: &mut Codeowned,
+async fn fallen<P: Pulls>(
+    codeowned: &mut Codeowned<'_, P>,
     (source, reach): (&Source, Option<Reach<'_>>),
     (repository, base, changed): (&str, Option<&str>, &Changed),
 ) -> Option<Vec<String>> {
@@ -141,7 +141,7 @@ pub(super) async fn zoned<S: Store, C: Clock, G, H: Http>(
     let reach: Option<Reach<'_>> = queued
         .zip(http.as_ref())
         .map(|((queue, _), http)| (queue.as_ref(), http as &dyn DynHttp));
-    let mut codeowned = Codeowned::default();
+    let mut codeowned = Codeowned::new((ports.store.pulls(), source, ports.clock.now()));
     let held = match (kept, commit, ports.store.pulls()) {
         (true, Some(commit), Some(pulls)) => match pulls.pull(&key).await {
             Ok(Some(held)) => {

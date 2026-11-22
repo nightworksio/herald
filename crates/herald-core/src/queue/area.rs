@@ -8,9 +8,15 @@ use serde::{Deserialize, Serialize};
 use super::Changed;
 use crate::glob::Glob;
 
-/// The most areas one table names: past it a board's groups and columns
-/// stop being read, and each changed path is matched against every one.
-pub const MOST_AREAS: usize = 200;
+/// The most areas a source reads where its `most_areas` is not set.
+pub const MOST_AREAS_READ: usize = 200;
+
+/// The most areas a source's `most_areas` lets it read, and an event's
+/// origin name: each area is a group of a board and is matched against
+/// every changed path of every pull request read, so past it a board's
+/// groups and columns stop being read and a round's matching grows past
+/// its budget.
+pub const MOST_AREAS: usize = 2000;
 
 /// The most globs one table's areas hold together, each matched against
 /// every changed path of every pull request read.

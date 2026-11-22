@@ -86,6 +86,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         let mut checks = Checks::default();
         pulls::pulls(kept, &mut checks).await?;
         pulls::reconciled(kept, &mut checks).await?;
+        pulls::codeowners(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.recalls() {

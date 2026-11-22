@@ -184,7 +184,8 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?
         };
         if let Some(source) = source {
-            let mut codeowned = crate::codeowned::Codeowned::default();
+            let keeping = (ports.store.pulls(), name, ports.clock.now());
+            let mut codeowned = crate::codeowned::Codeowned::new(keeping);
             for pull in &mut read {
                 let placed = (
                     pull.repository.as_str(),

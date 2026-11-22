@@ -1,8 +1,8 @@
 use std::fmt;
 
 use herald_core::{
-    Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, Listed, Overviews, Owner,
-    Pull, Rerun, Validators, Visibility,
+    Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, KeptCodeowners, Listed,
+    Overviews, Owner, Pull, Rerun, Validators, Visibility,
 };
 use herald_ports::{Boxed, DynHttp};
 
@@ -97,6 +97,17 @@ pub struct Codeowning {
     pub reference: CodeownersRef,
     /// The most bytes of the file it reads.
     pub most: usize,
+    /// The most areas the file names that it reads.
+    pub most_areas: usize,
+}
+
+impl Codeowning {
+    /// The most bytes of a file it reads and the most areas the file
+    /// names.
+    #[must_use]
+    pub const fn bounds(&self) -> (usize, usize) {
+        (self.most, self.most_areas)
+    }
 }
 
 /// A repository's CODEOWNERS file, where it was found, as herald read it.
@@ -106,6 +117,10 @@ pub struct Found {
     pub path: String,
     /// What herald read of it.
     pub file: Codeowners,
+    /// The validator the forge answered a full read of it with, to be
+    /// kept with it; none where it was not read in full or the forge
+    /// answered none (ADR-0074).
+    pub etag: Option<String>,
 }
 
 /// What a reconcile's listing of a repository's open pull requests found
@@ -226,13 +241,16 @@ pub trait Queue: fmt::Debug + Send + Sync {
 
     /// The CODEOWNERS file of the repository at the full path
     /// `read.0`, at the branch `read.1` or the default branch, from the
-    /// first of `codeowning`'s paths it is found at, asked through `http`;
-    /// none where it is at none (ADR-0073).
+    /// first of `codeowning.0`'s paths it is found at, asked through
+    /// `http`; none where it is at none (ADR-0073). Where `codeowning.1`
+    /// was kept from the same place under the same bounds, that place is
+    /// asked conditionally, and an unchanged file is the kept one, neither
+    /// downloaded nor read (ADR-0074).
     fn codeowners<'a>(
         &'a self,
         http: &'a dyn DynHttp,
         read: (&'a str, Option<&'a str>),
-        codeowning: &'a Codeowning,
+        codeowning: (&'a Codeowning, Option<&'a KeptCodeowners>),
     ) -> Boxed<'a, Result<Option<Found>, Unpolled>>;
 
     /// What the GitLab top-level `@name` `name` is, by one lookup asked

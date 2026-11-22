@@ -1,6 +1,6 @@
 use herald_core::{
-    Checks, KeptPull, Mergeable, Pull, PullKey, Reconciled, RepositoryKey, Review, SourceName,
-    Validators, Visibility,
+    Checks, Codeowners, CodeownersKey, Dialect, KeptCodeowners, KeptPull, Mergeable, Pull, PullKey,
+    Reconciled, RepositoryKey, Review, SourceName, Validators, Visibility,
 };
 use herald_ports::{Pulls, StoreError, Version, Written};
 
@@ -144,6 +144,76 @@ pub(super) async fn reconciled<S: Pulls>(
             .is_some_and(|read| read.value == moved)
             && store.reconciled(&other).await?.is_none(),
         "a reconcile was not the one written last for its source",
+    );
+    Ok(())
+}
+
+/// A CODEOWNERS file read at `reference` by the source `source`, kept as
+/// read at `at` with the validator `etag`.
+pub(super) fn codeowned(
+    (source, reference): (&str, Option<&str>),
+    etag: &str,
+    at: jiff::Timestamp,
+) -> Result<KeptCodeowners, StoreError> {
+    let key = CodeownersKey {
+        source: SourceName::new(source),
+        repository: "o/r".to_owned(),
+        reference: reference.map(str::to_owned),
+    };
+    let file = Codeowners::read(Dialect::GitHub, "* @o/all\n", 1);
+    KeptCodeowners::of(key, ("CODEOWNERS", etag), &file, ((4096, 1), at))
+        .ok_or_else(|| StoreError::corrupt("a one-line CODEOWNERS file is not kept"))
+}
+
+/// Whether each CODEOWNERS file a source read is kept by source,
+/// repository and branch, written with compare-and-set, and forgotten
+/// once last read in full before an expiry.
+pub(super) async fn codeowners<S: Pulls>(
+    store: &S,
+    checks: &mut Checked,
+) -> Result<(), StoreError> {
+    let (first, last) = (
+        NOON + jiff::SignedDuration::from_hours(2),
+        NOON + jiff::SignedDuration::from_hours(3),
+    );
+    let read = codeowned(("herald", Some("main")), "\"1\"", first)?;
+    checks.ensure(
+        store.codeowners(&read.key).await?.is_none(),
+        "a new store holds a CODEOWNERS file",
+    );
+    let version = checks.written(store.put_codeowners(&read, None).await?);
+    checks.ensure(
+        store.put_codeowners(&read, None).await? == Written::Conflict,
+        "a CODEOWNERS file was written over a version it did not expect",
+    );
+    let moved = codeowned(("herald", Some("main")), "\"2\"", last)?;
+    checks.written(store.put_codeowners(&moved, Some(version)).await?);
+    let (other, default) = (
+        codeowned(("other", Some("main")), "\"3\"", first)?,
+        codeowned(("herald", None), "\"4\"", last)?,
+    );
+    checks.written(store.put_codeowners(&other, None).await?);
+    checks.written(store.put_codeowners(&default, None).await?);
+    checks.ensure(
+        store
+            .codeowners(&read.key)
+            .await?
+            .is_some_and(|kept| kept.value == moved)
+            && store
+                .codeowners(&other.key)
+                .await?
+                .is_some_and(|kept| kept.value == other),
+        "a CODEOWNERS file was not the one written last under its key",
+    );
+    store.expire_pulls(last).await?;
+    checks.ensure(
+        store.codeowners(&other.key).await?.is_none(),
+        "a CODEOWNERS file read before the expiry was kept",
+    );
+    checks.ensure(
+        store.codeowners(&moved.key).await?.is_some()
+            && store.codeowners(&default.key).await?.is_some(),
+        "a CODEOWNERS file read at the expiry was forgotten",
     );
     Ok(())
 }
