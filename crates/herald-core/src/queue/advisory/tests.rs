@@ -108,6 +108,24 @@ fn a_forge_s_teams_reach_a_private_route_and_a_queue_said_private_alone() {
 }
 
 #[test]
+fn a_forge_s_teams_reach_each_surface_only_where_there_is_one_and_every_one_is_reached() {
+    let private = Surface::Route {
+        private: true,
+        recallable: false,
+    };
+    let public = Surface::Route {
+        private: false,
+        recallable: false,
+    };
+    assert!(!teams_reach_each([]));
+    assert!(teams_reach_each([private]));
+    assert!(teams_reach_each([private, private]));
+    assert!(!teams_reach_each([public]));
+    assert!(!teams_reach_each([private, public]));
+    assert!(!teams_reach_each([public, private]));
+}
+
+#[test]
 fn a_section_is_shown_to_a_private_surface_alone_and_withheld_whole_elsewhere() {
     let found = found();
     for surface in Surface::ALL {

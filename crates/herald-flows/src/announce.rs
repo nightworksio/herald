@@ -134,6 +134,8 @@ pub enum Stop {
     Proof(String),
     /// A polled source could not be read.
     Source(String),
+    /// A polled source's forge answered that its rate limit was reached.
+    RateLimited(String),
     /// The host's limit on the run's time or outbound requests was near,
     /// so no further send was started.
     Limit(String),

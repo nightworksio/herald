@@ -7,7 +7,7 @@ use std::io::Write;
 use herald_config::Config;
 use herald_core::SourceName;
 use herald_environment::EnvSecrets;
-use herald_kinds::{Credential, Polling, Registered, Registering, Unlisted, Unpolled};
+use herald_kinds::{Credential, Polling, Registered, Registering, Unlisted};
 use herald_ports::Secrets;
 
 use super::output::say;
@@ -68,9 +68,9 @@ pub(crate) async fn set_up_source(
         .listed(&http, None)
         .await
         .map_err(|unlisted| match unlisted {
-            Unlisted::Over(reason)
-            | Unlisted::Failed(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason)) => {
-                format!("the owner could not be listed: {reason}")
+            Unlisted::Over(reason) => format!("the owner could not be listed: {reason}"),
+            Unlisted::Failed(unpolled) => {
+                format!("the owner could not be listed: {}", unpolled.into_reason())
             }
         })?
         .members();
@@ -79,9 +79,9 @@ pub(crate) async fn set_up_source(
         let said = match expand.register(&http, member, (&hook, &webhook)).await {
             Ok(Registered::Found) => "has a webhook to herald".to_owned(),
             Ok(Registered::Made) => "was given a webhook to herald".to_owned(),
-            Err(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason)) => {
+            Err(unpolled) => {
                 done = STOPPED;
-                format!("could not be given a webhook: {reason}")
+                format!("could not be given a webhook: {}", unpolled.into_reason())
             }
         };
         say(out, &format!("{}: {said}", member.path));

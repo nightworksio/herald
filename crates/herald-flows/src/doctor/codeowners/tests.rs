@@ -84,6 +84,14 @@ fn doctor_says_a_file_refused_missing_or_unread_without_its_forge_s_words() {
             "The source repo could not read its CODEOWNERS file: its forge's answer could not be read."
         ]
     );
+    assert_eq!(
+        said(
+            "repo",
+            Err(Unpolled::RateLimited(secret.to_owned())),
+            &places()
+        ),
+        ["The source repo could not read its CODEOWNERS file: its forge's rate limit was reached."]
+    );
 }
 
 #[test]

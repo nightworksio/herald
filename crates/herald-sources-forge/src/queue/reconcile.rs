@@ -5,11 +5,11 @@
 use herald_core::{Pull, Validators};
 use herald_kinds::{Relisted, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
-use herald_wire::answered;
 
 use super::{PAGE, Page, ReadPath, github, gitlab, listed_more, listing};
 use crate::Forge;
 use crate::forge::{authorized, validators};
+use crate::limited::checked;
 
 use super::Opened;
 
@@ -34,7 +34,7 @@ impl Opened<'_> {
     /// The page of that listing `answer` holds.
     fn listing_page(&self, answer: &Response) -> Result<Page, Unpolled> {
         let what = self.listing_what();
-        answered(what, answer).map_err(Unpolled::unreadable)?;
+        checked(self.origin.forge(), what, answer)?;
         let parse = self.origin.reading().parse;
         let named = (self.project, self.origin.path(), self.visibility);
         match self.origin.forge() {

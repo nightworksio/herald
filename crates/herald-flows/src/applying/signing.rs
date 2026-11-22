@@ -22,9 +22,7 @@ pub const UNFINISHED: &str = "the sign-in was not finished before its code expir
 
 /// What an `Unpolled` says, in plain words.
 pub(super) fn said(unpolled: Unpolled) -> String {
-    match unpolled {
-        Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason) => reason,
-    }
+    unpolled.into_reason()
 }
 
 /// The operator signed in at the forge `rerunner` re-runs on, through

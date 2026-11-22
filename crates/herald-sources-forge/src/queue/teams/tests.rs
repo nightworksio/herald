@@ -167,6 +167,45 @@ fn a_forge_refusing_teams_or_members_is_refused_with_the_permission_never_guesse
 }
 
 #[test]
+fn a_forge_s_rate_limit_stops_the_read_on_each_forge_never_read_as_a_refusal() {
+    let spent = Response {
+        status: 403,
+        headers: vec![("x-ratelimit-remaining".to_owned(), "0".to_owned())],
+        body: b"{}".to_vec(),
+    };
+    let secondary = answer(
+        403,
+        &json!({ "message": "You have exceeded a secondary rate limit." }),
+    );
+    let teams = || answer(200, &json!([{ "slug": "web" }]));
+    let cases = [
+        (Forge::GitHub, vec![spent], "team listing"),
+        (
+            Forge::GitHub,
+            vec![teams(), secondary],
+            "team member listing",
+        ),
+        (Forge::GitLab, vec![answer(429, &json!({}))], "team listing"),
+        (
+            Forge::Forgejo,
+            vec![answer(429, &json!({}))],
+            "team listing",
+        ),
+    ];
+    for (forge, answers, what) in cases {
+        let http = ScriptedHttp::new(answers);
+        let origin = origin(forge, Some("https://forge.example/api"), "o/r");
+        assert_eq!(
+            read(&http, &origin, "o"),
+            Err(Unpolled::RateLimited(format!(
+                "the forge's {what} was refused for its rate limit; it did not say when the limit resets"
+            ))),
+            "{forge:?}"
+        );
+    }
+}
+
+#[test]
 fn a_forge_unreached_or_unread_stops_the_read_and_names_no_member() {
     let origin = origin(Forge::GitHub, None, "o/r");
     let http = ScriptedHttp::new(vec![answer(200, &json!([{ "slug": "secret-team" }]))]);

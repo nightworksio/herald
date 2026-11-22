@@ -8,6 +8,7 @@ use herald_kinds::{Codeowning, Found, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, HttpError};
 use herald_wire::answered;
 
+use crate::limited::{checked, limited};
 use crate::{Forge, Origin, Token};
 
 /// What a CODEOWNERS file is called in an error.
@@ -84,7 +85,7 @@ pub(crate) async fn found(
         if answer.status == status::NOT_FOUND {
             continue;
         }
-        answered(FILE, &answer).map_err(Unpolled::unreadable)?;
+        checked(origin.forge(), FILE, &answer)?;
         return Ok(Some(Found {
             path: path.clone(),
             file: Codeowners::within(dialect, &answer.body, codeowning.bounds()),
@@ -122,6 +123,9 @@ pub(crate) async fn named(
     }
     let users = origin.rooted(&format!("/users?username={}", unreserved(name)), token);
     let answer = http.send(users).await.map_err(Unpolled::unreachable)?;
+    if let Some(limited) = limited(Forge::GitLab, USERS, &answer) {
+        return Err(limited);
+    }
     let listed = answered(USERS, &answer).is_ok()
         && serde_json::from_slice::<Vec<serde::de::IgnoredAny>>(&answer.body)
             .is_ok_and(|users| !users.is_empty());
@@ -130,6 +134,9 @@ pub(crate) async fn named(
     }
     let group = origin.rooted(&format!("/groups/{}", unreserved(name)), token);
     let answer = http.send(group).await.map_err(Unpolled::unreachable)?;
+    if let Some(limited) = limited(Forge::GitLab, GROUP, &answer) {
+        return Err(limited);
+    }
     Ok(if answered(GROUP, &answer).is_ok() {
         AreaKind::Group
     } else {

@@ -148,6 +148,11 @@ fn a_file_at_no_place_is_none_and_another_answer_fails_the_read() {
         Err(Unpolled::Unreadable(_))
     ));
     assert_eq!(urls(&http).len(), 1);
+    let http = ScriptedHttp::new(vec![text(403, r#"{"message":"API rate limit exceeded"}"#)]);
+    assert!(matches!(
+        read(&http, Forge::GitHub, None, &places),
+        Err(Unpolled::RateLimited(_))
+    ));
     let http = ScriptedHttp::new(Vec::new());
     assert!(matches!(
         read(&http, Forge::GitHub, None, &places),
@@ -229,6 +234,16 @@ fn a_gitlab_name_is_a_person_a_group_or_a_name_by_at_most_two_lookups() {
     );
     let http = ScriptedHttp::new(vec![text(200, "not json"), text(401, "{}")]);
     assert_eq!(looked_up(&http, Forge::GitLab, "@odd"), Ok(AreaKind::Name));
+    for answers in [
+        vec![text(429, "Retry later")],
+        vec![text(200, "[]"), text(429, "Retry later")],
+    ] {
+        let http = ScriptedHttp::new(answers);
+        assert!(matches!(
+            looked_up(&http, Forge::GitLab, "@busy"),
+            Err(Unpolled::RateLimited(_))
+        ));
+    }
     let http = ScriptedHttp::new(Vec::new());
     assert!(matches!(
         looked_up(&http, Forge::GitLab, "@gone"),

@@ -156,7 +156,7 @@ impl<'a, H: Http, C: Clock> Budgeted<'a, H, C> {
             (None, Unpolled::Unreachable(reason)) => {
                 format!("its forge could not be reached: {reason}")
             }
-            (None, Unpolled::Unreadable(reason)) => {
+            (None, Unpolled::Unreadable(reason) | Unpolled::RateLimited(reason)) => {
                 format!("its {what} could not be read: {reason}")
             }
         }

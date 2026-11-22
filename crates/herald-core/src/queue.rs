@@ -23,6 +23,7 @@ pub use advisory::{
     ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
     AdvisoriesFrom, Advisory, MOST_ADVISED_REPORTS, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
     MOST_ADVISORY_REPOSITORIES, Printed, RECALLED, Surface, WITHHELD, advises, teams_reach,
+    teams_reach_each,
 };
 #[cfg(test)]
 pub(crate) use area::of_paths;

@@ -4,9 +4,9 @@
 use herald_core::{Pull, Visibility};
 use herald_kinds::{Asked, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Request};
-use herald_wire::answered;
 
 use crate::forge::authorized;
+use crate::limited::checked;
 use crate::{Forge, Origin, Token};
 
 pub(crate) mod advisory;
@@ -189,7 +189,7 @@ impl Opened<'_> {
         what: &'static str,
     ) -> Result<Vec<u8>, Unpolled> {
         let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
-        answered(what, &answer).map_err(Unpolled::unreadable)?;
+        checked(self.origin.forge(), what, &answer)?;
         Ok(answer.body)
     }
 

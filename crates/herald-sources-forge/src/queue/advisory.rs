@@ -9,6 +9,7 @@ use herald_wire::answered;
 
 use crate::alerts::{ForgeAlert, OPENED, Scanner, github_listed, opened, opened_listing};
 use crate::forge::{OWNER, authorized, whole};
+use crate::limited::limited;
 use crate::options::{AlertAction, Tool};
 use crate::{Forge, Origin, Token};
 
@@ -187,6 +188,9 @@ impl Reader<'_> {
         loop {
             page += 1;
             let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
+            if let Some(limited) = limited(Forge::GitHub, scanner.listed_what(), &answer) {
+                return Err(limited);
+            }
             let reason = match answer.status {
                 401 | 403 => Some(refused),
                 404 => Some(GITHUB_UNSEEN),
@@ -243,6 +247,9 @@ impl Reader<'_> {
                 (after.as_deref(), ADVISORY_PAGE, parse),
             );
             let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
+            if let Some(limited) = limited(Forge::GitLab, OPENED, &answer) {
+                return Err(limited);
+            }
             if matches!(answer.status, 401 | 403) {
                 return Ok(Err(GITLAB_REFUSED.to_owned()));
             }

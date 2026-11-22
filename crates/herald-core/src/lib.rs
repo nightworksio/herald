@@ -159,6 +159,7 @@ pub use queue::{
     Reconciled, RepositoryKey, Review, Reviewed, Row, Rules, Running, SHORTEST_LOAD_WINDOW,
     Showing, Since, Skipped, Surface, Team, TeamMember, Teams, Triage, Turn, Unread, Verdict, View,
     WITHHELD, Zoning, advises, board, grouped, joined, overlaps, rows, teams_reach,
+    teams_reach_each,
 };
 pub use rate::{Per, Rate};
 pub use render::{

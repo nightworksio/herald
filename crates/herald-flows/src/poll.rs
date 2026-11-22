@@ -146,6 +146,7 @@ pub(crate) fn halted(unpolled: Unpolled) -> Stop {
     match unpolled {
         Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
         Unpolled::Unreadable(reason) => Stop::Source(reason),
+        Unpolled::RateLimited(reason) => Stop::RateLimited(reason),
     }
 }
 

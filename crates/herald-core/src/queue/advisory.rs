@@ -152,6 +152,15 @@ pub const fn teams_reach(surface: Surface) -> bool {
     }
 }
 
+/// Whether a forge's own teams may count toward a load leaving herald
+/// through each of `surfaces`, as [`teams_reach`] says of one: never where
+/// there is no surface at all, so a load sent nowhere counts none.
+#[must_use]
+pub fn teams_reach_each(surfaces: impl IntoIterator<Item = Surface>) -> bool {
+    let mut surfaces = surfaces.into_iter().peekable();
+    surfaces.peek().is_some() && surfaces.all(teams_reach)
+}
+
 /// How private the operator said `herald queue`'s or `herald rerun`'s
 /// output is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

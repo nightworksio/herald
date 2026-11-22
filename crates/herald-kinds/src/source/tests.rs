@@ -187,6 +187,13 @@ fn a_poll_that_finds_nothing_to_read_says_why() {
         Unpolled::unreadable("garbled"),
         Unpolled::Unreadable("garbled".to_owned())
     );
+    for unpolled in [
+        Unpolled::Unreachable("why".to_owned()),
+        Unpolled::Unreadable("why".to_owned()),
+        Unpolled::RateLimited("why".to_owned()),
+    ] {
+        assert_eq!(unpolled.into_reason(), "why");
+    }
 }
 
 #[test]

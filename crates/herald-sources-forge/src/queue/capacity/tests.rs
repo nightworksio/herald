@@ -195,6 +195,15 @@ fn a_repository_whose_runs_are_refused_is_named_unread_with_the_permission_it_ne
         };
         assert!(reason.contains(what), "{forge:?}: {reason}");
     }
+    for forge in [Forge::GitHub, Forge::GitLab, Forge::Forgejo] {
+        let http = ScriptedHttp::new(vec![answer(429, &json!({}))]);
+        let limited =
+            pollster::block_on(queued(forge).capacity(&http, (ONE.0, &["o/r"]), Capacity::Shown));
+        assert!(
+            matches!(limited, Err(Unpolled::RateLimited(_))),
+            "{forge:?}"
+        );
+    }
     let http = ScriptedHttp::new(vec![answer(200, &json!("runs"))]);
     let failed = pollster::block_on(queued(Forge::GitLab).capacity(
         &http,

@@ -878,6 +878,10 @@ pub enum Unpolled {
     Unreachable(String),
     /// Its answer could not be read.
     Unreadable(String),
+    /// Its forge answered that the rate limit on its token or address was
+    /// reached, as the reason says, with when it resets where the forge
+    /// said: never a refusal, so nothing folds in its place.
+    RateLimited(String),
 }
 
 impl Unpolled {
@@ -889,6 +893,14 @@ impl Unpolled {
     /// Its answer could not be read, as `error` says.
     pub fn unreadable(error: impl fmt::Display) -> Self {
         Self::Unreadable(error.to_string())
+    }
+
+    /// Why the source was not read, in plain words.
+    #[must_use]
+    pub fn into_reason(self) -> String {
+        match self {
+            Self::Unreachable(said) | Self::Unreadable(said) | Self::RateLimited(said) => said,
+        }
     }
 }
 

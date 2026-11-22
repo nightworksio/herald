@@ -19,6 +19,7 @@ mod graphql;
 mod hooks;
 mod issues;
 mod kind;
+mod limited;
 mod listing;
 mod members;
 mod moved;

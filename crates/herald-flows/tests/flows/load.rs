@@ -176,6 +176,16 @@ fn reported(
     answers: &[(&str, u16, &str)],
     sent: &[(&str, u16, &str)],
 ) -> (Vec<String>, Vec<String>) {
+    let (seen, bodies, _) = swept(config, answers, sent);
+    (seen, bodies)
+}
+
+/// [`reported`], with what the round says of each report.
+fn swept(
+    config: &Config,
+    answers: &[(&str, u16, &str)],
+    sent: &[(&str, u16, &str)],
+) -> (Vec<String>, Vec<String>, String) {
     let store = healthy();
     let closed = page("o/closed", "PRIVATE", &["o/secret-team", "ann"]);
     let open = page("o/open", "PUBLIC", &["ann", "dan"]);
@@ -194,8 +204,8 @@ fn reported(
         signer: &FakeSigner,
         budget: herald_flows::Budget::UNBOUNDED,
     };
-    pollster::block_on(report(config, &connected, &ports, "r1"));
-    (script.seen(), posted(&script))
+    let swept = pollster::block_on(report(config, &connected, &ports, "r1"));
+    (script.seen(), posted(&script), format!("{swept:?}"))
 }
 
 const TEAMS: &str = "https://api.github.com/orgs/o/teams?per_page=100&page=1";
@@ -241,10 +251,17 @@ fn a_forge_s_teams_reach_a_private_route_alone_read_once_an_owner_a_config_team_
 }
 
 #[test]
-fn a_forge_s_teams_unread_stop_the_report_and_refused_fold_as_config_teams_do() {
-    let down = [(TEAMS, crate::harness::UNCONNECTED, "down")];
-    let (seen, bodies) = reported(&forge_teams(true), &down, &[]);
-    assert_eq!(bodies, Vec::<String>::new(), "{seen:?}");
+fn a_forge_s_teams_unread_or_rate_limited_stop_the_report_and_refused_fold_as_config_teams_do() {
+    let limited = r#"{"message":"You have exceeded a secondary rate limit."}"#;
+    for (stopped, kind) in [
+        ((TEAMS, crate::harness::UNCONNECTED, "down"), "Unreachable("),
+        ((TEAMS, 403, limited), "RateLimited("),
+        ((TEAMS, 429, "{}"), "RateLimited("),
+    ] {
+        let (seen, bodies, said) = swept(&forge_teams(true), &[stopped], &[]);
+        assert_eq!(bodies, Vec::<String>::new(), "{seen:?}");
+        assert!(said.contains(kind), "{said}");
+    }
     let refused = [(TEAMS, 403, "{}")];
     let (seen, bodies) = reported(&forge_teams(true), &refused, &[TEAM, POSTED]);
     assert_eq!(
