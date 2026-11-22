@@ -5835,6 +5835,10 @@
               "description": "How long a tag with no Release waits for one, counted from when\nherald first sees the tag; \"1h\" where absent, and at most \"7d\".",
               "$ref": "#/$defs/Duration"
             },
+            "teams": {
+              "description": "Where the teams a view's load counts come from: the config's\n`[teams.<name>]` alone (\"config\"), or also the forge's own teams of\nthe organization or group owning the source's repositories\n(\"forge\"), a team the config names keeping the config's members.\nEach round a view showing its load reads the source, it reads at\nmost 100 teams, each with at most 500 members, by one request a\npage; the members' logins are held for the round alone, never shown\nor kept, and a forge team's name and figures reach only a route that\nsays `private = true` and `herald queue` with `--private` or\n`[cli] private`. GitHub's teams are each `org/team`, needing\nMembers: read as a GitHub App or fine-grained token, or `read:org` as\na classic token, on GitHub Enterprise Server and GHE.com too;\nGitLab's are the group and each group under it, by full path,\nneeding `read_api`, self-managed included; Forgejo's and Gitea's are\neach `org/team`, needing `read:organization`. A forge that refuses folds\nthe load as \"config\" does, and `herald doctor --online` names the\npermission; \"config\" where absent (ADR-0077).",
+              "$ref": "#/$defs/TeamsFrom"
+            },
             "template": {
               "description": "Whether template repositories are taken.",
               "type": "boolean",
@@ -6180,6 +6184,10 @@
               "description": "How long a tag with no Release waits for one, counted from when\nherald first sees the tag; \"1h\" where absent, and at most \"7d\".",
               "$ref": "#/$defs/Duration"
             },
+            "teams": {
+              "description": "Where the teams a view's load counts come from: the config's\n`[teams.<name>]` alone (\"config\"), or also the forge's own teams of\nthe organization or group owning the source's repositories\n(\"forge\"), a team the config names keeping the config's members.\nEach round a view showing its load reads the source, it reads at\nmost 100 teams, each with at most 500 members, by one request a\npage; the members' logins are held for the round alone, never shown\nor kept, and a forge team's name and figures reach only a route that\nsays `private = true` and `herald queue` with `--private` or\n`[cli] private`. GitHub's teams are each `org/team`, needing\nMembers: read as a GitHub App or fine-grained token, or `read:org` as\na classic token, on GitHub Enterprise Server and GHE.com too;\nGitLab's are the group and each group under it, by full path,\nneeding `read_api`, self-managed included; Forgejo's and Gitea's are\neach `org/team`, needing `read:organization`. A forge that refuses folds\nthe load as \"config\" does, and `herald doctor --online` names the\npermission; \"config\" where absent (ADR-0077).",
+              "$ref": "#/$defs/TeamsFrom"
+            },
             "template": {
               "description": "Whether template repositories are taken.",
               "type": "boolean",
@@ -6524,6 +6532,10 @@
             "tag_window": {
               "description": "How long a tag with no Release waits for one, counted from when\nherald first sees the tag; \"1h\" where absent, and at most \"7d\".",
               "$ref": "#/$defs/Duration"
+            },
+            "teams": {
+              "description": "Where the teams a view's load counts come from: the config's\n`[teams.<name>]` alone (\"config\"), or also the forge's own teams of\nthe organization or group owning the source's repositories\n(\"forge\"), a team the config names keeping the config's members.\nEach round a view showing its load reads the source, it reads at\nmost 100 teams, each with at most 500 members, by one request a\npage; the members' logins are held for the round alone, never shown\nor kept, and a forge team's name and figures reach only a route that\nsays `private = true` and `herald queue` with `--private` or\n`[cli] private`. GitHub's teams are each `org/team`, needing\nMembers: read as a GitHub App or fine-grained token, or `read:org` as\na classic token, on GitHub Enterprise Server and GHE.com too;\nGitLab's are the group and each group under it, by full path,\nneeding `read_api`, self-managed included; Forgejo's and Gitea's are\neach `org/team`, needing `read:organization`. A forge that refuses folds\nthe load as \"config\" does, and `herald doctor --online` names the\npermission; \"config\" where absent (ADR-0077).",
+              "$ref": "#/$defs/TeamsFrom"
             },
             "template": {
               "description": "Whether template repositories are taken.",
@@ -8191,6 +8203,21 @@
       "additionalProperties": false,
       "required": [
         "members"
+      ]
+    },
+    "TeamsFrom": {
+      "description": "Where the teams a view's load counts come from.",
+      "oneOf": [
+        {
+          "description": "The config's `[teams.<name>]` alone.",
+          "type": "string",
+          "const": "config"
+        },
+        {
+          "description": "The config's, and the forge's own teams of the organization or group\nowning the source's repositories.",
+          "type": "string",
+          "const": "forge"
+        }
       ]
     },
     "Template": {

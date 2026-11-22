@@ -20,6 +20,7 @@ mod online;
 mod peers;
 mod recalls;
 mod tasks;
+mod teams;
 mod views;
 
 pub use codeowners::{MOST_SKIPPED_NAMED, codeowners};
@@ -31,6 +32,7 @@ pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
 pub use online::{kept_tokens, keys, online, secrets};
 pub use peers::{granted, handed_over, shared};
 pub use recalls::recalls;
+pub use teams::forge_teams;
 
 /// A feature the config asks for that this herald cannot serve (ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]

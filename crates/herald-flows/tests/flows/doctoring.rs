@@ -956,4 +956,5 @@ mod federation;
 mod kept;
 mod reports;
 mod tasks;
+mod teams;
 mod unhosted;

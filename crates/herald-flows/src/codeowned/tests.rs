@@ -157,6 +157,15 @@ impl Queue for Served {
         };
         Box::pin(async move { told })
     }
+    fn team_owner(&self) -> String {
+        String::new()
+    }
+    fn teams<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+    ) -> Boxed<'a, Result<herald_kinds::Teamed, Unpolled>> {
+        unread()
+    }
 }
 
 fn source() -> Source {

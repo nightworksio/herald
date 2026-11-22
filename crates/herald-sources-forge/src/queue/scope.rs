@@ -525,6 +525,20 @@ impl herald_kinds::Queue for Scoped {
             super::codeowners::named(&Erased(http), reading, name).await
         })
     }
+
+    fn team_owner(&self) -> String {
+        format!("{} {}", self.root.api(), self.owner)
+    }
+
+    fn teams<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::Teamed, Unpolled>> {
+        Box::pin(async move {
+            let reading = (&self.root, self.token.as_ref());
+            super::teams::teams(&Erased(http), reading, &self.owner).await
+        })
+    }
 }
 
 /// The most of `open` pull requests one query over an owner's repositories

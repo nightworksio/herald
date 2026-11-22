@@ -8,10 +8,10 @@ use std::sync::Arc;
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
     Advised, Advisories, Board, Cursor, Given, Identity, Listed, Loads, Overviews, Printed, Pull,
-    RouteId, Row, Showing, SourceName, Surface, Unread, Visibility, advises, grouped, report_event,
-    steps,
+    RouteId, Row, Showing, SourceName, Surface, Teams, Unread, Visibility, advises, grouped,
+    joined, report_event, steps, teams_reach,
 };
-use herald_kinds::{Asked, Queue, Scope};
+use herald_kinds::{Asked, Queue, Scope, Teamed};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
 use jiff::Timestamp;
 
@@ -33,7 +33,9 @@ const UNREAD_SOURCE: &str = "the view reads a source this run does not poll";
 pub(crate) type Reads = BTreeMap<String, Read>;
 
 /// What one read of a view found: its open pull requests, its overviews
-/// (ADR-0066), the reviews kept on them (ADR-0075), and its advisories
+/// (ADR-0066), the reviews kept on them (ADR-0075), its sources' forge
+/// teams where a surface it reaches may count them, held for the round
+/// alone (ADR-0077), and its advisories
 /// where a consumer could be shown them, read after the rows and reaching
 /// a board only through
 /// [`crate::advised::shown`] for the surface it leaves through (ADR-0067).
@@ -43,6 +45,7 @@ pub(crate) struct Read {
     pub(crate) overviews: Overviews,
     pub(crate) advisories: Option<Advisories>,
     pub(crate) given: Given,
+    pub(crate) teams: Teams,
 }
 
 impl Read {
@@ -119,9 +122,14 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     reads: &mut Reads,
 ) -> Result<Read, Stop> {
     let sources = sources(flow.1, view)?;
+    let config = flow.0;
+    let teams = config
+        .routes
+        .iter()
+        .any(|route| teams_reach(config.surface(&route.route.id)));
     let mut read = match reads.get(name) {
         Some(read) => read.clone(),
-        None => read_pulls((flow.0, &sources, flow.2), view)
+        None => read_pulls((config, &sources, flow.2), (view, teams))
             .await
             .map_err(|halted| halted.stop)?,
     };
@@ -135,12 +143,14 @@ pub(crate) async fn view_pulls<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// The open pull requests of every source `view` reads, live or kept as
-/// the view and the store say (ADR-0061), and the overviews it shows
-/// (ADR-0066); the first source that could not be read, and the run's
-/// budget, stopping it, named with its stop.
+/// the view and the store say (ADR-0061), the overviews it shows
+/// (ADR-0066), and, where `teams` says a surface it reaches may count them
+/// and it shows its load, the forge teams of each source reading them, an
+/// owner's once (ADR-0077); the first source that could not be read, and
+/// the run's budget, stopping it, named with its stop.
 pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     (config, reached, ports): (&Config, &Sources<'_, H>, &Ports<'_, S, C, G>),
-    view: &ViewConfig,
+    (view, teams): (&ViewConfig, bool),
 ) -> Result<Read, Halted> {
     let mut pulls = Vec::new();
     let mut given = Given::default();
@@ -149,15 +159,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         ..Overviews::default()
     };
     for &(name, queue, http) in reached.iter() {
-        let members = if queue.scoped() {
-            Some(
-                crate::scope::members(ports.store, name)
-                    .await
-                    .map_err(|stop| Halted::of(name, stop))?,
-            )
-        } else {
-            None
-        };
+        let members = scoped_members(ports, (name, queue.as_ref())).await?;
         let source = config.sources.get(name);
         let zoned =
             source.is_some_and(|source| !source.area_names().is_empty() || source.codeowned());
@@ -233,13 +235,62 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         }
         pulls.extend(read);
     }
+    let forge = if teams && view.load.is_some() {
+        forge_teams((config, reached, ports)).await?
+    } else {
+        Teams::new()
+    };
     overviews.heads = Overviews::heads_of(&pulls);
     Ok(Read {
         pulls,
         overviews,
         advisories: None,
         given,
+        teams: forge,
     })
+}
+
+/// The members of the owner the source `name` reads through `queue`, where
+/// it reads an owner's repositories.
+async fn scoped_members<S: Store, C: Clock, G: Signer>(
+    ports: &Ports<'_, S, C, G>,
+    (name, queue): (&SourceName, &dyn Queue),
+) -> Result<Option<(herald_core::Owner, Vec<Listed>)>, Halted> {
+    if !queue.scoped() {
+        return Ok(None);
+    }
+    crate::scope::members(ports.store, name)
+        .await
+        .map(Some)
+        .map_err(|stop| Halted::of(name, stop))
+}
+
+/// The forge teams of each of `reached` that reads them, an owner's once,
+/// each read through the run's budget; the first that could not be read
+/// stopping the read, named with its stop, and one whose forge refuses
+/// left out (ADR-0077).
+async fn forge_teams<S: Store, C: Clock, G: Signer, H: Http>(
+    (config, reached, ports): (&Config, &Sources<'_, H>, &Ports<'_, S, C, G>),
+) -> Result<Teams, Halted> {
+    let mut forge = Teams::new();
+    let mut owners = std::collections::BTreeSet::new();
+    for &(name, queue, http) in reached.iter() {
+        let reads = config
+            .sources
+            .get(name)
+            .is_some_and(|source| source.forge_teams());
+        if reads && owners.insert(queue.team_owner()) {
+            let http = &Budgeted::new(http, ports.budget, ports.clock);
+            let read = queue
+                .teams(http)
+                .await
+                .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?;
+            if let Teamed::Read(read) = read {
+                forge = joined(&forge, &read);
+            }
+        }
+    }
+    Ok(forge)
 }
 
 /// What a capacity read of `source` that failed for `reason` shows: the
@@ -307,11 +358,11 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     let flow = (config, connected, ports);
     crate::poll::minting(flow, |_| true).await;
     let sources = sources(connected, view)?;
-    let read = read_pulls((config, &sources, ports), view)
+    let surface = Surface::Queue { private: printed };
+    let read = read_pulls((config, &sources, ports), (view, teams_reach(surface)))
         .await
         .map_err(|halted| halted.said(printed))?;
     let (pulls, withheld) = printed.printed(read.pulls);
-    let surface = Surface::Queue { private: printed };
     let found = match view.advisories {
         Some(advising) if advises(surface) => {
             Some(crate::advised::read((&sources, ports), (view, advising, 0), &pulls).await)
@@ -319,9 +370,10 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
         _ => None,
     };
     let rows = decided_rows(flow, view, &pulls).await;
+    let teams = joined(&config.teams, &read.teams);
     let load = view
         .load
-        .map(|load| Loads::of(&rows, &read.given, (&config.teams, load), ports.clock.now()));
+        .map(|load| Loads::of(&rows, &read.given, (&teams, load), ports.clock.now()));
     let mut board = grouped(&view.view, rows);
     board.overviews = printed.overviews(read.overviews, &pulls);
     board.overviews.load = load;
@@ -333,13 +385,15 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// What one announcement of a report shows: the pull requests, the
-/// reviews kept on them, who may see them, the routes it may reach, where
-/// only some, whether those keep one living post of it, and those of them
-/// that are or were sent its view's advisories section.
+/// reviews kept on them, the forge teams read, who may see them, the
+/// routes it may reach, where only some, whether those keep one living
+/// post of it, and those of them that are or were sent its view's
+/// advisories section.
 struct Part<'a> {
     view: &'a ViewConfig,
     overviews: &'a Overviews,
     given: &'a Given,
+    teams: &'a Teams,
     advisories: Option<Advised>,
     rows: &'a [Row],
     visibility: Visibility,
@@ -359,14 +413,13 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     let mut shown = grouped(&part.view.view, part.rows.to_vec());
     shown.overviews = part.overviews.seen_by(part.visibility);
     shown.overviews.advisories = part.advisories;
-    shown.overviews.load = part.view.load.map(|load| {
-        Loads::of(
-            part.rows,
-            part.given,
-            (&config.teams, load),
-            ports.clock.now(),
-        )
-    });
+    let teamed = part.routes.iter().all(|id| teams_reach(config.surface(id)));
+    let unread = Teams::new();
+    let teams = joined(&config.teams, if teamed { part.teams } else { &unread });
+    shown.overviews.load = part
+        .view
+        .load
+        .map(|load| Loads::of(part.rows, part.given, (&teams, load), ports.clock.now()));
     let event = report_event((name, &report.view), &shown, start, part.living)
         .map_err(|problem| Stop::Source(problem.to_string()))?
         .seen_as(part.visibility);
@@ -519,6 +572,21 @@ fn audiences(
         .collect()
 }
 
+/// `routes`, none left empty, parted where `teams`, a round's forge teams,
+/// holds any into those a forge team may reach and the rest, so a private
+/// route is shown them and no other route is (ADR-0077).
+fn reaching(config: &Config, routes: Vec<RouteId>, teams: &Teams) -> Vec<Vec<RouteId>> {
+    let parts = if teams.is_empty() {
+        vec![routes]
+    } else {
+        let (reached, rest): (Vec<RouteId>, Vec<RouteId>) = routes
+            .into_iter()
+            .partition(|id| teams_reach(config.surface(id)));
+        vec![reached, rest]
+    };
+    parts.into_iter().filter(|part| !part.is_empty()).collect()
+}
+
 /// One announcement of a report still to be made: the rows it shows, who
 /// may see them, its routes, whether they keep a living post, and the
 /// surface they make where its view shows advisories.
@@ -594,6 +662,7 @@ async fn sent<S: Store, C: Clock, G: Signer, H: Http>(
         view: begun.view,
         overviews: &begun.read.overviews,
         given: &begun.read.given,
+        teams: &begun.read.teams,
         advisories: surface.map(|surface| crate::advised::shown(advisories, surface)),
         rows: &shown,
         visibility,
@@ -644,14 +713,13 @@ async fn begun<'r, S: Store, C: Clock, G: Signer, H: Http>(
             .into_iter()
             .filter(|id| pending.as_ref().is_none_or(|pending| pending.contains(id)))
             .collect();
-        if routes.is_empty() {
-            continue;
-        }
-        match view.advisories {
-            Some(_) => parts.extend(crate::advised::parted(config, routes).into_iter().map(
-                |(surface, routes)| (shown.clone(), visibility, routes, living, Some(surface)),
-            )),
-            None => parts.push((shown, visibility, routes, living, None)),
+        for routes in reaching(config, routes, &read.teams) {
+            match view.advisories {
+                Some(_) => parts.extend(crate::advised::parted(config, routes).into_iter().map(
+                    |(surface, routes)| (shown.clone(), visibility, routes, living, Some(surface)),
+                )),
+                None => parts.push((shown.clone(), visibility, routes, living, None)),
+            }
         }
     }
     let (advised, plain): (Vec<Parted>, Vec<Parted>) = parts

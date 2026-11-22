@@ -279,6 +279,21 @@ fn load_note((named, view): (&str, &str), (load, teams): (Load, &Teams)) -> Stri
     note
 }
 
+/// What doctor says of each source of `view` reading its forge's teams,
+/// where the view shows its load (ADR-0077).
+fn teams_notes(config: &Config, view: &ViewConfig) -> Vec<String> {
+    if view.load.is_none() {
+        return Vec::new();
+    }
+    view.sources
+        .iter()
+        .filter_map(|source| {
+            let note = config.sources.get(source)?.teams_note()?;
+            Some(format!("The source {} {note}", source.as_str()))
+        })
+        .collect()
+}
+
 /// Each note on the report or rule `name`, called `named`, watching
 /// `view` as `report` says.
 fn watched(
@@ -345,6 +360,7 @@ fn watched(
         view.load
             .map(|load| load_note((named, &report.view), (load, &config.teams))),
     );
+    notes.extend(teams_notes(config, view));
     if let Some(zone) = report
         .schedule
         .zone

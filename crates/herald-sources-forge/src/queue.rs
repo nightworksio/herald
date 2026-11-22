@@ -19,6 +19,7 @@ mod listing;
 mod reconcile;
 mod rerun;
 mod scope;
+pub(crate) mod teams;
 
 pub(crate) use scope::{Scoped, scope_cost};
 
@@ -469,6 +470,22 @@ impl herald_kinds::Queue for Queued {
     ) -> herald_ports::Boxed<'a, Result<herald_core::AreaKind, Unpolled>> {
         Box::pin(async move {
             codeowners::named(&Erased(http), (&self.origin, self.token.as_ref()), name).await
+        })
+    }
+
+    fn team_owner(&self) -> String {
+        let owner = teams::owner_of(self.origin.forge(), self.origin.path());
+        format!("{} {owner}", self.origin.api())
+    }
+
+    fn teams<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::Teamed, Unpolled>> {
+        Box::pin(async move {
+            let owner = teams::owner_of(self.origin.forge(), self.origin.path());
+            let reading = (&self.origin, self.token.as_ref());
+            teams::teams(&Erased(http), reading, owner).await
         })
     }
 }

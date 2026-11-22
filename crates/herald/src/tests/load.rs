@@ -177,6 +177,8 @@ fn a_view_read_live_counts_review_requests_alone_and_says_why() {
     );
     let table = herald(&setup, &world, &["queue", "live", "--private"]);
     assert_eq!((table.code, table.err.as_str()), (DONE, ""));
+    let seen = world.state.lock().unwrap().seen.clone();
+    assert!(!seen.iter().any(|line| line.contains("/orgs/")), "{seen:?}");
     let lines: Vec<&str> = table.out.lines().collect();
     assert_eq!(
         lines[lines.len() - 2..],
@@ -195,4 +197,114 @@ fn a_view_read_live_counts_review_requests_alone_and_says_why() {
         read["overviews"]["load"],
         json!({ "teams": [{ "name": "t", "requested": 1, "reviewed": null }], "areas": [], "other": null })
     );
+}
+
+/// Every name a forge's teams give, which no output prints unless it is
+/// said private, and the logins of members asked of nothing, which no
+/// output prints at all.
+const FORGE_TEAM: [&str; 3] = ["secret-team", "eve-member", "fay-member"];
+
+/// A world serving one open pull request of the public `cli/cli` asked of
+/// `dan`, and the forge's team `cli/secret-team` holding `dan`, `eve-member`
+/// and `fay-member`.
+fn forge_world() -> World {
+    let world = World::default();
+    let pulls = json!([{
+        "number": 7, "title": "Add a queue",
+        "html_url": "https://github.com/cli/cli/pull/7",
+        "created_at": "2026-10-01T12:00:00Z", "updated_at": "2026-10-01T12:00:00Z",
+        "user": { "login": "wessel", "type": "User" },
+        "requested_reviewers": [{ "login": "dan", "type": "User" }]
+    }]);
+    let members = json!([{ "login": "dan" }, { "login": "eve-member" }, { "login": "fay-member" }]);
+    let mut state = world.state.lock().unwrap();
+    for (path, body) in [
+        (
+            "/repos/cli/cli/pulls?state=open&sort=updated&direction=desc&per_page=100&page=1",
+            pulls,
+        ),
+        (
+            "/orgs/cli/teams?per_page=100&page=1",
+            json!([{ "slug": "secret-team" }]),
+        ),
+        (
+            "/orgs/cli/teams/secret-team/members?per_page=100&page=1",
+            members,
+        ),
+    ] {
+        state.forge.insert(path.to_owned(), (200, body.to_string()));
+    }
+    drop(state);
+    world
+}
+
+/// [`CONFIG`] reading `cli/cli`'s forge's teams, its view `live` showing
+/// its load where `load` says.
+fn forge_teams(load: &str) -> String {
+    let config = CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"cli/cli\"\nteams = \"forge\"\n",
+    );
+    format!("{config}[views.live]\nmost_pulls = 0\nmode = \"live\"\n{load}")
+}
+
+#[test]
+fn a_forge_s_team_is_named_and_counted_only_where_said_private_even_of_a_public_repository() {
+    let world = forge_world();
+    let said = setup(&forge_teams("load = {}\n"));
+    let printed = |setup: &Setup, args: &[&str]| {
+        let run = herald(setup, &world, args);
+        assert_eq!(run.code, DONE, "{}", run.err);
+        format!("{}{}", run.out, run.err)
+    };
+    let asked = || {
+        let seen = world.state.lock().unwrap().seen.clone();
+        seen.iter().filter(|line| line.contains("/orgs/")).count()
+    };
+    let table = printed(&said, &["queue", "live"]);
+    let json = printed(&said, &["queue", "live", "--format", "json"]);
+    let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        read["overviews"]["load"],
+        json!({ "teams": [], "areas": [], "other": null })
+    );
+    assert!(
+        table.contains("load (review requests open; reviews given"),
+        "{table}"
+    );
+    let withheld = format!("{table}{json}");
+    for named in FORGE_TEAM {
+        assert!(!withheld.contains(named), "{named}: {withheld}");
+    }
+    assert_eq!(asked(), 0);
+    let json = printed(&said, &["queue", "live", "--format", "json", "--private"]);
+    let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        read["overviews"]["load"],
+        json!({
+            "teams": [{ "name": "cli/secret-team", "requested": 1, "reviewed": null }],
+            "areas": [], "other": null
+        })
+    );
+    assert_eq!(asked(), 2);
+    let configured = setup_private();
+    let table = printed(&configured, &["queue", "live"]);
+    assert!(
+        table.contains("  team cli/secret-team: 1 requested"),
+        "{table}"
+    );
+    let shown = format!("{table}{json}");
+    for member in ["eve-member", "fay-member"] {
+        assert!(!shown.contains(member), "{member}: {shown}");
+    }
+    let unloaded = setup(&forge_teams(""));
+    let _ = printed(&unloaded, &["queue", "live", "--private"]);
+    assert_eq!(asked(), 4);
+}
+
+fn setup_private() -> Setup {
+    setup(&format!(
+        "{}[cli]\nprivate = true\n",
+        forge_teams("load = {}\n")
+    ))
 }

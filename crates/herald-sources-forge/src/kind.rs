@@ -444,6 +444,15 @@ impl SourceConfig for ForgeSource {
         self.options.area_names()
     }
 
+    fn forge_teams(&self) -> bool {
+        self.options.forge_teams()
+    }
+
+    fn teams_note(&self) -> Option<String> {
+        self.forge_teams()
+            .then(|| crate::queue::teams::note(self.forge))
+    }
+
     fn queue_cost(&self, most: herald_kinds::Most) -> Option<herald_kinds::QueueCost> {
         let tokened = self.token().is_some() || self.installed().is_some();
         if self.options.owner.is_some() {

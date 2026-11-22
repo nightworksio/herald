@@ -267,7 +267,34 @@ The load is counted from the rows each surface shows: `herald queue`
 from those it prints, so nothing of a private or internal repository is
 counted without `--private` or `[cli] private`, and a report from the
 rows each route is shown, so a route shown only public repositories'
-rows is shown their load alone. JSON and a template read
+rows is shown their load alone.
+
+A forge source may also read its forge's own teams (ADR-0077):
+
+```toml
+[sources.web]
+kind = "github"
+owner = "acme"
+teams = "forge"
+```
+
+Each round a view showing its load reads the source, it reads at most
+100 teams of the organization or group owning the source's
+repositories, each with at most 500 members, under the source's own
+`api`, so GitHub Enterprise Server, GHE.com, GitLab self-managed and
+Gitea are read where the source points. GitHub's and Forgejo's teams are
+named `org/team`; GitLab's are the group and each group under it, by
+full path. A team the config names keeps the config's members, and a
+forge team folds below `least_team` as a config team does. Members'
+logins are held for the round alone, to tell which team a request counts
+for, and are never shown or kept. A forge team reaches only a route that
+says `private = true` and `herald queue` with `--private` or
+`[cli] private`, whatever repository a row is of: who is in an
+organization's teams is the organization's, and can be secret. The token
+needs Members: read (a GitHub App or fine-grained token) or read:org (a
+classic token) on GitHub, read_api on GitLab, and read:organization on
+Forgejo and Gitea; a forge that refuses leaves the load to the config's
+teams, and `herald doctor --online` names the permission. JSON and a template read
 `view.overviews.load`, with `teams` and `areas` (each a `name`, an
 area's `kind`, `requested` and `reviewed`) and `other`; `reviewed` is
 null where reviews given were not counted.

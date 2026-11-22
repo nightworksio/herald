@@ -337,3 +337,48 @@ fn a_window_is_a_week_where_none_is_named_and_from_a_day_to_ninety_days() {
     assert_eq!(SHORTEST_LOAD_WINDOW, day);
     assert_eq!(LONGEST_LOAD_WINDOW, day * 90);
 }
+
+#[test]
+fn a_forge_team_joins_the_config_s_teams_unless_one_of_them_is_named_as_it_is() {
+    let config = teams(&[("@Acme/Web", &["ann", "ben", "cat"])]);
+    let forge = teams(&[
+        ("acme/web", &["dan", "eve", "fay"]),
+        ("acme/api", &["gus", "hal", "ivy"]),
+        ("ACME/API", &["jo"]),
+    ]);
+    let both = joined(&config, &forge);
+    assert_eq!(
+        both.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["@Acme/Web", "ACME/API"]
+    );
+    assert_eq!(both["@Acme/Web"], config["@Acme/Web"]);
+    assert_eq!(both["ACME/API"], forge["ACME/API"]);
+    let alone = joined(&Teams::new(), &teams(&[("acme/web", &["dan"])]));
+    assert_eq!(alone.keys().collect::<Vec<_>>(), ["acme/web"]);
+    assert_eq!(MOST_FORGE_TEAMS, 100);
+}
+
+#[test]
+fn a_forge_team_counts_and_folds_as_a_config_team_does_and_unfolds_its_area() {
+    let web = area("@acme/web", AreaKind::Team);
+    let pulls = [opened(1, &["dan"], vec![web.clone()])];
+    let forge = teams(&[("acme/web", &["dan", "eve", "fay"])]);
+    let counted = loads(
+        &pulls,
+        &Given::default(),
+        &joined(&Teams::new(), &forge),
+        Load::default(),
+    );
+    assert_eq!(counted.teams, [("acme/web".to_owned(), count(1, 0))]);
+    assert_eq!(counted.areas, [(web.clone(), count(1, 0))]);
+    let small = teams(&[("acme/web", &["dan", "eve"])]);
+    let counted = loads(
+        &pulls,
+        &Given::default(),
+        &joined(&Teams::new(), &small),
+        Load::default(),
+    );
+    assert_eq!(counted.teams, []);
+    assert_eq!(counted.areas, []);
+    assert_eq!(counted.other, None);
+}

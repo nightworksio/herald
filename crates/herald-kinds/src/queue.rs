@@ -2,7 +2,7 @@ use std::fmt;
 
 use herald_core::{
     Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, KeptCodeowners, Listed,
-    Overviews, Owner, Pull, Rerun, Validators, Visibility,
+    Overviews, Owner, Pull, Rerun, Teams, Validators, Visibility,
 };
 use herald_ports::{Boxed, DynHttp};
 
@@ -143,6 +143,18 @@ pub enum Relisted {
     },
 }
 
+/// What reading the teams of the organization or group owning a source's
+/// repositories found (ADR-0077).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Teamed {
+    /// Each team, by the name a review request and a CODEOWNERS file give
+    /// it, with its members, held for the round alone.
+    Read(Teams),
+    /// The forge refused to list them or a team's members, or the owner
+    /// is no organization or group: the permission its token needs.
+    Refused(&'static str),
+}
+
 /// What a rule's plan to re-run a check found (ADR-0065).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
@@ -261,6 +273,16 @@ pub trait Queue: fmt::Debug + Send + Sync {
         http: &'a dyn DynHttp,
         name: &'a str,
     ) -> Boxed<'a, Result<AreaKind, Unpolled>>;
+
+    /// The API and the owner whose teams [`Queue::teams`] reads, so a view
+    /// reading two sources of one owner reads its teams once (ADR-0077).
+    fn team_owner(&self) -> String;
+
+    /// The teams of the organization or group owning what it reads, at
+    /// most [`herald_core::MOST_FORGE_TEAMS`], each with at most
+    /// [`herald_core::MOST_TEAM_MEMBERS`] members, asked through `http`
+    /// (ADR-0077).
+    fn teams<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Result<Teamed, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(
