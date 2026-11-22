@@ -16,7 +16,7 @@ fn gitlab_takes(pattern: &str, path: &str) -> bool {
 
 #[test]
 fn github_reads_its_documented_examples() {
-    for path in ["a", "a/b/c.txt", ".github/x"] {
+    for path in ["a", "a/b/c.txt", ".hidden/x"] {
         assert!(github_takes("*", path), "{path}");
     }
     assert!(github_takes("*.js", "x.js"));

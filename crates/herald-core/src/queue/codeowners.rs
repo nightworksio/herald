@@ -2,7 +2,7 @@
 //! owners and GitLab sections the paths a pull request changes fall to
 //! (ADR-0073).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use regex::{RegexBuilder, RegexSet, RegexSetBuilder, SetMatches};
 
@@ -323,23 +323,22 @@ impl Codeowners {
     /// GitLab: in each section the last entry a path matches names its
     /// owners, unless an exemption in the section matches it.
     fn sectioned(&self, matched: &SetMatches, owned: &mut Owned) {
-        let mut winning: Vec<(bool, Option<&Rule>)> = vec![(false, None); self.sections.len()];
+        let mut winning: BTreeMap<usize, (bool, Option<&Rule>)> = BTreeMap::new();
         for (at, rule) in self.rules.iter().enumerate() {
             if !matched.matched(at) {
                 continue;
             }
-            if let Some((exempt, last)) = winning.get_mut(rule.section) {
-                if rule.negative {
-                    *exempt = true;
-                } else {
-                    *last = Some(rule);
-                }
+            let (exempt, last) = winning.entry(rule.section).or_default();
+            if rule.negative {
+                *exempt = true;
+            } else {
+                *last = Some(rule);
             }
         }
-        for ((exempt, last), name) in winning.into_iter().zip(&self.sections) {
+        for (section, (exempt, last)) in winning {
             if let (false, Some(rule)) = (exempt, last) {
                 owned.owners.extend(rule.owners.iter().cloned());
-                if !name.is_empty() {
+                if let Some(name) = self.sections.get(section).filter(|name| !name.is_empty()) {
                     owned.sections.insert(name.clone());
                 }
             }
