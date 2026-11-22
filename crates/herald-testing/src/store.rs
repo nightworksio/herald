@@ -1,5 +1,6 @@
 use herald_core::{
-    AdvisedReports, Decided, KeptPull, PullKey, Reconciled, RepositoryKey, RerunRecord, RunKey,
+    AdvisedReports, CodeownersKey, Decided, KeptCodeowners, KeptPull, PullKey, Reconciled,
+    RepositoryKey, RerunRecord, RunKey,
 };
 use herald_ports::{Actions, Decisions, Pulls, Recalls};
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,6 +33,7 @@ struct FakeState {
     decisions: BTreeMap<Key, Decided>,
     pulls: BTreeMap<PullKey, Versioned<KeptPull>>,
     reconciled: BTreeMap<SourceName, Versioned<Reconciled>>,
+    codeowners: BTreeMap<CodeownersKey, Versioned<KeptCodeowners>>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
     notes: BTreeMap<Key, (String, String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
@@ -700,6 +702,9 @@ impl Pulls for FakeStore {
         lock(&self.state)
             .pulls
             .retain(|_, kept| kept.value.closed.is_none_or(|closed| closed.at >= before));
+        lock(&self.state)
+            .codeowners
+            .retain(|_, kept| kept.value.at >= before);
         Ok(())
     }
 
@@ -721,6 +726,27 @@ impl Pulls for FakeStore {
             &mut state.reconciled,
             source.clone(),
             reconciled,
+            expected,
+        ))
+    }
+
+    async fn codeowners(
+        &self,
+        key: &CodeownersKey,
+    ) -> Result<Option<Versioned<KeptCodeowners>>, StoreError> {
+        Ok(lock(&self.state).codeowners.get(key).cloned())
+    }
+
+    async fn put_codeowners(
+        &self,
+        kept: &KeptCodeowners,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.codeowners,
+            kept.key.clone(),
+            kept,
             expected,
         ))
     }

@@ -91,3 +91,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0071](0071-a-source-names-its-repositories-areas-by-path-globs.md) | A source names its repositories' areas by path globs | Accepted |
 | [0072](0072-a-route-narrows-pull-request-events-by-the-areas-their-paths-fall-in.md) | A route narrows pull request events by the areas their paths fall in | Accepted |
 | [0073](0073-herald-reads-a-codeowners-file-as-its-forge-does.md) | herald reads a CODEOWNERS file as its forge does | Accepted |
+| [0074](0074-a-codeowners-file-read-is-kept-and-a-source-sets-its-most-areas.md) | A CODEOWNERS file read is kept, and a source sets its most areas | Accepted |

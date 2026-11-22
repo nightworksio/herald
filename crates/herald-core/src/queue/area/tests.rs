@@ -126,7 +126,13 @@ fn a_table_names_at_most_the_most_areas_and_globs() {
             .map(|at| (format!("a{at}"), vec!["x/**".to_owned(); globs]))
             .collect()
     };
-    assert!(Areas::of(areas(MOST_AREAS, 1)).is_ok());
+    assert!(Areas::of(areas(MOST_AREA_GLOBS, 1)).is_ok());
+    assert_eq!(
+        Areas::of(areas(MOST_AREAS, 1)).unwrap_err(),
+        format!(
+            "the areas hold {MOST_AREAS} globs, and at most {MOST_AREA_GLOBS} are read; give fewer"
+        )
+    );
     assert_eq!(
         Areas::of(areas(MOST_AREAS + 1, 1)).unwrap_err(),
         format!(

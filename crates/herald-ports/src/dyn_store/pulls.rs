@@ -1,6 +1,8 @@
 //! The pull requests kept mode keeps, read through an erased store.
 
-use herald_core::{KeptPull, PullKey, Reconciled, RepositoryKey, SourceName};
+use herald_core::{
+    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+};
 use jiff::Timestamp;
 
 use super::DynStore;
@@ -47,5 +49,20 @@ impl Pulls for Erased<'_, dyn DynStore + '_> {
         self.0
             .put_reconciled_boxed(source, reconciled, expected)
             .await
+    }
+
+    async fn codeowners(
+        &self,
+        key: &CodeownersKey,
+    ) -> Result<Option<Versioned<KeptCodeowners>>, StoreError> {
+        self.0.codeowners_boxed(key).await
+    }
+
+    async fn put_codeowners(
+        &self,
+        kept: &KeptCodeowners,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_codeowners_boxed(kept, expected).await
     }
 }

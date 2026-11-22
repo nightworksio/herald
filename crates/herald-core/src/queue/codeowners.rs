@@ -5,15 +5,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use regex::{RegexBuilder, RegexSet, RegexSetBuilder, SetMatches};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::area::{Area, AreaKind, MOST_AREAS, unnamed};
 use super::{Changed, MOST_AREA_PATH};
 use crate::Size;
 
+mod kept;
 mod line;
 mod pattern;
 
+pub use kept::{CodeownersKey, KEPT_CODEOWNERS, KeptCodeowners};
 pub use line::CodeOwner;
 use line::{heading, owners, words};
 
@@ -71,7 +73,8 @@ pub const MOST_RULES_COMPILED: usize = 16 * Size::MIB;
 pub const RULES_CACHE: usize = 16_777_216;
 
 /// Which forge's CODEOWNERS a file is written for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Dialect {
     /// GitHub: gitignore-style patterns, the last matching line winning.
     GitHub,
@@ -89,7 +92,7 @@ pub enum Dialect {
 const DEFAULT_SECTION: &str = "codeowners";
 
 /// A line herald does not read, and why: it matches no path.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Skipped {
     /// The line's number, from 1.
     pub line: usize,
@@ -107,7 +110,7 @@ pub struct Owned {
     pub sections: BTreeSet<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Rule {
     owners: Vec<CodeOwner>,
     negative: bool,
@@ -214,6 +217,15 @@ impl Reading {
     }
 }
 
+/// `patterns` compiled together within [`MOST_RULES_COMPILED`], matching
+/// within [`RULES_CACHE`].
+fn compiled(patterns: &[String]) -> Result<RegexSet, regex::Error> {
+    RegexSetBuilder::new(patterns)
+        .size_limit(MOST_RULES_COMPILED)
+        .dfa_size_limit(RULES_CACHE)
+        .build()
+}
+
 /// Whether `expression` compiles alone within [`MOST_RULE_COMPILED`].
 fn compiles(expression: &str) -> Result<(), String> {
     RegexBuilder::new(expression)
@@ -249,23 +261,33 @@ impl Codeowners {
     }
 
     /// The CODEOWNERS file `body`, written for `dialect`'s forge, read
-    /// only where it is at most `most` bytes.
+    /// only where it is at most `most.0` bytes and names at most `most.1`
+    /// areas.
     #[must_use]
-    pub fn within(dialect: Dialect, body: &[u8], most: usize) -> Self {
+    pub fn within(dialect: Dialect, body: &[u8], most: (usize, usize)) -> Self {
+        let (most, most_areas) = most;
         if body.len() > most {
-            return Self::refusing(
-                dialect,
-                format!(
-                    "it is longer than {most} bytes, the most the source reads; raise most_codeowners, at most {MOST_CODEOWNERS}"
-                ),
-            );
+            return Self::longer(dialect, most);
         }
-        Self::read(dialect, &String::from_utf8_lossy(body))
+        Self::read(dialect, &String::from_utf8_lossy(body), most_areas)
     }
 
-    /// The CODEOWNERS file `text`, written for `dialect`'s forge.
+    /// A file of `dialect`'s forge longer than the `most` bytes its source
+    /// reads, refused unread.
     #[must_use]
-    pub fn read(dialect: Dialect, text: &str) -> Self {
+    pub fn longer(dialect: Dialect, most: usize) -> Self {
+        Self::refusing(
+            dialect,
+            format!(
+                "it is longer than {most} bytes, the most the source reads; raise most_codeowners, at most {MOST_CODEOWNERS}"
+            ),
+        )
+    }
+
+    /// The CODEOWNERS file `text`, written for `dialect`'s forge, read
+    /// only where it names at most `most_areas` areas.
+    #[must_use]
+    pub fn read(dialect: Dialect, text: &str, most_areas: usize) -> Self {
         if text.len() > MOST_CODEOWNERS {
             return Self::refusing(
                 dialect,
@@ -307,19 +329,17 @@ impl Codeowners {
         if reading.patterns.is_empty() {
             return read;
         }
-        match RegexSetBuilder::new(&reading.patterns)
-            .size_limit(MOST_RULES_COMPILED)
-            .dfa_size_limit(RULES_CACHE)
-            .build()
-        {
+        match compiled(&reading.patterns) {
             Ok(set) => {
                 read.set = Some(set);
                 read.rules = reading.rules;
                 let named = read.named();
-                if named > MOST_AREAS {
+                if named > most_areas {
                     return Self::refusing(
                         dialect,
-                        format!("it names {named} areas, and at most {MOST_AREAS} are read"),
+                        format!(
+                            "it names {named} areas, and the source reads at most {most_areas}; raise most_areas, at most {MOST_AREAS}"
+                        ),
                     );
                 }
             }

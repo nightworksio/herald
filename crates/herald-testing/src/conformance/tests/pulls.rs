@@ -1,9 +1,12 @@
-use herald_core::{KeptPull, PullKey, Reconciled, RepositoryKey, SourceName};
+use herald_core::{
+    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+};
 use herald_ports::{Pulls, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
 use super::{Fault, Faulty, refused};
-use crate::conformance::pulls::{kept, repository};
+use crate::conformance::NOON;
+use crate::conformance::pulls::{codeowned, kept, repository};
 
 impl Pulls for Faulty {
     async fn pull(&self, key: &PullKey) -> Result<Option<Versioned<KeptPull>>, StoreError> {
@@ -51,9 +54,14 @@ impl Pulls for Faulty {
 
     async fn expire_pulls(&self, before: Timestamp) -> Result<(), StoreError> {
         self.refuses()?;
+        let codeowned = before > NOON + jiff::SignedDuration::from_hours(1);
         match self.fault {
             Fault::ExpiresNoPull => Ok(()),
+            Fault::ExpiresNoCodeowners if codeowned => Ok(()),
             Fault::ExpiresEveryClosedPull => self.inner.expire_pulls(Timestamp::MAX).await,
+            Fault::ExpiresEveryCodeowners if codeowned => {
+                self.inner.expire_pulls(Timestamp::MAX).await
+            }
             _ => self.inner.expire_pulls(before).await,
         }
     }
@@ -104,6 +112,47 @@ impl Pulls for Faulty {
             }
         }
     }
+    async fn codeowners(
+        &self,
+        key: &CodeownersKey,
+    ) -> Result<Option<Versioned<KeptCodeowners>>, StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::HoldsAnUnwrittenCodeowners => Ok(Some(Versioned {
+                value: codeowned(("herald", None), "held", NOON)?,
+                version: Version(1),
+            })),
+            Fault::ForgetsTheDefaultBranchCodeowners if key.reference.is_none() => Ok(None),
+            Fault::SharesCodeowners => {
+                let shared = CodeownersKey {
+                    source: SourceName::new("herald"),
+                    ..key.clone()
+                };
+                self.inner.codeowners(&shared).await
+            }
+            _ => self.inner.codeowners(key).await,
+        }
+    }
+
+    async fn put_codeowners(
+        &self,
+        kept: &KeptCodeowners,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.refuses()?;
+        let current = self
+            .inner
+            .codeowners(&kept.key)
+            .await?
+            .map(|read| read.version);
+        match self.fault {
+            Fault::OverwritesAnyCodeownersVersion => self.inner.put_codeowners(kept, current).await,
+            Fault::KeepsTheFirstCodeowners if expected.is_some() && expected == current => {
+                Ok(Written::Written(Version(9)))
+            }
+            _ => self.inner.put_codeowners(kept, expected).await,
+        }
+    }
 }
 
 #[test]
@@ -152,6 +201,34 @@ fn a_store_that_breaks_its_promises_on_pull_requests_is_refused() {
         (
             Fault::SharesReconciles,
             "a reconcile was not the one written last for its source",
+        ),
+        (
+            Fault::HoldsAnUnwrittenCodeowners,
+            "a new store holds a CODEOWNERS file",
+        ),
+        (
+            Fault::OverwritesAnyCodeownersVersion,
+            "a CODEOWNERS file was written over a version it did not expect",
+        ),
+        (
+            Fault::KeepsTheFirstCodeowners,
+            "a CODEOWNERS file was not the one written last under its key",
+        ),
+        (
+            Fault::SharesCodeowners,
+            "a CODEOWNERS file was not the one written last under its key",
+        ),
+        (
+            Fault::ExpiresNoCodeowners,
+            "a CODEOWNERS file read before the expiry was kept",
+        ),
+        (
+            Fault::ExpiresEveryCodeowners,
+            "a CODEOWNERS file read at the expiry was forgotten",
+        ),
+        (
+            Fault::ForgetsTheDefaultBranchCodeowners,
+            "a CODEOWNERS file read at the expiry was forgotten",
         ),
     ]);
 }

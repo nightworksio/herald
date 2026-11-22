@@ -210,8 +210,8 @@ async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
     );
     assert_eq!(
         http.send(request()).await,
-        Err(HttpError::Unreachable {
-            reason: "the response is larger than 33554432 bytes".to_owned()
+        Err(HttpError::Larger {
+            most: Outbound::BODY
         })
     );
     server.await.unwrap();
@@ -317,9 +317,7 @@ async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said()
     .await;
     let http = http(&base);
     let request = || Request::new(Method::Get, SecretText::plain(format!("{base}/"))).at_most(4);
-    let larger = Err(HttpError::Unreachable {
-        reason: "the response is larger than 4 bytes".to_owned(),
-    });
+    let larger = Err(HttpError::Larger { most: 4 });
     assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
     assert_eq!(http.send(request()).await, larger);
     assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
@@ -349,9 +347,7 @@ async fn a_response_is_read_no_further_than_the_config_s_body() {
     assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
     assert_eq!(
         http.send(request()).await,
-        Err(HttpError::Unreachable {
-            reason: "the response is larger than 4 bytes".to_owned(),
-        })
+        Err(HttpError::Larger { most: 4 })
     );
     server.await.unwrap();
 }

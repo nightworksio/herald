@@ -6,7 +6,10 @@ use crate::queue::area::unnamed;
 
 /// An owner a CODEOWNERS line names, by what it names, as its forge writes
 /// it.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "kind", content = "written", rename_all = "lowercase")]
 pub enum CodeOwner {
     /// A team or a group: `@org/team` on GitHub, Forgejo and Gitea,
     /// `@group/subgroup` on GitLab.

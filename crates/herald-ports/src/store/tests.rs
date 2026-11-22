@@ -510,6 +510,27 @@ fn pull_requests_kept_nowhere_answer_unsupported_naming_them() {
             unsupported(unkept.put_reconciled(&source, &reconciled, None)),
             naming("pull requests")
         );
+        let key = herald_core::CodeownersKey {
+            source: source.clone(),
+            repository: "o/r".to_owned(),
+            reference: None,
+        };
+        let file = herald_core::Codeowners::read(herald_core::Dialect::GitHub, "* @a\n", 1);
+        let kept = herald_core::KeptCodeowners::of(
+            key.clone(),
+            ("CODEOWNERS", "\"e\""),
+            &file,
+            ((4096, 1), Timestamp::UNIX_EPOCH),
+        )
+        .unwrap();
+        assert_eq!(
+            unsupported(unkept.codeowners(&key)),
+            naming("pull requests")
+        );
+        assert_eq!(
+            unsupported(unkept.put_codeowners(&kept, None)),
+            naming("pull requests")
+        );
     }
 }
 

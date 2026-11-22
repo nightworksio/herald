@@ -187,6 +187,21 @@ impl crate::Pulls for Refusing {
     ) -> Result<Written, StoreError> {
         Err(refused("put_reconciled"))
     }
+
+    async fn codeowners(
+        &self,
+        _: &herald_core::CodeownersKey,
+    ) -> Result<Option<Versioned<herald_core::KeptCodeowners>>, StoreError> {
+        Err(refused("codeowners"))
+    }
+
+    async fn put_codeowners(
+        &self,
+        _: &herald_core::KeptCodeowners,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_codeowners"))
+    }
 }
 
 impl crate::Recalls for Refusing {
@@ -790,6 +805,19 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
         at: None,
         validators: Vec::new(),
     };
+    let key = herald_core::CodeownersKey {
+        source: source.clone(),
+        repository: "o/r".to_owned(),
+        reference: None,
+    };
+    let file = herald_core::Codeowners::read(herald_core::Dialect::GitHub, "* @a\n", 1);
+    let codeowned = herald_core::KeptCodeowners::of(
+        key,
+        ("CODEOWNERS", "e"),
+        &file,
+        ((4096, 1), Timestamp::UNIX_EPOCH),
+    )
+    .unwrap();
     let refusals = [
         answered(erased.pull(&kept.key)),
         answered(erased.pulls_of(&kept.key.repository)),
@@ -797,6 +825,8 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
         answered(erased.expire_pulls(Timestamp::UNIX_EPOCH)),
         answered(erased.reconciled(&source)),
         answered(erased.put_reconciled(&source, &reconciled, None)),
+        answered(erased.codeowners(&codeowned.key)),
+        answered(erased.put_codeowners(&codeowned, None)),
     ];
     let by = [
         "pull",
@@ -805,6 +835,8 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
         "expire_pulls",
         "reconciled",
         "put_reconciled",
+        "codeowners",
+        "put_codeowners",
     ];
     assert_eq!(refusals, by.map(|by| Some(refused(by))));
 }

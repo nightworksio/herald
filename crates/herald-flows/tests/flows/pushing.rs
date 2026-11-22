@@ -476,7 +476,7 @@ fn a_peer_asking_to_wait_or_refusing_stops_the_route_and_lands_nothing() {
     assert_eq!(
         stop(&oversized.announced(&event("v1"))),
         &Stop::Unreachable(format!(
-            "the host could not be reached: the response is larger than {} bytes",
+            "the response is larger than {} bytes",
             Audited::NAMED_MOST
         ))
     );

@@ -32,6 +32,7 @@ fn a_repository_reads_codeowners_as_its_narrowest_override_says_or_its_forge_doe
             paths: paths(&["CODEOWNERS", "docs/CODEOWNERS", ".gitlab/CODEOWNERS"]),
             reference: CodeownersRef::Default,
             most: MOST_CODEOWNERS_READ,
+            most_areas: 200,
         })
     );
     assert_eq!(
@@ -40,6 +41,7 @@ fn a_repository_reads_codeowners_as_its_narrowest_override_says_or_its_forge_doe
             paths: paths(&["docs/OWNERS"]),
             reference: CodeownersRef::Base,
             most: MOST_CODEOWNERS_READ,
+            most_areas: 200,
         })
     );
     assert_eq!(options.codeowning_of(Forge::GitLab, "site"), None);
@@ -70,6 +72,7 @@ fn a_repository_reads_codeowners_as_its_narrowest_override_says_or_its_forge_doe
             paths: paths(&["OWNERS"]),
             reference: CodeownersRef::Base,
             most: 1 << 20,
+            most_areas: 200,
         })
     );
     assert!(!owner("acme").codeowned());
@@ -222,7 +225,7 @@ fn doctor_names_where_and_at_which_branch_codeowners_is_read_and_how_gitlab_name
         Forge::GitHub,
         "repository = \"acme/site\"\nareas = \"codeowners\"\n",
     );
-    assert_eq!(github.len(), 1);
+    assert_eq!(github.len(), 2);
     assert!(
         github[0].starts_with("reads areas from each repository's CODEOWNERS file at the branch each pull request merges into, looking at .github/CODEOWNERS, CODEOWNERS, docs/CODEOWNERS in order and reading the first found, at most 131072 bytes of it"),
         "{}",
@@ -242,43 +245,43 @@ fn doctor_names_where_and_at_which_branch_codeowners_is_read_and_how_gitlab_name
         Forge::GitLab,
         "repository = \"acme/site\"\nareas = \"codeowners\"\ncodeowners_ref = \"default\"\n",
     );
-    assert_eq!(gitlab.len(), 2);
+    assert_eq!(gitlab.len(), 3);
     assert!(
         gitlab[0].contains("at the repository's default branch"),
         "{}",
         gitlab[0]
     );
     assert!(
-        gitlab[1].contains("at most 50 names a file"),
+        gitlab[2].contains("at most 50 names a file"),
         "{}",
-        gitlab[1]
+        gitlab[2]
     );
     let forgejo = notes(
         Forge::Forgejo,
         "repository = \"acme/site\"\nareas = \"codeowners\"\n",
     );
-    assert_eq!(forgejo.len(), 2);
+    assert_eq!(forgejo.len(), 3);
     assert!(
-        forgejo[1].contains("on Gitea, set codeowners_ref = \"base\""),
+        forgejo[2].contains("on Gitea, set codeowners_ref = \"base\""),
         "{}",
-        forgejo[1]
+        forgejo[2]
     );
     let based = notes(
         Forge::Forgejo,
         "repository = \"acme/site\"\nareas = \"codeowners\"\ncodeowners_ref = \"base\"\n",
     );
-    assert_eq!(based.len(), 1);
+    assert_eq!(based.len(), 2);
     assert!(
         based[0].contains("at the branch each pull request merges into"),
         "{}",
         based[0]
     );
     let owner = notes(Forge::GitHub, OWNER);
-    assert_eq!(owner.len(), 2);
+    assert_eq!(owner.len(), 3);
     assert!(
-        owner[1].starts_with("an override under repositories"),
+        owner[2].starts_with("an override under repositories"),
         "{}",
-        owner[1]
+        owner[2]
     );
     for key in [
         "codeowners = [\"C\"]",
@@ -287,8 +290,83 @@ fn doctor_names_where_and_at_which_branch_codeowners_is_read_and_how_gitlab_name
     ] {
         let one =
             format!("owner = \"acme\"\nareas = \"codeowners\"\n[repositories.\"x-*\"]\n{key}\n");
-        assert_eq!(notes(Forge::GitHub, &one).len(), 2, "{key}");
+        assert_eq!(notes(Forge::GitHub, &one).len(), 3, "{key}");
     }
     let overridden_only = "owner = \"acme\"\n[repositories.\"x-*\"]\nareas = \"codeowners\"\n";
-    assert_eq!(notes(Forge::GitHub, overridden_only).len(), 2);
+    assert_eq!(notes(Forge::GitHub, overridden_only).len(), 3);
+}
+
+#[test]
+fn most_areas_bounds_each_table_and_file_and_is_refused_out_of_range_or_unread() {
+    let table = "repository = \"acme/site\"\nareas = { web = [\"web/**\"], api = [\"api/**\"] }\n";
+    let options: SourceOptions = toml::from_str(table).unwrap();
+    assert_eq!(options.check(Forge::GitHub), Ok(()));
+    assert_eq!(options.most_areas(), 200);
+    assert_eq!(
+        refused(&format!("{table}most_areas = 1\n")),
+        "areas names 2 areas, and the source reads at most 1; name fewer, or raise most_areas, at most 2000"
+    );
+    let at = toml::from_str::<SourceOptions>(&format!("{table}most_areas = 2\n")).unwrap();
+    assert_eq!(at.check(Forge::GitHub), Ok(()));
+    let overridden = "owner = \"acme\"\nmost_areas = 1\n[repositories.\"site\"]\nareas = { web = [\"web/**\"], api = [\"api/**\"] }\n";
+    assert_eq!(
+        refused(overridden),
+        "repositories.\"site\".areas names 2 areas, and the source reads at most 1; name fewer, or raise most_areas, at most 2000"
+    );
+    let base = "repository = \"acme/site\"\nareas = \"codeowners\"\n";
+    for out in [0, 2001] {
+        assert_eq!(
+            refused(&format!("{base}most_areas = {out}\n")),
+            "most_areas is 1 to 2000: each area is a group of a board and is matched against every changed path; give one in that range",
+            "{out}"
+        );
+    }
+    for bound in [1, 2000] {
+        let read =
+            toml::from_str::<SourceOptions>(&format!("{base}most_areas = {bound}\n")).unwrap();
+        assert_eq!(read.check(Forge::GitHub), Ok(()), "{bound}");
+        assert_eq!(
+            read.codeowning_of(Forge::GitHub, "acme/site")
+                .map(|codeowning| codeowning.most_areas),
+            Some(bound)
+        );
+    }
+    assert_eq!(
+        refused("repository = \"acme/site\"\nmost_areas = 300\n"),
+        "most_areas is read only where areas is set; set it, or remove most_areas"
+    );
+}
+
+#[test]
+fn doctor_names_most_areas_and_the_304_a_kept_unchanged_file_costs() {
+    let notes = |forge: Forge, toml: &str| {
+        toml::from_str::<SourceOptions>(toml)
+            .unwrap()
+            .codeowners_notes(forge)
+    };
+    let github = notes(
+        Forge::GitHub,
+        "repository = \"acme/site\"\nareas = \"codeowners\"\n",
+    );
+    assert!(
+        github[1].starts_with("reads at most 200 areas a CODEOWNERS file names, refusing a file naming more whole, which doctor names; raise most_areas, at most 2000"),
+        "{}",
+        github[1]
+    );
+    assert!(
+        github[1].ends_with(
+            "so one unchanged since costs a 304 answer and is neither downloaded nor read again"
+        ),
+        "{}",
+        github[1]
+    );
+    let raised = notes(
+        Forge::GitHub,
+        "repository = \"acme/site\"\nareas = \"codeowners\"\nmost_areas = 500\n",
+    );
+    assert!(
+        raised[1].starts_with("reads at most 500 areas"),
+        "{}",
+        raised[1]
+    );
 }

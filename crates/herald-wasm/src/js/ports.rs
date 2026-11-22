@@ -59,6 +59,9 @@ impl Http for JsHttp {
                 .and_then(count)
                 .and_then(|status| u16::try_from(status).ok())
                 .ok_or_else(|| HttpError::unreachable("the host answered with no status"))?;
+            if member(&answered, "larger").is_truthy() {
+                return Err(HttpError::Larger { most: request.most });
+            }
             let response = Response {
                 status,
                 headers: pairs(&member(&answered, "headers")),

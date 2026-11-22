@@ -198,8 +198,8 @@ pub struct SourceOptions {
     pub repositories: BTreeMap<String, Override>,
     /// The areas of its repositories, each a name and the path globs, as
     /// `include` writes them, any of which a changed path falls in it by,
-    /// such as `{ web = ["web/**", "packages/ui/**"] }`: at most 200 areas
-    /// and 1000 globs, each name and glob at most 128 and 256 characters,
+    /// such as `{ web = ["web/**", "packages/ui/**"] }`: at most
+    /// `most_areas` areas and 1000 globs, each name and glob at most 128 and 256 characters,
     /// a path over 1024 falling in none. A view reading the source reads
     /// the paths each pull request's head changes, as one predicting
     /// conflicts does, and each row names its areas; none where absent
@@ -220,10 +220,17 @@ pub struct SourceOptions {
     /// applies: "base" on GitHub and GitLab, "default" on Forgejo (Gitea
     /// applies "base": set it there) (ADR-0073).
     pub codeowners_ref: Option<CodeownersRef>,
-    /// The most of a CODEOWNERS file read, a longer file read as none;
-    /// "128KiB" where absent, and at most "3MiB", GitHub's own limit
-    /// (ADR-0073).
+    /// The most of a CODEOWNERS file downloaded and read, a longer file
+    /// refused unread; "128KiB" where absent, and at most "3MiB", GitHub's
+    /// own limit (ADR-0073, ADR-0074).
     pub most_codeowners: Option<Size>,
+    /// The most areas the source reads a repository's table or
+    /// CODEOWNERS file naming: a table naming more is refused as the
+    /// config is read, a file naming more is refused whole as it is read,
+    /// and doctor says so; 200 where absent, and at most 2000, since each
+    /// area is a group of a board and is matched against every changed
+    /// path (ADR-0074).
+    pub most_areas: Option<usize>,
     /// How an owner source finds the repositories that join or leave it:
     /// listing the owner each round ("list"), or only where it holds no
     /// listing, its selection changed or a delivery said the owner's

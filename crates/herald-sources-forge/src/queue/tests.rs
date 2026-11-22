@@ -680,6 +680,7 @@ fn a_queued_repository_reads_its_codeowners_and_looks_names_up_through_the_confi
         paths: vec![".gitlab/CODEOWNERS".to_owned()],
         reference: herald_core::CodeownersRef::Base,
         most: 1024,
+        most_areas: 200,
     };
     let http = ScriptedHttp::new(vec![
         Response {
@@ -693,7 +694,7 @@ fn a_queued_repository_reads_its_codeowners_and_looks_names_up_through_the_confi
         &queued,
         &http,
         ("o/r", Some("main")),
-        &codeowning,
+        (&codeowning, None),
     ))
     .unwrap()
     .unwrap();

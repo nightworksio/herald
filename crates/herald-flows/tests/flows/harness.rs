@@ -298,6 +298,8 @@ pub(crate) enum Fault {
     ExpiresPulls,
     ReadsReconciles,
     WritesReconciles,
+    ReadsCodeowners,
+    WritesCodeowners,
     KeepsNoRecalls,
     ReadsRecalls,
     WritesRecalls,

@@ -86,6 +86,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         let mut checks = Checks::default();
         pulls::pulls(kept, &mut checks).await?;
         pulls::reconciled(kept, &mut checks).await?;
+        pulls::codeowners(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.recalls() {
@@ -222,6 +223,13 @@ fn key(identity: &str) -> Key {
 }
 
 const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
+
+/// When the CODEOWNERS files the conformance suite keeps are read: two and
+/// three hours after [`NOON`], after every pull request it keeps.
+const CODEOWNED: (Timestamp, Timestamp) = (
+    Timestamp::constant(1_793_455_200, 0),
+    Timestamp::constant(1_793_458_800, 0),
+);
 
 const LAST_MODIFIED: &str = "Sat, 31 Oct 2026 12:00:00 GMT";
 

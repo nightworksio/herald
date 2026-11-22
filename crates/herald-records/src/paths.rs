@@ -194,6 +194,19 @@ pub(crate) fn repository_pulls(repository: &herald_core::RepositoryKey) -> Strin
     format!("{PULLS}/{}", segment(&format!("{repository}/")))
 }
 
+pub(crate) const CODEOWNERS: &str = "codeowners";
+
+/// Where the CODEOWNERS file keyed `key` is kept: every file in one
+/// directory, its source, repository and branch written as one segment.
+pub(crate) fn codeowners(key: &herald_core::CodeownersKey) -> String {
+    let reference = key
+        .reference
+        .as_ref()
+        .map_or_else(String::new, |reference| format!("@{reference}"));
+    let named = format!("{}\n{}\n{reference}", key.source.as_str(), key.repository);
+    format!("{CODEOWNERS}/{}.json", segment(&named))
+}
+
 /// Where the reconcile of `source` stands.
 pub(crate) fn reconciled(source: &SourceName) -> String {
     format!("reconciled/{}.json", segment(source.as_str()))
@@ -222,5 +235,23 @@ mod tests {
         assert_eq!(segment("php-mutation-gate_1.0"), "php-mutation-gate_1.0");
         assert_eq!(segment("a/b c~"), "a~2fb~20c~7e");
         assert_eq!(segment("é"), "~c3~a9");
+    }
+
+    #[test]
+    fn a_codeowners_file_is_kept_by_source_repository_and_branch_each_apart() {
+        let key = |source: &str, repository: &str, reference: Option<&str>| {
+            codeowners(&herald_core::CodeownersKey {
+                source: SourceName::new(source),
+                repository: repository.to_owned(),
+                reference: reference.map(str::to_owned),
+            })
+        };
+        assert_eq!(
+            key("s", "o/r", Some("main")),
+            "codeowners/s~0ao~2fr~0a~40main.json"
+        );
+        assert_eq!(key("s", "o/r", None), "codeowners/s~0ao~2fr~0a.json");
+        assert_ne!(key("s", "o/r", Some("")), key("s", "o/r", None));
+        assert_ne!(key("s/o", "r", None), key("s", "o/r", None));
     }
 }

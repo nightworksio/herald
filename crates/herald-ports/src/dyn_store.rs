@@ -4,7 +4,9 @@ use herald_core::{
     Membership, PeerKeys, Pending, Publication, PublishedKeys, RouteId, Schedule, SourceName,
     State, Subscription, Window,
 };
-use herald_core::{Decided, KeptPull, PullKey, Reconciled, RepositoryKey};
+use herald_core::{
+    CodeownersKey, Decided, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey,
+};
 use jiff::Timestamp;
 
 use crate::erased::Boxed;
@@ -198,6 +200,19 @@ pub trait DynStore: DynRecalls + DynActions + Sync {
         &'a self,
         source: &'a SourceName,
         reconciled: &'a Reconciled,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Pulls::codeowners`].
+    fn codeowners_boxed<'a>(
+        &'a self,
+        key: &'a CodeownersKey,
+    ) -> Boxed<'a, Result<Option<Versioned<KeptCodeowners>>, StoreError>>;
+
+    /// [`Pulls::put_codeowners`].
+    fn put_codeowners_boxed<'a>(
+        &'a self,
+        kept: &'a KeptCodeowners,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 
@@ -674,6 +689,21 @@ impl<S: Store + Keyring> DynStore for S {
                 .put_reconciled(source, reconciled, expected)
                 .await
         })
+    }
+
+    fn codeowners_boxed<'a>(
+        &'a self,
+        key: &'a CodeownersKey,
+    ) -> Boxed<'a, Result<Option<Versioned<KeptCodeowners>>, StoreError>> {
+        Box::pin(async move { self.pulls().codeowners(key).await })
+    }
+
+    fn put_codeowners_boxed<'a>(
+        &'a self,
+        kept: &'a KeptCodeowners,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.pulls().put_codeowners(kept, expected).await })
     }
 
     fn position_boxed<'a>(
