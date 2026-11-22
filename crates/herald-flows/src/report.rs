@@ -7,8 +7,9 @@ use std::sync::Arc;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Advised, Advisories, Board, Cursor, Identity, Listed, Overviews, Printed, Pull, RouteId, Row,
-    Showing, SourceName, Surface, Unread, Visibility, advises, grouped, report_event, steps,
+    Advised, Advisories, Board, Cursor, Given, Identity, Listed, Loads, Overviews, Printed, Pull,
+    RouteId, Row, Showing, SourceName, Surface, Unread, Visibility, advises, grouped, report_event,
+    steps,
 };
 use herald_kinds::{Asked, Queue, Scope};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -32,14 +33,16 @@ const UNREAD_SOURCE: &str = "the view reads a source this run does not poll";
 pub(crate) type Reads = BTreeMap<String, Read>;
 
 /// What one read of a view found: its open pull requests, its overviews
-/// (ADR-0066), and its advisories where a consumer could be shown them,
-/// read after the rows and reaching a board only through
+/// (ADR-0066), the reviews kept on them (ADR-0075), and its advisories
+/// where a consumer could be shown them, read after the rows and reaching
+/// a board only through
 /// [`crate::advised::shown`] for the surface it leaves through (ADR-0067).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Read {
     pub(crate) pulls: Vec<Pull>,
     pub(crate) overviews: Overviews,
     pub(crate) advisories: Option<Advisories>,
+    pub(crate) given: Given,
 }
 
 impl Read {
@@ -140,6 +143,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     view: &ViewConfig,
 ) -> Result<Read, Halted> {
     let mut pulls = Vec::new();
+    let mut given = Given::default();
     let mut overviews = Overviews {
         capacity: view.capacity.map(|_| Vec::new()),
         ..Overviews::default()
@@ -175,10 +179,17 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .get(name)
                 .and_then(|source| source.queue_cost(view.most))
                 .is_some_and(|cost| cost.detailed);
-            crate::kept::kept_pulls(ports, (name, queue.as_ref(), http), (view, asked, detailed))
-                .await
-                .map_err(|stop| Halted::of(name, stop))?
+            let (read, kept) = crate::kept::kept_pulls(
+                ports,
+                (name, queue.as_ref(), http),
+                (view, asked, detailed),
+            )
+            .await
+            .map_err(|stop| Halted::of(name, stop))?;
+            given.merge(kept);
+            read
         } else {
+            given.live = true;
             queue
                 .opened(http, asked)
                 .await
@@ -227,6 +238,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         pulls,
         overviews,
         advisories: None,
+        given,
     })
 }
 
@@ -306,8 +318,13 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
         }
         _ => None,
     };
-    let mut board = grouped(&view.view, decided_rows(flow, view, &pulls).await);
+    let rows = decided_rows(flow, view, &pulls).await;
+    let load = view
+        .load
+        .map(|load| Loads::of(&rows, &read.given, (&config.teams, load), ports.clock.now()));
+    let mut board = grouped(&view.view, rows);
     board.overviews = printed.overviews(read.overviews, &pulls);
+    board.overviews.load = load;
     board.overviews.advisories = view
         .advisories
         .map(|_| crate::advised::shown(found.as_ref(), surface));
@@ -315,13 +332,14 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     Ok(board)
 }
 
-/// What one announcement of a report shows: the pull requests, who may see
-/// them, the routes it may reach, where only some, whether those keep one
-/// living post of it, and those of them that are or were sent its view's
-/// advisories section.
+/// What one announcement of a report shows: the pull requests, the
+/// reviews kept on them, who may see them, the routes it may reach, where
+/// only some, whether those keep one living post of it, and those of them
+/// that are or were sent its view's advisories section.
 struct Part<'a> {
     view: &'a ViewConfig,
     overviews: &'a Overviews,
+    given: &'a Given,
     advisories: Option<Advised>,
     rows: &'a [Row],
     visibility: Visibility,
@@ -341,6 +359,14 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     let mut shown = grouped(&part.view.view, part.rows.to_vec());
     shown.overviews = part.overviews.seen_by(part.visibility);
     shown.overviews.advisories = part.advisories;
+    shown.overviews.load = part.view.load.map(|load| {
+        Loads::of(
+            part.rows,
+            part.given,
+            (&config.teams, load),
+            ports.clock.now(),
+        )
+    });
     let event = report_event((name, &report.view), &shown, start, part.living)
         .map_err(|problem| Stop::Source(problem.to_string()))?
         .seen_as(part.visibility);
@@ -567,6 +593,7 @@ async fn sent<S: Store, C: Clock, G: Signer, H: Http>(
     let part = Part {
         view: begun.view,
         overviews: &begun.read.overviews,
+        given: &begun.read.given,
         advisories: surface.map(|surface| crate::advised::shown(advisories, surface)),
         rows: &shown,
         visibility,

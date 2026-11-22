@@ -7,7 +7,7 @@ use minijinja::{Value, context};
 use std::collections::BTreeMap;
 
 use crate::queue::{
-    Advisories, Advisory, Batch, Failure, Grouped, Overviews, Row, Running, Showing,
+    Advisories, Advisory, Batch, Failure, Grouped, Loaded, Loads, Overviews, Row, Running, Showing,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -133,8 +133,47 @@ fn advisories_value(found: &Advisories) -> Value {
     }
 }
 
-/// The overviews `overviews` holds, `capacity` absent where the view
-/// shows none (ADR-0066); `advisories` present only where its surface was
+/// What one team, area or "other" counts: `reviewed` absent where the
+/// reviews given were not counted.
+fn loaded_value(count: Loaded, reviewed: bool) -> BTreeMap<&'static str, Value> {
+    BTreeMap::from([
+        ("requested", Value::from(count.requested)),
+        ("reviewed", Value::from(reviewed.then_some(count.reviewed))),
+    ])
+}
+
+/// The load section: each team and area shown by name, and "other"
+/// (ADR-0075).
+fn load_value(loads: &Loads) -> Value {
+    let teams: Vec<Value> = loads
+        .teams
+        .iter()
+        .map(|(name, count)| {
+            let mut keys = loaded_value(*count, loads.reviewed);
+            keys.insert("name", Value::from(name.as_str()));
+            Value::from(keys)
+        })
+        .collect();
+    let areas: Vec<Value> = loads
+        .areas
+        .iter()
+        .map(|(area, count)| {
+            let mut keys = loaded_value(*count, loads.reviewed);
+            keys.insert("name", Value::from(area.name.as_str()));
+            keys.insert("kind", Value::from(area.kind.name()));
+            Value::from(keys)
+        })
+        .collect();
+    context! {
+        teams => teams,
+        areas => areas,
+        other => loads.other.map(|count| Value::from(loaded_value(count, loads.reviewed))),
+    }
+}
+
+/// The overviews `overviews` holds, `capacity` and `load` absent where the
+/// view shows none (ADR-0066, ADR-0075); `advisories` present only where
+/// its surface was
 /// shown them, and `withheld`, the one line said in their place, only
 /// where it was not (ADR-0067).
 fn overviews_value(overviews: &Overviews) -> Value {
@@ -151,6 +190,7 @@ fn overviews_value(overviews: &Overviews) -> Value {
     let mut keys = BTreeMap::from([
         ("capacity", Value::from(capacity)),
         ("unread", Value::from(unread)),
+        ("load", Value::from(overviews.load.as_ref().map(load_value))),
     ]);
     match overviews.advisories.as_ref().map(|advised| advised.shown()) {
         Some(Some(found)) => {

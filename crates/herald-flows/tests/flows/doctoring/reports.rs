@@ -540,3 +540,66 @@ flaky = {{ rerun = true }}
         "{gitlab}"
     );
 }
+
+#[test]
+fn doctor_says_how_a_view_s_load_folds_and_names_each_team_below_the_least_team() {
+    let text = |extra: &str| {
+        format!(
+            r#"version = 1
+[store]
+kind = "sqlite"
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+[teams."o/three"]
+members = ["ann", "ben", "cat"]
+[teams."o/two"]
+members = ["dan", "eve"]
+[teams."o/one"]
+members = ["fay", "FAY@github.com"]
+[views.queue]
+{extra}
+[reports.daily]
+"#
+        )
+    };
+    let note = |extra: &str| {
+        on(&loaded(&text(extra)), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .find(|note| note.contains("'s load"))
+    };
+    assert_eq!(note(""), None);
+    let shipped = note("load = {}").unwrap();
+    assert!(
+        shipped.starts_with("The report daily shows the view queue's load per team and per area, never per person: the review requests open on the rows each surface shows, and the reviews given on them over a window of 1w where every source is read kept"),
+        "{shipped}"
+    );
+    assert!(
+        shipped.contains("fewer than 3 members")
+            && shipped.contains("folds, and counts no person toward \"other\"")
+            && shipped
+                .ends_with(" The teams o/one, o/two have fewer than 3 members, so they fold."),
+        "{shipped}"
+    );
+    let raised = note("load = { least_team = 4, window = \"3d\", unknown_teams = true }").unwrap();
+    assert!(
+        raised.contains("over a window of 3d")
+            && raised.contains("unknown_teams = true shows a team, group or role area no [teams.<name>] gives members to as it is: such an area may be one person")
+            && raised.ends_with(" The teams o/one, o/three, o/two have fewer than 4 members, so they fold."),
+        "{raised}"
+    );
+    let whole = text("load = {}")
+        .replace("[teams.\"o/two\"]\nmembers = [\"dan\", \"eve\"]\n", "")
+        .replace(
+            "[teams.\"o/one\"]\nmembers = [\"fay\", \"FAY@github.com\"]\n",
+            "",
+        );
+    let whole = on(&loaded(&whole), &server(), &Here::default())
+        .notes
+        .into_iter()
+        .find(|note| note.contains("'s load"))
+        .unwrap();
+    assert!(whole.ends_with("toward \"other\"."), "{whole}");
+}

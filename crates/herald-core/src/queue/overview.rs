@@ -6,6 +6,7 @@
 use jiff::Timestamp;
 
 use super::advisory::Advised;
+use super::load::Loads;
 use super::{Pull, View};
 use crate::members::Visibility;
 
@@ -93,6 +94,9 @@ pub struct Overviews {
     /// The advisories section, as the surface it leaves through is shown
     /// it, where the view shows one.
     pub advisories: Option<Advised>,
+    /// The load per team and per area, counted from the rows one surface
+    /// shows, where the view shows it (ADR-0075).
+    pub load: Option<Loads>,
 }
 
 impl Overviews {
@@ -151,7 +155,8 @@ impl Overviews {
     }
 
     /// It as an audience seeing no repository stricter than `visibility`
-    /// may be shown it.
+    /// may be shown it, with no load: a load is counted from the rows the
+    /// audience is shown.
     #[must_use]
     pub fn seen_by(&self, visibility: Visibility) -> Self {
         Self {
@@ -169,6 +174,7 @@ impl Overviews {
                 .collect(),
             heads: self.heads.clone(),
             advisories: self.advisories.clone(),
+            load: None,
         }
     }
 }

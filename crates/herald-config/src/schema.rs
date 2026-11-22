@@ -325,6 +325,11 @@ struct FileSchema {
     /// speaking OpenAI's chat completions.
     #[serde(default)]
     models: BTreeMap<String, crate::models::ModelFile>,
+    /// The teams a view's load counts, by name: each named as a review
+    /// request and a CODEOWNERS file name it, such as `org/team`, at most
+    /// 200.
+    #[serde(default)]
+    teams: BTreeMap<String, crate::views::TeamFile>,
     /// The closed-set questions views ask of models where their rules
     /// cannot tell, by name.
     #[serde(default)]

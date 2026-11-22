@@ -92,4 +92,5 @@ no separate requirements document, and there are no requirement IDs.
 | [0072](0072-a-route-narrows-pull-request-events-by-the-areas-their-paths-fall-in.md) | A route narrows pull request events by the areas their paths fall in | Accepted |
 | [0073](0073-herald-reads-a-codeowners-file-as-its-forge-does.md) | herald reads a CODEOWNERS file as its forge does | Accepted |
 | [0074](0074-a-codeowners-file-read-is-kept-and-a-source-sets-its-most-areas.md) | A CODEOWNERS file read is kept, and a source sets its most areas | Accepted; amended by [0076](0076-a-kept-codeowners-file-s-long-name-is-its-digest.md) |
+| [0075](0075-a-view-s-load-is-counted-per-team-and-per-area-never-per-person.md) | A view's load is counted per team and per area, never per person | Accepted |
 | [0076](0076-a-kept-codeowners-file-s-long-name-is-its-digest.md) | A kept CODEOWNERS file's long name is its digest | Accepted |

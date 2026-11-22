@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::{Kind, SourceName};
-use herald_kinds::Source;
+use herald_core::{DestinationName, Kind, SourceName};
+use herald_kinds::{Destination, Source};
 
 use super::route::Read;
 use super::{Loader, Value, list};
@@ -44,11 +44,30 @@ impl Loader<'_> {
         (sources, spans)
     }
 
+    /// Every route over `sources` and `destinations` checked as `doctor`
+    /// guards it: each source exposed, each kind unstated, each feed
+    /// unaddressed, and each route a source names.
+    pub(super) fn guarded(
+        &mut self,
+        (sources, spans): (
+            &BTreeMap<SourceName, Source>,
+            &BTreeMap<SourceName, Range<usize>>,
+        ),
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        routes: &[Read],
+        doctor: Doctor,
+    ) {
+        self.exposed(sources, routes, doctor);
+        self.unstated(routes, doctor);
+        self.unaddressed(destinations, routes);
+        self.routed((sources, spans), routes, doctor);
+    }
+
     /// Each route a source names for some of its events, refused where no
     /// route has its id, or where it is not declared private, the source
     /// may take private or internal repositories, and `[doctor]
     /// private_to_public` refuses (ADR-0029).
-    pub(super) fn routed(
+    fn routed(
         &mut self,
         (sources, spans): (
             &BTreeMap<SourceName, Source>,
@@ -87,7 +106,7 @@ impl Loader<'_> {
     /// Each route that takes a private kind's events without saying whether
     /// its place is private, refused where `[doctor] private_kinds`
     /// refuses.
-    pub(super) fn unstated(&mut self, routes: &[Read], doctor: Doctor) {
+    fn unstated(&mut self, routes: &[Read], doctor: Doctor) {
         if doctor.private_kinds != Guard::Refuse {
             return;
         }
@@ -110,12 +129,7 @@ impl Loader<'_> {
     /// Each route that takes a source's private or internal repositories to
     /// a place not declared private, refused where `[doctor]
     /// private_to_public` refuses (ADR-0029).
-    pub(super) fn exposed(
-        &mut self,
-        sources: &BTreeMap<SourceName, Source>,
-        routes: &[Read],
-        doctor: Doctor,
-    ) {
+    fn exposed(&mut self, sources: &BTreeMap<SourceName, Source>, routes: &[Read], doctor: Doctor) {
         if doctor.private_to_public != Guard::Refuse {
             return;
         }

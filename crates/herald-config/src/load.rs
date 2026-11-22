@@ -297,6 +297,7 @@ pub fn load(
     let templates = loader.templates(sections.templates, read);
     let models = loader.models(sections.models);
     let tasks = loader.tasks(sections.tasks, &models);
+    let teams = loader.teams(sections.teams);
     let views = loader.views(sections.views, &sources, &tasks);
     let (boarded, boards) = loader.boards(sections.boards);
     let named = listed.keys().map(String::as_str).collect();
@@ -329,10 +330,7 @@ pub fn load(
     let run = loader.run(sections.run);
     let doctor = loader.doctor(sections.doctor);
     let cli = loader.cli(sections.cli);
-    loader.exposed(&sources, &routes, doctor);
-    loader.unstated(&routes, doctor);
-    loader.unaddressed(&destinations, &routes);
-    loader.routed((&sources, &source_spans), &routes, doctor);
+    loader.guarded((&sources, &source_spans), &destinations, &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
     };
@@ -357,6 +355,7 @@ pub fn load(
             rules,
             models,
             tasks,
+            teams,
             schedule,
             server,
             federation,

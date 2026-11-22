@@ -13,6 +13,7 @@ mod advisory;
 mod area;
 mod codeowners;
 mod kept;
+mod load;
 mod overlap;
 mod overview;
 mod triage;
@@ -38,6 +39,10 @@ pub use codeowners::{
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
     Reconciled, RepositoryKey, Reviewed, Since, Verdict,
+};
+pub use load::{
+    Given, LEAST_TEAM, LOAD_WINDOW, LONGEST_LOAD_WINDOW, Load, Loaded, Loads, MOST_LEAST_TEAM,
+    MOST_LOGIN, MOST_TEAM_MEMBERS, MOST_TEAMS, SHORTEST_LOAD_WINDOW, Team, TeamMember, Teams,
 };
 pub use overlap::overlaps;
 pub use overview::{

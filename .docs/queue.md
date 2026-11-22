@@ -230,6 +230,56 @@ gives no validator, or the record would be longer than
 `most_codeowners`), which is read in full every round (ADR-0076). A file that cannot be read stops the view, named by its
 source alone unless the output is said private.
 
+### Teams and load
+
+`load = {}` on a view shows its load beside its rows (ADR-0075): per team
+and per area, never per person, the review requests open now on the rows
+it shows, and the reviews given on them over `window` where every source
+it reads is read kept (a live read keeps no review, so it shows requests
+alone). A team is a top-level `[teams.<name>]`, named as a review
+request and a CODEOWNERS file name it:
+
+```toml
+[teams."acme/platform"]
+members = ["ada", "grace", "linus@gitlab.example.com"]
+
+[views.queue]
+load = { window = "14d" }
+```
+
+A request naming `acme/platform` counts for that team, and a request
+naming a login counts for every team holding it; a member written
+`login@host` counts only on that forge's host. Each area a row falls in
+counts every request open and review given on it.
+
+A row of fewer than `least_team` people could be one person's, so it
+folds into "other": a team of fewer members, an area naming a person, a
+GitLab `@name` no lookup told apart, and a team, group or role area whose
+`[teams.<name>]` of the same name has fewer members. A team, group or
+role area no `[teams.<name>]` gives members to folds too, unless
+`unknown_teams = true`, which shows it as it is though it may be one
+person; a person's area folds whatever it says. Path and section areas
+always show. "other" shows only where the people folded into it, known
+by name, are `least_team` or more; otherwise there is no "other" row,
+and `herald doctor` says why and names each team below the number.
+
+The load is counted from the rows each surface shows: `herald queue`
+from those it prints, so nothing of a private or internal repository is
+counted without `--private` or `[cli] private`, and a report from the
+rows each route is shown, so a route shown only public repositories'
+rows is shown their load alone. JSON and a template read
+`view.overviews.load`, with `teams` and `areas` (each a `name`, an
+area's `kind`, `requested` and `reviewed`) and `other`; `reviewed` is
+null where reviews given were not counted.
+
+| Key | Where | Default |
+|---|---|---|
+| `[teams.<name>] members` | top level | none; logins, or `login@host`, at most 500 a team and 200 teams |
+| `load` | view | off; `{}` shows it |
+| `load.window` | view | `"7d"`, from `"1d"` to `"90d"` |
+| `load.least_team` | view | `3`, from `3` to `50`; fewer is refused |
+| `load.unknown_teams` | view | `false` |
+
 ### Live or kept
 
 A view reads each source live, from the forge each time, or kept, from

@@ -7,7 +7,9 @@ use std::io::Write;
 use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
-use herald_core::{Advisories, Board, Printed, Row, Showing, WITHHELD, view_json, waited};
+use herald_core::{
+    Advisories, Board, Loaded, Loads, Printed, Row, Showing, WITHHELD, view_json, waited,
+};
 
 use super::cli::QueueFormat;
 use super::output::{say, say_json};
@@ -73,6 +75,15 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         lines.extend(batch.rows.iter().map(line));
     }
     lines.extend(withheld_line("", board.withheld));
+    lines.extend(
+        board
+            .overviews
+            .load
+            .as_ref()
+            .map(loaded)
+            .into_iter()
+            .flatten(),
+    );
     match board
         .overviews
         .advisories
@@ -83,6 +94,44 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         Some(None) => lines.push(WITHHELD.to_owned()),
         None => {}
     }
+    lines
+}
+
+/// The load section `loads` holds as lines of a table: each team and area
+/// shown by name, then "other" (ADR-0075).
+fn loaded(loads: &Loads) -> Vec<String> {
+    let counted = |count: Loaded| {
+        if loads.reviewed {
+            format!("{} requested, {} reviewed", count.requested, count.reviewed)
+        } else {
+            format!("{} requested", count.requested)
+        }
+    };
+    let mut lines = vec![if loads.reviewed {
+        "load (review requests open, reviews given over the window)".to_owned()
+    } else {
+        "load (review requests open; reviews given are counted where every source is read kept)"
+            .to_owned()
+    }];
+    lines.extend(
+        loads
+            .teams
+            .iter()
+            .map(|(name, count)| format!("  team {name}: {}", counted(*count))),
+    );
+    lines.extend(loads.areas.iter().map(|(area, count)| {
+        format!(
+            "  area {} ({}): {}",
+            area.name,
+            area.kind.name(),
+            counted(*count)
+        )
+    }));
+    lines.extend(
+        loads
+            .other
+            .map(|count| format!("  other: {}", counted(count))),
+    );
     lines
 }
 

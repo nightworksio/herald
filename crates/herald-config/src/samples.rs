@@ -103,6 +103,22 @@ pub fn sample_boards() -> [Board; 2] {
     };
     let mut full = board(&View::default(), &[pull, bump], NOON);
     full.overviews.advisories = Some(herald_core::Advised::sample(NOON));
+    let count = herald_core::Loaded {
+        requested: 1,
+        reviewed: 1,
+    };
+    full.overviews.load = Some(herald_core::Loads {
+        teams: vec![("sample-team".to_owned(), count)],
+        areas: vec![(
+            herald_core::Area {
+                name: "sample-area".to_owned(),
+                kind: herald_core::AreaKind::Paths,
+            },
+            count,
+        )],
+        other: Some(count),
+        reviewed: true,
+    });
     [full, Board::default()]
 }
 

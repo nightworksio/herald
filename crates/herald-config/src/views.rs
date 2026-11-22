@@ -6,7 +6,7 @@ use std::num::NonZeroUsize;
 use std::collections::BTreeMap;
 
 use herald_core::{
-    Advising, Capacity, Duration, ReportSchedule, Slot, SourceName, Stages, Turn, View,
+    Advising, Capacity, Duration, Load, ReportSchedule, Slot, SourceName, Stages, Turn, View,
 };
 use herald_kinds::Most;
 use jiff::SignedDuration;
@@ -28,7 +28,7 @@ pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pul
 
 /// The body of [`QUEUE_TEMPLATE`]: each group's rows, oldest first, then
 /// each batch of bumps.
-pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
+pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
 
 /// The template herald ships for a rule's re-run plan, which a route names
 /// as `template = "herald:rerun"` and `[templates."herald:rerun"]`
@@ -93,6 +93,8 @@ pub struct ViewConfig {
     /// How its advisories overview reads, where it shows one; shown to
     /// private routes alone (ADR-0067).
     pub advisories: Option<Advising>,
+    /// How its load overview counts, where it shows one (ADR-0075).
+    pub load: Option<Load>,
 }
 
 /// Where a view reads its open pull requests (ADR-0061).
@@ -368,6 +370,45 @@ pub(crate) struct ViewFile {
     /// more were open.
     #[schemars(range(min = 1, max = herald_core::MOST_ADVISORIES_ALLOWED))]
     pub(crate) most_advisories: Option<NonZeroUsize>,
+    /// Its load overview, per team and per area and never per person: the
+    /// review requests open now on the rows it shows, and the reviews
+    /// given on them over `window` where every source is read kept. Off
+    /// where absent; `load = {}` shows it as shipped.
+    pub(crate) load: Option<LoadFile>,
+}
+
+/// How a view's load overview counts.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Load")]
+pub(crate) struct LoadFile {
+    /// How far back reviews given count: "7d" where absent, from "1d" to
+    /// "90d".
+    pub(crate) window: Option<Duration>,
+    /// The fewest people a team or an area is shown by name with: 3 where
+    /// absent, from 3 to 50. A team of fewer members, a person's area, a
+    /// GitLab name no lookup told apart, and a team, group or role area of
+    /// fewer known members fold into "other", which shows only where the
+    /// people folded into it are as many.
+    #[schemars(range(min = herald_core::LEAST_TEAM, max = herald_core::MOST_LEAST_TEAM))]
+    pub(crate) least_team: Option<usize>,
+    /// Whether a team, group or role area that no `[teams.<name>]` of its
+    /// name gives members to is shown as it is: false where absent, and it
+    /// folds. Such an area may be one person. A person's area always folds.
+    #[serde(default)]
+    pub(crate) unknown_teams: bool,
+}
+
+/// `[teams.<name>]`: a team, its name as a review request and a
+/// CODEOWNERS file name it, such as `org/team` for `@org/team`.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Team")]
+pub(crate) struct TeamFile {
+    /// Its members, each a login, or `login@host` for one forge's login
+    /// alone, at most 500.
+    #[schemars(length(max = herald_core::MOST_TEAM_MEMBERS))]
+    pub(crate) members: Vec<String>,
 }
 
 /// An overview a view shows beside its rows.

@@ -10,7 +10,9 @@ use std::fmt::Write as _;
 use herald_config::{Config, Guard, Report, RouteConfig, Rule, ViewConfig, ViewMode};
 use herald_core::report::UTC;
 use herald_core::stage_name;
-use herald_core::{Advising, AdvisoriesFrom, Capacity, Surface, View, WITHHELD, advises};
+use herald_core::{
+    Advising, AdvisoriesFrom, Capacity, Duration, Load, Surface, Teams, View, WITHHELD, advises,
+};
 use herald_kinds::{Checking, UNADVISED};
 
 /// What the time zone database bundled into this build adds to it, as a
@@ -248,6 +250,35 @@ fn advisories_note((named, view): (&str, &str), (advising, held): (Advising, &Vi
     )
 }
 
+/// What doctor says of the view `view`, which the report or rule called
+/// `named` watches, counting its load as `load` says over `teams`
+/// (ADR-0075).
+fn load_note((named, view): (&str, &str), (load, teams): (Load, &Teams)) -> String {
+    let least = load.least_team;
+    let window = Duration(load.window).written();
+    let unknown = if load.unknown_teams {
+        "unknown_teams = true shows a team, group or role area no [teams.<name>] gives members to as it is: such an area may be one person, so its row may be one person's load"
+    } else {
+        "A team, group or role area no [teams.<name>] gives members to folds, and counts no person toward \"other\""
+    };
+    let mut note = format!(
+        "The {named} shows the view {view}'s load per team and per area, never per person: the review requests open on the rows each surface shows, and the reviews given on them over a window of {window} where every source is read kept, as a live source keeps none. A team of fewer than {least} members, a person's area, a GitLab name no lookup told apart, and a team, group or role area whose [teams.<name>] has fewer than {least} members fold into \"other\", shown only where the people folded into it are {least} or more, and otherwise not at all. {unknown}."
+    );
+    let small: Vec<&str> = teams
+        .iter()
+        .filter(|(_, team)| team.people().len() < least)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if !small.is_empty() {
+        let _ = write!(
+            note,
+            " The teams {} have fewer than {least} members, so they fold.",
+            small.join(", ")
+        );
+    }
+    note
+}
+
 /// Each note on the report or rule `name`, called `named`, watching
 /// `view` as `report` says.
 fn watched(
@@ -309,6 +340,10 @@ fn watched(
     notes.extend(
         view.advisories
             .map(|advising| advisories_note((named, &report.view), (advising, &view.view))),
+    );
+    notes.extend(
+        view.load
+            .map(|load| load_note((named, &report.view), (load, &config.teams))),
     );
     if let Some(zone) = report
         .schedule

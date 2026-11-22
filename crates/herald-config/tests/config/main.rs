@@ -64,6 +64,8 @@ mod slack_team;
 #[cfg(test)]
 mod stores;
 #[cfg(test)]
+mod teams;
+#[cfg(test)]
 mod unknown;
 #[cfg(test)]
 mod views;

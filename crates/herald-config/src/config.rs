@@ -50,6 +50,8 @@ pub struct Config {
     /// The closed-set questions views ask where their rules cannot tell,
     /// by name (ADR-0057).
     pub tasks: BTreeMap<String, crate::Task>,
+    /// The teams a view's load counts, by name (ADR-0075).
+    pub teams: herald_core::Teams,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
     /// How a run holds and keeps an announcement.
