@@ -43,6 +43,7 @@ const ADVISORY_MOST: &str = "an advisories overview reads from 1 to 100 reposito
 const ADVISORIES_MOST: &str =
     "an advisories overview reads from 1 to 10000 open advisories, such as most_advisories = 1000";
 const ADVISORIES_UNSHOWN: &str = "advisories_from, advisory_repositories and most_advisories take effect with overviews = [\"advisories\"], which this view does not name";
+const UNHEADED: &str = "a release's header names the open milestones its milestone selector matches, so header = true needs one, such as release = { milestone = \"v2.0\", header = true }";
 const UNPICKED: &str = "a release picks its pull requests by milestone, label, branch or pull, at least one, such as release = { milestone = \"v2.0\" }";
 const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none";
 
@@ -170,6 +171,9 @@ impl Loader<'_> {
                 format!("a release names at most {MOST_BLOCKER_LABELS} blocker labels"),
             );
         }
+        if written.header == Some(true) && written.milestone.is_none() {
+            self.error(span, &at("header"), UNHEADED.to_owned());
+        }
         let blocked_by = written.blocked_by.as_ref().map_or_else(
             || Blocker::ALL.to_vec(),
             |named| named.iter().map(|blocker| blocker.blocker()).collect(),
@@ -190,6 +194,7 @@ impl Loader<'_> {
                 Some(WithheldFile::Masked) => Withheld::Masked,
                 Some(WithheldFile::Unknown) | None => Withheld::Unknown,
             },
+            header: written.header.unwrap_or(true),
         })
     }
 

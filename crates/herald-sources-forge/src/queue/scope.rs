@@ -548,6 +548,19 @@ impl herald_kinds::Queue for Scoped {
         })
     }
 
+    fn milestoned<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (repository, glob, visibility): (&'a str, &'a herald_core::Glob, herald_core::Visibility),
+        now: jiff::Timestamp,
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Header, Unpolled>> {
+        Box::pin(async move {
+            let origin = self.origin(repository);
+            let reading = (&origin, self.token.as_ref());
+            crate::milestones::header(&Erased(http), reading, (glob, visibility), now).await
+        })
+    }
+
     fn team_owner(&self) -> String {
         format!("{} {}", self.root.api(), self.owner)
     }

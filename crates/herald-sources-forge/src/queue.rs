@@ -500,6 +500,18 @@ impl herald_kinds::Queue for Queued {
         })
     }
 
+    fn milestoned<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (_, glob, visibility): (&'a str, &'a herald_core::Glob, Visibility),
+        now: jiff::Timestamp,
+    ) -> herald_ports::Boxed<'a, Result<herald_core::Header, Unpolled>> {
+        Box::pin(async move {
+            let reading = (&self.origin, self.token.as_ref());
+            crate::milestones::header(&Erased(http), reading, (glob, visibility), now).await
+        })
+    }
+
     fn team_owner(&self) -> String {
         let owner = teams::owner_of(self.origin.forge(), self.origin.path());
         format!("{} {owner}", self.origin.api())

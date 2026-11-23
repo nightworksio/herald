@@ -6,6 +6,7 @@
 use jiff::Timestamp;
 
 use super::advisory::Advised;
+use super::header::Header;
 use super::load::Loads;
 use super::{Pull, View};
 use crate::members::Visibility;
@@ -97,6 +98,8 @@ pub struct Overviews {
     /// The load per team and per area, counted from the rows one surface
     /// shows, where the view shows it (ADR-0075).
     pub load: Option<Loads>,
+    /// The release's header, where the view reads one (ADR-0082).
+    pub header: Option<Header>,
 }
 
 impl Overviews {
@@ -111,6 +114,7 @@ impl Overviews {
             runs.retain(|run| view.holds(&run.repository));
         }
         self.unread.retain(|unread| unread.within(view, &sourced));
+        self.header = self.header.map(|header| header.within(view));
         self
     }
 
@@ -128,12 +132,15 @@ impl Overviews {
             .collect()
     }
 
-    /// It with `other`'s runs and unread repositories added.
+    /// It with `other`'s runs, unread repositories and header added.
     pub fn merge(&mut self, other: Self) {
         if let Some(runs) = other.capacity {
             self.capacity.get_or_insert_default().extend(runs);
         }
         self.unread.extend(other.unread);
+        if let Some(header) = other.header {
+            self.header.get_or_insert_default().merge(header);
+        }
     }
 
     /// The runs started for a pull request on a commit no open pull
@@ -175,6 +182,10 @@ impl Overviews {
             heads: self.heads.clone(),
             advisories: self.advisories.clone(),
             load: None,
+            header: self
+                .header
+                .as_ref()
+                .map(|header| header.shown(|seen| seen <= visibility)),
         }
     }
 }

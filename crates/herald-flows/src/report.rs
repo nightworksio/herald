@@ -58,11 +58,17 @@ impl Read {
             .flatten()
             .map(|run| run.visibility);
         let unread = self.overviews.unread.iter().map(|unread| unread.visibility);
+        let header = self
+            .overviews
+            .header
+            .as_ref()
+            .and_then(herald_core::Header::strictest);
         self.pulls
             .iter()
             .map(|pull| pull.visibility)
             .chain(runs)
             .chain(unread)
+            .chain(header)
             .max()
             .unwrap_or(Visibility::Public)
     }
@@ -158,6 +164,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         capacity: view.capacity.map(|_| Vec::new()),
         ..Overviews::default()
     };
+    let mut headed = 0;
     for &(name, queue, http) in reached.iter() {
         let members = scoped_members(ports, (name, queue.as_ref())).await?;
         let source = config.sources.get(name);
@@ -206,33 +213,16 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 .map_err(|unpolled| Halted::of(name, http.halted(unpolled)))?;
         }
         if let Some(capacity) = view.capacity {
-            let shown = herald_core::rows(&view.view, &read, ports.clock.now());
-            let mut shown: Vec<&str> = shown
-                .iter()
-                .map(|row| row.pull.repository.as_str())
-                .collect();
-            shown.sort_unstable();
-            shown.dedup();
-            let held: Vec<Listed> = members
-                .iter()
-                .flat_map(|(_, members)| members)
-                .filter(|member| view.view.holds(&member.path))
-                .cloned()
-                .collect();
-            let asked = Asked {
-                scope: members.as_ref().map(|(owner, _)| Scope {
-                    owner: *owner,
-                    members: &held,
-                    narrowed: !view.view.holds_every(),
-                }),
-                ..asked
-            };
-            let counted = match queue.capacity(http, (asked, &shown), capacity).await {
-                Ok(counted) => counted,
-                Err(unpolled) => unread_source(name, http.unread(unpolled)),
-            };
-            let sourced = |path: &str| queue.holds(path);
-            overviews.merge(seen_as_rows(counted, &read).within(&view.view, sourced));
+            let reached = (name, queue.as_ref(), http);
+            let asking = (asked, members.as_ref());
+            let counted = capacity_of((view, capacity), reached, asking, &read, ports).await;
+            overviews.merge(counted.within(&view.view, |path: &str| queue.holds(path)));
+        }
+        let at = (read.as_slice(), ports.clock.now());
+        if let Some(header) =
+            crate::header::header(&view.view, (queue.as_ref(), http), at, &mut headed).await
+        {
+            overviews.header.get_or_insert_default().merge(header);
         }
         pulls.extend(read);
     }
@@ -249,6 +239,45 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         given,
         teams: forge,
     })
+}
+
+/// The capacity overview `capacity` of `view` shows of what `queue`, the
+/// source `name`, read as `read` through `http`, asked as `asked` of its
+/// scope's `members`: each run and unread repository seen as its rows are,
+/// and the source named unread with why where it could not be read.
+async fn capacity_of<S: Store, C: Clock, G: Signer, H: Http>(
+    (view, capacity): (&ViewConfig, herald_core::Capacity),
+    (name, queue, http): (&SourceName, &dyn Queue, &Budgeted<'_, H, C>),
+    (asked, members): (Asked<'_>, Option<&(herald_core::Owner, Vec<Listed>)>),
+    read: &[Pull],
+    ports: &Ports<'_, S, C, G>,
+) -> Overviews {
+    let shown = herald_core::rows(&view.view, read, ports.clock.now());
+    let mut shown: Vec<&str> = shown
+        .iter()
+        .map(|row| row.pull.repository.as_str())
+        .collect();
+    shown.sort_unstable();
+    shown.dedup();
+    let held: Vec<Listed> = members
+        .iter()
+        .flat_map(|(_, members)| members)
+        .filter(|member| view.view.holds(&member.path))
+        .cloned()
+        .collect();
+    let asked = Asked {
+        scope: members.map(|(owner, _)| Scope {
+            owner: *owner,
+            members: &held,
+            narrowed: !view.view.holds_every(),
+        }),
+        ..asked
+    };
+    let counted = match queue.capacity(http, (asked, &shown), capacity).await {
+        Ok(counted) => counted,
+        Err(unpolled) => unread_source(name, http.unread(unpolled)),
+    };
+    seen_as_rows(counted, read)
 }
 
 /// The members of the owner the source `name` reads through `queue`, where

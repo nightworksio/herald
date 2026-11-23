@@ -99,6 +99,11 @@ impl<S, C, G> crate::announce::Ports<'_, S, C, G> {
     }
 }
 
+/// Why a release's header left a repository unread where the run's budget
+/// ended.
+pub(crate) const HEADER_BUDGET_ENDED: &str =
+    "the run's request budget ended before its milestones were read; the next run reads them";
+
 /// Why an overview's section was left unread where the run's budget ended.
 pub(crate) const BUDGET_ENDED: &str =
     "the run's request budget ended before its runs were read; the next run reads them";
@@ -160,6 +165,13 @@ impl<'a, H: Http, C: Clock> Budgeted<'a, H, C> {
                 format!("its {what} could not be read: {reason}")
             }
         }
+    }
+
+    /// Why a read of a release's milestones that failed as `unpolled` left
+    /// its repository unread, in the words [`Self::unread`] gives a
+    /// capacity read (ADR-0082).
+    pub(crate) fn unread_milestones(&self, unpolled: Unpolled) -> String {
+        self.left_unread(unpolled, (HEADER_BUDGET_ENDED, "milestones"))
     }
 
     /// Whether a send was refused unsent, as the run's budget ended.

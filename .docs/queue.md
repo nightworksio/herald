@@ -364,6 +364,7 @@ release = { milestone = "v2.0" }
 | `release.combine` | `"all"`: each selector named picks it; `"any"`: one does |
 | `release.blocker_labels` | `["blocker", "release-blocker"]`, globs, at most 50 |
 | `release.blocked_by` | every one of `"label"`, `"failed"`, `"draft"`, `"changes"` |
+| `release.header` | `true`: the board is headed by the open milestones `milestone` matches; it needs a milestone selector |
 | `release.withheld` | `"unknown"`: a surface some of its pull requests are withheld from is told the verdict is not known; `"shown"`: judged by those shown; `"masked"`: the whole verdict, a withheld hold named private |
 
 At least one of `milestone`, `label`, `branch` and `pull` is named. The
@@ -391,6 +392,20 @@ the table. A template reads `view.readiness`:
 | `ready` | whether nothing holds it back; none where that is not known |
 | `holds` | each `{ private, reason, repository, number, url, named, more }`: `reason` one of `label`, `failed`, `draft`, `changes`, `unread`; `named` the blocker labels or failed checks, at most 10, `more` past those; a private one's keys are none or empty |
 | `more` | the holds past the 100 named |
+
+With a `milestone` selector the board is headed by each open milestone
+the glob matches, in each repository it shows a pull request of the
+release in, and a one-repository source's own (ADR-0082): one request a
+round a repository, at most 20 repositories, and on GitLab one more a
+milestone to count its issues. Each is seen as its repository: a public
+route, and `herald queue` without `--private`, are shown the public
+repositories' alone. A repository whose milestones could not be read is
+named with why. A template reads `view.overviews.header`:
+
+| Key | What |
+|---|---|
+| `milestones` | each `{ repository, title, url, due, overdue, open, closed }`, at most 10 a repository; `due` a day, `overdue` whether it ended before today in UTC, `open` and `closed` its issues as the forge counts them, none where it does not |
+| `unread` | each `{ repository, reason }` whose milestones could not be read, or wholly |
 
 ### Live or kept
 

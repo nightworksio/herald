@@ -1,8 +1,8 @@
 use std::fmt;
 
 use herald_core::{
-    Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, KeptCodeowners, Listed,
-    Overviews, Owner, Pull, Rerun, Teams, Validators, Visibility,
+    Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, Glob, Header,
+    KeptCodeowners, Listed, Overviews, Owner, Pull, Rerun, Teams, Validators, Visibility,
 };
 use herald_ports::{Boxed, DynHttp};
 
@@ -301,6 +301,19 @@ pub trait Queue: fmt::Debug + Send + Sync {
     /// [`herald_core::MOST_TEAM_MEMBERS`] members, asked through `http`
     /// (ADR-0077).
     fn teams<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Result<Teamed, Unpolled>>;
+
+    /// The open milestones of the repository at the full path `read.0`
+    /// whose titles `read.1` matches, at most
+    /// [`herald_core::MOST_HEADER_MILESTONES`], seen as `read.2`, each
+    /// overdue where its due day ended before `now`'s day in UTC, asked
+    /// through `http`; the repository named unread with why where the forge
+    /// would not list them, or not all of them (ADR-0082).
+    fn milestoned<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        read: (&'a str, &'a Glob, Visibility),
+        now: jiff::Timestamp,
+    ) -> Boxed<'a, Result<Header, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(

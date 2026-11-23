@@ -7,8 +7,8 @@ use minijinja::{Value, context};
 use std::collections::BTreeMap;
 
 use crate::queue::{
-    Advisories, Advisory, Batch, Failure, Grouped, Held, Loaded, Loads, Overviews, QueueEntry,
-    Readiness, Row, Running, Showing,
+    Advisories, Advisory, Batch, Failure, Grouped, Header, Held, Loaded, Loads, Overviews,
+    QueueEntry, Readiness, Row, Running, Showing,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -212,6 +212,10 @@ fn overviews_value(overviews: &Overviews) -> Value {
         ("capacity", Value::from(capacity)),
         ("unread", Value::from(unread)),
         ("load", Value::from(overviews.load.as_ref().map(load_value))),
+        (
+            "header",
+            Value::from(overviews.header.as_ref().map(header_value)),
+        ),
     ]);
     match overviews.advisories.as_ref().map(|advised| advised.shown()) {
         Some(Some(found)) => {
@@ -223,6 +227,30 @@ fn overviews_value(overviews: &Overviews) -> Value {
         None => {}
     }
     Value::from(keys)
+}
+
+/// A release's header: each open milestone its selector names and each
+/// repository whose milestones could not be read (ADR-0082).
+fn header_value(header: &Header) -> Value {
+    let milestones: Vec<Value> = header
+        .milestones
+        .iter()
+        .map(|milestone| {
+            context! {
+                repository => milestone.repository.as_str(),
+                title => milestone.title.as_str(),
+                url => milestone.url.as_deref(),
+                due => milestone.due.map(|due| due.to_string()),
+                overdue => milestone.overdue,
+                open => milestone.counts.map(|(open, _)| open),
+                closed => milestone.counts.map(|(_, closed)| closed),
+            }
+        })
+        .collect();
+    context! {
+        milestones => milestones,
+        unread => header.unread.iter().map(unread_value).collect::<Vec<_>>(),
+    }
 }
 
 /// One hold on a release: a private one naming nothing of its pull

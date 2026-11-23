@@ -129,6 +129,9 @@ pub struct Release {
     pub blocked_by: Vec<Blocker>,
     /// How it is judged where some of its pull requests are withheld.
     pub withheld: Withheld,
+    /// Whether its header names the open milestones its milestone
+    /// selector matches (ADR-0082).
+    pub header: bool,
 }
 
 /// Why one pull request holds a release back.
@@ -228,6 +231,13 @@ fn capped(mut names: Vec<String>) -> (Vec<String>, usize) {
 }
 
 impl Release {
+    /// The milestone selector its header names the milestones of, where it
+    /// shows a header.
+    #[must_use]
+    pub fn headed(&self) -> Option<&Glob> {
+        self.milestone.as_ref().filter(|_| self.header)
+    }
+
     /// Whether `pull` is the release's: each selector named picking it, or
     /// any one where they combine by any.
     #[must_use]

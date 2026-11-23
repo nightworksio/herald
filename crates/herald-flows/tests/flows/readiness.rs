@@ -13,6 +13,16 @@ use serde_json::json;
 use crate::harness::{NOON, POSTED, Script, healthy};
 
 const GRAPHQL: &str = "https://api.github.com/graphql";
+const CLOSED_MILESTONES: (&str, u16, &str) = (
+    "https://api.github.com/repos/o/closed/milestones?state=open&per_page=30",
+    200,
+    "[]",
+);
+const OPEN_MILESTONES: (&str, u16, &str) = (
+    "https://api.github.com/repos/o/open/milestones?state=open&per_page=30",
+    200,
+    "[]",
+);
 const TEAM: (&str, u16, &str) = (
     "/channels/1566200000000000200/messages",
     200,
@@ -93,7 +103,9 @@ fn told_beside(withheld: &str, draft: bool, open: bool) -> Vec<String> {
     let store = healthy();
     let script = Script::answering(&[
         (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
+        CLOSED_MILESTONES,
         (GRAPHQL, 200, &page("o/open", "PUBLIC", open)),
+        OPEN_MILESTONES,
         TEAM,
         POSTED,
     ]);
@@ -179,7 +191,9 @@ fn queued(draft: bool, open: bool) -> herald_core::Board {
     let store = healthy();
     let script = Script::answering(&[
         (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
+        CLOSED_MILESTONES,
         (GRAPHQL, 200, &page("o/open", "PUBLIC", open)),
+        OPEN_MILESTONES,
     ]);
     let secrets = FakeSecrets::default()
         .with("HERALD_DISCORD_TOKEN", "hunter2")

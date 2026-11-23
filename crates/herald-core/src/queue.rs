@@ -12,6 +12,7 @@ use crate::members::Visibility;
 mod advisory;
 mod area;
 mod codeowners;
+mod header;
 mod kept;
 mod load;
 mod merging;
@@ -39,6 +40,7 @@ pub use codeowners::{
     MOST_CODEOWNERS_READ, MOST_LINE_OWNERS, MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned,
     RULES_CACHE, Skipped,
 };
+pub use header::{Header, MOST_HEADER_MILESTONES, MOST_HEADER_REPOSITORIES, OpenMilestone};
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Milestoned, Outcome, PullKey, Ran,
     Read, Reconciled, RepositoryKey, Reviewed, Since, Verdict,

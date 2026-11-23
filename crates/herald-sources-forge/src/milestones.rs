@@ -26,6 +26,9 @@ use crate::{Forge, Origin, Token};
 
 mod github;
 mod gitlab;
+mod header;
+
+pub(crate) use header::header;
 
 /// The most bytes of a milestone's description its event carries as its
 /// body.

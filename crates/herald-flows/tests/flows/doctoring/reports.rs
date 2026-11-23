@@ -689,3 +689,39 @@ queue = true
     );
     assert!(notes[2].contains("; it reads its merge trains by at most 1 more requests a round; "));
 }
+
+#[test]
+fn a_release_s_header_names_what_it_reads_what_it_costs_and_what_its_token_needs() {
+    let text = |release: &str| {
+        format!(
+            r#"version = 1
+[store]
+kind = "sqlite"
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = {{ secret = "HERALD_GITHUB_TOKEN" }}
+[views.queue]
+release = {release}
+[reports.daily]
+"#
+        )
+    };
+    let note = |release: &str| -> Option<String> {
+        on(&loaded(&text(release)), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .find(|note| note.contains("open milestones"))
+    };
+    let headed = note("{ milestone = \"v2.*\" }").unwrap();
+    assert!(
+        headed.starts_with("The report daily heads the view queue's release with its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most 20 repositories, those past it named unread; on GitLab one more request for each milestone matched to count its issues, at most 10 a repository."),
+        "{headed}"
+    );
+    assert!(
+        headed.contains("Issues: read") && headed.contains("never shown as having no milestone"),
+        "{headed}"
+    );
+    assert_eq!(note("{ milestone = \"v2.*\", header = false }"), None);
+    assert_eq!(note("{ label = \"ship\" }"), None);
+}

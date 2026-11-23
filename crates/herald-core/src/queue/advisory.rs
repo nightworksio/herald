@@ -224,6 +224,9 @@ impl Printed {
             .unread
             .retain(|unread| self.prints(unread.visibility));
         overviews.heads = Overviews::heads_of(shown);
+        overviews.header = overviews
+            .header
+            .map(|header| header.shown(|visibility| self.prints(visibility)));
         overviews
     }
 }

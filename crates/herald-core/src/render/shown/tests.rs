@@ -361,7 +361,7 @@ fn a_private_surface_reads_each_advisory_by_its_allowlist() {
     let overviews = value.get_attr("overviews").unwrap();
     assert_eq!(
         keys(&overviews),
-        ["advisories", "capacity", "load", "unread"]
+        ["advisories", "capacity", "header", "load", "unread"]
     );
     let advisories = overviews.get_attr("advisories").unwrap();
     assert_eq!(keys(&advisories), ["count", "more", "open", "unread"]);
@@ -404,7 +404,10 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
         board: &board,
     });
     let overviews = value.get_attr("overviews").unwrap();
-    assert_eq!(keys(&overviews), ["capacity", "load", "unread", "withheld"]);
+    assert_eq!(
+        keys(&overviews),
+        ["capacity", "header", "load", "unread", "withheld"]
+    );
     assert_eq!(
         overviews.get_attr("withheld").unwrap().to_string(),
         crate::queue::WITHHELD
@@ -416,7 +419,7 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
     });
     assert_eq!(
         keys(&plain.get_attr("overviews").unwrap()),
-        ["capacity", "load", "unread"]
+        ["capacity", "header", "load", "unread"]
     );
 }
 
@@ -654,5 +657,60 @@ fn a_release_verdict_shows_ready_each_hold_and_those_past_the_bound() {
     assert_eq!(
         json(&board)["readiness"],
         serde_json::json!({ "ready": null, "holds": [], "more": 0 })
+    );
+}
+
+#[test]
+fn a_release_header_shows_each_milestone_and_each_unread_repository() {
+    use crate::queue::{Header, OpenMilestone, Unread};
+    let mut board = shown();
+    let json = |board: &Board| -> serde_json::Value {
+        serde_json::from_str(&crate::render::view_json(Showing {
+            view: "release",
+            board,
+        }))
+        .unwrap()
+    };
+    assert_eq!(json(&board)["overviews"]["header"], serde_json::Value::Null);
+    board.overviews.header = Some(Header {
+        milestones: vec![
+            OpenMilestone {
+                repository: "a/b".to_owned(),
+                visibility: crate::Visibility::Public,
+                title: "v2.0".to_owned(),
+                url: Some("https://example.com/a/b/milestone/1".to_owned()),
+                due: Some("2026-11-22".parse().unwrap()),
+                overdue: true,
+                counts: Some((2, 12)),
+            },
+            OpenMilestone {
+                repository: "a/c".to_owned(),
+                visibility: crate::Visibility::Public,
+                title: "v2.1".to_owned(),
+                url: None,
+                due: None,
+                overdue: false,
+                counts: None,
+            },
+        ],
+        unread: vec![Unread {
+            repository: "a/d".to_owned(),
+            visibility: crate::Visibility::Public,
+            reason: "refused".to_owned(),
+        }],
+    });
+    assert_eq!(
+        json(&board)["overviews"]["header"],
+        serde_json::json!({
+            "milestones": [{
+                "repository": "a/b", "title": "v2.0",
+                "url": "https://example.com/a/b/milestone/1", "due": "2026-11-22",
+                "overdue": true, "open": 2, "closed": 12,
+            }, {
+                "repository": "a/c", "title": "v2.1", "url": null, "due": null,
+                "overdue": false, "open": null, "closed": null,
+            }],
+            "unread": [{ "repository": "a/d", "reason": "refused" }],
+        })
     );
 }

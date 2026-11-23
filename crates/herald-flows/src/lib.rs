@@ -32,6 +32,7 @@ mod doctor;
 mod follows;
 mod grouping;
 mod halted;
+mod header;
 mod housekeep;
 mod installations;
 mod kept;
