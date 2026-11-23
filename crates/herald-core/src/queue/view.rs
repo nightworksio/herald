@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::{SignedDuration, Timestamp};
 
-use super::{Failure, Overviews, Pull, Reason, Rules, Triage, Turn};
+use super::{Failure, Overviews, Pull, Readiness, Reason, Release, Rules, Triage, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::decide::Slot;
 use crate::glob::Glob;
@@ -83,6 +83,9 @@ pub struct View {
     pub bumps: Vec<BumpPattern>,
     /// How it triages its failing checks (ADR-0065).
     pub triage: Triage,
+    /// Its release: the open pull requests its selectors pick, and what
+    /// holds it back, where it shows one (ADR-0081).
+    pub release: Option<Release>,
 }
 
 impl Default for View {
@@ -101,6 +104,7 @@ impl Default for View {
             rules: Rules::default(),
             bumps: Vec::new(),
             triage: Triage::default(),
+            release: None,
         }
     }
 }
@@ -183,6 +187,9 @@ pub struct Board {
     /// How many pull requests of private or internal repositories were
     /// withheld from it, where its output was not said to be private.
     pub withheld: usize,
+    /// Whether its release is ready, where its view shows one, as its
+    /// surface may be told (ADR-0081).
+    pub readiness: Option<Readiness>,
 }
 
 impl Board {
@@ -260,6 +267,10 @@ impl View {
                 || pull.labels.iter().any(|label| named(&self.labels, label)))
             && (self.areas.is_empty()
                 || pull.areas.iter().any(|area| named(&self.areas, &area.name)))
+            && self
+                .release
+                .as_ref()
+                .is_none_or(|release| release.picks(pull))
     }
 
     /// `pull` as a row at `now`, where the view shows it.
@@ -344,19 +355,28 @@ pub fn rows(view: &View, pulls: &[Pull], now: Timestamp) -> Vec<Row> {
 /// where it batches them, each oldest first.
 #[must_use]
 pub fn board(view: &View, pulls: &[Pull], now: Timestamp) -> Board {
-    grouped(view, rows(view, pulls, now))
+    grouped(view, rows(view, pulls, now), &[])
 }
 
 /// `rows` as `view` shows them: grouped, the bots' batched where it
-/// batches them, each oldest first.
+/// batches them, each oldest first, its release judged beside `withheld`,
+/// the rows of it withheld from the surface (ADR-0081).
 #[must_use]
-pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
+pub fn grouped(view: &View, rows: Vec<Row>, withheld: &[Row]) -> Board {
     let counts = Turn::ALL
         .into_iter()
         .map(|state| (state, rows.iter().filter(|row| row.state == state).count()))
         .collect();
     let stale = rows.iter().filter(|row| row.stale).count();
     let failures = view.triage.failures(&rows);
+    let readiness = view.release.as_ref().map(|release| {
+        let mut judged: Vec<&Row> = rows.iter().collect();
+        judged.sort_by(|left, right| {
+            (&left.pull.repository, left.pull.number)
+                .cmp(&(&right.pull.repository, right.pull.number))
+        });
+        release.verdict(&judged, &withheld.iter().collect::<Vec<_>>())
+    });
     let mut groups: BTreeMap<(usize, String), Vec<Row>> = BTreeMap::new();
     let mut batches: BTreeMap<Option<Bump>, Vec<Row>> = BTreeMap::new();
     for row in rows {
@@ -407,6 +427,7 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
         failures,
         overviews: Overviews::default(),
         withheld: 0,
+        readiness,
     }
 }
 

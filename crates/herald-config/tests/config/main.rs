@@ -52,6 +52,8 @@ mod pushes;
 #[cfg(test)]
 mod reading;
 #[cfg(test)]
+mod releases;
+#[cfg(test)]
 mod remembering;
 #[cfg(test)]
 mod render;

@@ -121,6 +121,21 @@ pub fn sample_boards() -> [Board; 2] {
         other: Some(count),
         reviewed: true,
     });
+    full.readiness = Some(herald_core::Readiness {
+        holds: vec![
+            herald_core::Held::Shown(herald_core::Holding {
+                held_by: herald_core::HeldBy::Blocked(herald_core::Blocker::Failed),
+                repository: "sample-owner/sample-project".to_owned(),
+                number: 1,
+                url: "https://github.com/sample-owner/sample-project/pull/1".to_owned(),
+                named: vec!["sample-check".to_owned()],
+                more: 1,
+            }),
+            herald_core::Held::Private,
+        ],
+        more: 1,
+        judged: herald_core::Judged::Whole,
+    });
     [full, Board::default()]
 }
 

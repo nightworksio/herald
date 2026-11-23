@@ -8,12 +8,13 @@ use std::ops::Range;
 
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
-    ADVISORY_REPOSITORIES, Advising, AdvisoriesFrom, Bots, BumpPattern, CAPACITY_REPOSITORIES,
-    Capacity, Deciding, Duration, Glob, GroupBy, LEAST_TEAM, LONGEST_LOAD_WINDOW, Load,
-    MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED, MOST_ADVISORY_REPOSITORIES,
-    MOST_CAPACITY_REPOSITORIES, MOST_LEAST_TEAM, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED,
-    MOST_STAGES, MOST_TEAMS, ReportSchedule, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages,
-    Team, Teams, Triage, View, zone,
+    ADVISORY_REPOSITORIES, Advising, AdvisoriesFrom, BLOCKER_LABELS, Blocker, Bots, BumpPattern,
+    CAPACITY_REPOSITORIES, Capacity, Combine, Deciding, Duration, Glob, GroupBy, LEAST_TEAM,
+    LONGEST_LOAD_WINDOW, Load, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
+    MOST_ADVISORY_REPOSITORIES, MOST_BLOCKER_LABELS, MOST_CAPACITY_REPOSITORIES, MOST_LEAST_TEAM,
+    MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES, MOST_TEAMS, Release, ReleasePull,
+    ReportSchedule, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages, Team, Teams, Triage,
+    View, Withheld, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -24,9 +25,10 @@ use super::boards::Boarded;
 use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
-    AdvisoriesFromFile, BUILT_IN_VIEW, BotsFile, CapacityFrom, DecidingFile, DecidingName,
-    DequeuedFile, GroupByFile, OverviewName, RULE_KEYS, Report, ReportFile, RerunMode, Rule,
-    RuleFile, RulesFile, TeamFile, ViewConfig, ViewFile, ViewMode,
+    AdvisoriesFromFile, BUILT_IN_VIEW, BlockerFile, BotsFile, CapacityFrom, CombineFile,
+    DecidingFile, DecidingName, DequeuedFile, GroupByFile, OverviewName, RULE_KEYS,
+    ReleasePullFile, ReleaseTool, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile,
+    TeamFile, ViewConfig, ViewFile, ViewMode, WithheldFile,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -41,6 +43,7 @@ const ADVISORY_MOST: &str = "an advisories overview reads from 1 to 100 reposito
 const ADVISORIES_MOST: &str =
     "an advisories overview reads from 1 to 10000 open advisories, such as most_advisories = 1000";
 const ADVISORIES_UNSHOWN: &str = "advisories_from, advisory_repositories and most_advisories take effect with overviews = [\"advisories\"], which this view does not name";
+const UNPICKED: &str = "a release picks its pull requests by milestone, label, branch or pull, at least one, such as release = { milestone = \"v2.0\" }";
 const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none";
 
 /// The names of `sources` that list their repositories' open pull requests.
@@ -106,7 +109,90 @@ impl RulesFile {
     }
 }
 
+impl BlockerFile {
+    const fn blocker(self) -> Blocker {
+        match self {
+            Self::Label => Blocker::Label,
+            Self::Failed => Blocker::Failed,
+            Self::Draft => Blocker::Draft,
+            Self::Changes => Blocker::Changes,
+        }
+    }
+}
+
 impl Loader<'_> {
+    /// The glob `text` at `path`, where it is one.
+    fn glob(&mut self, text: Option<&String>, (path, span): (&str, &Range<usize>)) -> Option<Glob> {
+        match Glob::new(text?) {
+            Ok(glob) => Some(glob),
+            Err(error) => {
+                self.error(span, path, error.to_string());
+                None
+            }
+        }
+    }
+
+    /// The release the view `file` at `path` shows, where it shows one
+    /// (ADR-0081).
+    fn release(&mut self, file: &ViewFile, (path, span): (&str, &Range<usize>)) -> Option<Release> {
+        let written = file.release.as_ref()?;
+        let path = format!("{path}.release");
+        let at = |key: &str| format!("{path}.{key}");
+        let pull = match &written.pull {
+            Some(ReleasePullFile::Tool(ReleaseTool::ReleasePlease)) => {
+                Some(ReleasePull::ReleasePlease)
+            }
+            Some(ReleasePullFile::Tool(ReleaseTool::Changesets)) => Some(ReleasePull::Changesets),
+            Some(ReleasePullFile::Head(head)) => self
+                .glob(Some(&head.head), (&at("pull.head"), span))
+                .map(ReleasePull::Head),
+            Some(ReleasePullFile::Title(title)) => self
+                .glob(Some(&title.title), (&at("pull.title"), span))
+                .map(ReleasePull::Title),
+            None => None,
+        };
+        let picked = written.milestone.is_some()
+            || written.label.is_some()
+            || written.branch.is_some()
+            || written.pull.is_some();
+        if !picked {
+            self.error(span, &path, UNPICKED.to_owned());
+        }
+        let shipped: Vec<String> = BLOCKER_LABELS
+            .iter()
+            .map(|&label| label.to_owned())
+            .collect();
+        let labels = written.blocker_labels.as_ref().unwrap_or(&shipped);
+        if labels.len() > MOST_BLOCKER_LABELS {
+            self.error(
+                span,
+                &at("blocker_labels"),
+                format!("a release names at most {MOST_BLOCKER_LABELS} blocker labels"),
+            );
+        }
+        let blocked_by = written.blocked_by.as_ref().map_or_else(
+            || Blocker::ALL.to_vec(),
+            |named| named.iter().map(|blocker| blocker.blocker()).collect(),
+        );
+        Some(Release {
+            milestone: self.glob(written.milestone.as_ref(), (&at("milestone"), span)),
+            label: self.glob(written.label.as_ref(), (&at("label"), span)),
+            branch: self.glob(written.branch.as_ref(), (&at("branch"), span)),
+            pull,
+            combine: match written.combine {
+                Some(CombineFile::Any) => Combine::Any,
+                Some(CombineFile::All) | None => Combine::All,
+            },
+            blocker_labels: self.globs(labels, (&at("blocker_labels"), span)),
+            blocked_by,
+            withheld: match written.withheld {
+                Some(WithheldFile::Shown) => Withheld::Shown,
+                Some(WithheldFile::Masked) => Withheld::Masked,
+                Some(WithheldFile::Unknown) | None => Withheld::Unknown,
+            },
+        })
+    }
+
     /// Each of `texts`, the globs `path` lists, where every one is one.
     fn globs(&mut self, texts: &[String], (path, span): (&str, &Range<usize>)) -> Vec<Glob> {
         let mut globs = Vec::new();
@@ -250,6 +336,7 @@ impl Loader<'_> {
         let capacity = self.capacity(&file, (path, span));
         let advisories = self.advising(&file, (path, span));
         let load = self.load(&file, (path, span));
+        let release = self.release(&file, (path, span));
         let shipped = View::default();
         let mut bumps = Vec::new();
         for (index, text) in file.bumps.iter().enumerate() {
@@ -292,6 +379,7 @@ impl Loader<'_> {
                     .and_then(|flaky| flaky.least)
                     .map_or(shipped.triage.flaky_least, NonZeroUsize::get),
             },
+            release,
         };
         let shipped = Most::default();
         let read = self.view_sources(file.sources, path, sources);

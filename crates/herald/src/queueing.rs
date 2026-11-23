@@ -8,8 +8,8 @@ use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
 use herald_core::{
-    Advisories, Board, Loaded, Loads, Printed, QueueEntry, Row, Showing, WITHHELD, view_json,
-    waited,
+    Advisories, Blocker, Board, Held, HeldBy, Judged, Loaded, Loads, Printed, QueueEntry,
+    Readiness, Row, Showing, WITHHELD, view_json, waited,
 };
 
 use super::cli::QueueFormat;
@@ -71,6 +71,7 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         board.total(),
         board.stale
     )];
+    lines.extend(board.readiness.as_ref().map(judged).into_iter().flatten());
     for group in &board.groups {
         let name = if group.name.is_empty() {
             "everyone"
@@ -115,6 +116,47 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         Some(Some(found)) => lines.extend(advised(found)),
         Some(None) => lines.push(WITHHELD.to_owned()),
         None => {}
+    }
+    lines
+}
+
+/// Why `held` holds a release back, as a line of a table says it: a
+/// private pull request named private and nothing more.
+fn held(held: &Held) -> String {
+    let Held::Shown(holding) = held else {
+        return "  (private)".to_owned();
+    };
+    let named = holding.named.join(", ");
+    let more = if holding.more > 0 {
+        format!(" and {} more", holding.more)
+    } else {
+        String::new()
+    };
+    let why = match holding.held_by {
+        HeldBy::Blocked(Blocker::Label) => format!("carries {named}{more}"),
+        HeldBy::Blocked(Blocker::Failed) => format!("failed {named}{more}"),
+        HeldBy::Blocked(Blocker::Draft) => "is a draft".to_owned(),
+        HeldBy::Blocked(Blocker::Changes) => "has changes requested".to_owned(),
+        HeldBy::Unread => "was not read in full".to_owned(),
+    };
+    format!("  {}#{} {why}", holding.repository, holding.number)
+}
+
+/// The release verdict `readiness` holds as lines of a table: ready, not
+/// ready, or not known, and each pull request holding it back (ADR-0081).
+pub(crate) fn judged(readiness: &Readiness) -> Vec<String> {
+    let reasons = readiness.holds.len() + readiness.more;
+    let plural = if reasons == 1 { "" } else { "s" };
+    let verdict = match (readiness.ready(), readiness.judged) {
+        (None, _) => "release: not known, some pull requests are private".to_owned(),
+        (Some(true), Judged::Shown) => "release: ready, by the pull requests printed".to_owned(),
+        (Some(true), _) => "release: ready".to_owned(),
+        (Some(false), _) => format!("release: not ready, {reasons} reason{plural}"),
+    };
+    let mut lines = vec![verdict];
+    lines.extend(readiness.holds.iter().map(held));
+    if readiness.more > 0 {
+        lines.push(format!("  and {} more", readiness.more));
     }
     lines
 }

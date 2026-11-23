@@ -49,11 +49,13 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
             "groups",
             "name",
             "overviews",
+            "readiness",
             "stale",
             "total",
             "withheld_pulls"
         ]
     );
+    assert!(value.get_attr("readiness").unwrap().is_none());
     assert_eq!(value.get_attr("name").unwrap().to_string(), "queue");
     assert_eq!(value.get_attr("total").unwrap().to_string(), "2");
     let counts = value.get_attr("counts").unwrap();
@@ -141,6 +143,7 @@ fn a_view_as_json_holds_the_keys_a_template_reads() {
             "groups",
             "name",
             "overviews",
+            "readiness",
             "stale",
             "total",
             "withheld_pulls"
@@ -587,4 +590,69 @@ fn a_row_names_its_milestone_and_its_branches() {
         .map(|key| row.get_attr(key).unwrap().to_string())
         .collect();
     assert_eq!(named, ["v2.0", "main", "fix"]);
+}
+
+#[test]
+fn a_release_verdict_shows_ready_each_hold_and_those_past_the_bound() {
+    use crate::queue::{Blocker, Held, HeldBy, Holding, Judged, Readiness};
+    let mut board = shown();
+    board.readiness = Some(Readiness::default());
+    let json = |board: &Board| -> serde_json::Value {
+        serde_json::from_str(&crate::render::view_json(Showing {
+            view: "release",
+            board,
+        }))
+        .unwrap()
+    };
+    assert_eq!(
+        json(&board)["readiness"],
+        serde_json::json!({ "ready": true, "holds": [], "more": 0 })
+    );
+    board.readiness = Some(Readiness {
+        holds: vec![
+            Held::Shown(Holding {
+                held_by: HeldBy::Blocked(Blocker::Failed),
+                repository: "a/b".to_owned(),
+                number: 4,
+                url: "https://example.com/a/b/pull/4".to_owned(),
+                named: vec!["test".to_owned()],
+                more: 2,
+            }),
+            Held::Private,
+        ],
+        more: 5,
+        judged: Judged::Whole,
+    });
+    assert_eq!(
+        json(&board)["readiness"],
+        serde_json::json!({
+            "ready": false,
+            "holds": [{
+                "private": false,
+                "reason": "failed",
+                "repository": "a/b",
+                "number": 4,
+                "url": "https://example.com/a/b/pull/4",
+                "named": ["test"],
+                "more": 2,
+            }, {
+                "private": true,
+                "reason": null,
+                "repository": null,
+                "number": null,
+                "url": null,
+                "named": [],
+                "more": 0,
+            }],
+            "more": 5,
+        })
+    );
+    board.readiness = Some(Readiness {
+        judged: Judged::Unknown,
+        ..Readiness::default()
+    });
+    assert_eq!(
+        json(&board)["readiness"],
+        serde_json::json!({ "ready": null, "holds": [], "more": 0 })
+    );
 }

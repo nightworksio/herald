@@ -204,13 +204,12 @@ impl Printed {
         matches!(visibility, Visibility::Public) || !matches!(self, Self::Withheld)
     }
 
-    /// `pulls` as they are printed, with how many were withheld.
+    /// `pulls` as they are printed, and those withheld.
     #[must_use]
-    pub fn printed(self, pulls: Vec<Pull>) -> (Vec<Pull>, usize) {
-        let (shown, withheld): (Vec<Pull>, Vec<Pull>) = pulls
+    pub fn printed(self, pulls: Vec<Pull>) -> (Vec<Pull>, Vec<Pull>) {
+        pulls
             .into_iter()
-            .partition(|pull| self.prints(pull.visibility));
-        (shown, withheld.len())
+            .partition(|pull| self.prints(pull.visibility))
     }
 
     /// `overviews` as they are printed beside `shown`, the pull requests it

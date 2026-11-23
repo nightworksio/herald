@@ -2,7 +2,7 @@
 //! open pull requests read from every source it names, and announced
 //! through the routes naming the report (ADR-0055).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use herald_config::{Config, Report, ViewConfig};
@@ -364,32 +364,44 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
         .await
         .map_err(|halted| halted.said(printed))?;
     let (pulls, withheld) = printed.printed(read.pulls);
+    let unprinted = herald_core::rows(&view.view, &withheld, ports.clock.now());
     let found = match view.advisories {
         Some(advising) if advises(surface) => {
             Some(crate::advised::read((&sources, ports), (view, advising, 0), &pulls).await)
         }
         _ => None,
     };
-    let rows = decided_rows(flow, view, &pulls).await;
+    let decided = decided_rows(flow, view, &pulls).await;
     let teams = joined(&config.teams, &read.teams);
     let load = view
         .load
-        .map(|load| Loads::of(&rows, &read.given, (&teams, load), ports.clock.now()));
-    let mut board = grouped(&view.view, rows);
+        .map(|load| Loads::of(&decided, &read.given, (&teams, load), ports.clock.now()));
+    let mut board = grouped(&view.view, decided, &unprinted);
     board.overviews = printed.overviews(read.overviews, &pulls);
     board.overviews.load = load;
     board.overviews.advisories = view
         .advisories
         .map(|_| crate::advised::shown(found.as_ref(), surface));
-    board.withheld = withheld;
+    board.withheld = withheld.len();
     Ok(board)
 }
 
-/// What one announcement of a report shows: the pull requests, the
-/// reviews kept on them, the forge teams read, who may see them, the
-/// routes it may reach, where only some, whether those keep one living
-/// post of it, and those of them that are or were sent its view's
-/// advisories section.
+/// The rows of `part`'s view withheld from it: those of every row it is
+/// not shown.
+fn withheld(part: &Part<'_>) -> Vec<Row> {
+    let shown: HashSet<&str> = part.rows.iter().map(|row| row.pull.url.as_str()).collect();
+    part.every
+        .iter()
+        .filter(|row| !shown.contains(row.pull.url.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// What one announcement of a report shows: the pull requests, every row
+/// of its view, the reviews kept on them, the forge teams read, who may
+/// see them, the routes it may reach, where only some, whether those keep
+/// one living post of it, and those of them that are or were sent its
+/// view's advisories section.
 struct Part<'a> {
     view: &'a ViewConfig,
     overviews: &'a Overviews,
@@ -397,6 +409,7 @@ struct Part<'a> {
     teams: &'a Teams,
     advisories: Option<Advised>,
     rows: &'a [Row],
+    every: &'a [Row],
     visibility: Visibility,
     routes: &'a [RouteId],
     living: bool,
@@ -411,7 +424,7 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     part: Part<'_>,
     run: &str,
 ) -> Result<Fresh, Stop> {
-    let mut shown = grouped(&part.view.view, part.rows.to_vec());
+    let mut shown = grouped(&part.view.view, part.rows.to_vec(), &withheld(&part));
     shown.overviews = part.overviews.seen_by(part.visibility);
     shown.overviews.advisories = part.advisories;
     let teamed = teams_reach_each(part.routes.iter().map(|id| config.surface(id)));
@@ -606,6 +619,7 @@ struct Begun<'r> {
     identity: Identity,
     recorded: Vec<RouteId>,
     read: Read,
+    decided: Vec<Row>,
     plain: Vec<Parted>,
     advised: Vec<Parted>,
     announced: Vec<Fresh>,
@@ -666,6 +680,7 @@ async fn sent<S: Store, C: Clock, G: Signer, H: Http>(
         teams: &begun.read.teams,
         advisories: surface.map(|surface| crate::advised::shown(advisories, surface)),
         rows: &shown,
+        every: &begun.decided,
         visibility,
         routes: &routes,
         living,
@@ -739,6 +754,7 @@ async fn begun<'r, S: Store, C: Clock, G: Signer, H: Http>(
         identity,
         recorded,
         read,
+        decided,
         plain,
         advised,
         announced: Vec::new(),

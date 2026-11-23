@@ -595,3 +595,76 @@ fn each_row_names_the_open_pull_requests_changing_a_path_it_changes_even_those_i
     let alone = rows(&View::default(), &[waited(1, 3)], now());
     assert_eq!(alone[0].overlaps, Vec::<u64>::new());
 }
+
+fn release(milestone: &str) -> crate::queue::Release {
+    crate::queue::Release {
+        milestone: Some(Glob::new(milestone).unwrap()),
+        label: None,
+        branch: None,
+        pull: None,
+        combine: crate::queue::Combine::All,
+        blocker_labels: Vec::new(),
+        blocked_by: crate::queue::Blocker::ALL.to_vec(),
+        withheld: crate::queue::Withheld::Unknown,
+    }
+}
+
+#[test]
+fn a_release_shows_only_the_pull_requests_it_picks_and_judges_them_in_order() {
+    let view = View {
+        release: Some(release("v2.0")),
+        ..View::default()
+    };
+    let carried = |repository: &str, number: u64, draft: bool| Pull {
+        repository: repository.to_owned(),
+        milestone: Some("v2.0".to_owned()),
+        draft,
+        ..waited(1, number)
+    };
+    let pulls = [
+        carried("b/b", 1, true),
+        waited(2, 2),
+        carried("a/a", 9, true),
+        carried("a/a", 3, false),
+    ];
+    let board = board(&view, &pulls, now());
+    assert_eq!(board.total(), 3);
+    let readiness = board.readiness.unwrap();
+    let held: Vec<(&str, u64)> = readiness
+        .holds
+        .iter()
+        .filter_map(|held| match held {
+            crate::queue::Held::Shown(holding) => {
+                Some((holding.repository.as_str(), holding.number))
+            }
+            crate::queue::Held::Private => None,
+        })
+        .collect();
+    assert_eq!(held, [("a/a", 9), ("b/b", 1)]);
+}
+
+#[test]
+fn a_release_is_judged_beside_the_rows_withheld_from_the_surface() {
+    let view = View {
+        release: Some(release("v2.0")),
+        ..View::default()
+    };
+    let carried = |number: u64| Pull {
+        milestone: Some("v2.0".to_owned()),
+        ..waited(1, number)
+    };
+    let shown = rows(&view, &[carried(1)], now());
+    let withheld = rows(&view, &[carried(2)], now());
+    let board = grouped(&view, shown.clone(), &withheld);
+    assert_eq!(board.total(), 1);
+    assert_eq!(board.readiness.unwrap().ready(), None);
+    let whole = grouped(&view, shown, &[]);
+    assert_eq!(whole.readiness.unwrap().ready(), Some(true));
+}
+
+#[test]
+fn a_view_with_no_release_shows_no_verdict() {
+    let board = board(&View::default(), &[waited(1, 1)], now());
+    assert_eq!(board.readiness, None);
+    assert_eq!(board.total(), 1);
+}
