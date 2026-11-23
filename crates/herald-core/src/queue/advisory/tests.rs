@@ -275,6 +275,8 @@ fn pull(repository: &str, visibility: Visibility) -> Pull {
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     }
 }

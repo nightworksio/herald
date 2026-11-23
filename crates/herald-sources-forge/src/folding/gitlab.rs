@@ -1,7 +1,7 @@
 //! GitLab's deliveries of merge requests, their approvals, notes and
 //! pipelines.
 
-use herald_core::{Described, Folded, Lifecycle, Mergeable, Outcome, Verdict};
+use herald_core::{Described, Folded, Lifecycle, Mergeable, Milestoned, Outcome, Verdict};
 use herald_wire::SourceError;
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -52,6 +52,8 @@ struct Attributes {
     draft: bool,
     last_commit: Option<Commit>,
     detailed_merge_status: Option<String>,
+    target_branch: Option<String>,
+    source_branch: Option<String>,
     sha: Option<String>,
     status: Option<String>,
     noteable_type: Option<String>,
@@ -138,6 +140,9 @@ impl Delivered {
             mergeable,
             queue: None,
             forge: status.map(|status| (forge_turn(&status), status)),
+            base: attributes.target_branch.take(),
+            head_branch: attributes.source_branch.take(),
+            milestone: Milestoned::Unsaid,
             opened: attributes.created_at.unwrap_or(updated),
             updated,
             lifecycle,

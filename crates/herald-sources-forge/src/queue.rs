@@ -27,6 +27,12 @@ pub(crate) use scope::{Scoped, scope_cost};
 
 pub(crate) use gitlab::{PIPELINE, forge_turn};
 
+/// A pull request's milestone, as every forge names it in a pull request.
+#[derive(serde::Deserialize)]
+pub(crate) struct Titled {
+    pub(crate) title: String,
+}
+
 /// The most open pull requests one page lists, on every forge.
 pub const PAGE: usize = 100;
 

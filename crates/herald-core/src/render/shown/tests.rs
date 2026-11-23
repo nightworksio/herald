@@ -77,10 +77,13 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
         [
             "areas",
             "author",
+            "base",
             "bot",
             "decided",
             "draft",
+            "head_branch",
             "labels",
+            "milestone",
             "number",
             "opened",
             "overlaps",
@@ -566,4 +569,22 @@ fn a_view_shows_its_load_by_team_and_area_with_its_allowlisted_keys() {
         .unwrap();
     assert!(team.get_attr("reviewed").unwrap().is_none());
     assert_eq!(team.get_attr("requested").unwrap().to_string(), "4");
+}
+
+#[test]
+fn a_row_names_its_milestone_and_its_branches() {
+    let milestoned = crate::queue::Pull {
+        base: Some("main".to_owned()),
+        head_branch: Some("fix".to_owned()),
+        milestone: Some("v2.0".to_owned()),
+        ..pull()
+    };
+    let now = Timestamp::from_second(30 * 24 * 60 * 60).unwrap();
+    let board = board(&View::default(), &[milestoned], now);
+    let row = row_value(board.distinct_rows().first().unwrap());
+    let named: Vec<String> = ["milestone", "base", "head_branch"]
+        .into_iter()
+        .map(|key| row.get_attr(key).unwrap().to_string())
+        .collect();
+    assert_eq!(named, ["v2.0", "main", "fix"]);
 }

@@ -31,9 +31,16 @@ fn queued(entry: &QueueEntry) -> String {
 }
 
 /// `row` on one line: the pull request, whose turn it is and why, how long
-/// it waited, where it stands in the merge queue, its areas, and its title.
+/// it waited, where it stands in the merge queue, its milestone, its areas,
+/// and its title.
 fn line(row: &Row) -> String {
     let stale = if row.stale { ", stale" } else { "" };
+    let milestone = row
+        .pull
+        .milestone
+        .as_ref()
+        .map(|title| format!(", milestone {title}"))
+        .unwrap_or_default();
     let areas = if row.pull.areas.is_empty() {
         String::new()
     } else {
@@ -47,7 +54,7 @@ fn line(row: &Row) -> String {
     };
     let queue = row.pull.queue.as_ref().map(queued).unwrap_or_default();
     format!(
-        "  {}#{}  {}: {}, waited {}{stale}{queue}{areas}  {}",
+        "  {}#{}  {}: {}, waited {}{stale}{queue}{milestone}{areas}  {}",
         row.pull.repository,
         row.pull.number,
         row.state.name(),

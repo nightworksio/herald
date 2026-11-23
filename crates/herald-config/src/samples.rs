@@ -90,6 +90,8 @@ pub fn sample_boards() -> [Board; 2] {
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     };
     let bump = Pull {

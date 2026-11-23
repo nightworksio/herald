@@ -1,6 +1,6 @@
 use herald_core::{
-    Dequeued, Described, Left, Lifecycle, Mergeable, QueueEntry, QueueState, Turn, Verdict,
-    Visibility,
+    Dequeued, Described, Left, Lifecycle, Mergeable, Milestoned, QueueEntry, QueueState, Turn,
+    Verdict, Visibility,
 };
 use jiff::Timestamp;
 use serde_json::{Value, json};
@@ -23,7 +23,8 @@ fn pull(state: &str, merged: bool) -> Value {
         "number": 7, "title": "Add a queue", "html_url": "https://github.com/nightworksio/herald/pull/7",
         "state": state, "merged": merged, "user": { "login": "renovate[bot]", "type": "Bot" },
         "draft": false, "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
-        "head": { "sha": "abc" }, "labels": [{ "name": "deps" }],
+        "head": { "sha": "abc", "ref": "renovate/serde" }, "base": { "ref": "main" },
+        "milestone": { "title": "v2.0", "number": 3 }, "labels": [{ "name": "deps" }],
         "requested_reviewers": [{ "login": "octo" }], "requested_teams": [{ "slug": "core" }],
         "mergeable": false
     })
@@ -137,6 +138,9 @@ fn a_pull_request_event_describes_it_as_it_now_stands() {
             mergeable: Some(Mergeable::Conflict),
             queue: None,
             forge: None,
+            base: Some("main".to_owned()),
+            head_branch: Some("renovate/serde".to_owned()),
+            milestone: Milestoned::Said(Some("v2.0".to_owned())),
             opened: at("2026-11-18T10:00:00Z"),
             updated: at("2026-11-18T11:00:00Z"),
             lifecycle: Lifecycle::Open,
@@ -433,7 +437,8 @@ fn merge(action: &str, state: &str, status: Option<&str>) -> Value {
         "user": { "username": "project_9_bot_abc" }, "project": project(),
         "object_attributes": { "iid": 3, "title": "Bump", "url": "https://gitlab.com/nightworksio/herald/-/merge_requests/3",
             "state": state, "action": action, "draft": true, "last_commit": { "id": "def" },
-            "detailed_merge_status": status, "created_at": "2026-11-18 10:00:00 UTC",
+            "detailed_merge_status": status, "target_branch": "main", "source_branch": "renovate/serde",
+            "milestone_id": 12, "created_at": "2026-11-18 10:00:00 UTC",
             "updated_at": "2026-11-18 11:00:00 UTC" },
         "labels": [{ "title": "deps" }], "reviewers": [{ "username": "octo" }]
     })
@@ -458,6 +463,11 @@ fn a_merge_request_event_describes_it_and_an_approval_is_its_actor_s() {
     assert_eq!(opened.labels, Some(vec!["deps".to_owned()]));
     assert_eq!(opened.reviewers, Some(vec!["octo".to_owned()]));
     assert_eq!(opened.mergeable, Some(Mergeable::Conflict));
+    assert_eq!(
+        (opened.base.as_deref(), opened.head_branch.as_deref()),
+        (Some("main"), Some("renovate/serde"))
+    );
+    assert_eq!(opened.milestone, Milestoned::Unsaid);
     assert_eq!(
         opened.forge,
         Some((Turn::WaitingOnAuthor, "conflict".to_owned()))

@@ -234,12 +234,29 @@ pub struct Described {
     pub queue: Option<QueueEntry>,
     /// The state the forge's own status maps to, and the status.
     pub forge: Option<(Turn, String)>,
+    /// The branch it merges into, where the delivery names it.
+    pub base: Option<String>,
+    /// The branch its head is on, where the delivery names it.
+    pub head_branch: Option<String>,
+    /// What the delivery says of its milestone.
+    pub milestone: Milestoned,
     /// When it was opened.
     pub opened: Timestamp,
     /// When anyone last acted on it.
     pub updated: Timestamp,
     /// Where it stands.
     pub lifecycle: Lifecycle,
+}
+
+/// What a delivery says of a pull request's milestone.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Milestoned {
+    /// Nothing: a GitLab delivery names a milestone's id alone, so the
+    /// next listing reads it.
+    #[default]
+    Unsaid,
+    /// It carries the milestone of this title, or none.
+    Said(Option<String>),
 }
 
 /// What a webhook delivery says of a repository's pull requests
@@ -436,8 +453,9 @@ impl KeptPull {
 
     /// Whether a round's listing of it as `listed` reads it in full again:
     /// it was never read in full, it was closed, its head where the listing
-    /// names one, its last activity or its repository differs, or its checks
-    /// are still running, which ends with no activity of its own.
+    /// names one, its last activity, its repository or its milestone
+    /// differs, or its checks are still running, which ends with no
+    /// activity of its own.
     #[must_use]
     pub fn stale(&self, listed: &Pull) -> bool {
         self.read.is_none()
@@ -445,6 +463,7 @@ impl KeptPull {
             || (listed.head.is_some() && self.pull.head != listed.head)
             || self.pull.updated != listed.updated
             || self.pull.repository != listed.repository
+            || self.pull.milestone != listed.milestone
             || self.pull.checks == Checks::Pending
     }
 
@@ -588,6 +607,8 @@ impl KeptPull {
             base: None,
             files: None,
             areas: Vec::new(),
+            head_branch: None,
+            milestone: None,
             flips: Vec::new(),
         };
         let mut kept = Self {
@@ -625,6 +646,18 @@ impl KeptPull {
             if let Some(said) = said {
                 kept.clone_from(said);
             }
+        }
+        let branches = [
+            (&described.base, &mut pull.base),
+            (&described.head_branch, &mut pull.head_branch),
+        ];
+        for (said, kept) in branches {
+            if said.is_some() {
+                kept.clone_from(said);
+            }
+        }
+        if let Milestoned::Said(milestone) = &described.milestone {
+            pull.milestone.clone_from(milestone);
         }
         if described.head.is_some() && described.head != pull.head {
             pull.head.clone_from(&described.head);

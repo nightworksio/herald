@@ -247,6 +247,8 @@ fn listed_pull(number: u64) -> Pull {
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     }
 }

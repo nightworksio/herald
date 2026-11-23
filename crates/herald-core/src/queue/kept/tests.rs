@@ -29,6 +29,9 @@ fn described(updated: i64) -> Described {
         mergeable: None,
         queue: None,
         forge: None,
+        base: Some("main".to_owned()),
+        head_branch: Some("queue".to_owned()),
+        milestone: Milestoned::Said(Some("v2.0".to_owned())),
         opened: at(1_000),
         updated: at(updated),
         lifecycle: Lifecycle::Open,
@@ -129,6 +132,9 @@ fn a_listing_reads_again_only_what_changed_was_never_read_closed_or_still_runs()
     let mut renamed = pull();
     renamed.repository = "nightworksio/beacon".to_owned();
     assert!(kept.stale(&renamed));
+    let mut milestoned = pull();
+    milestoned.milestone = Some("v2.0".to_owned());
+    assert!(kept.stale(&milestoned));
     let mut hidden = pull();
     hidden.visibility = Visibility::Private;
     assert!(!kept.stale(&hidden));
@@ -223,6 +229,14 @@ fn a_delivery_describing_one_herald_keeps_none_of_begins_its_record() {
     let begun = KeptPull::fold(None, key(), &Folded::Pull(Box::new(described(2_500)))).unwrap();
     assert_eq!(begun.pull.author.as_deref(), Some("wessel"));
     assert_eq!(begun.pull.labels, ["queue"]);
+    assert_eq!(
+        (
+            begun.pull.base.as_deref(),
+            begun.pull.head_branch.as_deref()
+        ),
+        (Some("main"), Some("queue"))
+    );
+    assert_eq!(begun.pull.milestone.as_deref(), Some("v2.0"));
     assert_eq!(begun.pull.review, Review::Requested);
     assert_eq!(begun.pull.checks, Checks::Absent);
     assert_eq!(begun.pull.visibility, Visibility::Private);
@@ -577,4 +591,39 @@ fn a_delivery_enters_and_leaves_the_queue_and_a_merge_group_moves_a_waiting_entr
     cleared.queue = None;
     let reread = KeptPull::read(Some(&gone), key(), cleared, at(3_200));
     assert_eq!(reread.pull.queue, gone.pull.queue);
+}
+
+#[test]
+fn a_delivery_moves_a_kept_branch_and_milestone_only_where_it_names_them() {
+    let begun = KeptPull::fold(None, key(), &Folded::Pull(Box::new(described(2_500)))).unwrap();
+    let unsaid = Described {
+        base: None,
+        head_branch: None,
+        milestone: Milestoned::Unsaid,
+        ..described(2_600)
+    };
+    let kept = KeptPull::fold(Some(begun), key(), &Folded::Pull(Box::new(unsaid))).unwrap();
+    assert_eq!(
+        (
+            kept.pull.base.as_deref(),
+            kept.pull.head_branch.as_deref(),
+            kept.pull.milestone.as_deref()
+        ),
+        (Some("main"), Some("queue"), Some("v2.0"))
+    );
+    let moved = Described {
+        base: Some("release/2".to_owned()),
+        head_branch: Some("fix".to_owned()),
+        milestone: Milestoned::Said(None),
+        ..described(2_700)
+    };
+    let moved = KeptPull::fold(Some(kept), key(), &Folded::Pull(Box::new(moved))).unwrap();
+    assert_eq!(
+        (
+            moved.pull.base.as_deref(),
+            moved.pull.head_branch.as_deref(),
+            moved.pull.milestone
+        ),
+        (Some("release/2"), Some("fix"), None)
+    );
 }

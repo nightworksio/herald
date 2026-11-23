@@ -94,6 +94,17 @@ a reviewer GitHub names an owner, member or collaborator, or Forgejo marks
 official, decides a review. `herald doctor` names each report's path and
 the most requests it takes a round.
 
+Each pull request is read with the branch it merges into, the branch its
+head is on and the title of its milestone, where its forge names them, at
+no request of its own: a template reads them as a row's `base`,
+`head_branch` and `milestone`, and `herald queue` names the milestone. A
+row is seen as its repository is, so its milestone is too. Kept mode takes
+them from each delivery of a pull request, a milestone set or cleared
+included. GitLab's merge request delivery names a milestone by its id
+alone: a kept record whose milestone differs from what a listing names is
+read again, so a kept GitLab record takes its milestone from the next
+listing.
+
 ### An owner's repositories
 
 A view may read a source naming an `owner` rather than one repository

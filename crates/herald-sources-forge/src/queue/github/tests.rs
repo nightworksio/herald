@@ -269,7 +269,7 @@ fn a_page_is_asked_of_the_repository_after_its_cursor() {
     assert!(query.contains("labels(first: 50)"));
     assert!(query.contains("baseRefName"));
     assert!(!query.contains("files("));
-    assert!(query.contains("isInMergeQueue headRefOid"));
+    assert!(query.contains("isInMergeQueue headRefOid headRefName milestone { title }"));
     assert!(!query.contains("mergeQueueEntry"));
     let first = request("https://api.github.com/graphql", "o", None, ask);
     let body: Value = serde_json::from_slice(&first.body).unwrap();
@@ -298,9 +298,15 @@ fn a_view_predicting_conflicts_asks_each_pull_request_s_changed_paths_and_its_br
             "{query}"
         );
     }
-    let read = one(&json!({ "baseRefName": "main",
-        "files": { "totalCount": 3, "nodes": [{ "path": "a.rs" }, { "path": "b.rs" }] } }));
+    let read = one(
+        &json!({ "baseRefName": "main", "headRefName": "fix", "milestone": { "title": "v2.0" },
+        "files": { "totalCount": 3, "nodes": [{ "path": "a.rs" }, { "path": "b.rs" }] } }),
+    );
     assert_eq!(read.base.as_deref(), Some("main"));
+    assert_eq!(read.head_branch.as_deref(), Some("fix"));
+    assert_eq!(read.milestone.as_deref(), Some("v2.0"));
+    let bare = one(&json!({}));
+    assert_eq!((bare.head_branch, bare.milestone), (None, None));
     assert_eq!(
         read.files,
         Some(Changed {

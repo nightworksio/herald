@@ -55,6 +55,8 @@ fn secret_reviewed(world: &World) {
             whole: true,
         }),
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     };
     let pulled = PullKey {

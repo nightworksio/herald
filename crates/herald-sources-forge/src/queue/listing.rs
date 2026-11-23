@@ -1,3 +1,4 @@
+use super::Titled;
 use herald_core::{Checks, Mergeable, Pull, Review, Visibility};
 use herald_wire::SourceError;
 use jiff::Timestamp;
@@ -30,6 +31,8 @@ pub(super) fn path(forge: Forge, number: usize) -> String {
 #[derive(Deserialize)]
 struct Head {
     sha: String,
+    #[serde(rename = "ref")]
+    branch: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -77,6 +80,7 @@ struct Listed {
     mergeable: Option<bool>,
     head: Option<Head>,
     base: Option<Base>,
+    milestone: Option<Titled>,
 }
 
 impl Listed {
@@ -115,11 +119,13 @@ impl Listed {
             mergeable,
             queue: None,
             forge: None,
+            head_branch: self.head.as_ref().and_then(|head| head.branch.clone()),
             head: self.head.map(|head| head.sha),
             unread: false,
             base: self.base.and_then(|base| base.branch),
             files: None,
             areas: Vec::new(),
+            milestone: self.milestone.map(|milestone| milestone.title),
             flips: Vec::new(),
         }
     }

@@ -39,8 +39,8 @@ pub use codeowners::{
     RULES_CACHE, Skipped,
 };
 pub use kept::{
-    Closed, Described, Folded, Folding, KeptPull, Lifecycle, Outcome, PullKey, Ran, Read,
-    Reconciled, RepositoryKey, Reviewed, Since, Verdict,
+    Closed, Described, Folded, Folding, KeptPull, Lifecycle, Milestoned, Outcome, PullKey, Ran,
+    Read, Reconciled, RepositoryKey, Reviewed, Since, Verdict,
 };
 pub use load::{
     Given, LEAST_TEAM, LOAD_WINDOW, LONGEST_LOAD_WINDOW, Load, Loaded, Loads, MOST_FORGE_TEAMS,
@@ -210,6 +210,13 @@ pub struct Pull {
     /// The branch it merges into, where the forge names it.
     #[serde(default)]
     pub base: Option<String>,
+    /// The branch its head is on, where the forge names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_branch: Option<String>,
+    /// The title of the milestone it carries, where it carries one and the
+    /// forge names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<String>,
     /// The paths its head changes, where a view predicting conflicts read
     /// them (ADR-0063).
     #[serde(default)]

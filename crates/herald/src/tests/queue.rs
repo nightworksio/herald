@@ -21,12 +21,13 @@ fn listed(world: &World) {
             "user": { "login": login, "type": "User" }
         })
     };
-    let pulls = json!([
+    let mut pulls = json!([
         pull(7, "Add a queue", "wessel"),
         pull(8, "Bump serde from 1.0.0 to 1.0.1", "dependabot[bot]"),
         pull(9, "chore: lift tokio", "renovate[bot]"),
         pull(10, "Tidy things", "helper[bot]"),
     ]);
+    pulls[0]["milestone"] = json!({ "title": "v2.0" });
     world
         .state
         .lock()
@@ -47,7 +48,7 @@ fn a_view_is_printed_as_a_table_or_as_json() {
     assert_eq!(lines[1], "unknown (1)");
     assert!(
         lines[2].starts_with("  cli/cli#7  unknown: unread, waited ")
-            && lines[2].ends_with(", stale  Add a queue"),
+            && lines[2].ends_with(", stale, milestone v2.0  Add a queue"),
         "{}",
         lines[2]
     );
@@ -499,6 +500,8 @@ fn secret_kept(world: &World) {
             head: Some(head),
             unread: false,
             base: Some("main".to_owned()),
+            head_branch: None,
+            milestone: None,
             files: Some(Changed {
                 paths: [SECRET_PATH.to_owned()].into(),
                 whole: true,

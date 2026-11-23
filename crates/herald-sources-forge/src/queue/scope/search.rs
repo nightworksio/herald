@@ -7,6 +7,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use crate::github::{Account, Label};
+use crate::queue::Titled;
 
 /// What GitHub's search of an owner's open pull requests is read as.
 pub(super) const GITHUB: &str = "GitHub's search of an owner's open pull requests";
@@ -35,6 +36,7 @@ struct Found {
     user: Option<Account>,
     #[serde(default)]
     labels: Vec<Label>,
+    milestone: Option<Titled>,
     repository_url: String,
 }
 
@@ -62,6 +64,7 @@ struct Issue {
     user: Option<Account>,
     #[serde(default)]
     labels: Vec<Label>,
+    milestone: Option<Titled>,
     repository: Option<Holder>,
     pull_request: Option<Meta>,
 }
@@ -83,6 +86,7 @@ fn bare(
     draft: bool,
     user: Option<Account>,
     labels: Vec<Label>,
+    milestone: Option<Titled>,
 ) -> Pull {
     Pull {
         project: String::new(),
@@ -108,6 +112,8 @@ fn bare(
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: milestone.map(|milestone| milestone.title),
         flips: Vec::new(),
     }
 }
@@ -143,6 +149,7 @@ pub(super) fn github(body: &[u8], parse: usize) -> Result<Listing, SourceError> 
                 found.draft,
                 found.user,
                 found.labels,
+                found.milestone,
             );
             Some((Located::Path(path), pull))
         })
@@ -167,6 +174,7 @@ pub(super) fn forgejo(body: &[u8], parse: usize) -> Result<Listing, SourceError>
                 meta.draft,
                 issue.user,
                 issue.labels,
+                issue.milestone,
             );
             Some((Located::Id(id), pull))
         })

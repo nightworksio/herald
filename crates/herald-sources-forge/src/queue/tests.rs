@@ -530,7 +530,7 @@ fn predicting_conflicts_reads_each_pull_request_s_changed_paths_and_branch_up_to
     let rows = json!([
         { "number": 1, "title": "t", "html_url": "https://codeberg.org/o/r/pulls/1",
           "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
-          "base": { "ref": "main" } },
+          "base": { "ref": "main" }, "milestone": { "title": "v2.0" } },
         { "number": 2, "title": "t", "html_url": "https://codeberg.org/o/r/pulls/2",
           "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z" }
     ]);
@@ -550,12 +550,14 @@ fn predicting_conflicts_reads_each_pull_request_s_changed_paths_and_branch_up_to
     );
     let first = pulls.first().unwrap();
     assert_eq!(first.base.as_deref(), Some("main"));
+    assert_eq!(first.milestone.as_deref(), Some("v2.0"));
+    assert_eq!(pulls.get(1).unwrap().milestone, None);
     assert_eq!(first.files.as_ref().map(|files| files.paths.len()), Some(1));
     assert_eq!(pulls.get(1).unwrap().files, None);
     let requests = json!([
         { "iid": 1, "title": "t", "web_url": "https://gitlab.com/o/r/-/merge_requests/1",
           "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
-          "target_branch": "main" },
+          "target_branch": "main", "source_branch": "fix", "milestone": { "title": "v2.0" } },
         { "iid": 2, "title": "t", "web_url": "https://gitlab.com/o/r/-/merge_requests/2",
           "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z" }
     ]);
@@ -572,6 +574,9 @@ fn predicting_conflicts_reads_each_pull_request_s_changed_paths_and_branch_up_to
         "https://gitlab.com/api/v4/projects/o%2Fr/merge_requests/1/diffs?per_page=100"
     );
     assert_eq!(pulls.first().unwrap().base.as_deref(), Some("main"));
+    assert_eq!(pulls.first().unwrap().head_branch.as_deref(), Some("fix"));
+    assert_eq!(pulls.first().unwrap().milestone.as_deref(), Some("v2.0"));
+    assert_eq!(pulls.get(1).unwrap().milestone, None);
     assert!(pulls.first().unwrap().files.is_some());
     assert_eq!(pulls.get(1).unwrap().files, None);
     let (_, asked) = predicting(
