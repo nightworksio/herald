@@ -641,3 +641,51 @@ token = {{ secret = "HERALD_GITHUB_TOKEN" }}
     assert_eq!(note("config", "load = {}"), None);
     assert_eq!(note("forge", ""), None);
 }
+
+#[test]
+fn a_view_reading_the_merge_queue_names_its_cost_on_each_forge_and_where_none_is_read() {
+    let config = loaded(
+        r#"version = 1
+[store]
+kind = "sqlite"
+[sources.graphed]
+kind = "github"
+repository = "o/graphed"
+token = { secret = "HERALD_GITHUB_TOKEN" }
+[sources.bare]
+kind = "github"
+repository = "o/bare"
+[sources.lab]
+kind = "gitlab"
+repository = "o/lab"
+api = "https://gitlab.example/api/v4"
+[sources.fj]
+kind = "forgejo"
+repository = "o/fj"
+api = "https://codeberg.org/api/v1"
+[views.queue]
+sources = ["graphed", "bare", "lab", "fj"]
+queue = true
+[reports.daily]
+"#,
+    );
+    let notes: Vec<String> = on(&config, &server(), &Here::default())
+        .notes
+        .into_iter()
+        .filter(|note| note.starts_with("The report daily"))
+        .collect();
+    let ends: Vec<&str> = notes
+        .iter()
+        .map(|note| note.rsplit_once("; ").map_or("", |(_, end)| end))
+        .collect();
+    assert_eq!(
+        ends,
+        [
+            "it reads each pull request's merge queue entry with the pull request.",
+            "it reads no merge queue entry: GitHub's merge queue is read through GraphQL, with a token, which this source does not read with.",
+            "a project whose trains GitLab does not let its token read, as without Premium, shows none.",
+            "it reads no merge queue entry: Forgejo and Gitea have no merge queue.",
+        ]
+    );
+    assert!(notes[2].contains("; it reads its merge trains by at most 1 more requests a round; "));
+}

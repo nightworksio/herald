@@ -1187,6 +1187,7 @@ The rules routes name among their sources, by name: each a view watched once a w
 |---------|------|--------------|
 | `rules.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
 | `rules.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
+| `rules.<name>.dequeued` | [RuleDequeued](#ruledequeued) | Whether it alerts on each pull request of its view that left its forge's merge queue, once each time one left: `true` for the reasons that are a failure of the pull request ("checks-failed", "checks-timed-out", "conflict", "invalid", "protections"), or the reasons it names, such as `["checks-failed", "removed"]`; none where absent. Why a pull request left is known where its source is read kept, from GitHub's `pull_request` `dequeued` webhook (ADR-0078). |
 | `rules.<name>.every` | [Duration](#duration) | How long each window lasts within a day, from "1m" to "1d": "1d" where absent. |
 | `rules.<name>.flaky` | table | Whether it plans a re-run of each flaky check, as `{ rerun = true, mode = "plan" }`: each plan names its evidence and the exact call, announced once a run and head to the rule's private routes. A rule only plans; a re-run is made by an operator signed in through the forge, never by a rule on its own (ADR-0065). |
 | `rules.<name>.flaky.mode` | [RerunMode](#rerunmode) | "plan", the only mode a rule takes: where absent too. |
@@ -2156,6 +2157,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
 | `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
 | `views.<name>.overviews` | array of [OverviewName](#overviewname) | The overviews it shows beside its rows, such as `["capacity"]`: none where absent (ADR-0066). |
+| `views.<name>.queue` | boolean | Whether it reads each pull request's entry in its forge's merge queue: its position, state, when it entered and the forge's estimate, on GitHub with a token in the query that reads it, at no request of its own; false where absent. Without it a row still says whether a pull request is in the queue where its forge does. A row shows the entry, and why it last left where a webhook said, as it shows the rest of the pull request (ADR-0078). |
 | `views.<name>.reconcile` | [Duration](#duration) | How long kept mode waits at least before listing a source's open pull requests again, each page conditional on its last answer; every round where absent. |
 | `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
 | `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
@@ -2408,6 +2410,10 @@ How a rule acts on a flaky check.
 ### Rotation
 
 Whether a peer's own signed statement may replace the keys pinned for it.
+
+### RuleDequeued
+
+What a rule alerts on of the pull requests that left the merge queue.
 
 ### RunAction
 

@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_eleven_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_twelve_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -109,7 +109,8 @@ fn herald_ships_eleven_kinds_and_only_releases_and_package_versions_are_versione
             ("issue", false),
             ("report", false),
             ("nudge", false),
-            ("rerun", false)
+            ("rerun", false),
+            ("dequeued", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -136,6 +137,7 @@ fn herald_ships_eleven_kinds_and_only_releases_and_package_versions_are_versione
             Some(&signalled),
             Some(&signalled),
             Some(&signalled),
+            None,
             None,
             None,
             None
@@ -222,7 +224,7 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     assert_eq!(
         private,
         [
-            false, false, false, false, false, true, false, false, false, false, false
+            false, false, false, false, false, true, false, false, false, false, false, false
         ]
     );
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
@@ -359,6 +361,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "report",
             "nudge",
             "rerun",
+            "dequeued",
             "deploy"
         ]
     );
@@ -457,7 +460,7 @@ fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
     assert_eq!(
         own,
         [
-            false, false, false, false, false, false, false, false, true, true, true
+            false, false, false, false, false, false, false, false, true, true, true, true
         ]
     );
     assert_eq!(report.links, []);

@@ -1,4 +1,7 @@
-use herald_core::{Described, Lifecycle, Mergeable, Turn, Verdict, Visibility};
+use herald_core::{
+    Dequeued, Described, Left, Lifecycle, Mergeable, QueueEntry, QueueState, Turn, Verdict,
+    Visibility,
+};
 use jiff::Timestamp;
 use serde_json::{Value, json};
 
@@ -89,6 +92,8 @@ fn each_forge_s_events_kept_mode_folds_are_named() {
         (Forge::GitHub, "repository", Some(Delivery::Repository)),
         (Forge::Forgejo, "repository", Some(Delivery::Repository)),
         (Forge::GitLab, "repository", None),
+        (Forge::GitHub, "merge_group", Some(Delivery::MergeGroup)),
+        (Forge::Forgejo, "merge_group", None),
         (Forge::GitHub, "release", None),
         (Forge::GitLab, "status", None),
         (Forge::GitLab, "issue_comment", None),
@@ -130,25 +135,51 @@ fn a_pull_request_event_describes_it_as_it_now_stands() {
             reviewers: Some(vec!["octo".to_owned(), "nightworksio/core".to_owned()]),
             head: Some("abc".to_owned()),
             mergeable: Some(Mergeable::Conflict),
-            queued: None,
+            queue: None,
             forge: None,
             opened: at("2026-11-18T10:00:00Z"),
             updated: at("2026-11-18T11:00:00Z"),
             lifecycle: Lifecycle::Open,
         }
     );
-    for (action, state, merged, lifecycle, queued) in [
+    let updated = at("2026-11-18T11:00:00Z");
+    let left = |reason| {
+        Some(QueueEntry::leaving(
+            None,
+            Left {
+                at: updated,
+                reason,
+            },
+        ))
+    };
+    for (action, state, merged, lifecycle, queue) in [
         ("closed", "closed", true, Lifecycle::Merged, None),
         ("closed", "closed", false, Lifecycle::Closed, None),
-        ("enqueued", "open", false, Lifecycle::Open, Some(true)),
-        ("dequeued", "open", false, Lifecycle::Open, Some(false)),
+        (
+            "enqueued",
+            "open",
+            false,
+            Lifecycle::Open,
+            Some(QueueEntry::entered(Some(updated))),
+        ),
+        (
+            "dequeued",
+            "open",
+            false,
+            Lifecycle::Open,
+            left(Dequeued::ChecksFailed),
+        ),
     ] {
         let payload = json!({ "action": action, "pull_request": pull(state, merged),
-            "repository": repository() });
+            "repository": repository(), "reason": "CI_FAILURE" });
         let folded = said(Forge::GitHub, "pull_request", &payload);
         let described = described(&folded);
-        assert_eq!((described.lifecycle, described.queued), (lifecycle, queued));
+        assert_eq!((described.lifecycle, &described.queue), (lifecycle, &queue));
     }
+    let payload = json!({ "action": "dequeued", "pull_request": pull("open", false),
+        "repository": repository() });
+    let unexplained = said(Forge::GitHub, "pull_request", &payload);
+    assert_eq!(described(&unexplained).queue, left(Dequeued::Unknown));
     let mut clean = pull("open", false);
     clean["mergeable"] = json!(true);
     let payload =
@@ -563,5 +594,59 @@ fn an_owner_s_delivery_is_folded_where_the_owner_holds_its_repository_and_named_
             .to_string()
             .contains("not of a repository lemonfiber, what its source names, holds"),
         "{unheld}"
+    );
+}
+
+#[test]
+fn a_merge_group_moves_its_pull_request_s_entry_unless_it_merged() {
+    let group = |action: &str, reason: Option<&str>| {
+        json!({ "action": action, "reason": reason, "repository": repository(),
+            "merge_group": { "head_ref": "refs/heads/gh-readonly-queue/main/pr-7-abc",
+                "head_sha": "def" } })
+    };
+    assert_eq!(
+        said(
+            Forge::GitHub,
+            "merge_group",
+            &group("checks_requested", None)
+        ),
+        [Folded::Queue {
+            number: 7,
+            state: QueueState::Checking
+        }]
+    );
+    for reason in ["invalidated", "dequeued"] {
+        assert_eq!(
+            said(
+                Forge::GitHub,
+                "merge_group",
+                &group("destroyed", Some(reason))
+            ),
+            [Folded::Queue {
+                number: 7,
+                state: QueueState::Queued
+            }]
+        );
+    }
+    assert!(
+        delivered(
+            Forge::GitHub,
+            "merge_group",
+            &group("destroyed", Some("merged"))
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert!(
+        delivered(Forge::GitHub, "merge_group", &group("created", None))
+            .unwrap()
+            .is_none()
+    );
+    let unnamed = json!({ "action": "checks_requested", "repository": repository(),
+        "merge_group": { "head_ref": "refs/heads/main" } });
+    assert!(
+        delivered(Forge::GitHub, "merge_group", &unnamed)
+            .unwrap()
+            .is_none()
     );
 }

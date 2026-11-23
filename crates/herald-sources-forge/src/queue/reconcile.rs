@@ -87,7 +87,8 @@ impl Opened<'_> {
     }
 
     /// `pulls`, as [`Opened::relisted`] found them, each read in full: as
-    /// listed on GitLab, whose listing reads them so; through GitHub's
+    /// listed on GitLab, whose listing reads them so, with its merge train
+    /// entry where it reads them; through GitHub's
     /// GraphQL a page of them a request; else each one's reviews and
     /// checks. One GraphQL holds no pull request for is left out.
     ///
@@ -101,9 +102,7 @@ impl Opened<'_> {
     ) -> Result<Vec<Pull>, Unpolled> {
         match self.read_path() {
             ReadPath::Listing => {
-                for pull in pulls.iter_mut().take(self.most_pulls) {
-                    self.changed(http, pull).await?;
-                }
+                self.furthered(http, &mut pulls).await?;
                 Ok(pulls)
             }
             ReadPath::Detailed => {

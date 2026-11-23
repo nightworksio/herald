@@ -34,12 +34,15 @@ impl Kind {
     pub const NUDGE: Self = Self(Cow::Borrowed("nudge"));
     /// A rule's plan to re-run a flaky check once (ADR-0065).
     pub const RERUN: Self = Self(Cow::Borrowed("rerun"));
+    /// A rule's alert on a pull request that left its forge's merge queue
+    /// (ADR-0078).
+    pub const DEQUEUED: Self = Self(Cow::Borrowed("dequeued"));
 
     /// Whether only herald itself announces its events, as a report from a
     /// view or a rule's nudge: no app and no other herald's feed gives one.
     #[must_use]
     pub fn own(&self) -> bool {
-        *self == Self::REPORT || *self == Self::NUDGE || *self == Self::RERUN
+        [Self::REPORT, Self::NUDGE, Self::RERUN, Self::DEQUEUED].contains(self)
     }
 
     /// The kind named `name`.
@@ -248,6 +251,13 @@ pub const REPOSITORY: &str = "repository";
 /// The logins whose turn a nudged pull request is, joined by `, `.
 pub const WAITING_ON: &str = "waiting_on";
 
+/// Whether the reason a pull request left its forge's merge queue is a
+/// failure of it (ADR-0078).
+pub const FAILURE: &str = "failure";
+
+/// When a pull request left its forge's merge queue (ADR-0078).
+pub const LEFT: &str = "left";
+
 /// The attribute naming a re-run plan's check (ADR-0065).
 pub const CHECK: &str = "check";
 
@@ -448,6 +458,24 @@ fn nudged() -> BTreeMap<String, AttributeSpec> {
         (AUTHOR, AttributeType::Text, false),
         (BOT, AttributeType::Flag, true),
         (WAITING_ON, AttributeType::Text, false),
+    ]
+    .into_iter()
+    .map(|(name, ty, required)| (name.to_owned(), AttributeSpec { ty, required }))
+    .collect()
+}
+
+/// The attributes of a rule's alert on a pull request that left its
+/// forge's merge queue (ADR-0078).
+fn dequeued() -> BTreeMap<String, AttributeSpec> {
+    [
+        (RULE, AttributeType::Text, true),
+        (REASON, AttributeType::Text, true),
+        (FAILURE, AttributeType::Flag, true),
+        (LEFT, AttributeType::Text, true),
+        (REPOSITORY, AttributeType::Text, true),
+        (NUMBER, AttributeType::Number, true),
+        (AUTHOR, AttributeType::Text, false),
+        (BOT, AttributeType::Flag, true),
     ]
     .into_iter()
     .map(|(name, ty, required)| (name.to_owned(), AttributeSpec { ty, required }))
@@ -666,6 +694,13 @@ impl KindSpec {
                 false,
                 buttons(&[PULL_LINK, RUN_LINK]),
                 planned(),
+            ),
+            Self::new(
+                Kind::DEQUEUED,
+                "A pull request that left its forge's merge queue for a reason a rule names.",
+                false,
+                buttons(&[PULL_LINK]),
+                dequeued(),
             ),
         ]
     }

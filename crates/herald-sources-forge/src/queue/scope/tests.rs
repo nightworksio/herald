@@ -63,6 +63,7 @@ fn asked(owner: Owner, members: &[Listed], most: Most) -> Asked<'_> {
         }),
         stated: false,
         files: false,
+        queue: false,
     }
 }
 
@@ -414,7 +415,7 @@ fn a_kept_completion_reads_each_changed_pull_request_through_its_own_repository(
         reviewers: Vec::new(),
         checks: Checks::Absent,
         mergeable: herald_core::Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: None,
         unread: false,
@@ -546,7 +547,7 @@ fn pull_of(path: &str) -> Pull {
         reviewers: Vec::new(),
         checks: Checks::Absent,
         mergeable: herald_core::Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: None,
         unread: false,
@@ -699,5 +700,45 @@ fn an_owner_source_reads_its_owner_s_teams_once_under_its_api() {
             .map(|(url, _)| url)
             .collect::<Vec<_>>(),
         ["https://api.github.com/orgs/o/teams?per_page=100&page=1"]
+    );
+}
+
+#[test]
+fn a_gitlab_group_read_with_the_queue_reads_each_project_s_trains_once() {
+    let scoped = scoped(Forge::GitLab, true);
+    let members = members();
+    let request = |iid: u64| {
+        json!({ "iid": iid, "title": "t", "web_url": "https://gitlab.com/o/vault/-/merge_requests/1",
+            "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
+            "project_id": 2 })
+    };
+    let trains = json!([{ "merge_request": { "iid": 4 }, "status": "merging",
+        "target_branch": "main", "created_at": "2026-11-18T10:00:00Z" }]);
+    let http = ScriptedHttp::new(vec![
+        answer(200, &json!([request(1), request(4)])),
+        answer(200, &trains),
+    ]);
+    let mut asking = asked(Owner::Organization, &members, Most::default());
+    asking.queue = true;
+    let pulls = opened(&scoped, &http, asking);
+    let read: Vec<(u64, Option<herald_core::QueueState>)> = pulls
+        .iter()
+        .map(|pull| (pull.number, pull.queue.as_ref().map(|entry| entry.state)))
+        .collect();
+    assert_eq!(
+        read,
+        [(1, None), (4, Some(herald_core::QueueState::Merging))]
+    );
+    assert_eq!(
+        urls(&http)[1],
+        "https://gitlab.com/api/v4/projects/o%2Fvault/merge_trains?scope=active&sort=asc&per_page=100"
+    );
+    let most = Most {
+        open: 300,
+        pulls: 20,
+    };
+    assert_eq!(
+        scope_cost(Forge::GitLab, true, most).queue,
+        herald_kinds::QueueRead::Requests(300)
     );
 }

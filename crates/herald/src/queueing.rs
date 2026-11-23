@@ -8,7 +8,8 @@ use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
 use herald_core::{
-    Advisories, Board, Loaded, Loads, Printed, Row, Showing, WITHHELD, view_json, waited,
+    Advisories, Board, Loaded, Loads, Printed, QueueEntry, Row, Showing, WITHHELD, view_json,
+    waited,
 };
 
 use super::cli::QueueFormat;
@@ -16,8 +17,21 @@ use super::output::{say, say_json};
 use super::stores::composed;
 use super::{Connect, DONE};
 
+/// Where `entry` stands in its forge's merge queue, as a row's line says
+/// it (ADR-0078).
+fn queued(entry: &QueueEntry) -> String {
+    if let Some(left) = entry.left {
+        return format!(", left the merge queue: {}", left.reason.name());
+    }
+    let at = entry
+        .position
+        .map(|position| format!(" at {position}"))
+        .unwrap_or_default();
+    format!(", {} in the merge queue{at}", entry.state.name())
+}
+
 /// `row` on one line: the pull request, whose turn it is and why, how long
-/// it waited, its areas, and its title.
+/// it waited, where it stands in the merge queue, its areas, and its title.
 fn line(row: &Row) -> String {
     let stale = if row.stale { ", stale" } else { "" };
     let areas = if row.pull.areas.is_empty() {
@@ -31,8 +45,9 @@ fn line(row: &Row) -> String {
             .collect();
         format!(", in {}", names.join(", "))
     };
+    let queue = row.pull.queue.as_ref().map(queued).unwrap_or_default();
     format!(
-        "  {}#{}  {}: {}, waited {}{stale}{areas}  {}",
+        "  {}#{}  {}: {}, waited {}{stale}{queue}{areas}  {}",
         row.pull.repository,
         row.pull.number,
         row.state.name(),

@@ -28,7 +28,7 @@ pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pul
 
 /// The body of [`QUEUE_TEMPLATE`]: each group's rows, oldest first, then
 /// each batch of bumps.
-pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
+pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}{% if row.queue and not row.queue.left %}, {{ row.queue.state }} in the merge queue{% if row.queue.position %} at {{ row.queue.position }}{% endif %}{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
 
 /// The template herald ships for a rule's re-run plan, which a route names
 /// as `template = "herald:rerun"` and `[templates."herald:rerun"]`
@@ -41,6 +41,19 @@ pub(crate) const RERUN_TITLE: &str = "{{ event.attributes.repository }}#{{ event
 /// The body of [`RERUN_TEMPLATE`]: the evidence, then the exact call, or
 /// why none can be made.
 pub(crate) const RERUN_BODY: &str = "{{ event.attributes.check }} failed then passed on one head {{ event.attributes.flips }} times; it fails on {{ event.attributes.head }}. {% if event.attributes.call %}A re-run of run {{ event.attributes.run_id }} would call {{ event.attributes.call }}.{% else %}No re-run can be planned: {{ event.attributes.reason }}.{% endif %}";
+
+/// The template herald ships for a rule's alert on a pull request that
+/// left its forge's merge queue, which a route names as
+/// `template = "herald:dequeued"` and `[templates."herald:dequeued"]`
+/// replaces (ADR-0078).
+pub const DEQUEUED_TEMPLATE: &str = "herald:dequeued";
+
+/// The title of [`DEQUEUED_TEMPLATE`].
+pub(crate) const DEQUEUED_TITLE: &str =
+    "{{ event.attributes.repository }}#{{ event.attributes.number }} left the merge queue";
+
+/// The body of [`DEQUEUED_TEMPLATE`]: why it left, and when.
+pub(crate) const DEQUEUED_BODY: &str = "{{ event.title }} left the merge queue at {{ event.attributes.left }}: {{ event.attributes.reason }}.";
 
 /// The template herald edits a living post to once its route no longer
 /// receives the advisories section it showed: fixed, so no config can make
@@ -87,6 +100,9 @@ pub struct ViewConfig {
     /// read, and each row naming those of its repository and branch that
     /// change a path in common (ADR-0063).
     pub conflicts: bool,
+    /// Whether it reads each pull request's entry in its forge's merge
+    /// queue: its position, state and timing (ADR-0078).
+    pub queue: bool,
     /// Which repositories its capacity overview reads, where it shows one
     /// (ADR-0066).
     pub capacity: Option<Capacity>,
@@ -139,6 +155,10 @@ pub struct Rule {
     /// The most failed runs on one head a plan reads for one check, the
     /// newest first.
     pub runs: usize,
+    /// The reasons a pull request left its forge's merge queue that it
+    /// alerts on, once each time one left; none where it does not
+    /// (ADR-0078).
+    pub dequeued: Vec<herald_core::Dequeued>,
 }
 
 /// What a view does with a bot's pull requests.
@@ -245,6 +265,10 @@ pub(crate) struct RulesFile {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "View")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "each is a key of the view's table"
+)]
 pub(crate) struct ViewFile {
     /// The sources it reads, each naming one repository or an owner on a
     /// forge; every such source where absent.
@@ -330,6 +354,15 @@ pub(crate) struct ViewFile {
     /// moves.
     #[serde(default)]
     pub(crate) conflicts: bool,
+    /// Whether it reads each pull request's entry in its forge's merge
+    /// queue: its position, state, when it entered and the forge's
+    /// estimate, on GitHub with a token in the query that reads it, at no
+    /// request of its own; false where absent. Without it a row still says
+    /// whether a pull request is in the queue where its forge does. A row
+    /// shows the entry, and why it last left where a webhook said, as it
+    /// shows the rest of the pull request (ADR-0078).
+    #[serde(default)]
+    pub(crate) queue: bool,
     /// How many open pull requests one check fails on before the base they
     /// merge into reads as broken: 3 where absent (ADR-0065).
     pub(crate) broken_at: Option<NonZeroUsize>,
@@ -535,7 +568,7 @@ pub(crate) const REPORT_KEYS: [&str; 5] = ["view", "every", "at", "days", "zone"
 pub(crate) const BOARD_KEYS: [&str; 3] = ["id", "sources", "living"];
 
 /// The keys of `[rules.<name>]` beside a report's.
-pub(crate) const RULE_KEYS: [&str; 3] = ["stages", "most", "flaky"];
+pub(crate) const RULE_KEYS: [&str; 4] = ["stages", "most", "flaky", "dequeued"];
 
 /// What `[rules.<name>]` writes beside the view it watches and when it
 /// looks, which it writes as a report does.
@@ -559,6 +592,39 @@ pub(crate) struct RuleFile {
     /// through the forge, never by a rule on its own (ADR-0065).
     #[schemars(with = "Option<FlakyRuleFile>")]
     pub(crate) flaky: Option<Spanned<FlakyRuleFile>>,
+    /// Whether it alerts on each pull request of its view that left its
+    /// forge's merge queue, once each time one left: `true` for the
+    /// reasons that are a failure of the pull request ("checks-failed",
+    /// "checks-timed-out", "conflict", "invalid", "protections"), or the
+    /// reasons it names, such as `["checks-failed", "removed"]`; none where
+    /// absent. Why a pull request left is known where its source is read
+    /// kept, from GitHub's `pull_request` `dequeued` webhook (ADR-0078).
+    pub(crate) dequeued: Option<DequeuedFile>,
+}
+
+impl DequeuedFile {
+    /// The reasons it names, each once, in the order herald lists them.
+    pub(crate) fn reasons(&self) -> Vec<herald_core::Dequeued> {
+        herald_core::Dequeued::ALL
+            .into_iter()
+            .filter(|reason| match self {
+                Self::Failures(failures) => *failures && reason.failure(),
+                Self::Named(named) => named.contains(reason),
+            })
+            .collect()
+    }
+}
+
+/// What a rule alerts on of the pull requests that left the merge queue.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+#[serde(rename = "RuleDequeued")]
+pub(crate) enum DequeuedFile {
+    /// The reasons that are a failure of the pull request where true, none
+    /// where false.
+    Failures(bool),
+    /// The reasons named.
+    Named(Vec<herald_core::Dequeued>),
 }
 
 /// What a rule does with a flaky check.

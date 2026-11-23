@@ -42,6 +42,7 @@ fn listed(
         most_pulls,
         stated: false,
         files: false,
+        queue: false,
     };
     let http = ScriptedHttp::new(answers);
     let erased = Erased(&http as &dyn DynHttp);
@@ -361,6 +362,7 @@ fn stated_rows(forge: Forge, tokened: bool, stated: bool, named: &str) -> Vec<Vi
         scope: None,
         stated,
         files: false,
+        queue: false,
     };
     pollster::block_on(herald_kinds::Queue::opened(&queued, &http, asked))
         .unwrap()
@@ -487,6 +489,7 @@ fn a_kept_listing_never_takes_the_visibility_a_tokenless_listing_states() {
         scope: None,
         stated: true,
         files: false,
+        queue: false,
     };
     let listed =
         pollster::block_on(herald_kinds::Queue::listed(&queued, &http, asked, &[])).unwrap();
@@ -514,6 +517,7 @@ fn predicting(forge: Forge, tokened: bool, answers: Vec<Response>) -> (Vec<Pull>
         most_pulls: 1,
         stated: false,
         files: true,
+        queue: false,
     };
     let http = ScriptedHttp::new(answers);
     let pulls = pollster::block_on(opened.pulls(&Erased(&http as &dyn DynHttp))).unwrap();
@@ -709,4 +713,80 @@ fn a_queued_repository_reads_its_codeowners_and_looks_names_up_through_the_confi
             "https://gitlab.example/api/v4/users?username=web"
         ]
     );
+}
+
+#[test]
+fn a_cost_names_how_each_forge_reads_the_merge_queue() {
+    let most = herald_kinds::Most::default();
+    let reads: Vec<herald_kinds::QueueRead> = [
+        (Forge::GitHub, true),
+        (Forge::GitHub, false),
+        (Forge::GitLab, false),
+        (Forge::Forgejo, true),
+    ]
+    .into_iter()
+    .map(|(forge, tokened)| cost(forge, tokened, most).queue)
+    .collect();
+    assert_eq!(
+        reads,
+        [
+            herald_kinds::QueueRead::WithEach,
+            herald_kinds::QueueRead::Unread(UNTOKENED),
+            herald_kinds::QueueRead::Requests(1),
+            herald_kinds::QueueRead::Unread(UNQUEUED),
+        ]
+    );
+}
+
+/// The pull requests a listing of `forge` reads with each one's merge
+/// queue entry, each request's URL it asked, and each body it posted.
+fn queued(forge: Forge, answers: Vec<Response>) -> (Vec<Pull>, Vec<String>, Vec<Value>) {
+    let origin = origin(forge);
+    let token = Token::Named(Secret::new("TOKEN", "t"));
+    let opened = Opened {
+        origin: &origin,
+        token: Some(&token),
+        project: "r",
+        graphql: "https://api.github.com/graphql",
+        visibility: Some(Visibility::Public),
+        most_open: MOST_OPEN,
+        most_pulls: 0,
+        stated: false,
+        files: false,
+        queue: true,
+    };
+    let http = ScriptedHttp::new(answers);
+    let pulls = pollster::block_on(opened.pulls(&Erased(&http as &dyn DynHttp))).unwrap();
+    let asked = http.asked().into_iter().map(|(url, _)| url).collect();
+    (pulls, asked, http.bodies())
+}
+
+#[test]
+fn a_view_reading_the_queue_reads_github_s_entries_in_its_query_and_gitlab_s_trains_after_its_listing()
+ {
+    let (pulls, asked, bodies) = queued(Forge::GitHub, vec![answer(200, &github_page(1..3, None))]);
+    assert_eq!((pulls.len(), asked.len()), (2, 1));
+    assert!(
+        bodies[0]["query"]
+            .as_str()
+            .unwrap()
+            .contains("mergeQueueEntry")
+    );
+    let trains = json!([{ "merge_request": { "iid": 2 }, "status": "fresh",
+        "target_branch": "main", "created_at": "2026-11-18T10:00:00Z" }]);
+    let (pulls, asked, _) = queued(
+        Forge::GitLab,
+        vec![
+            answer(200, &rest_page(1..3, Forge::GitLab)),
+            answer(200, &trains),
+        ],
+    );
+    let entries: Vec<Option<herald_core::QueueState>> = pulls
+        .iter()
+        .map(|pull| pull.queue.as_ref().map(|entry| entry.state))
+        .collect();
+    assert_eq!(entries, [None, Some(herald_core::QueueState::Checking)]);
+    assert!(asked[1].ends_with("/merge_trains?scope=active&sort=asc&per_page=100"));
+    let (pulls, asked, _) = queued(Forge::GitLab, vec![answer(200, &json!([]))]);
+    assert_eq!((pulls.len(), asked.len()), (0, 1));
 }

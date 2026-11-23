@@ -16,10 +16,12 @@ mod detail;
 mod github;
 mod gitlab;
 mod listing;
+pub(crate) mod merging;
 mod reconcile;
 mod rerun;
 mod scope;
 pub(crate) mod teams;
+mod trains;
 
 pub(crate) use scope::{Scoped, scope_cost};
 
@@ -124,6 +126,10 @@ pub struct Opened<'a> {
     /// Whether each pull request read in full has the paths its head
     /// changes read too (ADR-0063).
     pub files: bool,
+    /// Whether each pull request has its merge queue entry read too:
+    /// through GitHub's GraphQL with it, or GitLab's merge trains by one
+    /// request (ADR-0078).
+    pub queue: bool,
 }
 
 /// What a page names its pull requests by: the project they are shown as,
@@ -230,6 +236,23 @@ impl Opened<'_> {
         Ok(())
     }
 
+    /// `pulls`, as GitLab's listing read them, with the paths the first of
+    /// them change and each one's merge train entry, where it reads them
+    /// and lists any.
+    async fn furthered(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pulls: &mut [Pull],
+    ) -> Result<(), Unpolled> {
+        for pull in pulls.iter_mut().take(self.most_pulls) {
+            self.changed(http, pull).await?;
+        }
+        if self.queue && !pulls.is_empty() {
+            trains::trained(http, (self.origin, self.token), pulls).await?;
+        }
+        Ok(())
+    }
+
     /// The paths pull request `number` changes, its first page of them.
     ///
     /// # Errors
@@ -252,6 +275,7 @@ impl Opened<'_> {
         github::Ask {
             parse: self.origin.reading().parse,
             files: self.files,
+            queue: self.queue,
         }
     }
 
@@ -297,11 +321,7 @@ impl Opened<'_> {
                     }
                 }
             }
-            ReadPath::Listing => {
-                for pull in pulls.iter_mut().take(self.most_pulls) {
-                    self.changed(http, pull).await?;
-                }
-            }
+            ReadPath::Listing => self.furthered(http, &mut pulls).await?,
             ReadPath::Graphql => {}
         }
         Ok(pulls)
@@ -344,6 +364,7 @@ impl Queued {
             most_pulls: asked.most.pulls,
             stated: asked.stated,
             files: asked.files,
+            queue: asked.queue,
         }
     }
 }
@@ -502,6 +523,30 @@ pub fn cost(forge: Forge, tokened: bool, most: herald_kinds::Most) -> herald_kin
         mergeability: !matches!((forge, path), (Forge::GitHub, ReadPath::Detailed)),
         scoped: false,
         files: files_cost(path, most),
+        queue: queue_read(forge, tokened, 1),
+    }
+}
+
+/// Why a GitHub source read without a token reads no merge queue entry.
+const UNTOKENED: &str = "GitHub's merge queue is read through GraphQL, with a token, which this source does not read with";
+
+/// Why a Forgejo source reads no merge queue entry.
+const UNQUEUED: &str = "Forgejo and Gitea have no merge queue";
+
+/// How a source on `forge`, `tokened` where it reads with a token, reads
+/// its pull requests' merge queue entries: on GitHub with each through
+/// GraphQL, on GitLab by at most `projects` requests a round for their
+/// merge trains (ADR-0078).
+pub(crate) const fn queue_read(
+    forge: Forge,
+    tokened: bool,
+    projects: usize,
+) -> herald_kinds::QueueRead {
+    match (forge, tokened) {
+        (Forge::GitHub, true) => herald_kinds::QueueRead::WithEach,
+        (Forge::GitHub, false) => herald_kinds::QueueRead::Unread(UNTOKENED),
+        (Forge::GitLab, _) => herald_kinds::QueueRead::Requests(projects),
+        (Forge::Forgejo, _) => herald_kinds::QueueRead::Unread(UNQUEUED),
     }
 }
 

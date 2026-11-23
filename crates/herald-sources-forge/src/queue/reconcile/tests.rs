@@ -76,6 +76,7 @@ fn relisted(forge: Forge, tokened: bool, kept: &[Validators], answers: Vec<Respo
         most_pulls: MOST_PULLS,
         stated: false,
         files: false,
+        queue: false,
     };
     let http = ScriptedHttp::new(answers);
     let answer = pollster::block_on(opened.relisted(&Erased(&http as &dyn DynHttp), kept));
@@ -239,7 +240,7 @@ fn listed_pull(number: u64) -> Pull {
         reviewers: Vec::new(),
         checks: Checks::Absent,
         mergeable: herald_core::Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some("abc".to_owned()),
         unread: false,
@@ -274,6 +275,7 @@ fn completed(
         most_pulls: MOST_PULLS,
         stated: false,
         files: false,
+        queue: false,
     };
     let http = ScriptedHttp::new(answers);
     let read = pollster::block_on(opened.completed(

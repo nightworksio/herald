@@ -185,7 +185,7 @@ fn kept_secret(store: &Failing) {
             reviewers: Vec::new(),
             checks,
             mergeable: herald_core::Mergeable::Clean,
-            queued: false,
+            queue: None,
             forge: None,
             head: Some(head),
             unread: false,

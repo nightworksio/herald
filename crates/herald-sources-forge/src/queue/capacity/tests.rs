@@ -58,6 +58,7 @@ const ONE: (Asked<'static>, &[&str], Capacity) = (
         scope: None,
         stated: false,
         files: false,
+        queue: false,
     },
     &["o/r"],
     Capacity::Shown,

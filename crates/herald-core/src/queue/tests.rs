@@ -18,7 +18,7 @@ pub(crate) fn pull() -> Pull {
         reviewers: Vec::new(),
         checks: Checks::Passed,
         mergeable: Mergeable::Clean,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some("abc123".to_owned()),
         unread: false,
@@ -66,7 +66,7 @@ fn an_approved_green_mergeable_pull_waits_on_merge() {
 fn the_first_rule_that_holds_tells_whose_turn_it_is() {
     let worst = Pull {
         draft: true,
-        queued: true,
+        queue: Some(QueueEntry::entered(None)),
         mergeable: Mergeable::Conflict,
         review: Review::ChangesRequested,
         checks: failed(),
@@ -205,7 +205,7 @@ fn each_rule_switched_off_reads_only_its_own_condition() {
     };
     let everything = Pull {
         draft: true,
-        queued: true,
+        queue: Some(QueueEntry::entered(None)),
         mergeable: Mergeable::Conflict,
         review: Review::ChangesRequested,
         checks: Checks::Pending,
@@ -357,4 +357,26 @@ fn turns_serialise_by_their_names() {
             serde_json::Value::String(turn.name().to_owned())
         );
     }
+}
+
+#[test]
+fn a_pull_request_that_left_the_queue_no_longer_waits_on_it() {
+    let left = Left {
+        at: Timestamp::from_second(3_000).unwrap(),
+        reason: Dequeued::ChecksFailed,
+    };
+    let gone = Pull {
+        queue: Some(QueueEntry::leaving(None, left)),
+        ..pull()
+    };
+    assert!(!gone.queued());
+    assert_eq!(
+        gone.waiting(&Rules::default()),
+        (Turn::WaitingOnMerge, Reason::Ready)
+    );
+    let waiting = Pull {
+        queue: Some(QueueEntry::entered(None)),
+        ..pull()
+    };
+    assert!(waiting.queued() && !pull().queued());
 }

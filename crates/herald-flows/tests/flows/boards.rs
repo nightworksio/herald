@@ -379,7 +379,7 @@ pub(crate) fn flaky_seen(store: &Failing, title: &str, visibility: herald_core::
     use herald_core::{Checks, Reconciled};
     use herald_ports::Pulls as _;
     let failed = (Checks::Failed(vec!["test".to_owned()]), visibility);
-    keep_seen(store, ("github.com", "o/open"), (1, title), failed);
+    keep_seen(store, ("github.com", "o/open"), (1, title), (failed, None));
     let mark = Reconciled {
         repository: Some(key("github.com")),
         at: Some(NOON),
@@ -426,15 +426,19 @@ fn keep(
     checks: herald_core::Checks,
 ) {
     let seen = (checks, herald_core::Visibility::Public);
-    keep_seen(store, (host, repository), (number, title), seen);
+    keep_seen(store, (host, repository), (number, title), (seen, None));
 }
 
-/// [`keep`], its repository seen as `visibility`.
+/// [`keep`], its repository seen as `visibility`, its merge queue entry
+/// `queue`.
 fn keep_seen(
     store: &Failing,
     (host, repository): (&str, &str),
     (number, title): (u64, &str),
-    (checks, visibility): (herald_core::Checks, herald_core::Visibility),
+    ((checks, visibility), queue): (
+        (herald_core::Checks, herald_core::Visibility),
+        Option<herald_core::QueueEntry>,
+    ),
 ) {
     use herald_core::{Flip, KeptPull, PullKey};
     use herald_ports::Pulls as _;
@@ -455,7 +459,7 @@ fn keep_seen(
         reviewers: Vec::new(),
         checks,
         mergeable: herald_core::Mergeable::Clean,
-        queued: false,
+        queue,
         forge: None,
         head: Some("h1".to_owned()),
         unread: false,
@@ -652,4 +656,73 @@ fn a_plan_charges_each_request_it_makes_and_stops_where_the_budget_ends() {
     };
     assert!(reason.contains("2 of the 2 outbound requests"), "{reason}");
     assert_eq!(script.seen().len(), 2);
+}
+
+const DEQUEUES: &str = r#"[views.kept]
+sources = ["open"]
+mode = "kept"
+reconcile = "1d"
+[rules.dequeued]
+view = "kept"
+dequeued = true
+every = "1h"
+at = "00:00"
+[[routes]]
+id = "alerts"
+sources = ["dequeued"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:dequeued"
+private = true
+[[routes]]
+id = "public"
+sources = ["dequeued"]
+destination = "slack"
+template = "herald:dequeued"
+private = false
+"#;
+
+#[test]
+fn a_rule_alerts_once_on_a_private_pull_request_that_left_the_queue_for_a_failure_to_its_private_routes_alone()
+ {
+    use herald_core::{Checks, Dequeued, Left, QueueEntry, Visibility};
+    let config = config(DEQUEUES);
+    let store = healthy();
+    flaky_seen(&store, "Change", Visibility::Private);
+    for (number, reason) in [(2, Dequeued::ChecksFailed), (3, Dequeued::Removed)] {
+        let left = Left {
+            at: hours(-1),
+            reason,
+        };
+        let queue = Some(QueueEntry::leaving(None, left));
+        let seen = (Checks::Passed, Visibility::Private);
+        keep_seen(
+            &store,
+            ("github.com", "o/open"),
+            (number, "Change"),
+            (seen, queue),
+        );
+    }
+    let script = Script::answering(&[POSTED]);
+    let swept = round(&config, &store, &script, NOON);
+    assert_eq!(
+        announced(&swept[0]),
+        [(
+            format!(
+                "rule/dequeued/github.com/o/open/pull/2/dequeued/{}",
+                hours(-1)
+            ),
+            vec![("alerts".to_owned(), true)]
+        )]
+    );
+    let alert = String::from_utf8(script.bodies()[0].clone())
+        .unwrap()
+        .replace('\\', "");
+    assert!(
+        alert.contains("o/open#2 left the merge queue") && alert.contains("checks-failed"),
+        "{alert}"
+    );
+    let again = Script::answering(&[]);
+    let swept = round(&config, &store, &again, hours(1));
+    assert_eq!(announced(&swept[0])[0].1, [("alerts".to_owned(), false)]);
 }

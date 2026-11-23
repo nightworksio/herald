@@ -33,8 +33,8 @@ pub use placement::{Placed, Placement};
 pub use pulling::{Instance, Origin, Peering, PublicKey, Pull, Pulling, Receive, Trust, Unpulled};
 pub use pushing::{IdTokens, Peered, Presented, Proving, Pushed, Pushing};
 pub use queue::{
-    Asked, Codeowning, Found, MOST_OPEN, MOST_PULLS, Most, Plan, Queue, QueueCost, Relisted, Scope,
-    Teamed,
+    Asked, Codeowning, Found, MOST_OPEN, MOST_PULLS, Most, Plan, Queue, QueueCost, QueueRead,
+    Relisted, Scope, Teamed,
 };
 pub use reach::{Audience, Posts, Probe, Reach, Reached, Signing, UNADVISED, UnreadPosts};
 pub use rerunning::{

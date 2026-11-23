@@ -85,6 +85,7 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
             "opened",
             "overlaps",
             "project",
+            "queue",
             "reason",
             "repository",
             "reviewers",
@@ -442,6 +443,56 @@ fn a_row_names_each_area_with_its_kind() {
             { "name": "web", "kind": "paths" }
         ])
     );
+}
+
+#[test]
+fn a_row_names_its_queue_entry_and_why_it_left() {
+    use crate::queue::{Dequeued, Left, QueueEntry, QueueState};
+    let now = Timestamp::from_second(30 * 24 * 60 * 60).unwrap();
+    let at = Timestamp::from_second(1_000).unwrap();
+    let waiting = crate::queue::Pull {
+        queue: Some(QueueEntry {
+            position: Some(2),
+            state: QueueState::Checking,
+            since: Some(at),
+            estimate: Some(600),
+            left: None,
+        }),
+        ..pull()
+    };
+    let gone = crate::queue::Pull {
+        number: 8,
+        queue: Some(QueueEntry::leaving(
+            None,
+            Left {
+                at,
+                reason: Dequeued::ChecksFailed,
+            },
+        )),
+        ..pull()
+    };
+    let board = board(&View::default(), &[waiting, gone, pull()], now);
+    let value = view_value(Showing {
+        view: "queue",
+        board: &board,
+    });
+    let json = serde_json::to_value(&value).unwrap();
+    let queues: Vec<&serde_json::Value> = json["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|group| group["rows"].as_array().unwrap())
+        .map(|row| &row["queue"])
+        .collect();
+    assert!(queues.contains(&&serde_json::json!({
+        "position": 2, "state": "checking", "since": "1970-01-01T00:16:40Z",
+        "estimate_seconds": 600, "left": null
+    })));
+    assert!(queues.contains(&&serde_json::json!({
+        "position": null, "state": "queued", "since": null, "estimate_seconds": null,
+        "left": { "at": "1970-01-01T00:16:40Z", "reason": "checks-failed", "failure": true }
+    })));
+    assert!(queues.contains(&&serde_json::Value::Null));
 }
 
 #[test]

@@ -148,7 +148,7 @@ fn kept(store: &Failing, head: &str, paths: &[&str], whole: bool) {
         reviewers: Vec::new(),
         checks: herald_core::Checks::Absent,
         mergeable: herald_core::Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some(head.to_owned()),
         unread: false,

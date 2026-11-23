@@ -95,3 +95,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0075](0075-a-view-s-load-is-counted-per-team-and-per-area-never-per-person.md) | A view's load is counted per team and per area, never per person | Accepted; amended by [0077](0077-a-source-may-read-its-forge-s-teams-and-only-a-private-surface-counts-them.md) |
 | [0076](0076-a-kept-codeowners-file-s-long-name-is-its-digest.md) | A kept CODEOWNERS file's long name is its digest | Accepted |
 | [0077](0077-a-source-may-read-its-forge-s-teams-and-only-a-private-surface-counts-them.md) | A source may read its forge's teams, and only a private surface counts them | Accepted |
+| [0078](0078-a-pull-request-s-merge-queue-entry-is-read-with-it-and-rides-its-row-s-visibility.md) | A pull request's merge queue entry is read with it and rides its row's visibility | Accepted |

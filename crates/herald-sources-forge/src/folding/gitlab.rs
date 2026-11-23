@@ -136,7 +136,7 @@ impl Delivered {
                 .map(|reviewers| reviewers.into_iter().map(|user| user.username).collect()),
             head: attributes.last_commit.take().map(|commit| commit.id),
             mergeable,
-            queued: None,
+            queue: None,
             forge: status.map(|status| (forge_turn(&status), status)),
             opened: attributes.created_at.unwrap_or(updated),
             updated,
@@ -197,7 +197,8 @@ pub(super) fn folded(
         | Delivery::Review(_)
         | Delivery::Comment
         | Delivery::Status
-        | Delivery::Repository => {
+        | Delivery::Repository
+        | Delivery::MergeGroup => {
             let attributes = delivered.object_attributes;
             let noted = attributes.noteable_type.as_deref() == Some("MergeRequest");
             let at = attributes.updated_at.or(attributes.created_at);

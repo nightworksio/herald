@@ -7,7 +7,7 @@ use std::fmt;
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
-use super::{Checks, Flip, MOST_FLIPS, Mergeable, Pull, Review, Turn};
+use super::{Checks, Flip, MOST_FLIPS, Mergeable, Pull, QueueEntry, QueueState, Review, Turn};
 use crate::address::Address;
 use crate::members::Visibility;
 use crate::signal::Validators;
@@ -139,7 +139,7 @@ impl Since {
             review: when(old.review == new.review, self.review),
             checks: when(old.checks == new.checks, self.checks),
             mergeable: when(old.mergeable == new.mergeable, self.mergeable),
-            queued: when(old.queued == new.queued, self.queued),
+            queued: when(old.queued() == new.queued(), self.queued),
             head: when(old.head == new.head, self.head),
         }
     }
@@ -229,8 +229,9 @@ pub struct Described {
     pub head: Option<String>,
     /// Whether it merges cleanly.
     pub mergeable: Option<Mergeable>,
-    /// Whether it is in the merge queue.
-    pub queued: Option<bool>,
+    /// Its entry in the merge queue, where the delivery says it entered or
+    /// left it (ADR-0078).
+    pub queue: Option<QueueEntry>,
     /// The state the forge's own status maps to, and the status.
     pub forge: Option<(Turn, String)>,
     /// When it was opened.
@@ -282,6 +283,15 @@ pub enum Folded {
     },
     /// Who may now see the repository, of every pull request of it kept.
     Visibility(Visibility),
+    /// A pull request's entry in the merge queue now in `state`, as a
+    /// merge group's delivery says, where it waits in the queue
+    /// (ADR-0078).
+    Queue {
+        /// The pull request's number.
+        number: u64,
+        /// What the delivery says of its entry.
+        state: QueueState,
+    },
 }
 
 /// What a webhook delivery says of one repository's pull requests.
@@ -300,7 +310,9 @@ impl Folded {
     pub const fn number(&self) -> Option<u64> {
         match self {
             Self::Pull(described) => Some(described.number),
-            Self::Review { number, .. } | Self::Activity { number, .. } => Some(*number),
+            Self::Review { number, .. }
+            | Self::Activity { number, .. }
+            | Self::Queue { number, .. } => Some(*number),
             Self::Check { .. } | Self::Visibility(_) => None,
         }
     }
@@ -400,6 +412,7 @@ impl KeptPull {
             }));
         }
         pull.flips = latest(flips);
+        pull.queue = QueueEntry::reread(kept.and_then(|kept| kept.pull.queue.as_ref()), pull.queue);
         let since = kept.map_or_else(
             || Since::at(now),
             |kept| kept.since.changed((&kept.pull, &pull), now),
@@ -540,6 +553,11 @@ impl KeptPull {
                 Some(kept)
             }
             (Some(kept), Folded::Visibility(visibility)) => Some(kept.narrowed(*visibility)),
+            (Some(mut kept), Folded::Queue { state, .. }) => {
+                let entry = kept.pull.queue.as_mut().filter(|entry| entry.waiting())?;
+                entry.state = *state;
+                Some(kept)
+            }
             (None, _) => None,
         }
     }
@@ -563,7 +581,7 @@ impl KeptPull {
             reviewers: Vec::new(),
             checks: Checks::Absent,
             mergeable: Mergeable::Unknown,
-            queued: false,
+            queue: None,
             forge: None,
             head: described.head.clone(),
             unread: false,
@@ -615,7 +633,12 @@ impl KeptPull {
             self.checks.clear();
         }
         pull.mergeable = described.mergeable.unwrap_or(pull.mergeable);
-        pull.queued = described.queued.unwrap_or(pull.queued);
+        if let Some(said) = &described.queue {
+            pull.queue = Some(match said.left {
+                Some(left) => QueueEntry::leaving(pull.queue.as_ref(), left),
+                None => said.clone(),
+            });
+        }
         pull.visibility = described
             .visibility
             .map_or(pull.visibility, |said| said.max(pull.visibility));
