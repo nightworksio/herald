@@ -203,3 +203,25 @@ fn a_member_announcing_issues_is_given_a_hook_sending_its_issues() {
     assert_eq!(posted["confidential_issues_events"], json!(true));
     assert_eq!(posted["merge_requests_events"], json!(false));
 }
+
+#[test]
+fn a_rate_limited_hook_read_or_registration_stops_as_one() {
+    let limited = || answer(429, &json!({}));
+    let said = |what: &str| {
+        format!(
+            "{what} could not be read: the forge's rate limit was reached; it did not say when the limit resets"
+        )
+    };
+    assert_eq!(
+        register(&ScriptedHttp::new(vec![limited()])),
+        Err(Unpolled::RateLimited(said(HOOKS)))
+    );
+    assert_eq!(
+        register(&ScriptedHttp::new(vec![answer(200, &json!([])), limited()])),
+        Err(Unpolled::RateLimited(said(REGISTERED)))
+    );
+    assert_eq!(
+        scoped(&ScriptedHttp::new(vec![limited()])),
+        Err(said(SCOPED))
+    );
+}

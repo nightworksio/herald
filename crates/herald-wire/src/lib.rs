@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn each_error_reads_as_a_sentence() {
-        let errors: [(SourceError, &str); 5] = [
+        let errors: [(SourceError, &str); 6] = [
             (
                 SourceError::TooLarge {
                     what: "x",
@@ -239,6 +239,12 @@ mod tests {
                     status: 404,
                 },
                 "x was answered with 404; check the names and ids the config gives",
+            ),
+            (
+                SourceError::RateLimited {
+                    reason: "x could not be read: the forge's rate limit was reached".to_owned(),
+                },
+                "x could not be read: the forge's rate limit was reached",
             ),
         ];
         for (error, sentence) in errors {

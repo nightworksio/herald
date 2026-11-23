@@ -291,6 +291,10 @@ fn a_listing_over_most_packages_or_one_that_fails_lists_nothing() {
     );
     assert!(listed(&source, &ScriptedHttp::new(vec![answer(200, &json!({}))])).is_err());
     assert!(matches!(
+        listed(&source, &ScriptedHttp::new(vec![answer(429, &json!({}))])),
+        Err(Unlisted::Failed(Unpolled::RateLimited(_)))
+    ));
+    assert!(matches!(
         listed(&source, &ScriptedHttp::new(Vec::new())),
         Err(Unlisted::Failed(Unpolled::Unreachable(_)))
     ));
@@ -425,6 +429,11 @@ fn an_image_polled_before_its_owner_is_listed_asks_an_organization_then_a_user()
     assert!(matches!(
         polled(&poll, &http, None),
         Err(Unpolled::Unreadable(_))
+    ));
+    let http = ScriptedHttp::new(vec![answer(429, &json!({}))]);
+    assert!(matches!(
+        polled(&poll, &http, None),
+        Err(Unpolled::RateLimited(_))
     ));
     assert!(matches!(
         polled(&poll, &ScriptedHttp::new(Vec::new()), None),

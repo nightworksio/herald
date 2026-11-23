@@ -10,8 +10,7 @@ use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde::Deserialize;
 
 use crate::options::{Signals, SourceOptions};
-use herald_wire::SourceError;
-use herald_wire::{Reading, answered};
+use herald_wire::{Reading, SourceError};
 
 use crate::wire::{ForgeRelease, event, read};
 use crate::{forgejo, github, gitlab};
@@ -529,7 +528,7 @@ impl Forge {
     /// When the forge did not answer with the repository.
     pub fn repository(self, response: &Response) -> Result<Repository, SourceError> {
         let what = self.api().repository;
-        answered(what, response)?;
+        crate::limited::answered(self, what, response)?;
         read(what, &response.body)
     }
 
@@ -566,7 +565,7 @@ impl Forge {
         rule: PrereleaseRule,
     ) -> Result<Option<Event>, SourceError> {
         let what = self.api().release;
-        answered(what, response)?;
+        crate::limited::answered(self, what, response)?;
         event(what, repository, self.found(what, &response.body)?, rule)
     }
 
@@ -584,7 +583,7 @@ impl Forge {
         (limit, rule): (usize, PrereleaseRule),
     ) -> Result<Polled, SourceError> {
         let what = self.api().releases;
-        answered(what, response)?;
+        crate::limited::answered(self, what, response)?;
         let events = self
             .all_found(what, limit, &response.body)?
             .into_iter()

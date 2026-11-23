@@ -4,11 +4,11 @@
 use herald_core::media;
 use herald_kinds::{Registered, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Method, Request, Secret, SecretText};
-use herald_wire::answered;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::forge::authorized;
+use crate::limited::checked;
 use crate::wire::read;
 use crate::{Forge, Token};
 
@@ -57,7 +57,7 @@ pub(crate) async fn found(
         .send(listing)
         .await
         .map_err(Unpolled::unreachable)?;
-    answered(HOOKS, &answer).map_err(Unpolled::unreadable)?;
+    checked(Forge::GitLab, HOOKS, &answer)?;
     let found = read::<Vec<Hook>>(HOOKS, &answer.body).map_err(Unpolled::unreadable)?;
     Ok(found.iter().any(|hook| hook.url == url))
 }
@@ -80,7 +80,7 @@ pub(crate) async fn may_register(
         .send(asking)
         .await
         .map_err(|error| error.to_string())?;
-    answered(SCOPED, &answer).map_err(|error| error.to_string())?;
+    checked(Forge::GitLab, SCOPED, &answer).map_err(Unpolled::into_reason)?;
     let scoped = read::<Scoped>(SCOPED, &answer.body).map_err(|error| error.to_string())?;
     if scoped.scopes.iter().any(|scope| scope == API_SCOPE) {
         Ok(())
@@ -163,7 +163,7 @@ pub(crate) async fn registered(
         .send(registering)
         .await
         .map_err(Unpolled::unreachable)?;
-    answered(REGISTERED, &answer).map_err(Unpolled::unreadable)?;
+    checked(Forge::GitLab, REGISTERED, &answer)?;
     Ok(Registered::Made)
 }
 

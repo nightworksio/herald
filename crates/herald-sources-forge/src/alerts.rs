@@ -12,7 +12,7 @@ use herald_core::{
 };
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
-use herald_wire::{SourceError, answered};
+use herald_wire::SourceError;
 use jiff::Timestamp;
 
 use crate::forge::{Repository, validators};
@@ -305,7 +305,7 @@ impl Asking<'_> {
     /// The alerts of `repository` in `answer` to `listed`.
     fn listed(&self, listed: Listed, answer: &Response) -> Result<Vec<ForgeAlert>, SourceError> {
         let parse = self.origin.reading().parse;
-        answered(listed.what(), answer)?;
+        crate::limited::answered(self.origin.forge(), listed.what(), answer)?;
         match listed {
             Listed::GitHub(scanner) => github::listed(scanner, parse, &answer.body),
             Listed::GitLab => gitlab::listed(parse, &answer.body),
@@ -319,7 +319,9 @@ impl Asking<'_> {
             let kept = if Forge::unchanged(answer) {
                 kept.clone().unwrap_or_default()
             } else {
-                let found = self.listed(*listed, answer).map_err(Unpolled::unreadable)?;
+                let found = self
+                    .listed(*listed, answer)
+                    .map_err(crate::limited::unread)?;
                 for alert in found.into_iter().filter(|alert| alert.chosen(self.choice)) {
                     let event = alert
                         .event(listed.what(), repository)

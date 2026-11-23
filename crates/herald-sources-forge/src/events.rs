@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use herald_core::{EventsRead, Owner};
 use herald_kinds::{Changed, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Method, Request, SecretText};
-use herald_wire::{SourceError, answered};
+use herald_wire::SourceError;
 use serde::Deserialize;
 
 use crate::forge::{OWNER, authorized, whole};
@@ -167,7 +167,7 @@ async fn page(
     if etag.is_some() && Forge::unchanged(&answer) {
         return Ok(None);
     }
-    answered(what(asking.forge), &answer).map_err(Unpolled::unreadable)?;
+    crate::limited::checked(asking.forge, what(asking.forge), &answer)?;
     let events = match asking.forge {
         Forge::Forgejo => asking.forgejo(&answer.body),
         Forge::GitHub | Forge::GitLab => asking.github(&answer.body),

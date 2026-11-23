@@ -11,7 +11,7 @@ use herald_core::{
 };
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
-use herald_wire::{SourceError, answered};
+use herald_wire::SourceError;
 use jiff::Timestamp;
 
 use crate::alerts;
@@ -445,7 +445,7 @@ impl Asking<'_> {
         let forge = self.origin.forge();
         let parse = self.origin.reading().parse;
         let what = listed(forge, ran);
-        answered(what, answer)?;
+        crate::limited::answered(forge, what, answer)?;
         match (forge, ran) {
             (Forge::GitLab, _) => gitlab::listed(parse, &answer.body),
             (Forge::Forgejo, _) => forgejo::listed(parse, &answer.body),
@@ -489,7 +489,7 @@ impl Asking<'_> {
                 let what = listed(self.origin.forge(), ran);
                 let found = self
                     .listed(ran, repository, answer)
-                    .map_err(Unpolled::unreadable)?;
+                    .map_err(crate::limited::unread)?;
                 for run in found.into_iter().filter(|run| run.chosen(self.choice)) {
                     runs.events
                         .push(run.event(what, repository).map_err(Unpolled::unreadable)?);

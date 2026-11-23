@@ -731,3 +731,5 @@ fn a_repository_s_issues_are_polled_under_their_own_validators() {
     let quiet = ScriptedHttp::new(vec![unchanged(), unchanged()]);
     assert_eq!(polled(&source, &quiet, Some(&cursor)).unwrap(), None);
 }
+
+mod limits;

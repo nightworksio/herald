@@ -3,7 +3,9 @@
 //! (ADR-0031).
 
 use herald_ports::Response;
-use herald_wire::{SourceError, answered};
+use herald_wire::SourceError;
+
+use crate::limited::answered;
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -156,11 +158,11 @@ impl Forge {
         match self {
             Self::GitHub => Ok(Listed::Referenced(name.to_owned())),
             Self::GitLab => {
-                answered(what, response)?;
+                answered(self, what, response)?;
                 crate::wire::read::<GitLabTag>(what, &response.body).map(Listed::from)
             }
             Self::Forgejo => {
-                answered(what, response)?;
+                answered(self, what, response)?;
                 crate::wire::read::<ForgejoTag>(what, &response.body).map(Listed::from)
             }
         }
@@ -175,7 +177,7 @@ impl Forge {
         limit: usize,
     ) -> Result<Vec<Listed>, SourceError> {
         let what = self.api().tags;
-        answered(what, response)?;
+        answered(self, what, response)?;
         let body = &response.body;
         Ok(match self {
             Self::GitHub => herald_wire::read::<Vec<GitHubTag>>(what, limit, body)?
@@ -197,7 +199,7 @@ impl Forge {
     /// [`crate::Origin::reference_request`] points at.
     pub(crate) fn pointed(self, response: &Response) -> Result<Pointed, SourceError> {
         let what = self.api().tag;
-        answered(what, response)?;
+        answered(self, what, response)?;
         let reference: Reference = crate::wire::read(what, &response.body)?;
         match reference.object.kind.as_str() {
             "tag" => Ok(Pointed::Tag(reference.object.sha)),
@@ -218,7 +220,7 @@ impl Forge {
         message: Option<String>,
     ) -> Result<ForgeTag, SourceError> {
         let what = self.api().tag;
-        answered(what, response)?;
+        answered(self, what, response)?;
         let object: TagObject = crate::wire::read(what, &response.body)?;
         Ok(ForgeTag {
             name: object.tag,
@@ -235,7 +237,7 @@ impl Forge {
         name: &str,
     ) -> Result<ForgeTag, SourceError> {
         let what = self.api().tag;
-        answered(what, response)?;
+        answered(self, what, response)?;
         let commit: Commit = crate::wire::read(what, &response.body)?;
         Ok(ForgeTag {
             name: name.to_owned(),

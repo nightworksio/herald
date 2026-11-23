@@ -960,4 +960,24 @@ fn a_version_whose_page_is_no_web_address_polls_nothing() {
     ));
 }
 
+#[test]
+fn a_rate_limited_package_listing_stops_the_poll_as_one() {
+    let http = ScriptedHttp::new(vec![
+        github_repository("Organization"),
+        Response {
+            status: 429,
+            headers: Vec::new(),
+            body: Vec::new(),
+        },
+    ]);
+    let chosen = SourceOptions {
+        package_types: Some(vec!["container".to_owned()]),
+        ..SourceOptions::default()
+    };
+    assert!(matches!(
+        polled(&releases(Forge::GitHub, chosen), &http, None),
+        Err(Unpolled::RateLimited(reason)) if reason.contains("GitHub's packages")
+    ));
+}
+
 mod dotted;

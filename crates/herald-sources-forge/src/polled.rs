@@ -121,7 +121,7 @@ impl Releases {
                 let reference = self
                     .ask(http, self.origin.reference_request(&name, token)?)
                     .await?;
-                match forge.pointed(&reference).map_err(Unpolled::unreadable)? {
+                match forge.pointed(&reference).map_err(crate::limited::unread)? {
                     Pointed::Tag(sha) => {
                         let object = self
                             .ask(http, self.origin.tag_object_request(&sha, token)?)
@@ -151,7 +151,7 @@ impl Releases {
                     .map(|tag| ForgeTag { name, ..tag })
             }
         };
-        read.map_err(Unpolled::unreadable)
+        read.map_err(crate::limited::unread)
     }
 
     /// The tags in `answer` of `repository` that no release in `released`
@@ -179,7 +179,7 @@ impl Releases {
             .to_owned();
         let listed = forge
             .tags(answer, self.origin.reading().parse)
-            .map_err(Unpolled::unreadable)?;
+            .map_err(crate::limited::unread)?;
         let mut tagged = Tagged {
             events: Vec::new(),
             passed: Vec::new(),
@@ -247,12 +247,14 @@ pub async fn tag_event_of(
     let described = releases
         .ask(&http, origin.repository_request(token)?)
         .await?;
-    let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
+    let repository = forge
+        .repository(&described)
+        .map_err(crate::limited::unread)?;
     let listed = match forge {
         Forge::GitHub => Listed::Referenced(tag.to_owned()),
         Forge::GitLab | Forge::Forgejo => {
             let answer = releases.ask(&http, origin.tag_request(tag, token)?).await?;
-            forge.tag(tag, &answer).map_err(Unpolled::unreadable)?
+            forge.tag(tag, &answer).map_err(crate::limited::unread)?
         }
     };
     let page = repository.page.as_deref().ok_or_else(|| {
@@ -402,7 +404,9 @@ impl Poll for Releases {
                 .ask(&http, self.origin.repository_request(token)?)
                 .await?;
             let forge = self.origin.forge();
-            let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
+            let repository = forge
+                .repository(&described)
+                .map_err(crate::limited::unread)?;
             let origin = self
                 .origin
                 .described(&described)
@@ -430,7 +434,7 @@ impl Poll for Releases {
                         answer,
                         (self.origin.reading().parse, self.signals.prerelease),
                     )
-                    .map_err(Unpolled::unreadable)?,
+                    .map_err(crate::limited::unread)?,
                 Some(_) => Polled {
                     etag: cursor.and_then(|cursor| cursor.etag.clone()),
                     last_modified: cursor.and_then(|cursor| cursor.last_modified.clone()),

@@ -11,7 +11,7 @@ use herald_kinds::{
 use herald_ports::{
     Boxed, DynHttp, Erased, Http as _, Method, Request, Response, Secret, SecretText,
 };
-use herald_wire::{Reading, SourceError, answered};
+use herald_wire::{Reading, SourceError};
 use jiff::SignedDuration;
 
 use crate::forge::{OWNER, api_of, authorized, whole};
@@ -145,7 +145,7 @@ impl Owned {
                 etag: etag.map(ToOwned::to_owned),
             });
         }
-        answered(self.forge.api().file, &answer).map_err(failed)?;
+        crate::limited::answered(self.forge, self.forge.api().file, &answer).map_err(failed)?;
         let names = crate::members::names(
             &file.path,
             &String::from_utf8_lossy(&answer.body),
@@ -393,7 +393,7 @@ impl Owned {
     /// When the forge did not answer with repositories.
     pub(crate) fn page(&self, response: &Response) -> Result<Vec<Listed>, SourceError> {
         let what = self.forge.api().listing;
-        answered(what, response)?;
+        crate::limited::answered(self.forge, what, response)?;
         let limit = self.reading().parse;
         Ok(match self.forge {
             Forge::GitHub => herald_wire::read::<Vec<GitHub>>(what, limit, &response.body)?
@@ -538,7 +538,7 @@ impl Owned {
 }
 
 fn failed(error: SourceError) -> Unlisted {
-    Unlisted::Failed(Unpolled::unreadable(error))
+    Unlisted::Failed(crate::limited::unread(error))
 }
 
 /// Whether the forge's answer names a next page.

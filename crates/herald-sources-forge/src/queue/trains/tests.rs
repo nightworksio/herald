@@ -109,7 +109,7 @@ fn a_refused_read_is_no_train_unless_it_is_the_rate_limit() {
         assert_eq!(
             trains(&http, &mut pulls),
             Err(Unpolled::RateLimited(
-                "the forge's merge train listing was refused for its rate limit; it did not say when the limit resets".to_owned()
+                "merge train listing could not be read: the forge's rate limit was reached; it did not say when the limit resets".to_owned()
             ))
         );
     }

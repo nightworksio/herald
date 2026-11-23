@@ -75,3 +75,17 @@ fn a_changed_listing_is_read_with_its_new_validators_and_a_failure_is_refused() 
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn a_rate_limited_listing_stops_as_one() {
+    let limited = Response {
+        status: 403,
+        headers: vec![("X-RateLimit-Remaining".to_owned(), "0".to_owned())],
+        body: Vec::new(),
+    };
+    let http = ScriptedHttp::new(vec![limited]);
+    match asking(&http, None).read(WHAT) {
+        Err(Unpolled::RateLimited(reason)) => assert!(reason.contains(WHAT), "{reason}"),
+        other => panic!("{other:?}"),
+    }
+}

@@ -202,6 +202,21 @@ fn a_member_github_names_no_repository_for_fails_alone_and_a_failed_request_fail
         answered,
         Err(Unpolled::Unreadable(reason)) if reason.contains("holds no data") && reason.contains("rate limited")
     )));
+    for (status, header) in [(200, "X-RateLimit-Remaining"), (403, "Retry-After")] {
+        let value = if status == 200 { "0" } else { "60" };
+        let limited = ScriptedHttp::new(vec![Response {
+            status,
+            headers: vec![(header.to_owned(), value.to_owned())],
+            body: br#"{"errors":[{"message":"API rate limit exceeded"}]}"#.to_vec(),
+        }]);
+        let answered = together(&limited, &[(&cli, None), (&web, None)]);
+        assert!(
+            answered
+                .iter()
+                .all(|answered| matches!(answered, Err(Unpolled::RateLimited(_)))),
+            "{status} {answered:?}"
+        );
+    }
     let second_fails = ScriptedHttp::new(vec![data(&[repository(7, &[release("v1", false)])])]);
     assert!(matches!(
         together(&second_fails, &[(&cli, None)])[0],

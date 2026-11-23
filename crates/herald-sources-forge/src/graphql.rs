@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use herald_core::{Address, Cursor, Event, Identity, Listed, Polled, Signal};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Method, Request, Response, SecretText};
-use herald_wire::{SourceError, answered};
+use herald_wire::SourceError;
 use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -334,12 +334,10 @@ fn answers(
     parse: usize,
 ) -> Vec<Result<Answered, Unpolled>> {
     let what = what(forge);
-    let read = answered(what, response)
-        .map_err(Unpolled::unreadable)
-        .and_then(|()| match forge {
-            Forge::GitLab => gitlab_answers(what, parse, &response.body),
-            Forge::GitHub | Forge::Forgejo => github_answers(what, parse, &response.body),
-        });
+    let read = crate::limited::checked(forge, what, response).and_then(|()| match forge {
+        Forge::GitLab => gitlab_answers(what, parse, &response.body),
+        Forge::GitHub | Forge::Forgejo => github_answers(what, parse, &response.body),
+    });
     let mut found = match read {
         Ok(found) => found,
         Err(unpolled) => return members.iter().map(|_| Err(unpolled.clone())).collect(),

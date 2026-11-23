@@ -176,6 +176,15 @@ fn events_that_cannot_be_reached_or_read_fail() {
         changed_by(&refused, Owner::Organization, None),
         Err(Unpolled::Unreadable(_))
     ));
+    let limited = ScriptedHttp::new(vec![Response {
+        status: 429,
+        headers: Vec::new(),
+        body: Vec::new(),
+    }]);
+    assert!(matches!(
+        changed_by(&limited, Owner::Organization, None),
+        Err(Unpolled::RateLimited(_))
+    ));
     let worded = ScriptedHttp::new(vec![answer(
         &[json!({ "id": "x", "type": "PushEvent", "repo": { "id": 1 } })],
         "",

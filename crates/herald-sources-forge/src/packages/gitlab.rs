@@ -67,7 +67,6 @@ impl Asking<'_> {
         found: &mut Packaged,
     ) -> Result<Vec<Found>, Unpolled> {
         let api = Forge::GitLab.api();
-        let parse = self.origin.reading().parse;
         let page = repository.page.as_deref();
         let host = host_of(page, api.repository)?;
         let owner = path.rsplit_once('/').map_or(path, |(owner, _)| owner);
@@ -95,7 +94,7 @@ impl Asking<'_> {
             if let Some(held) = held.filter(|_| Forge::unchanged(&answer)) {
                 found.validators.insert(LISTING.to_owned(), held.clone());
             } else {
-                let listed: Vec<GitLabPackage> = read(api.packages, parse, &answer)?;
+                let listed: Vec<GitLabPackage> = read(self.origin, api.packages, &answer)?;
                 found
                     .validators
                     .insert(LISTING.to_owned(), validators(&answer));
@@ -159,7 +158,7 @@ impl Asking<'_> {
                 self.packaging.listed_page
             );
             let answer = self.ask(http, checked.get(&asked, self.token)).await?;
-            let page: Vec<T> = read(what, self.origin.reading().parse, &answer)?;
+            let page: Vec<T> = read(self.origin, what, &answer)?;
             *listed += page.len();
             if *listed > self.packaging.most.get() {
                 return Err(self.over(what));
@@ -222,7 +221,7 @@ impl Asking<'_> {
                 }
                 let tagged = format!("{base}/{}", whole(&tag.name, crate::forge::TAG)?);
                 let answer = self.ask(http, checked.get(&tagged, self.token)).await?;
-                let read: GitLabTag = read(TAG, self.origin.reading().parse, &answer)?;
+                let read: GitLabTag = read(self.origin, TAG, &answer)?;
                 let published = read.created_at.ok_or_else(|| {
                     Unpolled::Unreadable(format!("{TAG} {} has no creation time", tag.name))
                 })?;
