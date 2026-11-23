@@ -789,3 +789,105 @@ fn a_read_that_fails_names_only_its_source_unless_the_output_is_said_private() {
     assert_eq!(full.code, STOPPED);
     assert!(full.err.contains("answered with 500"), "{}", full.err);
 }
+
+#[test]
+fn a_release_verdict_is_judged_by_the_rows_printed_so_a_private_hold_is_printed_only_where_said_private()
+ {
+    let setup = setup(&format!(
+        "{CONFIG}[views.ship]\nmost_pulls = 0\nrelease = {{ milestone = \"v2.*\" }}\n"
+    ));
+    let world = World::default();
+    listed(&world);
+    let table = herald(&setup, &world, &["queue", "ship"]);
+    assert_eq!((table.code, table.err.as_str()), (DONE, ""));
+    assert_eq!(
+        table.out.lines().collect::<Vec<_>>(),
+        [
+            "ship: 0 open pull requests, 0 stale",
+            "release: ready, by the pull requests printed",
+            WITHHELD_ROWS
+        ]
+    );
+    let json = herald(&setup, &world, &["queue", "ship", "--format", "json"]);
+    assert!(!json.out.contains("cli/cli"), "{}", json.out);
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(
+        read["readiness"],
+        json!({ "ready": true, "holds": [], "more": 0 })
+    );
+    let printed = herald(&setup, &world, &["queue", "ship", "--private"]);
+    let lines: Vec<&str> = printed.out.lines().collect();
+    assert_eq!(
+        lines[..3],
+        [
+            "ship: 1 open pull requests, 1 stale",
+            "release: not ready, 1 reason",
+            "  cli/cli#7 was not read in full",
+        ]
+    );
+    let json = herald(
+        &setup,
+        &world,
+        &["queue", "ship", "--format", "json", "--private"],
+    );
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(read["readiness"]["ready"], false);
+    assert_eq!(read["readiness"]["holds"][0]["reason"], "unread");
+    assert_eq!(
+        read["readiness"]["holds"][0]["url"],
+        "https://github.com/cli/cli/pull/7"
+    );
+}
+
+#[test]
+fn a_release_verdict_names_each_hold_its_labels_or_checks_and_those_past_the_bound() {
+    use herald_core::{Blocker, HeldBy, Holding, Readiness};
+    let holding = |held_by: HeldBy, named: &[&str], more: usize| Holding {
+        held_by,
+        repository: "a/b".to_owned(),
+        number: 3,
+        url: String::new(),
+        named: named.iter().map(|name| (*name).to_owned()).collect(),
+        more,
+    };
+    let readiness = Readiness {
+        holds: vec![
+            holding(HeldBy::Blocked(Blocker::Label), &["blocker"], 0),
+            holding(HeldBy::Blocked(Blocker::Failed), &["test", "lint"], 2),
+            holding(HeldBy::Blocked(Blocker::Draft), &[], 0),
+            holding(HeldBy::Blocked(Blocker::Changes), &[], 0),
+        ],
+        more: 6,
+    };
+    assert_eq!(
+        crate::queueing::judged(&readiness, 0),
+        [
+            "release: not ready, 10 reasons",
+            "  a/b#3 carries blocker",
+            "  a/b#3 failed test, lint and 2 more",
+            "  a/b#3 is a draft",
+            "  a/b#3 has changes requested",
+            "  and 6 more",
+        ]
+    );
+    assert_eq!(
+        crate::queueing::judged(&Readiness::default(), 0),
+        ["release: ready"]
+    );
+    assert_eq!(
+        crate::queueing::judged(&Readiness::default(), 1),
+        ["release: ready, by the pull requests printed"]
+    );
+    let one_more = Readiness {
+        holds: vec![holding(HeldBy::Unread, &[], 0)],
+        more: 1,
+    };
+    assert_eq!(
+        crate::queueing::judged(&one_more, 0),
+        [
+            "release: not ready, 2 reasons",
+            "  a/b#3 was not read in full",
+            "  and 1 more",
+        ]
+    );
+}

@@ -26,9 +26,9 @@ pub const QUEUE_TEMPLATE: &str = "herald:queue";
 /// The title of [`QUEUE_TEMPLATE`].
 pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pull requests{% if view.stale %}, {{ view.stale }} stale{% endif %}";
 
-/// The body of [`QUEUE_TEMPLATE`]: each group's rows, oldest first, then
-/// each batch of bumps.
-pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}{% if row.queue and not row.queue.left %}, {{ row.queue.state }} in the merge queue{% if row.queue.position %} at {{ row.queue.position }}{% endif %}{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
+/// The body of [`QUEUE_TEMPLATE`]: the release verdict where the view
+/// shows one, each group's rows, oldest first, then each batch of bumps.
+pub(crate) const QUEUE_BODY: &str = "{% if view.readiness %}**release: {% if view.readiness.ready %}ready{% else %}not ready{% endif %}**\n{% for hold in view.readiness.holds %}- [{{ hold.repository }}#{{ hold.number }}]({{ hold.url }}) {{ hold.reason }}{% if hold.named %}: {{ hold.named | join(\", \") }}{% endif %}{% if hold.more %} and {{ hold.more }} more{% endif %}\n{% endfor %}{% if view.readiness.more %}- and {{ view.readiness.more }} more\n{% endif %}\n{% endif %}{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}{% if row.queue and not row.queue.left %}, {{ row.queue.state }} in the merge queue{% if row.queue.position %} at {{ row.queue.position }}{% endif %}{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
 
 /// The template herald ships for a rule's re-run plan, which a route names
 /// as `template = "herald:rerun"` and `[templates."herald:rerun"]`
@@ -408,6 +408,110 @@ pub(crate) struct ViewFile {
     /// given on them over `window` where every source is read kept. Off
     /// where absent; `load = {}` shows it as shipped.
     pub(crate) load: Option<LoadFile>,
+    /// Its release: it shows only the open pull requests its selectors
+    /// pick, and says whether the release is ready or what holds it back,
+    /// such as `release = { milestone = "v2.0" }` (ADR-0081). None where
+    /// absent.
+    pub(crate) release: Option<ReleaseFile>,
+}
+
+/// A view's release: at least one selector, and what holds it back.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Release")]
+pub(crate) struct ReleaseFile {
+    /// The milestone its pull requests carry, by title, a glob ignoring
+    /// case, such as "v2.0".
+    pub(crate) milestone: Option<String>,
+    /// A label its pull requests carry, a glob ignoring case.
+    pub(crate) label: Option<String>,
+    /// The branch its pull requests merge into, a glob ignoring case, such
+    /// as "release/*".
+    pub(crate) branch: Option<String>,
+    /// Its release pull request: "release-please" or "changesets", by the
+    /// head branch each opens it on, or `{ head = "<glob>" }` or
+    /// `{ title = "<glob>" }`, each ignoring case.
+    pub(crate) pull: Option<ReleasePullFile>,
+    /// How its selectors combine: "all" where absent, each picking a pull
+    /// request, or "any".
+    pub(crate) combine: Option<CombineFile>,
+    /// The labels that block it, each a glob ignoring case:
+    /// `["blocker", "release-blocker"]` where absent, at most 50.
+    #[schemars(length(max = herald_core::MOST_BLOCKER_LABELS))]
+    pub(crate) blocker_labels: Option<Vec<String>>,
+    /// What holds it back: every one where absent. "label", a pull request
+    /// carrying a blocker label; "failed", one whose check failed;
+    /// "draft", a draft; "changes", one a reviewer asked to change. A pull
+    /// request not read in full holds it back whatever this says.
+    pub(crate) blocked_by: Option<Vec<BlockerFile>>,
+}
+
+/// How a release's selectors combine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "Combine")]
+pub(crate) enum CombineFile {
+    /// Each selector picking a pull request.
+    All,
+    /// Any one.
+    Any,
+}
+
+/// What holds a release back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "Blocker")]
+pub(crate) enum BlockerFile {
+    /// A pull request carrying a blocker label.
+    Label,
+    /// One whose check failed.
+    Failed,
+    /// A draft.
+    Draft,
+    /// One a reviewer asked to change.
+    Changes,
+}
+
+/// A release pull request by the tool that opens it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[serde(rename = "ReleaseTool")]
+pub(crate) enum ReleaseTool {
+    /// release-please, on a head branch `release-please--branches--*`.
+    ReleasePlease,
+    /// The changesets action, on a head branch `changeset-release/*`.
+    Changesets,
+}
+
+/// A release pull request by its head branch, a glob ignoring case.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "ReleaseHead")]
+pub(crate) struct ReleaseHead {
+    /// The glob.
+    pub(crate) head: String,
+}
+
+/// A release pull request by its title, a glob ignoring case.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "ReleaseTitle")]
+pub(crate) struct ReleaseTitle {
+    /// The glob.
+    pub(crate) title: String,
+}
+
+/// What tells a release pull request.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+#[serde(rename = "ReleasePull")]
+pub(crate) enum ReleasePullFile {
+    /// The tool that opens it.
+    Tool(ReleaseTool),
+    /// Its head branch.
+    Head(ReleaseHead),
+    /// Its title.
+    Title(ReleaseTitle),
 }
 
 /// How a view's load overview counts.

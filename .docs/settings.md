@@ -2177,6 +2177,36 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.overviews` | array of [OverviewName](#overviewname) | The overviews it shows beside its rows, such as `["capacity"]`: none where absent (ADR-0066). |
 | `views.<name>.queue` | boolean | Whether it reads each pull request's entry in its forge's merge queue: its position, state, when it entered and the forge's estimate, on GitHub with a token in the query that reads it, at no request of its own; false where absent. Without it a row still says whether a pull request is in the queue where its forge does. A row shows the entry, and why it last left where a webhook said, as it shows the rest of the pull request (ADR-0078). |
 | `views.<name>.reconcile` | [Duration](#duration) | How long kept mode waits at least before listing a source's open pull requests again, each page conditional on its last answer; every round where absent. |
+| `views.<name>.release` | table | Its release: it shows only the open pull requests its selectors pick, and says whether the release is ready or what holds it back, such as `release = { milestone = "v2.0" }` (ADR-0081). None where absent. |
+| `views.<name>.release.blocked_by` | array of [Blocker](#blocker) | What holds it back: every one where absent. "label", a pull request carrying a blocker label; "failed", one whose check failed; "draft", a draft; "changes", one a reviewer asked to change. A pull request not read in full holds it back whatever this says. |
+| `views.<name>.release.blocker_labels` | array of string | The labels that block it, each a glob ignoring case: `["blocker", "release-blocker"]` where absent, at most 50. |
+| `views.<name>.release.branch` | string | The branch its pull requests merge into, a glob ignoring case, such as "release/*". |
+| `views.<name>.release.combine` | [Combine](#combine) | How its selectors combine: "all" where absent, each picking a pull request, or "any". |
+| `views.<name>.release.label` | string | A label its pull requests carry, a glob ignoring case. |
+| `views.<name>.release.milestone` | string | The milestone its pull requests carry, by title, a glob ignoring case, such as "v2.0". |
+
+### `views.<name>.release.pull`: The tool that opens it
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.release.pull` | [ReleaseTool](#releasetool) | The tool that opens it. |
+
+### `views.<name>.release.pull`: Its head branch
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.release.pull` | table | Its head branch. |
+| `views.<name>.release.pull.head` | string | The glob. |
+
+### `views.<name>.release.pull`: Its title
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `views.<name>.release.pull` | table | Its title. |
+| `views.<name>.release.pull.title` | string | The glob. |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
 | `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
 | `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
 | `views.<name>.rules.approval` | boolean | One waits on review until it is approved. |
@@ -2229,6 +2259,10 @@ What type an attribute holds.
 
 Who sees an actor's Notes on the timelines. Followers see every Note.
 
+### Blocker
+
+What holds a release back.
+
 ### Bots
 
 What a view does with a bot's pull requests.
@@ -2244,6 +2278,10 @@ The branch a repository's CODEOWNERS file is read at.
 ### Colour
 
 A colour, written "#rrggbb".
+
+### Combine
+
+How a release's selectors combine.
 
 ### Command
 
@@ -2412,6 +2450,10 @@ How many pages of its own posts the destination reads back, 5 by default.
 ### RecordKind
 
 A kind of record a store may keep beside its ledger, cursors, schedules and deliveries, which every store that keeps records keeps.
+
+### ReleaseTool
+
+A release pull request by the tool that opens it.
 
 ### Replay
 

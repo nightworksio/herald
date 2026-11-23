@@ -7,8 +7,8 @@ use minijinja::{Value, context};
 use std::collections::BTreeMap;
 
 use crate::queue::{
-    Advisories, Advisory, Batch, Failure, Grouped, Loaded, Loads, Overviews, QueueEntry, Row,
-    Running, Showing,
+    Advisories, Advisory, Batch, Failure, Grouped, Loaded, Loads, Overviews, QueueEntry, Readiness,
+    Row, Running, Showing,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -225,6 +225,27 @@ fn overviews_value(overviews: &Overviews) -> Value {
     Value::from(keys)
 }
 
+/// Whether a release is ready, and each pull request holding it back
+/// (ADR-0081).
+fn readiness_value(readiness: &Readiness) -> Value {
+    context! {
+        ready => readiness.ready(),
+        holds => readiness
+            .holds
+            .iter()
+            .map(|holding| context! {
+                reason => holding.held_by.name(),
+                repository => holding.repository.as_str(),
+                number => holding.number,
+                url => holding.url.as_str(),
+                named => holding.named.clone(),
+                more => holding.more,
+            })
+            .collect::<Vec<_>>(),
+        more => readiness.more,
+    }
+}
+
 /// `showing` as a template reads it as `view`.
 pub(super) fn view_value(showing: Showing<'_>) -> Value {
     let board = showing.board;
@@ -242,6 +263,7 @@ pub(super) fn view_value(showing: Showing<'_>) -> Value {
         failures => board.failures.iter().map(failure_value).collect::<Vec<_>>(),
         overviews => overviews_value(&board.overviews),
         withheld_pulls => board.withheld,
+        readiness => board.readiness.as_ref().map(readiness_value),
     }
 }
 

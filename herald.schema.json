@@ -610,6 +610,31 @@
         }
       ]
     },
+    "Blocker": {
+      "description": "What holds a release back.",
+      "oneOf": [
+        {
+          "description": "A pull request carrying a blocker label.",
+          "type": "string",
+          "const": "label"
+        },
+        {
+          "description": "One whose check failed.",
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "description": "A draft.",
+          "type": "string",
+          "const": "draft"
+        },
+        {
+          "description": "One a reviewer asked to change.",
+          "type": "string",
+          "const": "changes"
+        }
+      ]
+    },
     "Board": {
       "description": "A board: a report's keys, and a living route's to its destination but its id, sources and living, which the board gives itself.",
       "anyOf": [
@@ -1635,6 +1660,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "Combine": {
+      "description": "How a release's selectors combine.",
+      "oneOf": [
+        {
+          "description": "Each selector picking a pull request.",
+          "type": "string",
+          "const": "all"
+        },
+        {
+          "description": "Any one.",
+          "type": "string",
+          "const": "any"
+        }
+      ]
     },
     "Command": {
       "description": "A command a member gives herald.",
@@ -4766,6 +4806,108 @@
           "description": "The keys inbound activities are checked with, under\n`[server.keys] cache = \"store\"`.",
           "type": "string",
           "const": "keys"
+        }
+      ]
+    },
+    "Release": {
+      "description": "A view's release: at least one selector, and what holds it back.",
+      "type": "object",
+      "properties": {
+        "blocked_by": {
+          "description": "What holds it back: every one where absent. \"label\", a pull request\ncarrying a blocker label; \"failed\", one whose check failed;\n\"draft\", a draft; \"changes\", one a reviewer asked to change. A pull\nrequest not read in full holds it back whatever this says.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          }
+        },
+        "blocker_labels": {
+          "description": "The labels that block it, each a glob ignoring case:\n`[\"blocker\", \"release-blocker\"]` where absent, at most 50.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50
+        },
+        "branch": {
+          "description": "The branch its pull requests merge into, a glob ignoring case, such\nas \"release/*\".",
+          "type": "string"
+        },
+        "combine": {
+          "description": "How its selectors combine: \"all\" where absent, each picking a pull\nrequest, or \"any\".",
+          "$ref": "#/$defs/Combine"
+        },
+        "label": {
+          "description": "A label its pull requests carry, a glob ignoring case.",
+          "type": "string"
+        },
+        "milestone": {
+          "description": "The milestone its pull requests carry, by title, a glob ignoring\ncase, such as \"v2.0\".",
+          "type": "string"
+        },
+        "pull": {
+          "description": "Its release pull request: \"release-please\" or \"changesets\", by the\nhead branch each opens it on, or `{ head = \"<glob>\" }` or\n`{ title = \"<glob>\" }`, each ignoring case.",
+          "$ref": "#/$defs/ReleasePull"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReleaseHead": {
+      "description": "A release pull request by its head branch, a glob ignoring case.",
+      "type": "object",
+      "properties": {
+        "head": {
+          "description": "The glob.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "head"
+      ]
+    },
+    "ReleasePull": {
+      "description": "What tells a release pull request.",
+      "anyOf": [
+        {
+          "description": "The tool that opens it.",
+          "$ref": "#/$defs/ReleaseTool"
+        },
+        {
+          "description": "Its head branch.",
+          "$ref": "#/$defs/ReleaseHead"
+        },
+        {
+          "description": "Its title.",
+          "$ref": "#/$defs/ReleaseTitle"
+        }
+      ]
+    },
+    "ReleaseTitle": {
+      "description": "A release pull request by its title, a glob ignoring case.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "description": "The glob.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ]
+    },
+    "ReleaseTool": {
+      "description": "A release pull request by the tool that opens it.",
+      "oneOf": [
+        {
+          "description": "release-please, on a head branch `release-please--branches--*`.",
+          "type": "string",
+          "const": "release-please"
+        },
+        {
+          "description": "The changesets action, on a head branch `changeset-release/*`.",
+          "type": "string",
+          "const": "changesets"
         }
       ]
     },
@@ -8749,6 +8891,10 @@
         "reconcile": {
           "description": "How long kept mode waits at least before listing a source's open\npull requests again, each page conditional on its last answer; every\nround where absent.",
           "$ref": "#/$defs/Duration"
+        },
+        "release": {
+          "description": "Its release: it shows only the open pull requests its selectors\npick, and says whether the release is ready or what holds it back,\nsuch as `release = { milestone = \"v2.0\" }` (ADR-0081). None where\nabsent.",
+          "$ref": "#/$defs/Release"
         },
         "repositories": {
           "description": "The repositories it shows, by full path, each a glob ignoring case;\nevery one where empty.",

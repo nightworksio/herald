@@ -345,6 +345,45 @@ null where reviews given were not counted.
 | `load.least_team` | view | `3`, from `3` to `50`; fewer is refused |
 | `load.unknown_teams` | view | `false` |
 
+### Release readiness
+
+`release` on a view picks the open pull requests of one release and
+says whether it is ready (ADR-0081). One selector is enough:
+
+```toml
+[views.v2]
+release = { milestone = "v2.0" }
+```
+
+| Key | Default |
+|---|---|
+| `release.milestone` | none; a glob on the milestone title a pull request carries |
+| `release.label` | none; a glob on any label it carries |
+| `release.branch` | none; a glob on the branch it merges into |
+| `release.pull` | none; `"release-please"`, `"changesets"`, `{ head = "<glob>" }` or `{ title = "<glob>" }` |
+| `release.combine` | `"all"`: each selector named picks it; `"any"`: one does |
+| `release.blocker_labels` | `["blocker", "release-blocker"]`, globs, at most 50 |
+| `release.blocked_by` | every one of `"label"`, `"failed"`, `"draft"`, `"changes"` |
+
+At least one of `milestone`, `label`, `branch` and `pull` is named. The
+view shows only the pull requests its release picks. A pull request
+holds the release back for each blocker of `blocked_by` it meets: it
+carries a blocker label, a check failed, it is a draft, or a reviewer
+asked for changes. One listed past `most_pulls` holds it back whatever
+`blocked_by` says, since its checks and reviews are not known.
+
+The verdict is judged from the rows a surface shows: a route of a report
+from those its audience may see, `herald queue` from those it prints. A
+private repository's pull request never reaches a public route's
+verdict, nor `herald queue`'s output without `--private`. A template
+reads `view.readiness`:
+
+| Key | What |
+|---|---|
+| `ready` | whether nothing holds it back |
+| `holds` | each `{ reason, repository, number, url, named, more }`: `reason` one of `label`, `failed`, `draft`, `changes`, `unread`; `named` the blocker labels or failed checks, at most 10, `more` past those |
+| `more` | the holds past the 100 named |
+
 ### Live or kept
 
 A view reads each source live, from the forge each time, or kept, from
