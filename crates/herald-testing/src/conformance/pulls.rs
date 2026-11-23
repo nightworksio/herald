@@ -41,6 +41,8 @@ pub(super) fn kept(id: &str, number: u64, title: &str) -> KeptPull {
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     };
     let key = PullKey {

@@ -158,6 +158,8 @@ fn kept(store: &Failing, head: &str, paths: &[&str], whole: bool) {
             whole,
         }),
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     };
     let key = PullKey {

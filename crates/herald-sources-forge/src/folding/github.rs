@@ -1,8 +1,8 @@
 //! GitHub's and Forgejo's deliveries, which both describe alike.
 
 use herald_core::{
-    Described, Folded, Left, Lifecycle, Mergeable, Outcome, QueueEntry, QueueState, Verdict,
-    Visibility,
+    Described, Folded, Left, Lifecycle, Mergeable, Milestoned, Outcome, QueueEntry, QueueState,
+    Verdict, Visibility,
 };
 use herald_wire::SourceError;
 use jiff::Timestamp;
@@ -11,8 +11,8 @@ use serde::Deserialize;
 use super::{Delivery, Read, Said, concluded, keyed};
 use crate::github::{Account, Label};
 use crate::owner::{flagged, named};
-use crate::queue::TRUSTED;
 use crate::queue::merging::{dequeued, grouped};
+use crate::queue::{TRUSTED, Titled};
 use crate::wire::read;
 
 #[derive(Deserialize)]
@@ -38,6 +38,14 @@ impl Repository {
 #[derive(Deserialize)]
 struct Head {
     sha: String,
+    #[serde(rename = "ref")]
+    branch: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Base {
+    #[serde(rename = "ref")]
+    branch: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -60,6 +68,8 @@ struct Pull {
     created_at: Timestamp,
     updated_at: Option<Timestamp>,
     head: Option<Head>,
+    base: Option<Base>,
+    milestone: Option<Titled>,
     labels: Option<Vec<Label>>,
     requested_reviewers: Option<Vec<Account>>,
     requested_teams: Option<Vec<Team>>,
@@ -170,7 +180,10 @@ impl Pull {
                 .labels
                 .map(|labels| labels.into_iter().map(|label| label.name).collect()),
             reviewers,
+            head_branch: self.head.as_ref().and_then(|head| head.branch.clone()),
             head: self.head.map(|head| head.sha),
+            base: self.base.and_then(|base| base.branch),
+            milestone: Milestoned::Said(self.milestone.map(|milestone| milestone.title)),
             mergeable: self.mergeable.map(|clean| {
                 if clean {
                     Mergeable::Clean

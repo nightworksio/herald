@@ -78,6 +78,17 @@ fn authors_labels_reviewers_drafts_and_mergeability_are_read() {
             .as_deref(),
         Some("abc")
     );
+    let branched = one(
+        &json!({ "head": { "sha": "abc", "ref": "fix" }, "milestone": { "title": "v2.0" } }),
+        None,
+    );
+    assert_eq!(
+        (
+            branched.head_branch.as_deref(),
+            branched.milestone.as_deref()
+        ),
+        (Some("fix"), Some("v2.0"))
+    );
 }
 
 #[test]

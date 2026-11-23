@@ -1,3 +1,4 @@
+use super::Titled;
 use herald_core::{Checks, Mergeable, Pull, Review, Turn, Visibility};
 use herald_wire::SourceError;
 use jiff::Timestamp;
@@ -56,6 +57,8 @@ struct Request {
     sha: Option<String>,
     project_id: Option<u64>,
     target_branch: Option<String>,
+    source_branch: Option<String>,
+    milestone: Option<Titled>,
 }
 
 /// What GitLab's detailed merge status says of the reviews and checks.
@@ -135,6 +138,8 @@ impl Request {
             base: self.target_branch,
             files: None,
             areas: Vec::new(),
+            head_branch: self.source_branch,
+            milestone: self.milestone.map(|milestone| milestone.title),
             flips: Vec::new(),
         }
     }

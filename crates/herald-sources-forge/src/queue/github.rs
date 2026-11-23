@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 
+use super::Titled;
 use herald_core::{Changed, Checks, Mergeable, Pull, QueueEntry, Review, Turn, Visibility};
 use herald_ports::Request;
 use herald_wire::SourceError;
@@ -45,7 +46,7 @@ fn fields(ask: Ask) -> String {
     };
     let entry = if ask.queue { ENTRY } else { "" };
     format!(
-        "number title url isDraft createdAt updatedAt baseRefName{changed} author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue{entry} headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
+        "number title url isDraft createdAt updatedAt baseRefName{changed} author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue{entry} headRefOid headRefName milestone {{ title }} commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
     )
 }
 
@@ -281,6 +282,8 @@ struct Node {
     is_in_merge_queue: bool,
     merge_queue_entry: Option<Entry>,
     head_ref_oid: Option<String>,
+    head_ref_name: Option<String>,
+    milestone: Option<Titled>,
     commits: Option<Connection<Commit>>,
     base_ref_name: Option<String>,
     files: Option<Files>,
@@ -438,6 +441,8 @@ impl Node {
             base: self.base_ref_name,
             files: self.files.map(Files::changed),
             areas: Vec::new(),
+            head_branch: self.head_ref_name,
+            milestone: self.milestone.map(|milestone| milestone.title),
             flips: Vec::new(),
         }
     }

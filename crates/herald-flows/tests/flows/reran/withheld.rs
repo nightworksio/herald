@@ -190,6 +190,8 @@ fn kept_secret(store: &Failing) {
             head: Some(head),
             unread: false,
             base: Some("main".to_owned()),
+            head_branch: None,
+            milestone: None,
             files: Some(Changed {
                 paths: ["src/lib.rs".to_owned()].into(),
                 whole: true,

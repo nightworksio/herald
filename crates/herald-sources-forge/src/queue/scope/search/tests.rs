@@ -20,15 +20,23 @@ fn a_github_item_whose_repository_cannot_be_told_is_left_out_and_still_counted()
           "repository_url": "app", "draft": true },
         { "number": 2, "title": "t", "html_url": "https://github.com/o/app/pull/2",
           "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
-          "repository_url": "https://api.github.com/repos/o/app" }
+          "repository_url": "https://api.github.com/repos/o/app", "milestone": { "title": "v2.0" } }
     ] });
     let (pulls, items, total) = github(body.to_string().as_bytes(), 1 << 20).unwrap();
     assert_eq!((items, total), (2, Some(2)));
-    let numbers: Vec<(Located, u64, bool)> = pulls
+    let numbers: Vec<(Located, u64, bool, Option<String>)> = pulls
         .into_iter()
-        .map(|(located, pull)| (located, pull.number, pull.bot))
+        .map(|(located, pull)| (located, pull.number, pull.bot, pull.milestone))
         .collect();
-    assert_eq!(numbers, [(Located::Path("o/app".to_owned()), 2, false)]);
+    assert_eq!(
+        numbers,
+        [(
+            Located::Path("o/app".to_owned()),
+            2,
+            false,
+            Some("v2.0".to_owned())
+        )]
+    );
 }
 
 #[test]
@@ -43,7 +51,7 @@ fn a_forgejo_item_that_is_no_pull_request_or_names_no_repository_is_left_out() {
         { "number": 3, "title": "t", "html_url": "https://codeberg.org/o/app/pulls/3",
           "created_at": "2026-11-18T10:00:00Z", "updated_at": "2026-11-18T11:00:00Z",
           "repository": { "id": 3 }, "pull_request": {}, "user": { "login": "ci-bot" },
-          "labels": [{ "name": "deps" }] }
+          "labels": [{ "name": "deps" }], "milestone": { "title": "v2.0" } }
     ]);
     let (pulls, items, total) = forgejo(body.to_string().as_bytes(), 1 << 20).unwrap();
     assert_eq!((items, total), (3, None));
@@ -54,9 +62,16 @@ fn a_forgejo_item_that_is_no_pull_request_or_names_no_repository_is_left_out() {
             pull.number,
             pull.draft,
             pull.labels.clone(),
-            pull.author.as_deref()
+            pull.author.as_deref(),
+            pull.milestone.as_deref()
         ),
-        (3, false, vec!["deps".to_owned()], Some("ci-bot"))
+        (
+            3,
+            false,
+            vec!["deps".to_owned()],
+            Some("ci-bot"),
+            Some("v2.0")
+        )
     );
     assert_eq!(pulls.len(), 1);
 }

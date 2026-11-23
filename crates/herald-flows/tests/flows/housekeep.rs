@@ -507,6 +507,8 @@ fn housekeeping_forgets_pull_requests_closed_longer_ago_than_the_store_keeps_the
             base: None,
             files: None,
             areas: Vec::new(),
+            head_branch: None,
+            milestone: None,
             flips: Vec::new(),
         };
         let key = herald_core::PullKey {

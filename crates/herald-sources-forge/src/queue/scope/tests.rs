@@ -422,6 +422,8 @@ fn a_kept_completion_reads_each_changed_pull_request_through_its_own_repository(
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     };
     let http = ScriptedHttp::new(Vec::new());
@@ -554,6 +556,8 @@ fn pull_of(path: &str) -> Pull {
         base: None,
         files: None,
         areas: Vec::new(),
+        head_branch: None,
+        milestone: None,
         flips: Vec::new(),
     }
 }
