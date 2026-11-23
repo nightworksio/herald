@@ -447,3 +447,18 @@ fn private_holds_count_within_the_bound_of_holds() {
     assert_eq!(over.holds.len(), MOST_HOLDS);
     assert_eq!(over.more, 1);
 }
+
+#[test]
+fn a_release_is_headed_by_its_milestone_selector_only_where_it_shows_a_header() {
+    assert_eq!(release().headed(), Some(&glob("v2.*")));
+    let unheaded = Release {
+        header: false,
+        ..release()
+    };
+    assert_eq!(unheaded.headed(), None);
+    let unmilestoned = Release {
+        milestone: None,
+        ..release()
+    };
+    assert_eq!(unmilestoned.headed(), None);
+}

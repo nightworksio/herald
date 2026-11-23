@@ -226,6 +226,11 @@ fn a_release_s_header_of_a_private_repository_is_printed_only_with_private() {
         "open_issues": 0, "closed_issues": 0, "created_at": "2026-10-01T08:00:00Z",
         "updated_at": "2026-10-02T08:00:00Z", "closed_at": null, "due_on": "2099-01-01T08:00:00Z",
         "html_url": "https://github.com/cli/cli/milestone/2",
+    }, {
+        "id": 3, "number": 3, "title": "v2.2", "description": null, "state": "open",
+        "open_issues": 4, "closed_issues": 0, "created_at": "2026-10-01T08:00:00Z",
+        "updated_at": "2026-10-02T08:00:00Z", "closed_at": null, "due_on": null,
+        "html_url": "https://github.com/cli/cli/milestone/3",
     }]);
     world.state.lock().unwrap().forge.insert(
         "/repos/cli/cli/milestones?state=open&per_page=30".to_owned(),
@@ -248,6 +253,14 @@ fn a_release_s_header_of_a_private_repository_is_printed_only_with_private() {
         printed.out.lines().nth(4),
         Some(
             "  milestone v2.1 of cli/cli, due 2099-01-01, 0 open, 0 closed  https://github.com/cli/cli/milestone/2"
+        ),
+        "{}",
+        printed.out
+    );
+    assert_eq!(
+        printed.out.lines().nth(5),
+        Some(
+            "  milestone v2.2 of cli/cli, 4 open, 0 closed  https://github.com/cli/cli/milestone/3"
         ),
         "{}",
         printed.out
