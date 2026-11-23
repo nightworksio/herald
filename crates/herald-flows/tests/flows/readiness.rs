@@ -5,7 +5,8 @@
 //! request (ADR-0081).
 
 use herald_config::{Uses, load};
-use herald_flows::{Connected, Ports, prepare, report};
+use herald_core::{Held, Printed, Showing, view_json};
+use herald_flows::{Connected, Ports, prepare, queue, report};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use serde_json::json;
 
@@ -75,9 +76,13 @@ fn page(path: &str, visibility: &str, draft: bool) -> String {
 }
 
 /// What the private route and then the public route are told where the
-/// release says `withheld` and the private repository's pull request is a
-/// draft where `draft` says.
+/// release says `withheld`, the private repository's pull request is a
+/// draft where `draft` says and the public one's where `open` says.
 fn told(withheld: &str, draft: bool) -> Vec<String> {
+    told_beside(withheld, draft, false)
+}
+
+fn told_beside(withheld: &str, draft: bool, open: bool) -> Vec<String> {
     let config = load(
         "herald.toml",
         &TEXT.replace("WITHHELD", withheld),
@@ -88,7 +93,7 @@ fn told(withheld: &str, draft: bool) -> Vec<String> {
     let store = healthy();
     let script = Script::answering(&[
         (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
-        (GRAPHQL, 200, &page("o/open", "PUBLIC", false)),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC", open)),
         TEAM,
         POSTED,
     ]);
@@ -134,6 +139,14 @@ fn a_public_route_is_told_the_verdict_is_not_known_by_default() {
 }
 
 #[test]
+fn a_public_route_a_shown_pull_request_holds_is_told_not_ready_and_nothing_of_a_private_one() {
+    for draft in [true, false] {
+        let told = told_beside("", draft, true);
+        assert_eq!(told[1], "1 not ready: o/open:1=draft");
+    }
+}
+
+#[test]
 fn a_public_route_judged_by_what_it_is_shown_is_told_ready() {
     let shown = ", withheld = \"shown\"";
     assert_eq!(
@@ -150,4 +163,64 @@ fn a_masked_public_route_is_told_the_whole_verdict_with_the_private_hold_named_p
         ["2 not ready: o/closed:1=draft", "1 not ready: private"]
     );
     assert_eq!(told(masked, false), ["2 ready", "1 ready"]);
+}
+
+/// The board `herald queue` prints of the view without `--private`, the
+/// private repository's pull request a draft where `draft` says and the
+/// public one's where `open` says.
+fn queued(draft: bool, open: bool) -> herald_core::Board {
+    let config = load(
+        "herald.toml",
+        &TEXT.replace("WITHHELD", ""),
+        &|_| Err("no file".to_owned()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
+    let store = healthy();
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC", open)),
+    ]);
+    let secrets = FakeSecrets::default()
+        .with("HERALD_DISCORD_TOKEN", "hunter2")
+        .with("HERALD_GITHUB_TOKEN", "ghp_x");
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
+    let connected: Connected<Script> = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let clock = FakeClock::at(NOON);
+    let ports = Ports {
+        store: &store,
+        clock: &clock,
+        signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
+    };
+    pollster::block_on(queue(
+        &config,
+        &connected,
+        &ports,
+        ("queue", Printed::Withheld),
+    ))
+    .unwrap()
+}
+
+#[test]
+fn herald_queue_unprivate_is_told_not_ready_by_a_printed_hold_and_not_known_without_one() {
+    for draft in [true, false] {
+        let held = queued(draft, true);
+        let readiness = held.readiness.clone().unwrap();
+        assert_eq!(readiness.ready(), Some(false));
+        let [Held::Shown(holding)] = readiness.holds.as_slice() else {
+            panic!("one shown hold: {readiness:?}");
+        };
+        assert_eq!((holding.repository.as_str(), holding.number), ("o/open", 1));
+        let json = view_json(Showing {
+            view: "queue",
+            board: &held,
+        });
+        assert!(!json.contains("o/closed"), "{json}");
+        let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(read["readiness"]["ready"], false);
+        let clear = queued(draft, false);
+        assert_eq!(clear.readiness.unwrap().ready(), None);
+    }
 }

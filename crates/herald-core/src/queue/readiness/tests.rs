@@ -367,14 +367,16 @@ fn blockers_and_reasons_have_their_names() {
 }
 
 #[test]
-fn a_release_some_of_whose_pull_requests_are_withheld_is_not_known_by_default() {
+fn a_release_some_of_whose_pull_requests_are_withheld_is_not_known_by_default_unless_a_shown_one_holds_it()
+ {
     let release = release();
     let readiness = beside(&release, vec![numbered(1)], vec![numbered(2)]);
     assert_eq!(readiness.ready(), None);
     assert_eq!(readiness.judged, Judged::Unknown);
     assert_eq!(readiness.holds, []);
     let held = beside(&release, vec![drafted(1)], vec![drafted(2)]);
-    assert_eq!(held.ready(), None);
+    assert_eq!(held.ready(), Some(false));
+    assert_eq!(held.judged, Judged::Whole);
     assert_eq!(reasons(&held), vec![("draft", 1, Vec::new())]);
     let whole = beside(&release, vec![numbered(1)], Vec::new());
     assert_eq!(whole.ready(), Some(true));

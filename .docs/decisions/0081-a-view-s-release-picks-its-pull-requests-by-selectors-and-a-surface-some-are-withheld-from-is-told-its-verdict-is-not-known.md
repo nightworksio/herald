@@ -60,11 +60,14 @@ back.
    without `--private` or `[cli] private`. Where none is withheld, the
    verdict is the whole one. Where any is, `withheld` on the release
    says what the surface is told:
-   - `"unknown"`, where absent: the verdict is neither ready nor not
-     ready. `ready` is none in templates and `null` in JSON, and the
-     table says `release: not known, some pull requests are private`.
-     The holds of the rows shown are still listed. That some pull
-     requests are private is said; which, how many and why are not.
+   - `"unknown"`, where absent: where a row shown holds the release
+     back, the verdict is certain whatever is withheld, so it is not
+     ready with the holds shown and nothing of the withheld ones. Where
+     every row shown is clear, it is neither ready nor not ready: `ready`
+     is none in templates and `null` in JSON, and the table says
+     `release: not known, some pull requests are private`. That some
+     pull requests are private is said; which, how many and why are
+     not.
    - `"shown"`: the verdict is judged by the rows shown alone, and the
      table says `release: ready, by the pull requests printed`.
    - `"masked"`: the whole verdict. Each withheld pull request holding

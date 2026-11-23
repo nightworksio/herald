@@ -376,9 +376,11 @@ asked for changes. One listed past `most_pulls` holds it back whatever
 A surface may be shown only some of a release's pull requests: a public
 route of a report is not shown a private repository's, nor is
 `herald queue` without `--private`. There `withheld` says what it is
-told. By default the verdict is not known: the table says `release: not
-known, some pull requests are private`, and nothing says which, how many
-or why. `"shown"` judges the release by the pull requests shown alone,
+told. By default a pull request shown that holds the release back makes
+it not ready, saying nothing of those withheld; where every one shown is
+clear, the verdict is not known: the table says `release: not known,
+some pull requests are private`, and nothing says which, how many or
+why. `"shown"` judges the release by the pull requests shown alone,
 and the table says `release: ready, by the pull requests printed`.
 `"masked"` tells the whole verdict, each withheld pull request holding
 the release back one hold saying only that it is private, `(private)` in

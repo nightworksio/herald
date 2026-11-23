@@ -958,16 +958,12 @@ fn a_release_verdict_names_each_hold_its_labels_or_checks_and_those_past_the_bou
         ["release: ready, by the pull requests printed"]
     );
     let unknown = Readiness {
-        holds: vec![holding(HeldBy::Blocked(Blocker::Draft), &[], 0)],
-        more: 0,
         judged: Judged::Unknown,
+        ..Readiness::default()
     };
     assert_eq!(
         crate::queueing::judged(&unknown),
-        [
-            "release: not known, some pull requests are private",
-            "  a/b#3 is a draft"
-        ]
+        ["release: not known, some pull requests are private"]
     );
     let alone = Readiness {
         holds: vec![holding(HeldBy::Unread, &[], 0)],

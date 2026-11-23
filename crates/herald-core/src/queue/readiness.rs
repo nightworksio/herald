@@ -313,7 +313,11 @@ impl Release {
             return readiness;
         }
         match self.withheld {
-            Withheld::Unknown => readiness.judged = Judged::Unknown,
+            Withheld::Unknown => {
+                if readiness.holds.is_empty() {
+                    readiness.judged = Judged::Unknown;
+                }
+            }
             Withheld::Shown => readiness.judged = Judged::Shown,
             Withheld::Masked => {
                 for row in withheld {
