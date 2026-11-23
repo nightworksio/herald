@@ -645,7 +645,7 @@ forge, narrowed per source and matched by a route's `match.attributes`:
 - `pull-request`: pull requests and merge requests opened, readied for
   review and merged, with a `bot` attribute. [`.docs/pulls.md`](.docs/pulls.md)
 - `issue`: issues opened, closed and reopened. [`.docs/issues.md`](.docs/issues.md)
-- `milestone`: milestones closed, opened, reopened and deleted. [`.docs/milestones.md`](.docs/milestones.md)
+- `milestone`: milestones closed, opened, reopened, deleted and overdue, overdue found only by a poll. [`.docs/milestones.md`](.docs/milestones.md)
 
 ### The queue
 

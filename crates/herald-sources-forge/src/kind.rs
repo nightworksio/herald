@@ -13,7 +13,9 @@ use crate::owner::Owned;
 use crate::packages::{PackageList, Packaging};
 use crate::polled::Releases;
 use crate::runs::{Delivery, delivered_event};
-use crate::{Discovery, Forge, Members, Origin, RunFrom, SourceOptions, Token, Transport};
+use crate::{
+    Discovery, Forge, Members, MilestoneAction, Origin, RunFrom, SourceOptions, Token, Transport,
+};
 
 /// A repository's releases, tags and packages on a forge: the forge, and the options
 /// its table reads into.
@@ -87,6 +89,8 @@ const MILESTONES_COST: &str = "a poll asks each repository's open milestones onc
 const MILESTONES_UNFOLLOWED: &str = "an owner source announcing milestones polls every member each round; a webhook delivers them as they change";
 /// What doctor says of a source announcing milestones with no webhook.
 const MILESTONES_POLLED: &str = "a poll finds each milestone opened, closed or reopened within one round; a deleted milestone is withdrawn only by webhook";
+/// What doctor says of a source announcing milestones overdue.
+const MILESTONES_OVERDUE: &str = "no forge sends a milestone overdue, so only a poll finds one, by its own clock, on its first round after the due day ends in UTC, and again where a moved due day passes; a source only delivered webhooks and never polled never announces it";
 /// What doctor says of a Forgejo source announcing milestones.
 const FORGEJO_MILESTONES: &str = "Forgejo and Gitea send no milestone webhook (issue_milestone is an issue's change), so milestones are found only by polling";
 /// What doctor says of a GitLab source announcing milestones through a
@@ -222,7 +226,9 @@ impl SourceConfig for ForgeSource {
         let pulled = self.options.may_take(Signal::PullRequest);
         let issued = self.options.may_take(Signal::Issue);
         let milestoned = self.options.may_take(Signal::Milestone);
-        let counted = milestoned && self.options.milestone_choice().counts;
+        let chosen = self.options.milestone_choice();
+        let counted = milestoned && chosen.counts;
+        let overdue = milestoned && chosen.actions.contains(&MilestoneAction::Overdue);
         let hooked = self.options.webhook.is_some();
         let checked = self.options.run_choice().reads(RunFrom::Checks);
         let unheard = [
@@ -238,6 +244,7 @@ impl SourceConfig for ForgeSource {
             (milestoned, MILESTONES_COST),
             (milestoned && followed, MILESTONES_UNFOLLOWED),
             (milestoned && !hooked, MILESTONES_POLLED),
+            (overdue, MILESTONES_OVERDUE),
             (
                 milestoned && self.forge == Forge::Forgejo,
                 FORGEJO_MILESTONES,

@@ -1,14 +1,20 @@
 //! What a run did, in words: each announcement, poll, chore and job, as
 //! every driver says it.
 
-use herald_core::{Chore, Identity, Schedule, Step};
+use herald_core::{Chore, Identity, Printed, Schedule, Step};
 use herald_flows::{
     Announced, Chored, Did, FollowError, Followed, Fresh, Housekept, HousekeptSchedule, Interacted,
     Job, Outcome, Remembered, Stop, Sweep, Swept, Withheld, Worked,
 };
 
-/// What a report announced of its view's `pulls` open pull requests.
-fn reported(source: &str, pulls: usize, announced: &[Fresh], cursor: &Remembered) -> Vec<String> {
+/// What a report announced of its view's `pulls` open pull requests, its
+/// events named as `printed` says.
+fn reported(
+    (source, printed): (&str, Printed),
+    pulls: usize,
+    announced: &[Fresh],
+    cursor: &Remembered,
+) -> Vec<String> {
     let tail = match cursor {
         Remembered::Advanced => String::new(),
         Remembered::Kept => {
@@ -26,13 +32,22 @@ fn reported(source: &str, pulls: usize, announced: &[Fresh], cursor: &Remembered
     let mut lines = vec![format!(
         "{source}: {window} reports {pulls} open pull requests{tail}"
     )];
-    lines.extend(freshly(source, announced));
+    lines.extend(freshly((source, printed), announced));
     lines
 }
 
-/// What a poll of one source found and announced.
+/// What a poll of one source found and announced, as a log that may be
+/// read in public says it: a private or internal repository's event named
+/// only as private.
 #[must_use]
 pub fn polled(swept: &Swept) -> Vec<String> {
+    polled_as(swept, Printed::Withheld)
+}
+
+/// What a poll of one source found and announced, its events named as
+/// `printed` says (ADR-0080).
+#[must_use]
+pub fn polled_as(swept: &Swept, printed: Printed) -> Vec<String> {
     let source = match &swept.member {
         Some(member) => format!("{} {member}", swept.source.as_str()),
         None => swept.source.as_str().to_owned(),
@@ -93,14 +108,14 @@ pub fn polled(swept: &Swept) -> Vec<String> {
                 ),
             };
             let mut lines = vec![format!("{head}{tail}")];
-            lines.extend(freshly(&source, announced));
+            lines.extend(freshly((&source, printed), announced));
             lines
         }
         Sweep::Reported {
             pulls,
             announced,
             cursor,
-        } => reported(&source, *pulls, announced, cursor),
+        } => reported((&source, printed), *pulls, announced, cursor),
         Sweep::Withdrawn {
             identity,
             announced,
@@ -116,18 +131,18 @@ pub fn polled(swept: &Swept) -> Vec<String> {
                 .iter()
                 .map(|why| format!("{source}: a held tag was let go unannounced, as {why}"))
                 .collect();
-            lines.extend(freshly(&source, announced));
+            lines.extend(freshly((&source, printed), announced));
             lines
         }
     }
 }
 
-/// What became of each of `announced`, events of `source`: held until its
-/// time, or what every route did with it.
-fn freshly(source: &str, announced: &[Fresh]) -> Vec<String> {
+/// What became of each of `announced`, events of `source` named as
+/// `printed` says: held until its time, or what every route did with it.
+fn freshly((source, printed): (&str, Printed), announced: &[Fresh]) -> Vec<String> {
     let mut lines = Vec::new();
     for fresh in announced {
-        let event = fresh.event.named();
+        let event = fresh.event.named_in(printed);
         if let Some(due) = fresh.held {
             lines.push(format!(
                 "{source} {event}: held for its Release until {due}"

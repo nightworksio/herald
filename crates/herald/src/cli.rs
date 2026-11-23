@@ -362,9 +362,22 @@ pub(crate) enum Running {
         /// redacted, and send nothing and keep no record.
         #[arg(long)]
         dry_run: bool,
+        /// Say this output is private, so an event of a private or internal
+        /// repository is named by its version or title; without it, or
+        /// `[cli] private`, it is named "(private)" (ADR-0080). A CI job's
+        /// log may be public.
+        #[arg(long)]
+        private: bool,
     },
     /// Ask every source for what it has not seen, and announce it.
-    Poll,
+    Poll {
+        /// Say this output is private, so an event of a private or internal
+        /// repository is named by its version or title; without it, or
+        /// `[cli] private`, it is named "(private)" (ADR-0080). A CI job's
+        /// log may be public.
+        #[arg(long)]
+        private: bool,
+    },
     /// Archive and lock every announcement thread whose time has come.
     Housekeep,
     /// Serve forge webhooks and herald's ActivityPub actors over HTTP, and

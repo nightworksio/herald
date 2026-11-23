@@ -1595,7 +1595,7 @@
       "type": "object",
       "properties": {
         "private": {
-          "description": "Whether `herald queue` and `herald rerun` print the rows and plans of\nprivate and internal repositories without `--private`: false where\nabsent, so they are withheld and counted. Set it only where their\noutput stays private: a CI job's log on a public repository is public.\nAdvisories are printed with `--private` alone, whatever it says.",
+          "description": "Whether `herald queue` and `herald rerun` print the rows and plans of\nprivate and internal repositories, and `herald poll` and `herald\nannounce` name their events by version or title, without\n`--private`: false where absent, so rows are withheld and counted and\nevents named \"(private)\". Set it only where their output stays\nprivate: a CI job's log on a public repository is public. Advisories\nare printed with `--private` alone, whatever it says. A server's log\nnames such events \"(private)\" always.",
           "type": "boolean"
         }
       },
@@ -4066,6 +4066,11 @@
           "description": "It was deleted, which withdraws its announcement from each route\nthat withdraws (ADR-0048).",
           "type": "string",
           "const": "deleted"
+        },
+        {
+          "description": "Its due day ended while it was open, as a poll finds by its own\nclock in UTC; no forge sends it (ADR-0080).",
+          "type": "string",
+          "const": "overdue"
         }
       ]
     },
@@ -4074,7 +4079,7 @@
       "type": "object",
       "properties": {
         "actions": {
-          "description": "What a milestone did that is announced: `opened`, `closed`,\n`reopened`, `deleted`; `closed` where absent.",
+          "description": "What a milestone did that is announced: `opened`, `closed`,\n`reopened`, `deleted`, `overdue` (found only by a poll); `closed`\nwhere absent.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/MilestoneAction"

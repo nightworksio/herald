@@ -292,12 +292,13 @@ impl Releases {
         })
     }
 
-    /// What a poll since `cursor` asks through `http` of its repository's
-    /// runs and alerts, where its signals take them.
+    /// What a poll at `now` since `cursor` asks through `http` of its
+    /// repository's runs, alerts, pull requests, issues and milestones,
+    /// where its signals take them.
     async fn listed<'a>(
         &'a self,
         http: &Erased<'_, dyn DynHttp + '_>,
-        cursor: Option<&Cursor>,
+        (cursor, now): (Option<&Cursor>, jiff::Timestamp),
     ) -> Result<Signalled<'a>, Unpolled> {
         let runs = match self.run_asking() {
             Some(asking) => {
@@ -329,7 +330,7 @@ impl Releases {
         };
         let milestones = match self.milestone_asking() {
             Some(asking) => {
-                let followed = asking.asked(http, cursor).await?;
+                let followed = asking.asked(http, cursor, now).await?;
                 Some((asking, followed))
             }
             None => None,
@@ -403,7 +404,7 @@ impl Poll for Releases {
         &'a self,
         http: &'a dyn DynHttp,
         cursor: Option<&'a Cursor>,
-        _: jiff::Timestamp,
+        now: jiff::Timestamp,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
         Box::pin(async move {
             let http = Erased(http);
@@ -425,7 +426,7 @@ impl Poll for Releases {
             } else {
                 None
             };
-            let listed = self.listed(&http, cursor).await?;
+            let listed = self.listed(&http, (cursor, now)).await?;
             let asks_packages = self.signals.takes(Signal::Package);
             let asked = changed(releases.as_ref()) || changed(tags.as_ref()) || listed.changed();
             if !asked && (!asks_packages || matches!(self.list, PackageList::Kept)) {

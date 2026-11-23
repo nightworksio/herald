@@ -9,9 +9,12 @@ use super::*;
 use crate::SourceOptions;
 use crate::options::Milestones;
 
+mod overdue;
+
 const PAGE: &str = "https://github.com/o/r";
 const CLOSED: i64 = 1_794_999_600;
 const UPDATED: i64 = 1_794_996_000;
+const NOW: &str = "2026-11-23T12:00:00Z";
 
 fn repository() -> Repository {
     Repository {
@@ -115,9 +118,20 @@ fn each_github_action_reads_as_what_the_milestone_did_and_a_deletion_withdraws()
             Some((format!("github.com/7/milestone/3/closed/{CLOSED}"), true)),
         ),
         ("edited", None),
+        ("overdue", None),
     ];
+    let all = choice(Milestones {
+        actions: Some(vec![
+            MilestoneAction::Opened,
+            MilestoneAction::Closed,
+            MilestoneAction::Reopened,
+            MilestoneAction::Deleted,
+            MilestoneAction::Overdue,
+        ]),
+        ..Milestones::default()
+    });
     for (action, expected) in cases {
-        let found = delivered(Forge::GitHub, &github_hook(action, &closed), &every())
+        let found = delivered(Forge::GitHub, &github_hook(action, &closed), &all)
             .unwrap()
             .unwrap();
         assert_eq!(found.path, "o/r");
@@ -361,6 +375,15 @@ fn poll(
     cursor: Option<&Cursor>,
     (choice, page): (&MilestoneChoice, Option<usize>),
 ) -> Result<Polled, Unpolled> {
+    poll_at(forge, http, (cursor, NOW.parse().unwrap()), (choice, page))
+}
+
+fn poll_at(
+    forge: Forge,
+    http: &ScriptedHttp,
+    (cursor, now): (Option<&Cursor>, Timestamp),
+    (choice, page): (&MilestoneChoice, Option<usize>),
+) -> Result<Polled, Unpolled> {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
         page: page.and_then(std::num::NonZeroUsize::new),
@@ -373,7 +396,7 @@ fn poll(
         choice,
     };
     let http = Erased(http as &dyn DynHttp);
-    let followed = pollster::block_on(asking.asked(&http, cursor))?;
+    let followed = pollster::block_on(asking.asked(&http, cursor, now))?;
     let changed = followed.changed;
     let found = asking.read(followed, &repository())?;
     Ok(Polled { changed, found })
@@ -427,7 +450,12 @@ fn a_first_poll_follows_the_open_milestones_and_announces_none() {
     );
     assert_eq!(
         ids(&polled.found),
-        BTreeMap::from([("milestone", vec!["1", "2"]), ("milestone/closed", vec![])])
+        BTreeMap::from([
+            ("milestone", vec!["1", "2"]),
+            ("milestone/closed", vec![]),
+            ("milestone/due", vec!["1:2026-12-01", "2:2026-12-01"]),
+            ("milestone/overdue", vec![])
+        ])
     );
     assert_eq!(
         polled.found.listings["milestone"].etag.as_deref(),
@@ -482,7 +510,12 @@ fn a_poll_announces_what_appeared_and_reads_once_what_left_the_open_listing() {
         ids(&polled.found),
         BTreeMap::from([
             ("milestone", vec!["2", "5", "6"]),
-            ("milestone/closed", vec!["1", "8"])
+            ("milestone/closed", vec!["1", "8"]),
+            (
+                "milestone/due",
+                vec!["2:2026-12-01", "5:2026-12-01", "6:2026-12-01"]
+            ),
+            ("milestone/overdue", vec![])
         ])
     );
     let quiet = ScriptedHttp::new(vec![answer(304, &Value::Null)]);
@@ -549,7 +582,12 @@ fn a_poll_pages_its_listing_and_follows_no_more_than_most() {
         BTreeMap::from([
             ("milestone", vec!["1", "2"]),
             ("milestone/2", vec!["3"]),
-            ("milestone/closed", vec![])
+            ("milestone/closed", vec![]),
+            (
+                "milestone/due",
+                vec!["1:2026-12-01", "2:2026-12-01", "3:2026-12-01"]
+            ),
+            ("milestone/overdue", vec![])
         ])
     );
     let short = ScriptedHttp::new(vec![answer(200, &json!([github(1, "open", "v1")]))]);

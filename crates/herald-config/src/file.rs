@@ -552,10 +552,13 @@ pub(crate) struct DoctorFile {
 #[serde(rename = "Cli")]
 pub(crate) struct CliFile {
     /// Whether `herald queue` and `herald rerun` print the rows and plans of
-    /// private and internal repositories without `--private`: false where
-    /// absent, so they are withheld and counted. Set it only where their
-    /// output stays private: a CI job's log on a public repository is public.
-    /// Advisories are printed with `--private` alone, whatever it says.
+    /// private and internal repositories, and `herald poll` and `herald
+    /// announce` name their events by version or title, without
+    /// `--private`: false where absent, so rows are withheld and counted and
+    /// events named "(private)". Set it only where their output stays
+    /// private: a CI job's log on a public repository is public. Advisories
+    /// are printed with `--private` alone, whatever it says. A server's log
+    /// names such events "(private)" always.
     pub(crate) private: Option<bool>,
 }
 

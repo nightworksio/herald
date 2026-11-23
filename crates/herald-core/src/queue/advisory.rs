@@ -161,8 +161,8 @@ pub fn teams_reach_each(surfaces: impl IntoIterator<Item = Surface>) -> bool {
     surfaces.peek().is_some() && surfaces.all(teams_reach)
 }
 
-/// How private the operator said `herald queue`'s or `herald rerun`'s
-/// output is.
+/// How private the operator said the output of `herald queue`, `herald
+/// rerun`, `herald poll` or `herald announce` is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Printed {
     /// Said nothing: a private or internal repository's rows are withheld.

@@ -304,13 +304,13 @@ impl Owned {
         Ok((asked.changed(), issues))
     }
 
-    /// What the member `repository`'s milestones since `cursor` are, read
-    /// through `http`, and whether a listing of them changed.
+    /// What the member `repository`'s milestones at `now` since `cursor`
+    /// are, read through `http`, and whether a listing of them changed.
     async fn milestoned(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         repository: &Listed,
-        cursor: Option<&Cursor>,
+        (cursor, now): (Option<&Cursor>, jiff::Timestamp),
     ) -> Result<(bool, crate::runs::Found), Unpolled> {
         let (described, origin) = self.reached(repository)?;
         let choice = self.options.milestone_choice();
@@ -319,7 +319,7 @@ impl Owned {
             token: self.token.as_ref(),
             choice: &choice,
         };
-        let followed = asking.asked(http, cursor).await?;
+        let followed = asking.asked(http, cursor, now).await?;
         let changed = followed.changed;
         Ok((changed, asking.read(followed, &described)?))
     }
@@ -833,7 +833,7 @@ impl Expand for Owned {
                 };
                 let answered = match answered {
                     Ok(found) if signals.takes(Signal::Milestone) => self
-                        .milestoned(&http, repository, *cursor)
+                        .milestoned(&http, repository, (*cursor, now))
                         .await
                         .map(|milestoned| crate::runs::merged_into(found, milestoned, *cursor)),
                     answered => answered,

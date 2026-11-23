@@ -22,6 +22,9 @@ pub enum MilestoneAction {
     /// It was deleted, which withdraws its announcement from each route
     /// that withdraws (ADR-0048).
     Deleted,
+    /// Its due day ended while it was open, as a poll finds by its own
+    /// clock in UTC; no forge sends it (ADR-0080).
+    Overdue,
 }
 
 impl MilestoneAction {
@@ -34,6 +37,7 @@ impl MilestoneAction {
             Self::Closed => "closed",
             Self::Reopened => "reopened",
             Self::Deleted => "deleted",
+            Self::Overdue => "overdue",
         }
     }
 }
@@ -44,7 +48,8 @@ impl MilestoneAction {
 #[serde(deny_unknown_fields)]
 pub struct Milestones {
     /// What a milestone did that is announced: `opened`, `closed`,
-    /// `reopened`, `deleted`; `closed` where absent.
+    /// `reopened`, `deleted`, `overdue` (found only by a poll); `closed`
+    /// where absent.
     pub actions: Option<Vec<MilestoneAction>>,
     /// The titles, as globs as `include` writes them, one of which a
     /// milestone announced matches; every milestone where empty.

@@ -83,6 +83,7 @@ fn doctor_says_what_a_poll_of_milestones_costs_and_what_each_forge_cannot_hear()
                     MILESTONES_COST,
                     MILESTONES_UNFOLLOWED,
                     MILESTONES_POLLED,
+                    MILESTONES_OVERDUE,
                     FORGEJO_MILESTONES,
                     GITLAB_MILESTONE_HOOK,
                     GITLAB_COUNTS,
@@ -123,6 +124,25 @@ fn doctor_says_what_a_poll_of_milestones_costs_and_what_each_forge_cannot_hear()
         ..signalled(Forge::GitLab, "g/r", true, Signal::Milestone)
     };
     assert_eq!(noted(&uncounted), [MILESTONES_COST, GITLAB_MILESTONE_HOOK]);
+    for hooked in [true, false] {
+        let overdue = ForgeSource {
+            options: SourceOptions {
+                milestones: Some(crate::Milestones {
+                    actions: Some(vec![crate::MilestoneAction::Overdue]),
+                    counts: Some(false),
+                    ..crate::Milestones::default()
+                }),
+                ..signalled(Forge::GitHub, "o/r", hooked, Signal::Milestone).options
+            },
+            ..signalled(Forge::GitHub, "o/r", hooked, Signal::Milestone)
+        };
+        let expected: &[&str] = if hooked {
+            &[MILESTONES_COST, MILESTONES_OVERDUE]
+        } else {
+            &[MILESTONES_COST, MILESTONES_POLLED, MILESTONES_OVERDUE]
+        };
+        assert_eq!(noted(&overdue), expected);
+    }
     let followed = ForgeSource {
         options: SourceOptions {
             repository: None,

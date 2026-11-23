@@ -74,9 +74,8 @@ fn private_only(world: &World, run: &Run) {
     assert!(!run.err.contains(SECRET), "{}", run.err);
 }
 
-#[test]
-fn a_private_repository_s_milestone_closed_by_poll_reaches_only_a_private_route() {
-    let setup = setup(MILESTONES);
+fn closed_by_poll(config: &str, poll: &[&str]) -> (World, Run) {
+    let setup = setup(config);
     let world = World::default();
     {
         let mut state = world.state.lock().unwrap();
@@ -92,7 +91,7 @@ fn a_private_repository_s_milestone_closed_by_poll_reaches_only_a_private_route(
             (200, json!([milestone("open")]).to_string()),
         );
     }
-    let seeded = herald(&setup, &world, &POLL);
+    let seeded = herald(&setup, &world, poll);
     assert_eq!(seeded.code, DONE, "{}{}", seeded.out, seeded.err);
     assert_eq!(sent(&world, PRIVATE) + sent(&world, PUBLIC), 0);
     {
@@ -106,14 +105,40 @@ fn a_private_repository_s_milestone_closed_by_poll_reaches_only_a_private_route(
         );
     }
     discord(&world, &[(PRIVATE, 200, r#"{"id":"1"}"#)]);
-    let closed = herald(&setup, &world, &POLL);
+    let closed = herald(&setup, &world, poll);
     assert_eq!(closed.code, DONE, "{}{}", closed.out, closed.err);
+    (world, closed)
+}
+
+#[test]
+fn a_private_repository_s_milestone_closed_by_poll_reaches_only_a_private_route() {
+    let (world, closed) = closed_by_poll(MILESTONES, &POLL);
     assert!(
-        closed.out.contains("team: announced (post)"),
+        closed.out.contains("cli (private): team: announced (post)"),
         "{}",
         closed.out
     );
     private_only(&world, &closed);
+}
+
+#[test]
+fn poll_output_said_private_names_a_private_repository_s_milestone() {
+    let configured = format!("{MILESTONES}[cli]\nprivate = true\n");
+    for (config, poll) in [
+        (MILESTONES, &["poll", "--private"][..]),
+        (configured.as_str(), &POLL[..]),
+    ] {
+        let (world, closed) = closed_by_poll(config, poll);
+        assert!(
+            closed
+                .out
+                .contains(&format!("cli {SECRET} v2: team: announced (post)")),
+            "{}",
+            closed.out
+        );
+        assert_eq!(sent(&world, PRIVATE), 1, "{}", closed.out);
+        assert_eq!(sent(&world, PUBLIC), 0, "{}", closed.out);
+    }
 }
 
 fn lambda(world: &World, payload: &str) -> Run {

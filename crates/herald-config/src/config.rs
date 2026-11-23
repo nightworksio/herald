@@ -432,8 +432,9 @@ pub struct Doctor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Cli {
     /// Whether `herald queue` and `herald rerun` print the rows and plans
-    /// of private and internal repositories without `--private`; never
-    /// their advisories.
+    /// of private and internal repositories, and `herald poll` and `herald
+    /// announce` name their events, without `--private`; never their
+    /// advisories.
     pub private: bool,
 }
 

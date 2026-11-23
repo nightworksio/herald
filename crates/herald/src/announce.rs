@@ -8,7 +8,7 @@ use std::io::Write;
 use herald_compose::told::{report, why};
 use herald_compose::{Composed, Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
-use herald_core::{Event, RouteId, Signal, SourceName};
+use herald_core::{Event, Printed, RouteId, Signal, SourceName};
 use herald_flows::{Fresh, Outcome, Stop, Within, announce_within, held_or_announced};
 use herald_ports::{Base, Keyring, Outbound, Store};
 use herald_sources_forge::{
@@ -30,6 +30,8 @@ pub(super) struct Announce<'a> {
     pub(super) release: Option<&'a str>,
     /// Whether to print the requests and send nothing.
     pub(super) dry_run: bool,
+    /// How private the operator said the output is.
+    pub(super) printed: Printed,
 }
 
 pub(super) async fn announcing_from(
@@ -66,7 +68,8 @@ pub(super) async fn announcing_from(
         within: None,
         event: &event,
     };
-    announcing(config, vars, connect, routed, asked.dry_run, out).await
+    let said = (asked.dry_run, asked.printed);
+    announcing(config, vars, connect, routed, said, out).await
 }
 
 /// Each source of `config` on `forge` that names `repository`, with its
@@ -232,13 +235,14 @@ pub(super) struct Routed<'a> {
 }
 
 /// `routed` announced to every route that takes it, or, on a dry run, the
-/// requests a first announcement sends printed and nothing sent.
+/// requests a first announcement sends printed and nothing sent; its event
+/// named as `printed` says.
 pub(super) async fn announcing(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     routed: Routed<'_>,
-    dry_run: bool,
+    (dry_run, printed): (bool, Printed),
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let dry = Dry::default();
@@ -261,14 +265,15 @@ pub(super) async fn announcing(
     let announced = composed.run(Announcing(routed)).await;
     if dry_run {
         dry.print(out);
-        return Ok(reported(announced, out));
+        return Ok(reported(announced, printed, out));
     }
-    let code = reported(announced, out);
+    let code = reported(announced, printed, out);
     Ok(code.max(crate::pages::logged(&composed, out).await))
 }
 
-/// The code `announced` ends a run with, each announcement reported.
-fn reported(told: Vec<Result<Fresh, Stop>>, out: &mut dyn Write) -> u8 {
+/// The code `announced` ends a run with, each announcement reported, its
+/// event named as `printed` says.
+fn reported(told: Vec<Result<Fresh, Stop>>, printed: Printed, out: &mut dyn Write) -> u8 {
     let mut code = DONE;
     for fresh in told {
         let fresh = match fresh {
@@ -280,7 +285,7 @@ fn reported(told: Vec<Result<Fresh, Stop>>, out: &mut dyn Write) -> u8 {
             }
         };
         if let Some(due) = fresh.held {
-            let version = fresh.event.named();
+            let version = fresh.event.named_in(printed);
             say(
                 out,
                 &format!("The tag {version} is held for its Release until {due}."),
