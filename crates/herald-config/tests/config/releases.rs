@@ -133,6 +133,14 @@ fn a_release_picking_nothing_past_its_labels_or_with_an_unread_glob_is_refused()
         error.contains("views.ship.release: a release picks its pull requests by milestone, label, branch or pull, at least one"),
         "{error}"
     );
+    let most: Vec<String> = (0..MOST_BLOCKER_LABELS)
+        .map(|n| format!("\"l{n}\""))
+        .collect();
+    let release = loaded(&format!(
+        "{{ milestone = \"v2\", blocker_labels = [{}] }}",
+        most.join(", ")
+    ));
+    assert_eq!(release.blocker_labels.len(), MOST_BLOCKER_LABELS);
     let labels: Vec<String> = (0..=MOST_BLOCKER_LABELS)
         .map(|n| format!("\"l{n}\""))
         .collect();
