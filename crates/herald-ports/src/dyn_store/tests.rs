@@ -14,7 +14,7 @@ use herald_core::{
 use super::*;
 use crate::erased::Erased;
 use crate::store::Keeper;
-use crate::store::{Actions as _, Recalls as _};
+use crate::store::{Actions as _, Pulls as _, Recalls as _};
 
 const NAMESPACE: &str = "namespace";
 
@@ -201,6 +201,21 @@ impl crate::Pulls for Refusing {
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(refused("put_codeowners"))
+    }
+
+    async fn base(
+        &self,
+        _: &herald_core::BaseKey,
+    ) -> Result<Option<Versioned<herald_core::KeptBase>>, StoreError> {
+        Err(refused("base"))
+    }
+
+    async fn put_base(
+        &self,
+        _: &herald_core::KeptBase,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_base"))
     }
 }
 
@@ -818,6 +833,7 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
         ((4096, 1), Timestamp::UNIX_EPOCH),
     )
     .unwrap();
+    let based = crate::store::tests::kept_base();
     let refusals = [
         answered(erased.pull(&kept.key)),
         answered(erased.pulls_of(&kept.key.repository)),
@@ -827,6 +843,8 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
         answered(erased.put_reconciled(&source, &reconciled, None)),
         answered(erased.codeowners(&codeowned.key)),
         answered(erased.put_codeowners(&codeowned, None)),
+        answered(erased.base(&based.key)),
+        answered(erased.put_base(&based, None)),
     ];
     let by = [
         "pull",
@@ -837,6 +855,8 @@ fn every_answer_of_an_erased_store_on_pull_requests_is_the_store_s_own() {
         "put_reconciled",
         "codeowners",
         "put_codeowners",
+        "base",
+        "put_base",
     ];
     assert_eq!(refusals, by.map(|by| Some(refused(by))));
 }

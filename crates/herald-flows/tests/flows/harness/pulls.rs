@@ -1,5 +1,6 @@
 use herald_core::{
-    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+    BaseKey, CodeownersKey, KeptBase, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey,
+    SourceName,
 };
 use herald_ports::{Pulls, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
@@ -86,6 +87,24 @@ impl Pulls for Failing {
         }
         self.inner.put_codeowners(kept, expected).await
     }
+
+    async fn base(&self, key: &BaseKey) -> Result<Option<Versioned<KeptBase>>, StoreError> {
+        if self.fault == Fault::ReadsCodeowners {
+            return Err(broken());
+        }
+        self.inner.base(key).await
+    }
+
+    async fn put_base(
+        &self,
+        kept: &KeptBase,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesCodeowners {
+            return Err(broken());
+        }
+        self.inner.put_base(kept, expected).await
+    }
 }
 
 impl Pulls for Refusing {
@@ -133,6 +152,14 @@ impl Pulls for Refusing {
         _: &KeptCodeowners,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn base(&self, _: &BaseKey) -> Result<Option<Versioned<KeptBase>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_base(&self, _: &KeptBase, _: Option<Version>) -> Result<Written, StoreError> {
         Err(self.0.clone())
     }
 }

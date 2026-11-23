@@ -10,6 +10,7 @@ use crate::limited::checked;
 use crate::{Forge, Origin, Token};
 
 pub(crate) mod advisory;
+mod base;
 pub(crate) mod capacity;
 mod codeowners;
 mod detail;
@@ -509,6 +510,18 @@ impl herald_kinds::Queue for Queued {
         Box::pin(async move {
             let reading = (&self.origin, self.token.as_ref());
             crate::milestones::header(&Erased(http), reading, (glob, visibility), now).await
+        })
+    }
+
+    fn based<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (_, branch): (&'a str, &'a str),
+        kept: Option<&'a herald_core::KeptBase>,
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::BaseFound, Unpolled>> {
+        Box::pin(async move {
+            let reading = (&self.origin, self.token.as_ref());
+            base::based(&Erased(http), reading, branch, kept).await
         })
     }
 

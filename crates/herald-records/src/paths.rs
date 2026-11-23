@@ -220,6 +220,24 @@ pub(crate) fn codeowners(key: &herald_core::CodeownersKey) -> String {
     format!("{CODEOWNERS}/{named}.json")
 }
 
+pub(crate) const BASES: &str = "bases";
+
+/// Where the base branch keyed `key` is kept: every branch in one
+/// directory, its source, repository and branch written as one segment,
+/// or past [`MOST_NAMED`] bytes as that segment's digest (ADR-0083).
+pub(crate) fn base(key: &herald_core::BaseKey) -> String {
+    let named = segment(&format!(
+        "{}\n{}\n{}",
+        key.source.as_str(),
+        key.repository,
+        key.branch
+    ));
+    if named.len() > MOST_NAMED {
+        return format!("{BASES}/{}.json", herald_core::digest(&named));
+    }
+    format!("{BASES}/{named}.json")
+}
+
 /// Where the reconcile of `source` stands.
 pub(crate) fn reconciled(source: &SourceName) -> String {
     format!("reconciled/{}.json", segment(source.as_str()))

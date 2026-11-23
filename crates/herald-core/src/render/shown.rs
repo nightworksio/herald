@@ -7,8 +7,8 @@ use minijinja::{Value, context};
 use std::collections::BTreeMap;
 
 use crate::queue::{
-    Advisories, Advisory, Batch, Failure, Grouped, Header, Held, Loaded, Loads, Overviews,
-    QueueEntry, Readiness, Row, Running, Showing,
+    Advisories, Advisory, BaseRead, Based, Batch, Checks, Failure, Grouped, Header, Held, Holder,
+    Loaded, Loads, Overviews, QueueEntry, Readiness, Row, Running, Showing, capped,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -216,6 +216,10 @@ fn overviews_value(overviews: &Overviews) -> Value {
             "header",
             Value::from(overviews.header.as_ref().map(header_value)),
         ),
+        (
+            "bases",
+            Value::from(overviews.bases.iter().map(based_value).collect::<Vec<_>>()),
+        ),
     ]);
     match overviews.advisories.as_ref().map(|advised| advised.shown()) {
         Some(Some(found)) => {
@@ -253,16 +257,48 @@ fn header_value(header: &Header) -> Value {
     }
 }
 
+/// One base branch of a release and its head's checks: `failing` naming at
+/// most [`crate::queue::MOST_HELD_CHECKS`], `reason` why it was not read
+/// (ADR-0083).
+fn based_value(based: &Based) -> Value {
+    let (state, failing, reason) = match &based.read {
+        BaseRead::Checked(Checks::Absent) => ("absent", Vec::new(), None),
+        BaseRead::Checked(Checks::Pending) => ("pending", Vec::new(), None),
+        BaseRead::Checked(Checks::Passed) => ("passed", Vec::new(), None),
+        BaseRead::Checked(Checks::Failed(names)) => ("failed", names.clone(), None),
+        BaseRead::Unread(reason) => ("unread", Vec::new(), Some(reason.as_str())),
+    };
+    let (failing, more) = capped(failing);
+    context! {
+        repository => based.repository.as_str(),
+        branch => based.branch.as_str(),
+        state => state,
+        failing => failing,
+        more => more,
+        reason => reason,
+    }
+}
+
 /// One hold on a release: a private one naming nothing of its pull
-/// request (ADR-0081).
+/// request or base branch (ADR-0081, ADR-0083).
 fn held_value(held: &Held) -> Value {
     match held {
         Held::Shown(holding) => context! {
             private => false,
             reason => holding.held_by.name(),
             repository => holding.repository.as_str(),
-            number => holding.number,
-            url => holding.url.as_str(),
+            number => match &holding.holder {
+                Holder::Pull { number, .. } => Some(*number),
+                Holder::Base { .. } => None,
+            },
+            url => match &holding.holder {
+                Holder::Pull { url, .. } => Some(url.as_str()),
+                Holder::Base { .. } => None,
+            },
+            branch => match &holding.holder {
+                Holder::Pull { .. } => None,
+                Holder::Base { branch } => Some(branch.as_str()),
+            },
             named => holding.named.clone(),
             more => holding.more,
         },
@@ -272,6 +308,7 @@ fn held_value(held: &Held) -> Value {
             repository => Value::from(()),
             number => Value::from(()),
             url => Value::from(()),
+            branch => Value::from(()),
             named => Vec::<String>::new(),
             more => 0,
         },

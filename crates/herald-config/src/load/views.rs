@@ -117,6 +117,7 @@ impl BlockerFile {
             Self::Failed => Blocker::Failed,
             Self::Draft => Blocker::Draft,
             Self::Changes => Blocker::Changes,
+            Self::Base => Blocker::Base,
         }
     }
 }

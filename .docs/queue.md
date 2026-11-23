@@ -363,7 +363,7 @@ release = { milestone = "v2.0" }
 | `release.pull` | none; `"release-please"`, `"changesets"`, `{ head = "<glob>" }` or `{ title = "<glob>" }` |
 | `release.combine` | `"all"`: each selector named picks it; `"any"`: one does |
 | `release.blocker_labels` | `["blocker", "release-blocker"]`, globs, at most 50 |
-| `release.blocked_by` | every one of `"label"`, `"failed"`, `"draft"`, `"changes"` |
+| `release.blocked_by` | every one of `"label"`, `"failed"`, `"draft"`, `"changes"`, `"base"` |
 | `release.header` | `true`: the board is headed by the open milestones `milestone` matches; it needs a milestone selector |
 | `release.withheld` | `"unknown"`: a surface some of its pull requests are withheld from is told the verdict is not known; `"shown"`: judged by those shown; `"masked"`: the whole verdict, a withheld hold named private |
 
@@ -372,7 +372,10 @@ view shows only the pull requests its release picks. A pull request
 holds the release back for each blocker of `blocked_by` it meets: it
 carries a blocker label, a check failed, it is a draft, or a reviewer
 asked for changes. One listed past `most_pulls` holds it back whatever
-`blocked_by` says, since its checks and reviews are not known.
+`blocked_by` says, since its checks and reviews are not known. With
+`"base"`, each branch a pull request of the release merges into holds it
+back where a check failed on its head, or where its checks could not be
+read (ADR-0083).
 
 A surface may be shown only some of a release's pull requests: a public
 route of a report is not shown a private repository's, nor is
@@ -390,7 +393,7 @@ the table. A template reads `view.readiness`:
 | Key | What |
 |---|---|
 | `ready` | whether nothing holds it back; none where that is not known |
-| `holds` | each `{ private, reason, repository, number, url, named, more }`: `reason` one of `label`, `failed`, `draft`, `changes`, `unread`; `named` the blocker labels or failed checks, at most 10, `more` past those; a private one's keys are none or empty |
+| `holds` | each `{ private, reason, repository, number, url, branch, named, more }`: `reason` one of `label`, `failed`, `draft`, `changes`, `base`, `unread`; a pull request's names its `number` and `url`, a base branch's its `branch`; `named` the blocker labels or failed checks, at most 10, `more` past those, or why a base branch was not read; a private one's keys are none or empty |
 | `more` | the holds past the 100 named |
 
 With a `milestone` selector the board is headed by each open milestone
@@ -406,6 +409,25 @@ named with why. A template reads `view.overviews.header`:
 |---|---|
 | `milestones` | each `{ repository, title, url, due, overdue, open, closed }`, at most 10 a repository; `due` a day, `overdue` whether it ended before today in UTC, `open` and `closed` its issues as the forge counts them, none where it does not |
 | `unread` | each `{ repository, reason }` whose milestones could not be read, or wholly |
+
+With `"base"` in `blocked_by`, the head of each base branch the
+release's pull requests merge into is read once a round (ADR-0083): its
+check runs and commit statuses on GitHub (two requests), its newest
+pipeline on GitLab (and one more for its failed jobs where it failed),
+its combined status on Forgejo, at most 20 branches a view. Where the
+store keeps pull requests, each request is asked on the validators the
+last answer came with, so an unchanged branch reads nothing again. A
+branch with a failed check is one hold naming each failed check, `base
+branch main of o/r failed: build, lint` in a report and `base main of
+o/r failed build, lint` in the table; one that could not be read, refused,
+rate-limited, past the 20 or past the run's budget, is one hold naming
+why. Each is seen as its repository, and one withheld from a surface is
+told as `withheld` says, as a withheld pull request is. A template reads
+`view.overviews.bases`:
+
+| Key | What |
+|---|---|
+| `bases` | each `{ repository, branch, state, failing, more, reason }`: `state` one of `passed`, `pending`, `failed`, `absent`, `unread`; `failing` the failed checks, at most 10, `more` past those; `reason` why it was not read |
 
 ### Live or kept
 

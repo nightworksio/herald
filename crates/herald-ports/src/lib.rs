@@ -28,7 +28,7 @@ mod timer;
 pub use clock::Clock;
 pub use credential::Credential;
 pub use crypto::{CryptoError, Sealing, Signer, Verifier};
-pub use dyn_store::{DynActions, DynRecalls, DynStore};
+pub use dyn_store::{DynActions, DynPulls, DynRecalls, DynStore};
 pub use erased::{
     Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, DynVerifier, Erased, Owned,
 };

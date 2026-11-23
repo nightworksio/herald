@@ -6,6 +6,7 @@
 use jiff::Timestamp;
 
 use super::advisory::Advised;
+use super::base::{self, Based};
 use super::header::Header;
 use super::load::Loads;
 use super::{Pull, View};
@@ -100,6 +101,9 @@ pub struct Overviews {
     pub load: Option<Loads>,
     /// The release's header, where the view reads one (ADR-0082).
     pub header: Option<Header>,
+    /// The release's base branches, where it reads their checks
+    /// (ADR-0083).
+    pub bases: Vec<Based>,
 }
 
 impl Overviews {
@@ -115,6 +119,7 @@ impl Overviews {
         }
         self.unread.retain(|unread| unread.within(view, &sourced));
         self.header = self.header.map(|header| header.within(view));
+        base::within(&mut self.bases, view);
         self
     }
 
@@ -132,7 +137,8 @@ impl Overviews {
             .collect()
     }
 
-    /// It with `other`'s runs, unread repositories and header added.
+    /// It with `other`'s runs, unread repositories, header and base
+    /// branches added.
     pub fn merge(&mut self, other: Self) {
         if let Some(runs) = other.capacity {
             self.capacity.get_or_insert_default().extend(runs);
@@ -141,6 +147,7 @@ impl Overviews {
         if let Some(header) = other.header {
             self.header.get_or_insert_default().merge(header);
         }
+        self.bases.extend(other.bases);
     }
 
     /// The runs started for a pull request on a commit no open pull
@@ -186,6 +193,12 @@ impl Overviews {
                 .header
                 .as_ref()
                 .map(|header| header.shown(|seen| seen <= visibility)),
+            bases: self
+                .bases
+                .iter()
+                .filter(|based| based.visibility <= visibility)
+                .cloned()
+                .collect(),
         }
     }
 }

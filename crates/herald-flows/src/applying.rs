@@ -156,7 +156,11 @@ pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
             .map_err(|halted| halted.said(printed))?;
         let (pulls, held) = printed.printed(read.pulls);
         withheld += held.len();
-        let shown = grouped(&view.view, decided_rows(flow, view, &pulls).await, &[]);
+        let shown = grouped(
+            &view.view,
+            decided_rows(flow, view, &pulls).await,
+            herald_core::Beside::default(),
+        );
         let plans = crate::reruns::plans((connected, ports), rule, (view, &shown))
             .await
             .map_err(|halted| halted.said(printed))?;

@@ -11,6 +11,7 @@ use crate::members::Visibility;
 
 mod advisory;
 mod area;
+mod base;
 mod codeowners;
 mod header;
 mod kept;
@@ -34,6 +35,10 @@ pub use area::{
     Area, AreaKind, Areas, CODEOWNERS, MOST_AREA_GLOB, MOST_AREA_GLOBS, MOST_AREA_NAME,
     MOST_AREA_PATH, MOST_AREAS, MOST_AREAS_READ, Zoning,
 };
+pub use base::{
+    BaseKey, BaseRead, Based, Bases, KEPT_BASE, KeptBase, KeptCheck, MOST_BASES, MOST_KEPT_FAILED,
+    joined as joined_checks,
+};
 pub use codeowners::{
     CodeOwner, Codeowners, CodeownersKey, CodeownersRef, Dialect, KEPT_CODEOWNERS, KeptCodeowners,
     MOST_CODEOWNERS, MOST_CODEOWNERS_LINES, MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_PATTERN,
@@ -55,14 +60,16 @@ pub use overlap::overlaps;
 pub use overview::{
     CAPACITY_REPOSITORIES, Capacity, Head, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
 };
+pub(crate) use readiness::capped;
 pub use readiness::{
-    BLOCKER_LABELS, Blocker, CHANGESETS_HEAD, Combine, Held, HeldBy, Holding, Judged,
-    MOST_BLOCKER_LABELS, MOST_HELD_CHECKS, MOST_HOLDS, RELEASE_PLEASE_HEAD, Readiness, Release,
-    ReleasePull, Withheld,
+    BLOCKER_LABELS, Blocker, CHANGESETS_HEAD, Combine, Held, HeldBy, Holder, Holding, Judged,
+    Judging, MOST_BLOCKER_LABELS, MOST_HELD_CHECKS, MOST_HOLDS, RELEASE_PLEASE_HEAD, Readiness,
+    Release, ReleasePull, Withheld,
 };
 pub use triage::{Failure, Triage};
 pub use view::{
-    Batch, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped, rows,
+    Batch, Beside, Board, Bots, Deciding, GroupBy, Grouped, Row, Showing, View, board, grouped,
+    rows,
 };
 
 /// Whose turn an open pull request is.

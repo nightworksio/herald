@@ -531,6 +531,15 @@ fn pull_requests_kept_nowhere_answer_unsupported_naming_them() {
             unsupported(unkept.put_codeowners(&kept, None)),
             naming("pull requests")
         );
+        let based = crate::store::tests::kept_base();
+        assert_eq!(
+            unsupported(unkept.base(&based.key)),
+            naming("pull requests")
+        );
+        assert_eq!(
+            unsupported(unkept.put_base(&based, None)),
+            naming("pull requests")
+        );
     }
 }
 
@@ -607,4 +616,21 @@ fn the_record_of_each_re_run_kept_nowhere_answers_unsupported_naming_it() {
             naming("re-runs")
         );
     }
+}
+
+/// A base branch's checks as a source read them, kept.
+pub(crate) fn kept_base() -> herald_core::KeptBase {
+    let key = herald_core::BaseKey {
+        source: herald_core::SourceName::new("s"),
+        repository: "o/r".to_owned(),
+        branch: "main".to_owned(),
+    };
+    let part = herald_core::KeptCheck {
+        validators: herald_core::Validators {
+            etag: Some("\"e\"".to_owned()),
+            last_modified: None,
+        },
+        checks: herald_core::Checks::Passed,
+    };
+    herald_core::KeptBase::of(key, vec![part], Timestamp::UNIX_EPOCH).unwrap()
 }

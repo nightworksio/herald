@@ -11,7 +11,7 @@ use herald_config::{Config, Guard, Report, RouteConfig, Rule, ViewConfig, ViewMo
 use herald_core::report::UTC;
 use herald_core::stage_name;
 use herald_core::{
-    Advising, AdvisoriesFrom, Capacity, Duration, Load, MOST_HEADER_MILESTONES,
+    Advising, AdvisoriesFrom, Capacity, Duration, Load, MOST_BASES, MOST_HEADER_MILESTONES,
     MOST_HEADER_REPOSITORIES, Surface, Teams, View, WITHHELD, advises,
 };
 use herald_kinds::{Checking, QueueRead, UNADVISED};
@@ -256,6 +256,18 @@ fn header_note((named, view): (&str, &str)) -> String {
     )
 }
 
+/// What a release reading its base branches' checks needs of a source's
+/// token, on each forge (ADR-0083).
+const BASE_PERMISSIONS: &str = "Its token needs Checks: read and Commit statuses: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api and the Reporter role on GitLab, self-managed included, and read access to the repository's code on Forgejo; a branch it may not read holds the release back, named unread with why, never shown as passing.";
+
+/// What doctor says of the view `view`, which the report or rule called
+/// `named` watches, reading its release's base branches (ADR-0083).
+fn base_note((named, view): (&str, &str)) -> String {
+    format!(
+        "The {named} holds the view {view}'s release back by its base branches: once a round, the head's checks of each branch a pull request of the release merges into, by two requests on GitHub (its check runs and its commit statuses), one on GitLab (its newest pipeline, and one more for its failed jobs where it failed) and one on Forgejo, at most {MOST_BASES} branches, those past it named unread; where the store keeps pull requests each request is asked on the validators of the last, so an unchanged answer reads nothing again. {BASE_PERMISSIONS}"
+    )
+}
+
 /// What doctor says of the view `view`, which the report or rule called
 /// `named` watches, reading advisories as `advising` says (ADR-0067).
 fn advisories_note((named, view): (&str, &str), (advising, held): (Advising, &View)) -> String {
@@ -337,6 +349,13 @@ fn overview_notes(config: &Config, (named, shown): (&str, &str), view: &ViewConf
             .as_ref()
             .and_then(herald_core::Release::headed)
             .map(|_| header_note((named, shown))),
+    );
+    overviews.extend(
+        view.view
+            .release
+            .as_ref()
+            .filter(|release| release.reads_bases())
+            .map(|_| base_note((named, shown))),
     );
     overviews.extend(
         view.advisories

@@ -82,6 +82,8 @@ mod readiness;
 #[cfg(test)]
 mod recalled;
 #[cfg(test)]
+mod release_base;
+#[cfg(test)]
 mod release_header;
 #[cfg(test)]
 mod replaced;

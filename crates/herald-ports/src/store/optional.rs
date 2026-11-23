@@ -4,8 +4,8 @@
 
 use crate::{Actions, Decisions, Pulls, Recalls};
 use herald_core::{
-    AdvisedReports, CodeownersKey, Decided, KeptCodeowners, KeptPull, PullKey, Reconciled,
-    RepositoryKey,
+    AdvisedReports, BaseKey, CodeownersKey, Decided, KeptBase, KeptCodeowners, KeptPull, PullKey,
+    Reconciled, RepositoryKey,
 };
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
@@ -273,6 +273,24 @@ impl<T: Pulls> Pulls for Option<&T> {
         match self {
             Some(held) => held.put_codeowners(kept, expected).await,
             None => Unkept.put_codeowners(kept, expected).await,
+        }
+    }
+
+    async fn base(&self, key: &BaseKey) -> Result<Option<Versioned<KeptBase>>, StoreError> {
+        match self {
+            Some(kept) => kept.base(key).await,
+            None => Unkept.base(key).await,
+        }
+    }
+
+    async fn put_base(
+        &self,
+        kept: &KeptBase,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(held) => held.put_base(kept, expected).await,
+            None => Unkept.put_base(kept, expected).await,
         }
     }
 }

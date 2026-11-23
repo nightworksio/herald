@@ -357,6 +357,10 @@ fn the_overviews_printed_keep_only_the_runs_unread_repositories_and_heads_whose_
             unread("o/inner", Visibility::Internal),
             unread("o/app", Visibility::Public),
         ],
+        bases: vec![
+            based("o/inner", Visibility::Internal),
+            based("o/app", Visibility::Public),
+        ],
         ..Overviews::default()
     };
     let headed = |repository: &str, visibility, head: &str| {
@@ -377,6 +381,10 @@ fn the_overviews_printed_keep_only_the_runs_unread_repositories_and_heads_whose_
         Some(vec![run("o/app", Visibility::Public)])
     );
     assert_eq!(printed.unread, [unread("o/app", Visibility::Public)]);
+    assert_eq!(printed.bases, [based("o/app", Visibility::Public)]);
+    assert_eq!(Printed::Withheld.sees(), Visibility::Public);
+    assert_eq!(Printed::Configured.sees(), Visibility::Private);
+    assert_eq!(Printed::Asked.sees(), Visibility::Private);
     assert_eq!(
         printed.heads,
         [crate::queue::Head {
@@ -392,4 +400,13 @@ fn the_overviews_printed_keep_only_the_runs_unread_repositories_and_heads_whose_
         Printed::Withheld.overviews(Overviews::default(), &[]),
         Overviews::default()
     );
+}
+
+fn based(repository: &str, visibility: Visibility) -> crate::queue::Based {
+    crate::queue::Based {
+        repository: repository.to_owned(),
+        visibility,
+        branch: "main".to_owned(),
+        read: crate::queue::BaseRead::Unread("refused".to_owned()),
+    }
 }

@@ -725,3 +725,31 @@ release = {release}
     assert_eq!(note("{ milestone = \"v2.*\", header = false }"), None);
     assert_eq!(note("{ label = \"ship\" }"), None);
 }
+
+#[test]
+fn a_release_s_base_branches_name_what_they_read_what_they_cost_and_what_the_token_needs() {
+    let note = |release: &str| -> Option<String> {
+        let text = format!(
+            "version = 1\n[store]\nkind = \"sqlite\"\n[sources.graphed]\nkind = \"github\"\nrepository = \"o/graphed\"\ntoken = {{ secret = \"HERALD_GITHUB_TOKEN\" }}\n[views.queue]\nrelease = {release}\n[reports.daily]\n"
+        );
+        on(&loaded(&text), &server(), &Here::default())
+            .notes
+            .into_iter()
+            .find(|note| note.contains("by its base branches"))
+    };
+    let based = note("{ label = \"ship\" }").unwrap();
+    assert!(
+        based.starts_with("The report daily holds the view queue's release back by its base branches: once a round, the head's checks of each branch a pull request of the release merges into, by two requests on GitHub (its check runs and its commit statuses), one on GitLab (its newest pipeline, and one more for its failed jobs where it failed) and one on Forgejo, at most 20 branches, those past it named unread;"),
+        "{based}"
+    );
+    assert!(
+        based.contains("Checks: read and Commit statuses: read")
+            && based.contains("GHE.com")
+            && based.contains("never shown as passing"),
+        "{based}"
+    );
+    assert_eq!(
+        note("{ label = \"ship\", blocked_by = [\"label\", \"failed\"] }"),
+        None
+    );
+}

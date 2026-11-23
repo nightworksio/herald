@@ -172,8 +172,12 @@ fn a_release_picking_nothing_past_its_labels_or_with_an_unread_glob_is_refused()
     }
     let error = errors("{ pull = { title = \"[\" } }");
     assert!(error.contains("views.ship.release.pull.title:"), "{error}");
-    let error = errors("{ milestone = \"v2\", blocked_by = [\"base\"] }");
+    let error = errors("{ milestone = \"v2\", blocked_by = [\"merge\"] }");
     assert!(error.contains("views.ship"), "{error}");
+    assert_eq!(
+        loaded("{ milestone = \"v2\", blocked_by = [\"base\"] }").blocked_by,
+        [herald_core::Blocker::Base]
+    );
     let error = errors("{ milestone = \"v2\", withheld = \"hidden\" }");
     assert!(error.contains("views.ship"), "{error}");
 }

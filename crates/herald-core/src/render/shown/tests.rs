@@ -361,7 +361,14 @@ fn a_private_surface_reads_each_advisory_by_its_allowlist() {
     let overviews = value.get_attr("overviews").unwrap();
     assert_eq!(
         keys(&overviews),
-        ["advisories", "capacity", "header", "load", "unread"]
+        [
+            "advisories",
+            "bases",
+            "capacity",
+            "header",
+            "load",
+            "unread"
+        ]
     );
     let advisories = overviews.get_attr("advisories").unwrap();
     assert_eq!(keys(&advisories), ["count", "more", "open", "unread"]);
@@ -406,7 +413,7 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
     let overviews = value.get_attr("overviews").unwrap();
     assert_eq!(
         keys(&overviews),
-        ["capacity", "header", "load", "unread", "withheld"]
+        ["bases", "capacity", "header", "load", "unread", "withheld"]
     );
     assert_eq!(
         overviews.get_attr("withheld").unwrap().to_string(),
@@ -419,7 +426,7 @@ fn a_surface_that_is_not_private_reads_only_that_a_section_was_withheld() {
     });
     assert_eq!(
         keys(&plain.get_attr("overviews").unwrap()),
-        ["capacity", "header", "load", "unread"]
+        ["bases", "capacity", "header", "load", "unread"]
     );
 }
 
@@ -597,7 +604,7 @@ fn a_row_names_its_milestone_and_its_branches() {
 
 #[test]
 fn a_release_verdict_shows_ready_each_hold_and_those_past_the_bound() {
-    use crate::queue::{Blocker, Held, HeldBy, Holding, Judged, Readiness};
+    use crate::queue::{Blocker, Held, HeldBy, Holder, Holding, Judged, Readiness};
     let mut board = shown();
     board.readiness = Some(Readiness::default());
     let json = |board: &Board| -> serde_json::Value {
@@ -616,10 +623,21 @@ fn a_release_verdict_shows_ready_each_hold_and_those_past_the_bound() {
             Held::Shown(Holding {
                 held_by: HeldBy::Blocked(Blocker::Failed),
                 repository: "a/b".to_owned(),
-                number: 4,
-                url: "https://example.com/a/b/pull/4".to_owned(),
+                holder: Holder::Pull {
+                    number: 4,
+                    url: "https://example.com/a/b/pull/4".to_owned(),
+                },
                 named: vec!["test".to_owned()],
                 more: 2,
+            }),
+            Held::Shown(Holding {
+                held_by: HeldBy::Blocked(Blocker::Base),
+                repository: "a/b".to_owned(),
+                holder: Holder::Base {
+                    branch: "main".to_owned(),
+                },
+                named: vec!["lint".to_owned()],
+                more: 0,
             }),
             Held::Private,
         ],
@@ -636,14 +654,25 @@ fn a_release_verdict_shows_ready_each_hold_and_those_past_the_bound() {
                 "repository": "a/b",
                 "number": 4,
                 "url": "https://example.com/a/b/pull/4",
+                "branch": null,
                 "named": ["test"],
                 "more": 2,
+            }, {
+                "private": false,
+                "reason": "base",
+                "repository": "a/b",
+                "number": null,
+                "url": null,
+                "branch": "main",
+                "named": ["lint"],
+                "more": 0,
             }, {
                 "private": true,
                 "reason": null,
                 "repository": null,
                 "number": null,
                 "url": null,
+                "branch": null,
                 "named": [],
                 "more": 0,
             }],
@@ -713,4 +742,39 @@ fn a_release_header_shows_each_milestone_and_each_unread_repository() {
             "unread": [{ "repository": "a/d", "reason": "refused" }],
         })
     );
+}
+
+#[test]
+fn each_base_branch_is_read_by_its_state_its_failed_checks_and_why_it_was_not_read() {
+    use crate::queue::{BaseRead, Based, Checks, MOST_HELD_CHECKS};
+    let mut board = shown();
+    let based = |branch: &str, read| Based {
+        repository: "a/b".to_owned(),
+        visibility: crate::Visibility::Public,
+        branch: branch.to_owned(),
+        read,
+    };
+    let names: Vec<String> = (0..=MOST_HELD_CHECKS).map(|n| format!("c{n}")).collect();
+    board.overviews.bases = vec![
+        based("a", BaseRead::Checked(Checks::Absent)),
+        based("p", BaseRead::Checked(Checks::Pending)),
+        based("ok", BaseRead::Checked(Checks::Passed)),
+        based("f", BaseRead::Checked(Checks::Failed(names.clone()))),
+        based("u", BaseRead::Unread("refused".to_owned())),
+    ];
+    let json: serde_json::Value = serde_json::from_str(&crate::render::view_json(Showing {
+        view: "release",
+        board: &board,
+    }))
+    .unwrap();
+    let told = &json["overviews"]["bases"];
+    let states: Vec<&str> = (0..5).map(|n| told[n]["state"].as_str().unwrap()).collect();
+    assert_eq!(states, ["absent", "pending", "passed", "failed", "unread"]);
+    assert_eq!(
+        told[3],
+        serde_json::json!({ "repository": "a/b", "branch": "f", "state": "failed",
+            "failing": names[..MOST_HELD_CHECKS], "more": 1, "reason": null })
+    );
+    assert_eq!(told[4]["reason"], "refused");
+    assert_eq!(told[4]["failing"], serde_json::json!([]));
 }

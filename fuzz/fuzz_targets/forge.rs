@@ -610,6 +610,19 @@ fn queued(bytes: &[u8]) {
                 );
                 assert!(header.unread.len() <= 2, "{header:?}");
             }
+            if let Ok(found) =
+                pollster::block_on(queue.based(&http, ("fuzzer/fuzzed", "release/v2"), None))
+            {
+                assert!(found.parts.len() <= 2, "{found:?}");
+                let failing = matches!(
+                    found.read,
+                    herald_core::BaseRead::Checked(herald_core::Checks::Failed(_))
+                );
+                let parts_fail = found.parts.iter().any(|part| {
+                    matches!(part.checks, herald_core::Checks::Failed(_))
+                });
+                assert_eq!(failing, parts_fail, "{found:?}");
+            }
             let advising = herald_core::Advising {
                 from: herald_core::AdvisoriesFrom::Owner,
                 repositories: 1,

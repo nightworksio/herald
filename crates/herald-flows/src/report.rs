@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
-    Advised, Advisories, Board, Cursor, Given, Identity, Listed, Loads, Overviews, Printed, Pull,
-    RouteId, Row, Showing, SourceName, Surface, Teams, Unread, Visibility, advises, grouped,
-    joined, report_event, steps, teams_reach, teams_reach_each,
+    Advised, Advisories, Beside, Board, Cursor, Given, Identity, Listed, Loads, Overviews, Printed,
+    Pull, RouteId, Row, Showing, SourceName, Surface, Teams, Visibility, advises, grouped, joined,
+    report_event, steps, teams_reach, teams_reach_each,
 };
 use herald_kinds::{Asked, Queue, Scope, Teamed};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -23,6 +23,8 @@ use crate::halted::Halted;
 use crate::poll::{Fresh, Remembered, Sweep, Swept, remembered, stored};
 use crate::prepare::Connected;
 use crate::recall::Recording;
+
+mod capacity;
 
 /// Why a report's view could not be read: a source it names is not one
 /// this run reads.
@@ -164,7 +166,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         capacity: view.capacity.map(|_| Vec::new()),
         ..Overviews::default()
     };
-    let mut headed = 0;
+    let (mut headed, mut checked) = (0, 0);
     for &(name, queue, http) in reached.iter() {
         let members = scoped_members(ports, (name, queue.as_ref())).await?;
         let source = config.sources.get(name);
@@ -215,7 +217,8 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         if let Some(capacity) = view.capacity {
             let reached = (name, queue.as_ref(), http);
             let asking = (asked, members.as_ref());
-            let counted = capacity_of((view, capacity), reached, asking, &read, ports).await;
+            let counted =
+                capacity::capacity_of((view, capacity), reached, asking, &read, ports).await;
             overviews.merge(counted.within(&view.view, |path: &str| queue.holds(path)));
         }
         let at = (read.as_slice(), ports.clock.now());
@@ -224,6 +227,10 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         {
             overviews.header.get_or_insert_default().merge(header);
         }
+        let reached = (name, queue.as_ref(), http);
+        let keeping = (ports.store.pulls(), ports.clock.now());
+        let bases = crate::based::bases(&view.view, reached, (&read, keeping), &mut checked).await;
+        overviews.bases.extend(bases);
         pulls.extend(read);
     }
     let forge = if teams && view.load.is_some() {
@@ -239,45 +246,6 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         given,
         teams: forge,
     })
-}
-
-/// The capacity overview `capacity` of `view` shows of what `queue`, the
-/// source `name`, read as `read` through `http`, asked as `asked` of its
-/// scope's `members`: each run and unread repository seen as its rows are,
-/// and the source named unread with why where it could not be read.
-async fn capacity_of<S: Store, C: Clock, G: Signer, H: Http>(
-    (view, capacity): (&ViewConfig, herald_core::Capacity),
-    (name, queue, http): (&SourceName, &dyn Queue, &Budgeted<'_, H, C>),
-    (asked, members): (Asked<'_>, Option<&(herald_core::Owner, Vec<Listed>)>),
-    read: &[Pull],
-    ports: &Ports<'_, S, C, G>,
-) -> Overviews {
-    let shown = herald_core::rows(&view.view, read, ports.clock.now());
-    let mut shown: Vec<&str> = shown
-        .iter()
-        .map(|row| row.pull.repository.as_str())
-        .collect();
-    shown.sort_unstable();
-    shown.dedup();
-    let held: Vec<Listed> = members
-        .iter()
-        .flat_map(|(_, members)| members)
-        .filter(|member| view.view.holds(&member.path))
-        .cloned()
-        .collect();
-    let asked = Asked {
-        scope: members.map(|(owner, _)| Scope {
-            owner: *owner,
-            members: &held,
-            narrowed: !view.view.holds_every(),
-        }),
-        ..asked
-    };
-    let counted = match queue.capacity(http, (asked, &shown), capacity).await {
-        Ok(counted) => counted,
-        Err(unpolled) => unread_source(name, http.unread(unpolled)),
-    };
-    seen_as_rows(counted, read)
 }
 
 /// The members of the owner the source `name` reads through `queue`, where
@@ -321,42 +289,6 @@ async fn forge_teams<S: Store, C: Clock, G: Signer, H: Http>(
         }
     }
     Ok(forge)
-}
-
-/// What a capacity read of `source` that failed for `reason` shows: the
-/// source named unread with why, seen as private.
-fn unread_source(source: &SourceName, reason: String) -> Overviews {
-    Overviews {
-        unread: vec![Unread {
-            repository: source.as_str().to_owned(),
-            visibility: Visibility::Private,
-            reason,
-        }],
-        ..Overviews::default()
-    }
-}
-
-/// `counted` with each run and unread repository seen as the rows of
-/// `pulls` of its repository are, and as the forge said where none is:
-/// as its membership record holds it, or as private.
-fn seen_as_rows(mut counted: Overviews, pulls: &[Pull]) -> Overviews {
-    let seen = |repository: &str| {
-        pulls
-            .iter()
-            .find(|pull| pull.repository.eq_ignore_ascii_case(repository))
-            .map(|pull| pull.visibility)
-    };
-    for run in counted.capacity.iter_mut().flatten() {
-        if let Some(visibility) = seen(&run.repository) {
-            run.visibility = visibility;
-        }
-    }
-    for unread in &mut counted.unread {
-        if let Some(visibility) = seen(&unread.repository) {
-            unread.visibility = visibility;
-        }
-    }
-    counted
 }
 
 /// The board of the view `name`, its sources' open pull requests read now
@@ -405,7 +337,12 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
     let load = view
         .load
         .map(|load| Loads::of(&decided, &read.given, (&teams, load), ports.clock.now()));
-    let mut board = grouped(&view.view, decided, &unprinted);
+    let beside = Beside {
+        withheld: &unprinted,
+        bases: &read.overviews.bases,
+        sees: printed.sees(),
+    };
+    let mut board = grouped(&view.view, decided, beside);
     board.overviews = printed.overviews(read.overviews, &pulls);
     board.overviews.load = load;
     board.overviews.advisories = view
@@ -453,7 +390,13 @@ async fn announced_part<S: Store, C: Clock, G: Signer, H: Http>(
     part: Part<'_>,
     run: &str,
 ) -> Result<Fresh, Stop> {
-    let mut shown = grouped(&part.view.view, part.rows.to_vec(), &withheld(&part));
+    let unshown = withheld(&part);
+    let beside = Beside {
+        withheld: &unshown,
+        bases: &part.overviews.bases,
+        sees: part.visibility,
+    };
+    let mut shown = grouped(&part.view.view, part.rows.to_vec(), beside);
     shown.overviews = part.overviews.seen_by(part.visibility);
     shown.overviews.advisories = part.advisories;
     let teamed = teams_reach_each(part.routes.iter().map(|id| config.surface(id)));
