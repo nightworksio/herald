@@ -27,6 +27,7 @@ use crate::{Forge, Origin, Token};
 mod github;
 mod gitlab;
 mod header;
+mod rows;
 
 pub(crate) use header::header;
 

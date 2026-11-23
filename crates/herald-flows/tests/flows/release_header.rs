@@ -2,7 +2,8 @@
 //! matches in each repository it shows a pull request of the release in,
 //! a public route and `herald queue` without `--private` told those of
 //! public repositories alone, each repository read once and at most
-//! twenty, one that could not be read named with why (ADR-0082).
+//! twenty, one that could not be read named with why (ADR-0082); and the
+//! open issues of those milestones as rows, seen the same way (ADR-0084).
 
 use std::fmt::Write as _;
 
@@ -49,7 +50,7 @@ template = "t"
 private = true
 [templates.t]
 title = "{{ view.name }}"
-body = "{{ view.total }}{% if view.overviews.header %}{% for m in view.overviews.header.milestones %} {{ m.repository }}:{{ m.title }}{% endfor %}{% for u in view.overviews.header.unread %} unread:{{ u.repository }}{% endfor %}{% endif %}"
+body = "{{ view.total }}{% if view.overviews.header %}{% for m in view.overviews.header.milestones %} {{ m.repository }}:{{ m.title }}{% endfor %}{% for u in view.overviews.header.unread %} unread:{{ u.repository }}{% endfor %}{% endif %}{% if view.issues %}{% for i in view.issues %} {{ i.repository }}#{{ i.number }}{% endfor %}{% endif %}"
 "#;
 
 fn sources(paths: &[&str]) -> String {
@@ -102,9 +103,17 @@ fn milestones(path: &str) -> String {
 }
 
 fn connected(paths: &[&str], script: &Script) -> (herald_config::Config, Connected<Script>) {
+    connected_as(TEXT, paths, script)
+}
+
+fn connected_as(
+    text: &str,
+    paths: &[&str],
+    script: &Script,
+) -> (herald_config::Config, Connected<Script>) {
     let config = load(
         "herald.toml",
-        &TEXT.replace("SOURCES", &sources(paths)),
+        &text.replace("SOURCES", &sources(paths)),
         &|_| Err("no file".to_owned()),
         &crate::harness::kinds(),
     )
@@ -119,7 +128,11 @@ fn connected(paths: &[&str], script: &Script) -> (herald_config::Config, Connect
 }
 
 fn queued(paths: &[&str], script: &Script, printed: Printed) -> Board {
-    let (config, connected) = connected(paths, script);
+    queued_as(TEXT, paths, script, printed)
+}
+
+fn queued_as(text: &str, paths: &[&str], script: &Script, printed: Printed) -> Board {
+    let (config, connected) = connected_as(text, paths, script);
     let store = healthy();
     let clock = FakeClock::at(NOON);
     let ports = Ports {
@@ -134,8 +147,12 @@ fn queued(paths: &[&str], script: &Script, printed: Printed) -> Board {
 /// What the private route and then the public route are told of the
 /// sources `paths`, each read by its `answers`.
 fn told(paths: &[&str], answers: &[(&str, u16, &str)]) -> Vec<String> {
+    told_as(TEXT, paths, answers)
+}
+
+fn told_as(text: &str, paths: &[&str], answers: &[(&str, u16, &str)]) -> Vec<String> {
     let script = Script::answering(answers);
-    let (config, connected) = connected(paths, &script);
+    let (config, connected) = connected_as(text, paths, &script);
     let store = healthy();
     let clock = FakeClock::at(NOON);
     let ports = Ports {
@@ -360,4 +377,58 @@ fn a_repository_the_view_does_not_hold_or_with_no_pull_request_of_the_release_is
         herald_core::Header::default()
     );
     assert_eq!(script.seen().len(), 3, "{:?}", script.seen());
+}
+
+fn issues_url(path: &str) -> String {
+    format!("https://api.github.com/repos/{path}/issues?milestone=1&state=open&per_page=30")
+}
+
+fn issues(path: &str, number: u64) -> String {
+    json!([{
+        "number": number, "title": "Crash", "state": "open",
+        "html_url": format!("https://github.com/{path}/issues/{number}"),
+        "user": { "login": "ann", "type": "User" }, "state_reason": null,
+        "created_at": "2026-10-01T08:00:00Z", "updated_at": null, "closed_at": null,
+    }])
+    .to_string()
+}
+
+#[test]
+fn a_public_route_is_told_the_issue_rows_of_public_repositories_alone() {
+    let text = TEXT.replace(
+        "release = { milestone = \"v2.*\" }",
+        "release = { milestone = \"v2.*\", rows = \"issues\", header = false }",
+    );
+    let told = told_as(
+        &text,
+        &["o/closed", "o/open"],
+        &[
+            (GRAPHQL, 200, &page("o/closed", "PRIVATE", true)),
+            (&milestones_url("o/closed"), 200, &milestones("o/closed")),
+            (&issues_url("o/closed"), 200, &issues("o/closed", 7)),
+            (GRAPHQL, 200, &page("o/open", "PUBLIC", true)),
+            (&milestones_url("o/open"), 200, &milestones("o/open")),
+            (&issues_url("o/open"), 200, &issues("o/open", 8)),
+            TEAM,
+            POSTED,
+        ],
+    );
+    assert_eq!(told, ["2 o/closed#7 o/open#8", "1 o/open#8"]);
+}
+
+#[test]
+fn a_release_listing_issues_whose_milestones_could_not_be_read_lists_none_and_says_why() {
+    let text = TEXT.replace(
+        "release = { milestone = \"v2.*\" }",
+        "release = { milestone = \"v2.*\", rows = \"issues\" }",
+    );
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/open", "PUBLIC", true)),
+        (&milestones_url("o/open"), 500, "{}"),
+    ]);
+    let board = queued_as(&text, &["o/open"], &script, Printed::Asked);
+    let header = board.overviews.header.unwrap();
+    assert_eq!(header.issues, Some(Vec::new()));
+    assert_eq!(header.unread.len(), 1, "{header:?}");
+    assert_eq!(header.unread[0].repository, "o/open");
 }

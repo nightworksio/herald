@@ -11,8 +11,9 @@ use herald_config::{Config, Guard, Report, RouteConfig, Rule, ViewConfig, ViewMo
 use herald_core::report::UTC;
 use herald_core::stage_name;
 use herald_core::{
-    Advising, AdvisoriesFrom, Capacity, Duration, Load, MOST_BASES, MOST_HEADER_MILESTONES,
-    MOST_HEADER_REPOSITORIES, Surface, Teams, View, WITHHELD, advises,
+    Advising, AdvisoriesFrom, Capacity, Duration, HeaderRead, Load, MOST_BASES,
+    MOST_HEADER_MILESTONES, MOST_HEADER_REPOSITORIES, MOST_ISSUE_ROWS, Surface, Teams, View,
+    WITHHELD, advises,
 };
 use herald_kinds::{Checking, QueueRead, UNADVISED};
 
@@ -35,6 +36,10 @@ const CAPACITY_PERMISSIONS: &str = "Its token needs Actions: read as a GitHub Ap
 
 /// What doctor says a release's header needs of its token (ADR-0082).
 const HEADER_PERMISSIONS: &str = "Its token needs Issues: read or Pull requests: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api on GitLab, self-managed included, and read access to the repository's issues on Forgejo; a repository it may not read is named unread with why, never shown as having no milestone.";
+
+/// What a release listing its milestones' issues as rows needs of a
+/// source's token, on each forge (ADR-0084).
+const ISSUE_PERMISSIONS: &str = "Listing them needs Issues: read as a GitHub App or fine-grained token on GitHub, GitHub Enterprise Server and GHE.com; a confidential GitLab issue is listed only with the Reporter role, and is seen as private.";
 
 /// What doctor says a view's advisories need of its token (ADR-0067).
 const ADVISORY_PERMISSIONS: &str = "Its token needs Dependabot alerts, Code scanning alerts and Secret scanning alerts: read as a GitHub App or fine-grained token, security_events (and repo for a private repository) as a classic token, and for an organization's own listings to act for an organization owner or security manager (with read:org as a classic token), the same on GitHub Enterprise Server and GHE.com; read_api with the Developer role on GitLab Ultimate, self-managed included. A listing it may not read is named unread with the permission it needs, never shown as clean. Forgejo raises no security alerts, so its repositories are named unread.";
@@ -250,9 +255,39 @@ fn capacity_note((named, view): (&str, &str), (capacity, held): (Capacity, &View
 
 /// What doctor says of the view `view`, which the report or rule called
 /// `named` watches, heading its release with its milestones (ADR-0082).
-fn header_note((named, view): (&str, &str)) -> String {
+fn header_note((named, view): (&str, &str), heading: HeaderRead) -> String {
+    let what = match (heading.header, heading.issues) {
+        (true, false) => format!(
+            "heads the view {view}'s release with its open milestones the milestone selector matches"
+        ),
+        (false, _) => format!(
+            "lists as the view {view}'s release rows the open issues of its open milestones the milestone selector matches"
+        ),
+        (true, true) => format!(
+            "heads the view {view}'s release with its open milestones the milestone selector matches, and lists their open issues as its rows"
+        ),
+    };
+    let counted = if heading.header {
+        format!(
+            "; on GitLab one more request for each milestone matched to count its issues, at most {MOST_HEADER_MILESTONES} a repository"
+        )
+    } else {
+        String::new()
+    };
+    let listed = if heading.issues {
+        format!(
+            "; one more request for each milestone matched to list its open issues, one page of the source's page, at most {MOST_ISSUE_ROWS} rows a repository, those past it named unread"
+        )
+    } else {
+        String::new()
+    };
+    let permissions = if heading.issues {
+        format!("{HEADER_PERMISSIONS} {ISSUE_PERMISSIONS}")
+    } else {
+        HEADER_PERMISSIONS.to_owned()
+    };
     format!(
-        "The {named} heads the view {view}'s release with its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most {MOST_HEADER_REPOSITORIES} repositories, those past it named unread; on GitLab one more request for each milestone matched to count its issues, at most {MOST_HEADER_MILESTONES} a repository. {HEADER_PERMISSIONS}"
+        "The {named} {what}: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most {MOST_HEADER_REPOSITORIES} repositories, those past it named unread{counted}{listed}. {permissions}"
     )
 }
 
@@ -347,8 +382,8 @@ fn overview_notes(config: &Config, (named, shown): (&str, &str), view: &ViewConf
         view.view
             .release
             .as_ref()
-            .and_then(herald_core::Release::headed)
-            .map(|_| header_note((named, shown))),
+            .and_then(herald_core::Release::heading)
+            .map(|(_, heading)| header_note((named, shown), heading)),
     );
     overviews.extend(
         view.view

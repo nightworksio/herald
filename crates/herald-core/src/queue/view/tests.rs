@@ -607,6 +607,7 @@ fn release(milestone: &str) -> crate::queue::Release {
         blocked_by: crate::queue::Blocker::ALL.to_vec(),
         withheld: crate::queue::Withheld::Unknown,
         header: true,
+        rows: crate::queue::Rows::Pulls,
     }
 }
 
@@ -671,6 +672,48 @@ fn a_release_is_judged_beside_the_rows_withheld_from_the_surface() {
     assert_eq!(board.readiness.unwrap().ready(), None);
     let whole = grouped(&view, shown, Beside::default());
     assert_eq!(whole.readiness.unwrap().ready(), Some(true));
+}
+
+#[test]
+fn a_surface_named_no_audience_is_told_nothing_of_a_private_base_branch() {
+    let view = View {
+        release: Some(release("v2.0")),
+        ..View::default()
+    };
+    let shown = rows(
+        &view,
+        &[Pull {
+            milestone: Some("v2.0".to_owned()),
+            ..waited(1, 1)
+        }],
+        now(),
+    );
+    let based = |visibility| crate::queue::Based {
+        repository: "secret/repo".to_owned(),
+        visibility,
+        branch: "main".to_owned(),
+        read: crate::queue::BaseRead::Checked(Checks::Failed(vec!["build".to_owned()])),
+    };
+    let told = |bases: &[crate::queue::Based]| {
+        let readiness = grouped(
+            &view,
+            shown.clone(),
+            Beside {
+                bases,
+                ..Beside::default()
+            },
+        )
+        .readiness
+        .unwrap();
+        let named = readiness.holds.iter().any(|held| {
+            matches!(held, crate::queue::Held::Shown(holding) if holding.repository == "secret/repo")
+        });
+        (readiness.ready(), named)
+    };
+    assert_eq!(told(&[based(Visibility::Private)]), (None, false));
+    assert_eq!(told(&[based(Visibility::Internal)]), (None, false));
+    assert_eq!(told(&[based(Visibility::Public)]), (Some(false), true));
+    assert_eq!(told(&[]), (Some(true), false));
 }
 
 #[test]

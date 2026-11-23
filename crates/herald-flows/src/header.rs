@@ -1,6 +1,7 @@
 //! A release's header read for a view: the open milestones its selector
 //! matches in each repository it shows a pull request of the release in,
-//! read once a round (ADR-0082).
+//! and the open issues they carry where those are its rows, read once a
+//! round (ADR-0082, ADR-0084).
 
 use herald_core::{Header, MOST_HEADER_REPOSITORIES, Pull, Unread, View, Visibility};
 use herald_kinds::Queue;
@@ -9,7 +10,8 @@ use jiff::Timestamp;
 
 use crate::budget::Budgeted;
 
-/// The header of `view`'s release, where it shows one, read through
+/// The header of `view`'s release, where it shows one or its rows are
+/// issues, read through
 /// `queue` and `http` at `now`: each repository of `pulls` the release
 /// picks, and the one repository `queue` reads, seen as its rows are or
 /// as private where it has none; each named unread with why where it could
@@ -22,7 +24,7 @@ pub(crate) async fn header<H: Http, C: Clock>(
     asked: &mut usize,
 ) -> Option<Header> {
     let release = view.release.as_ref()?;
-    let glob = release.headed()?;
+    let (glob, heading) = release.heading()?;
     let mut repositories: Vec<(String, &str, Visibility)> = pulls
         .iter()
         .filter(|pull| release.picks(pull))
@@ -33,7 +35,10 @@ pub(crate) async fn header<H: Http, C: Clock>(
         .collect();
     repositories.sort_unstable_by(|left, right| (&left.0, left.2).cmp(&(&right.0, right.2)));
     repositories.dedup_by(|later, first| later.0 == first.0);
-    let mut header = Header::default();
+    let mut header = Header {
+        issues: heading.issues.then(Vec::new),
+        ..Header::default()
+    };
     for (_, path, visibility) in repositories {
         let unread = |reason: String| Unread {
             repository: path.to_owned(),
@@ -47,7 +52,10 @@ pub(crate) async fn header<H: Http, C: Clock>(
             continue;
         }
         *asked += 1;
-        match queue.milestoned(http, (path, glob, visibility), now).await {
+        match queue
+            .milestoned(http, (path, glob, visibility), (heading, now))
+            .await
+        {
             Ok(read) => header.merge(read),
             Err(unpolled) => header.unread.push(unread(http.unread_milestones(unpolled))),
         }

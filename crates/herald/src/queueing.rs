@@ -82,7 +82,26 @@ fn table(view: &str, board: &Board) -> Vec<String> {
             .into_iter()
             .flatten(),
     );
-    for group in &board.groups {
+    let issues = board
+        .overviews
+        .header
+        .as_ref()
+        .and_then(|header| header.issues.as_deref());
+    if let Some(issues) = issues {
+        lines.push(format!("issues ({})", issues.len()));
+        lines.extend(issues.iter().map(|issue| {
+            format!(
+                "  {}#{} {}, {}  {}",
+                issue.repository, issue.number, issue.title, issue.milestone, issue.url
+            )
+        }));
+    }
+    let (groups, batches) = if issues.is_some() {
+        (&[][..], &[][..])
+    } else {
+        (board.groups.as_slice(), board.batches.as_slice())
+    };
+    for group in groups {
         let name = if group.name.is_empty() {
             "everyone"
         } else {
@@ -91,7 +110,7 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         lines.push(format!("{name} ({})", group.rows.len()));
         lines.extend(group.rows.iter().map(line));
     }
-    for batch in &board.batches {
+    for batch in batches {
         let bump = batch.bump.as_ref().map_or_else(
             || "bumps no pattern reads".to_owned(),
             |bump| match &bump.to {

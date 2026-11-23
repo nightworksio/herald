@@ -116,7 +116,7 @@ pub(crate) const HOOKED: Named = Named {
 };
 
 /// What a listing of issues is read as on each forge.
-const LISTED: Named = Named {
+pub(crate) const LISTED: Named = Named {
     github: "GitHub's issues",
     gitlab: "GitLab's issues",
     forgejo: "Forgejo's issues",
@@ -167,6 +167,19 @@ pub(crate) fn delivered(
     Ok(Delivered { path, event })
 }
 
+/// The issues in a listing `body` from `forge`, parsing no more than
+/// `limit` bytes, GitHub's pull requests left out.
+pub(crate) fn listed(
+    forge: Forge,
+    limit: usize,
+    body: &[u8],
+) -> Result<Vec<ForgeIssue>, SourceError> {
+    match forge {
+        Forge::GitLab => gitlab::listed(limit, body),
+        Forge::GitHub | Forge::Forgejo => github::listed(LISTED.on(forge), limit, body),
+    }
+}
+
 /// The name a poll keeps the validators of a repository's issue listing
 /// under.
 pub(crate) const KEPT: &str = "issue";
@@ -203,11 +216,7 @@ impl Asking<'_> {
         let (kept, body) = asked.read(what)?;
         if let Some(body) = body {
             let parse = self.origin.reading().parse;
-            let issues = match forge {
-                Forge::GitLab => gitlab::listed(parse, body),
-                Forge::GitHub | Forge::Forgejo => github::listed(what, parse, body),
-            }
-            .map_err(Unpolled::unreadable)?;
+            let issues = listed(forge, parse, body).map_err(Unpolled::unreadable)?;
             for issue in issues.into_iter().filter(|issue| issue.chosen(self.choice)) {
                 found.events.push(
                     issue

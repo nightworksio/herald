@@ -361,7 +361,8 @@ pub struct Beside<'a> {
     pub withheld: &'a [Row],
     /// Every base branch of the release read.
     pub bases: &'a [Based],
-    /// The strictest repository the surface may see.
+    /// The strictest repository the surface may see: a public one where
+    /// no audience is named.
     pub sees: Visibility,
 }
 
@@ -370,7 +371,7 @@ impl Default for Beside<'_> {
         Self {
             withheld: &[],
             bases: &[],
-            sees: Visibility::Private,
+            sees: Visibility::Public,
         }
     }
 }

@@ -360,3 +360,68 @@ fn a_private_repository_s_failing_base_branch_is_printed_only_with_private() {
             "failing": ["test"], "more": 0, "reason": null }])
     );
 }
+
+#[test]
+fn a_release_s_issue_rows_of_a_private_repository_are_printed_only_with_private() {
+    let setup = shipped(", header = false, rows = \"issues\"");
+    let world = World::default();
+    listed(&world);
+    let milestones = json!([{
+        "id": 1, "number": 1, "title": "v2.0", "description": null, "state": "open",
+        "open_issues": 1, "closed_issues": 3, "created_at": "2026-10-01T08:00:00Z",
+        "updated_at": "2026-10-02T08:00:00Z", "closed_at": null, "due_on": null,
+        "html_url": "https://github.com/cli/cli/milestone/1",
+    }]);
+    let issues = json!([{
+        "number": 41, "title": "Crash on start", "state": "open",
+        "html_url": "https://github.com/cli/cli/issues/41",
+        "user": { "login": "ann", "type": "User" }, "state_reason": null,
+        "created_at": "2026-10-01T08:00:00Z", "updated_at": null, "closed_at": null,
+    }]);
+    let mut state = world.state.lock().unwrap();
+    state.forge.insert(
+        "/repos/cli/cli/milestones?state=open&per_page=30".to_owned(),
+        (200, milestones.to_string()),
+    );
+    state.forge.insert(
+        "/repos/cli/cli/issues?milestone=1&state=open&per_page=30".to_owned(),
+        (200, issues.to_string()),
+    );
+    drop(state);
+    let table = herald(&setup, &world, &["queue", "ship"]);
+    assert!(!table.out.contains("Crash on start"), "{}", table.out);
+    assert!(table.out.contains("issues (0)"), "{}", table.out);
+    let json = herald(&setup, &world, &["queue", "ship", "--format", "json"]);
+    assert!(!json.out.contains("Crash on start"), "{}", json.out);
+    let printed = herald(&setup, &world, &["queue", "ship", "--private"]);
+    assert!(
+        !printed.out.contains("milestone v2.0 of"),
+        "{}",
+        printed.out
+    );
+    assert!(!printed.out.contains(", milestone v2"), "{}", printed.out);
+    let at = printed
+        .out
+        .lines()
+        .position(|line| line == "issues (1)")
+        .unwrap();
+    assert_eq!(
+        printed.out.lines().nth(at + 1),
+        Some("  cli/cli#41 Crash on start, v2.0  https://github.com/cli/cli/issues/41"),
+        "{}",
+        printed.out
+    );
+    let json = herald(
+        &setup,
+        &world,
+        &["queue", "ship", "--private", "--format", "json"],
+    );
+    let read: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(
+        read["issues"],
+        json!([{
+            "repository": "cli/cli", "number": 41, "title": "Crash on start",
+            "url": "https://github.com/cli/cli/issues/41", "milestone": "v2.0",
+        }])
+    );
+}

@@ -13,8 +13,8 @@ use herald_core::{
     LONGEST_LOAD_WINDOW, Load, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
     MOST_ADVISORY_REPOSITORIES, MOST_BLOCKER_LABELS, MOST_CAPACITY_REPOSITORIES, MOST_LEAST_TEAM,
     MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES, MOST_TEAMS, Release, ReleasePull,
-    ReportSchedule, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages, Team, Teams, Triage,
-    View, Withheld, zone,
+    ReportSchedule, Rows, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages, Team, Teams,
+    Triage, View, Withheld, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -27,8 +27,8 @@ use crate::models::Task;
 use crate::views::{
     AdvisoriesFromFile, BUILT_IN_VIEW, BlockerFile, BotsFile, CapacityFrom, CombineFile,
     DecidingFile, DecidingName, DequeuedFile, GroupByFile, OverviewName, RULE_KEYS,
-    ReleasePullFile, ReleaseTool, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile,
-    TeamFile, ViewConfig, ViewFile, ViewMode, WithheldFile,
+    ReleasePullFile, ReleaseTool, Report, ReportFile, RerunMode, RowsFile, Rule, RuleFile,
+    RulesFile, TeamFile, ViewConfig, ViewFile, ViewMode, WithheldFile,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -44,6 +44,7 @@ const ADVISORIES_MOST: &str =
     "an advisories overview reads from 1 to 10000 open advisories, such as most_advisories = 1000";
 const ADVISORIES_UNSHOWN: &str = "advisories_from, advisory_repositories and most_advisories take effect with overviews = [\"advisories\"], which this view does not name";
 const UNHEADED: &str = "a release's header names the open milestones its milestone selector matches, so header = true needs one, such as release = { milestone = \"v2.0\", header = true }";
+const UNLISTED: &str = "a release's issue rows are the open issues of the open milestones its milestone selector matches, so rows = \"issues\" needs one, such as release = { milestone = \"v2.0\", rows = \"issues\" }";
 const UNPICKED: &str = "a release picks its pull requests by milestone, label, branch or pull, at least one, such as release = { milestone = \"v2.0\" }";
 const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none";
 
@@ -175,6 +176,9 @@ impl Loader<'_> {
         if written.header == Some(true) && written.milestone.is_none() {
             self.error(span, &at("header"), UNHEADED.to_owned());
         }
+        if written.rows == Some(RowsFile::Issues) && written.milestone.is_none() {
+            self.error(span, &at("rows"), UNLISTED.to_owned());
+        }
         let blocked_by = written.blocked_by.as_ref().map_or_else(
             || Blocker::ALL.to_vec(),
             |named| named.iter().map(|blocker| blocker.blocker()).collect(),
@@ -196,6 +200,10 @@ impl Loader<'_> {
                 Some(WithheldFile::Unknown) | None => Withheld::Unknown,
             },
             header: written.header.unwrap_or(true),
+            rows: match written.rows {
+                Some(RowsFile::Issues) => Rows::Issues,
+                Some(RowsFile::Pulls) | None => Rows::Pulls,
+            },
         })
     }
 

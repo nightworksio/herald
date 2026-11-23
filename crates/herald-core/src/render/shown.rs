@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use crate::queue::{
     Advisories, Advisory, BaseRead, Based, Batch, Checks, Failure, Grouped, Header, Held, Holder,
-    Loaded, Loads, Overviews, QueueEntry, Readiness, Row, Running, Showing, capped,
+    Loaded, Loads, OpenIssue, Overviews, QueueEntry, Readiness, Row, Running, Showing, capped,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -257,6 +257,23 @@ fn header_value(header: &Header) -> Value {
     }
 }
 
+/// The open issues a release's rows name (ADR-0084).
+fn issues_value(issues: &[OpenIssue]) -> Value {
+    let issues: Vec<Value> = issues
+        .iter()
+        .map(|issue| {
+            context! {
+                repository => issue.repository.as_str(),
+                number => issue.number,
+                title => issue.title.as_str(),
+                url => issue.url.as_str(),
+                milestone => issue.milestone.as_str(),
+            }
+        })
+        .collect();
+    Value::from(issues)
+}
+
 /// One base branch of a release and its head's checks: `failing` naming at
 /// most [`crate::queue::MOST_HELD_CHECKS`], `reason` why it was not read
 /// (ADR-0083).
@@ -343,6 +360,12 @@ pub(super) fn view_value(showing: Showing<'_>) -> Value {
         overviews => overviews_value(&board.overviews),
         withheld_pulls => board.withheld,
         readiness => board.readiness.as_ref().map(readiness_value),
+        issues => board
+            .overviews
+            .header
+            .as_ref()
+            .and_then(|header| header.issues.as_deref())
+            .map(issues_value),
     }
 }
 

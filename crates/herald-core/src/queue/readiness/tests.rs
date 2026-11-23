@@ -22,6 +22,7 @@ fn release() -> Release {
         blocked_by: Blocker::ALL.to_vec(),
         withheld: Withheld::Unknown,
         header: true,
+        rows: Rows::Pulls,
     }
 }
 
@@ -472,18 +473,31 @@ fn private_holds_count_within_the_bound_of_holds() {
 }
 
 #[test]
-fn a_release_is_headed_by_its_milestone_selector_only_where_it_shows_a_header() {
-    assert_eq!(release().headed(), Some(&glob("v2.*")));
+fn a_release_reads_its_milestones_only_where_it_shows_a_header_or_lists_their_issues() {
+    let glob = glob("v2.*");
+    let heading = |header: bool, issues: bool| Some((&glob, HeaderRead { header, issues }));
+    assert_eq!(release().heading(), heading(true, false));
     let unheaded = Release {
         header: false,
+        rows: Rows::Pulls,
         ..release()
     };
-    assert_eq!(unheaded.headed(), None);
+    assert_eq!(unheaded.heading(), None);
+    let listed = Release {
+        rows: Rows::Issues,
+        ..unheaded.clone()
+    };
+    assert_eq!(listed.heading(), heading(false, true));
+    let both = Release {
+        rows: Rows::Issues,
+        ..release()
+    };
+    assert_eq!(both.heading(), heading(true, true));
     let unmilestoned = Release {
         milestone: None,
-        ..release()
+        ..both
     };
-    assert_eq!(unmilestoned.headed(), None);
+    assert_eq!(unmilestoned.heading(), None);
 }
 
 fn base(repository: &str, read: BaseRead) -> Based {
