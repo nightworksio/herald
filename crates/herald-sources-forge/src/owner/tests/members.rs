@@ -237,6 +237,15 @@ fn a_member_file_the_forge_does_not_serve_or_that_cannot_be_read_fails_the_listi
         listed(&filed(Forge::GitHub, None), &silent, None),
         Err(Unlisted::Failed(Unpolled::Unreachable(_)))
     ));
+    let limited = ScriptedHttp::new(vec![Response {
+        status: 429,
+        headers: Vec::new(),
+        body: Vec::new(),
+    }]);
+    assert!(matches!(
+        listed(&filed(Forge::GitHub, None), &limited, None),
+        Err(Unlisted::Failed(Unpolled::RateLimited(_)))
+    ));
 }
 
 fn cli() -> Listed {

@@ -162,6 +162,11 @@ fn a_poll_reads_each_changed_listing_and_keeps_the_validators_of_each() {
         asking_polled(Forge::Forgejo, &RunChoice::default(), (&unreadable, None)),
         Err(Unpolled::Unreadable(_))
     ));
+    let limited = ScriptedHttp::new(vec![answer(429, &json!({}), None)]);
+    assert!(matches!(
+        asking_polled(Forge::GitLab, &RunChoice::default(), (&limited, None)),
+        Err(Unpolled::RateLimited(_))
+    ));
     let unreachable = ScriptedHttp::new(Vec::new());
     assert!(matches!(
         asking_polled(Forge::GitHub, &RunChoice::default(), (&unreachable, None)),

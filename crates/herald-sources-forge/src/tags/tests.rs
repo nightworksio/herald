@@ -266,3 +266,27 @@ fn a_github_tag_is_read_through_its_reference_whatever_its_answer() {
         Ok(Listed::Referenced("v1".to_owned()))
     );
 }
+
+#[test]
+fn every_tag_read_answered_with_a_rate_limit_says_it_is_one() {
+    let limited = answer(429, &json!({}));
+    let said = |error: SourceError| match error {
+        SourceError::RateLimited { reason } => reason,
+        other => panic!("{other:?}"),
+    };
+    for forge in Forge::ALL {
+        let reason = said(forge.tags(&limited, 1 << 20).unwrap_err());
+        assert!(reason.contains(forge.api().tags), "{reason}");
+        for reason in [
+            said(forge.pointed(&limited).unwrap_err()),
+            said(forge.tag_object(&limited, None).unwrap_err()),
+            said(forge.committed(&limited, "v1").unwrap_err()),
+        ] {
+            assert!(reason.contains(forge.api().tag), "{reason}");
+        }
+    }
+    for forge in [Forge::GitLab, Forge::Forgejo] {
+        let reason = said(forge.tag("v1", &limited).unwrap_err());
+        assert!(reason.contains(forge.api().tag), "{reason}");
+    }
+}

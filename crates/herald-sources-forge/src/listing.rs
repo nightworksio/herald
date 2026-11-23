@@ -4,9 +4,9 @@
 use herald_core::{Cursor, Validators};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Response};
-use herald_wire::answered;
 
 use crate::forge::validators;
+use crate::limited::checked;
 use crate::{Forge, Origin, Token};
 
 /// What something is read as on each forge.
@@ -31,6 +31,7 @@ impl Named {
 /// A poll's listing: the validators it was asked under, and its answer.
 #[derive(Debug)]
 pub(crate) struct Asked {
+    forge: Forge,
     kept: Option<Validators>,
     answer: Response,
 }
@@ -50,7 +51,11 @@ impl Asked {
             kept.as_ref().and_then(|kept| kept.last_modified.as_deref()),
         );
         let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
-        Ok(Self { kept, answer })
+        Ok(Self {
+            forge: origin.forge(),
+            kept,
+            answer,
+        })
     }
 
     /// Whether the listing changed since it was last read.
@@ -64,7 +69,7 @@ impl Asked {
         if !self.changed() {
             return Ok((self.kept.clone().unwrap_or_default(), None));
         }
-        answered(what, &self.answer).map_err(Unpolled::unreadable)?;
+        checked(self.forge, what, &self.answer)?;
         Ok((validators(&self.answer), Some(&self.answer.body)))
     }
 }

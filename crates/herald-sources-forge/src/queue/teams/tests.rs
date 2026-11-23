@@ -198,7 +198,7 @@ fn a_forge_s_rate_limit_stops_the_read_on_each_forge_never_read_as_a_refusal() {
         assert_eq!(
             read(&http, &origin, "o"),
             Err(Unpolled::RateLimited(format!(
-                "the forge's {what} was refused for its rate limit; it did not say when the limit resets"
+                "{what} could not be read: the forge's rate limit was reached; it did not say when the limit resets"
             ))),
             "{forge:?}"
         );

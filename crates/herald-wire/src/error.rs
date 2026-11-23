@@ -33,6 +33,12 @@ pub enum SourceError {
         /// The status.
         status: u16,
     },
+    /// The source answered that the rate limit on its credential or address
+    /// was reached, as the reason says, with when it resets where it said.
+    RateLimited {
+        /// What it said, in plain words.
+        reason: String,
+    },
 }
 
 impl fmt::Display for SourceError {
@@ -47,6 +53,7 @@ impl fmt::Display for SourceError {
                 Some(remedy) => write!(f, "{what} was answered with {status}; {remedy}"),
                 None => write!(f, "{what} was answered with {status}"),
             },
+            Self::RateLimited { reason } => f.write_str(reason),
         }
     }
 }

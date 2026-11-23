@@ -598,6 +598,11 @@ fn a_listing_that_fails_or_names_a_next_page_after_an_empty_one_stops() {
         listed(&source, &partway, None),
         Err(Unlisted::Failed(Unpolled::Unreadable(_)))
     ));
+    let limited = ScriptedHttp::new(vec![answer(429, &json!({}), "", false)]);
+    assert!(matches!(
+        listed(&source, &limited, None),
+        Err(Unlisted::Failed(Unpolled::RateLimited(_)))
+    ));
 }
 
 #[test]

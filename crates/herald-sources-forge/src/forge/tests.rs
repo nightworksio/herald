@@ -76,3 +76,44 @@ fn each_forge_takes_a_repository_in_its_shape_and_an_api_at_a_web_address() {
         );
     }
 }
+
+#[test]
+fn a_repository_or_release_read_answered_with_a_rate_limit_says_it_is_one() {
+    let limited = Response {
+        status: 403,
+        headers: vec![("Retry-After".to_owned(), "30".to_owned())],
+        body: Vec::new(),
+    };
+    let repository = Repository {
+        id: 1,
+        name: "herald".to_owned(),
+        page: None,
+    };
+    let rule = PrereleaseRule::default();
+    for forge in Forge::ALL {
+        let api = forge.api();
+        for (what, error) in [
+            (api.repository, forge.repository(&limited).unwrap_err()),
+            (
+                api.release,
+                forge.release(&repository, &limited, rule).unwrap_err(),
+            ),
+            (
+                api.releases,
+                forge
+                    .releases(&repository, &limited, (1 << 20, rule))
+                    .unwrap_err(),
+            ),
+        ] {
+            assert_eq!(
+                error,
+                SourceError::RateLimited {
+                    reason: format!(
+                        "{what} could not be read: the forge's rate limit was reached; the limit resets in 30s"
+                    )
+                },
+                "{forge:?}"
+            );
+        }
+    }
+}

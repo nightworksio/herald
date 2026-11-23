@@ -409,6 +409,12 @@ fn a_release_named_by_its_tag_is_announced_in_place_of_the_run_s_event() {
         herald(&evented, &missing, &released).err,
         "GitHub's release was answered with 404; check the names and ids the config gives\n"
     );
+    let limited = World::default();
+    with_release(&limited, 429, false);
+    assert_eq!(
+        herald(&evented, &limited, &released).err,
+        "GitHub's release could not be read: the forge's rate limit was reached; it did not say when the limit resets\n"
+    );
     let tokened = setup(&CONFIG.replace(
         "repository = \"cli/cli\"",
         "repository = \"cli/cli\"\ntoken = { secret = \"CLI_TOKEN\" }",

@@ -14,7 +14,7 @@ use herald_core::{
 };
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
-use herald_wire::{SourceError, answered};
+use herald_wire::SourceError;
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -203,14 +203,15 @@ struct Linked {
     id: u64,
 }
 
-/// `response` read as JSON, within `limit` bytes.
+/// `response` from `origin` read as JSON as `what`, within the bytes it
+/// parses.
 fn read<T: serde::de::DeserializeOwned>(
+    origin: &Origin,
     what: &'static str,
-    limit: usize,
     response: &Response,
 ) -> Result<T, Unpolled> {
-    answered(what, response).map_err(Unpolled::unreadable)?;
-    herald_wire::read(what, limit, &response.body).map_err(Unpolled::unreadable)
+    crate::limited::checked(origin.forge(), what, response)?;
+    herald_wire::read(what, origin.reading().parse, &response.body).map_err(Unpolled::unreadable)
 }
 
 /// The identity of the image `image` of `owner`, tagged `tag`, on

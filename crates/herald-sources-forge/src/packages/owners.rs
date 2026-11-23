@@ -189,7 +189,7 @@ impl Asking<'_> {
                 let answer = self
                     .ask(http, self.origin.rooted(&path, self.token))
                     .await?;
-                let page: Vec<GitHubPackage> = read(what, self.origin.reading().parse, &answer)?;
+                let page: Vec<GitHubPackage> = read(self.origin, what, &answer)?;
                 listed += page.len();
                 if listed > self.packaging.most.get() {
                     return Err(self.over(what));
@@ -244,7 +244,7 @@ impl Asking<'_> {
             let answer = self
                 .ask(http, self.origin.rooted(&path, self.token))
                 .await?;
-            let page: Vec<ForgejoPackage> = read(what, self.origin.reading().parse, &answer)?;
+            let page: Vec<ForgejoPackage> = read(self.origin, what, &answer)?;
             listed += page.len();
             if listed > self.packaging.most.get() {
                 return Err(self.over(what));
@@ -395,7 +395,7 @@ impl Asking<'_> {
                 found.validators.insert(key, held.clone());
                 continue;
             }
-            let listed: Vec<GitHubVersion> = read(what, self.origin.reading().parse, &answer)?;
+            let listed: Vec<GitHubVersion> = read(self.origin, what, &answer)?;
             found.validators.insert(key, validators(&answer));
             versions.extend(listed.into_iter().flat_map(|version| {
                 self.github_found((kind, name, host, &owned.login), (version, visibility))

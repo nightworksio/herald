@@ -290,7 +290,7 @@ fn form(fields: &[(&str, &str)]) -> String {
 /// The answer to `request`, sent through `http`, read as `what` where it
 /// succeeded.
 async fn succeeded<T: DeserializeOwned>(
-    http: &dyn DynHttp,
+    (forge, http): (Forge, &dyn DynHttp),
     request: Request,
     (what, parse): (&'static str, usize),
 ) -> Result<T, Unpolled> {
@@ -298,7 +298,7 @@ async fn succeeded<T: DeserializeOwned>(
         .send(request)
         .await
         .map_err(Unpolled::unreachable)?;
-    herald_wire::answered(what, &answer).map_err(Unpolled::unreadable)?;
+    crate::limited::checked(forge, what, &answer)?;
     herald_wire::read(what, parse, &answer.body).map_err(Unpolled::unreadable)
 }
 
@@ -352,7 +352,7 @@ impl ForgeRerunner {
         what: &'static str,
     ) -> Result<T, Unpolled> {
         let request = self.request(Method::Get, url, self.read.as_ref());
-        succeeded(api, request, (what, self.parse)).await
+        succeeded((self.forge, api), request, (what, self.parse)).await
     }
 
     /// How many times the jobs named `name` of the GitLab pipeline at
@@ -407,11 +407,15 @@ impl ForgeRerunner {
         token: &OperatorToken,
         (url, what): (String, &'static str),
     ) -> Result<T, Unpolled> {
-        succeeded(api, self.operators(url, token), (what, self.parse))
-            .await
-            .map_err(|unpolled| {
-                Unpolled::Unreadable(format!("{UNINSTALLED}: {}", unpolled.into_reason()))
-            })
+        succeeded(
+            (self.forge, api),
+            self.operators(url, token),
+            (what, self.parse),
+        )
+        .await
+        .map_err(|unpolled| {
+            Unpolled::Unreadable(format!("{UNINSTALLED}: {}", unpolled.into_reason()))
+        })
     }
 
     /// Every installation a GitHub App's user `token` reaches, asked
@@ -553,11 +557,11 @@ impl ForgeRerunner {
             .send(self.operators(format!("{}/user", self.api), token))
             .await
             .map_err(Unpolled::unreachable)?;
-        herald_wire::answered("the signed-in operator", &user).map_err(Unpolled::unreadable)?;
+        crate::limited::checked(self.forge, "the signed-in operator", &user)?;
         let held: Vec<String> = if self.forge == Forge::GitLab {
             let url = format!("{}{GITLAB_TOKEN_INFO}", self.sign_in()?.web);
             let info: TokenInfo = succeeded(
-                web,
+                (self.forge, web),
                 self.operators(url, token),
                 ("the scopes of the operator's token", self.parse),
             )
@@ -634,7 +638,7 @@ impl Rerunner for ForgeRerunner {
             let body = form(&[("client_id", &sign_in.client_id), ("scope", &scope)]);
             let request = Self::posted(sign_in, self.endpoints().0, body, false);
             let answer: DeviceAnswer =
-                succeeded(web, request, ("a device code", self.parse)).await?;
+                succeeded((self.forge, web), request, ("a device code", self.parse)).await?;
             if !on_web(&answer.verification_uri, &sign_in.web) {
                 return Err(Unpolled::Unreadable(ELSEWHERE.to_owned()));
             }
@@ -717,8 +721,7 @@ impl Rerunner for ForgeRerunner {
                 .send(request)
                 .await
                 .map_err(Unpolled::unreachable)?;
-            herald_wire::answered("the operator's token revoked", &answer)
-                .map_err(Unpolled::unreadable)?;
+            crate::limited::checked(self.forge, "the operator's token revoked", &answer)?;
             Ok(true)
         })
     }
@@ -734,7 +737,7 @@ impl Rerunner for ForgeRerunner {
             let request = self.operators(self.base(repository)?, token);
             let what = ("the operator's role on the repository", self.parse);
             if self.forge == Forge::GitLab {
-                let project: GitlabProject = succeeded(api, request, what).await?;
+                let project: GitlabProject = succeeded((self.forge, api), request, what).await?;
                 let held = [
                     project.permissions.project_access,
                     project.permissions.group_access,
@@ -753,7 +756,7 @@ impl Rerunner for ForgeRerunner {
                     Granted::Short(format!("access level {held}"))
                 });
             }
-            let repository: GithubRepository = succeeded(api, request, what).await?;
+            let repository: GithubRepository = succeeded((self.forge, api), request, what).await?;
             let held = repository.permissions.unwrap_or_default();
             let named = if held.admin {
                 herald_core::Permission::Admin
@@ -783,7 +786,7 @@ impl Rerunner for ForgeRerunner {
             Ok(if self.forge == Forge::GitLab {
                 let url = format!("{base}/merge_requests/{number}");
                 let merge: GitlabMerge = succeeded(
-                    api,
+                    (self.forge, api),
                     self.request(Method::Get, url, self.read.as_ref()),
                     what,
                 )
@@ -792,7 +795,7 @@ impl Rerunner for ForgeRerunner {
             } else {
                 let url = format!("{base}/pulls/{number}");
                 let pull: GithubPull = succeeded(
-                    api,
+                    (self.forge, api),
                     self.request(Method::Get, url, self.read.as_ref()),
                     what,
                 )

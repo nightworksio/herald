@@ -16,7 +16,7 @@ use herald_kinds::{
     Unpolled,
 };
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Method, Request, Response, SecretText};
-use herald_wire::{PARSE_LIMIT, Reading, SourceError, answered};
+use herald_wire::{PARSE_LIMIT, Reading, SourceError};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
 
@@ -376,7 +376,8 @@ impl Images {
                 owner = Owner::User;
                 continue;
             }
-            answered(Forge::GitHub.api().packages, &answer).map_err(failed)?;
+            crate::limited::answered(Forge::GitHub, Forge::GitHub.api().packages, &answer)
+                .map_err(failed)?;
             let images: Vec<Image> = herald_wire::read(
                 Forge::GitHub.api().packages,
                 self.options.reading().parse,
@@ -412,7 +413,7 @@ impl Images {
 }
 
 fn failed(error: SourceError) -> Unlisted {
-    Unlisted::Failed(Unpolled::unreadable(error))
+    Unlisted::Failed(crate::limited::unread(error))
 }
 
 impl Expand for Images {
@@ -567,7 +568,7 @@ impl ImageVersions {
     }
 
     fn events(&self, answer: &Response) -> Result<Polled, SourceError> {
-        answered(Forge::GitHub.api().versions, answer)?;
+        crate::limited::answered(Forge::GitHub, Forge::GitHub.api().versions, answer)?;
         let versions: Vec<Version> = herald_wire::read(
             Forge::GitHub.api().versions,
             self.reading.parse,
@@ -672,7 +673,9 @@ impl Poll for ImageVersions {
             if Forge::unchanged(&answer) {
                 return Ok(None);
             }
-            self.events(&answer).map(Some).map_err(Unpolled::unreadable)
+            self.events(&answer)
+                .map(Some)
+                .map_err(crate::limited::unread)
         })
     }
 }

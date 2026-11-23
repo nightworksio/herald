@@ -333,6 +333,13 @@ fn a_poll_announces_only_the_alerts_its_choice_takes_and_says_why_it_cannot_read
         }
         other => panic!("{other:?}"),
     }
+    let limited = ScriptedHttp::new(vec![answer(429, &json!({}), None)]);
+    match polled((&origin, &choice), &limited, None) {
+        Err(Unpolled::RateLimited(reason)) => {
+            assert!(reason.contains("GitHub's Dependabot alerts"), "{reason}");
+        }
+        other => panic!("{other:?}"),
+    }
     let unlinked = ScriptedHttp::new(vec![answer(
         200,
         &json!([{ "number": 1, "state": "open", "html_url": "nowhere", "created_at": "2026-11-18T08:00:00Z" }]),

@@ -26,12 +26,14 @@ fn said(forge: Forge, answer: &Response) -> Option<String> {
 }
 
 fn resetting(wait: &str) -> String {
-    format!("the forge's {WHAT} was refused for its rate limit; the limit resets in {wait}")
+    format!(
+        "{WHAT} could not be read: the forge's rate limit was reached; the limit resets in {wait}"
+    )
 }
 
 fn unsaid() -> String {
     format!(
-        "the forge's {WHAT} was refused for its rate limit; it did not say when the limit resets"
+        "{WHAT} could not be read: the forge's rate limit was reached; it did not say when the limit resets"
     )
 }
 
@@ -160,5 +162,67 @@ fn a_checked_answer_is_one_a_limit_or_one_herald_cannot_read() {
         Err(Unpolled::Unreadable(format!(
             "{WHAT} was answered with 500"
         )))
+    );
+}
+
+#[test]
+fn an_answered_read_says_a_limit_as_one_and_a_poll_stops_on_it_as_one() {
+    assert_eq!(
+        answered(Forge::GitHub, WHAT, &answer(200, &[], "[]")),
+        Ok(())
+    );
+    let limit = answered(Forge::Forgejo, WHAT, &answer(429, &[], ""));
+    assert_eq!(limit, Err(SourceError::RateLimited { reason: unsaid() }));
+    assert_eq!(unread(limit.unwrap_err()), Unpolled::RateLimited(unsaid()));
+    let refused = answered(Forge::GitHub, WHAT, &answer(404, &[], "")).unwrap_err();
+    assert_eq!(
+        refused,
+        SourceError::Answered {
+            what: WHAT,
+            status: 404
+        }
+    );
+    assert_eq!(
+        unread(refused.clone()),
+        Unpolled::Unreadable(refused.to_string())
+    );
+}
+
+#[test]
+fn a_github_graphql_200_carrying_errors_with_no_request_left_or_a_wait_is_a_rate_limit() {
+    const ERRED: &str = r#"{"errors":[{"message":"API rate limit exceeded"}]}"#;
+    const DATA: &str = r#"{"data":{"viewer":{"login":"herald"}}}"#;
+    let spent = [
+        DATE,
+        ("X-RateLimit-Remaining", "0"),
+        ("X-RateLimit-Reset", RESET_AT),
+    ];
+    assert_eq!(
+        said(Forge::GitHub, &answer(200, &spent, ERRED)),
+        Some(resetting("5m"))
+    );
+    let waiting = [DATE, ("Retry-After", "60")];
+    assert_eq!(
+        said(Forge::GitHub, &answer(200, &waiting, ERRED)),
+        Some(resetting("1m"))
+    );
+    for (headers, body) in [
+        (&spent[..], DATA),
+        (&spent[..], r#"{"errors":[],"data":{}}"#),
+        (&spent[..], "[]"),
+        (&[DATE, ("X-RateLimit-Remaining", "12")][..], ERRED),
+    ] {
+        assert_eq!(
+            said(Forge::GitHub, &answer(200, headers, body)),
+            None,
+            "{body}"
+        );
+    }
+    assert_eq!(
+        said(
+            Forge::GitLab,
+            &answer(200, &[("RateLimit-Remaining", "0")], ERRED)
+        ),
+        None
     );
 }
