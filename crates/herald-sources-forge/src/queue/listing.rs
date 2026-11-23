@@ -113,7 +113,7 @@ impl Listed {
                 .collect(),
             checks: Checks::Absent,
             mergeable,
-            queued: false,
+            queue: None,
             forge: None,
             head: self.head.map(|head| head.sha),
             unread: false,

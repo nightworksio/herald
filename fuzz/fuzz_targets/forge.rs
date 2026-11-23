@@ -397,6 +397,7 @@ fn folded(bytes: &[u8]) {
         ("X-GitHub-Event", "issue_comment"),
         ("X-GitHub-Event", "check_run"),
         ("X-GitHub-Event", "status"),
+        ("X-GitHub-Event", "merge_group"),
         ("X-Gitlab-Event", "Merge Request Hook"),
         ("X-Gitlab-Event", "Pipeline Hook"),
         ("X-Gitlab-Event", "Note Hook"),
@@ -584,6 +585,7 @@ fn scoped(http: &Answering, most: herald_kinds::Most) {
                 }),
                 stated: false,
                 files: true,
+                queue: true,
             };
             let Ok(pulls) = pollster::block_on(queue.opened(http, asked)) else {
                 continue;

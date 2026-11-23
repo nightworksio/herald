@@ -86,6 +86,7 @@ pub(crate) async fn read<S: Store, C: Clock, G: Signer, H: Http>(
             }),
             stated: view.stated,
             files: false,
+            queue: false,
         };
         let http = &Budgeted::new(http, budget, ports.clock);
         match queue

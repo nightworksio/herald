@@ -15,8 +15,9 @@ use super::{Loader, Value};
 use crate::file::TemplateFile;
 use crate::samples::{sample_boards, samples_from};
 use crate::views::{
-    BUILT_IN_VIEW, NUDGE_BODY, NUDGE_TEMPLATE, NUDGE_TITLE, QUEUE_BODY, QUEUE_TEMPLATE,
-    QUEUE_TITLE, RECALL_TEMPLATE, RECALL_TEXT, RERUN_BODY, RERUN_TEMPLATE, RERUN_TITLE,
+    BUILT_IN_VIEW, DEQUEUED_BODY, DEQUEUED_TEMPLATE, DEQUEUED_TITLE, NUDGE_BODY, NUDGE_TEMPLATE,
+    NUDGE_TITLE, QUEUE_BODY, QUEUE_TEMPLATE, QUEUE_TITLE, RECALL_TEMPLATE, RECALL_TEXT, RERUN_BODY,
+    RERUN_TEMPLATE, RERUN_TITLE,
 };
 
 /// A template's sources, with where each is written.
@@ -88,6 +89,7 @@ impl Loader<'_> {
             (QUEUE_TEMPLATE, QUEUE_TITLE, QUEUE_BODY),
             (NUDGE_TEMPLATE, NUDGE_TITLE, NUDGE_BODY),
             (RERUN_TEMPLATE, RERUN_TITLE, RERUN_BODY),
+            (DEQUEUED_TEMPLATE, DEQUEUED_TITLE, DEQUEUED_BODY),
             (RECALL_TEMPLATE, RECALL_TEXT, RECALL_TEXT),
         ];
         for (name, title, body) in shipped {

@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use herald_core::{Changed, Checks, Mergeable, Pull, Review, Turn, Visibility};
+use herald_core::{Changed, Checks, Mergeable, Pull, QueueEntry, Review, Turn, Visibility};
 use herald_ports::Request;
 use herald_wire::SourceError;
 use jiff::Timestamp;
@@ -22,40 +22,46 @@ const MOST_NAMED: usize = 50;
 /// view predicts conflicts (ADR-0063).
 pub(super) const MOST_FILES: usize = 100;
 
-/// How a request reads its answer: at most `parse` bytes, and each pull
-/// request's changed paths too where `files` says (ADR-0063).
+/// What the query reads of each pull request's merge queue entry, where
+/// a view reads the queue (ADR-0078).
+const ENTRY: &str = " mergeQueueEntry { position state enqueuedAt estimatedTimeToMerge }";
+
+/// How a request reads its answer: at most `parse` bytes, each pull
+/// request's changed paths too where `files` says (ADR-0063), and its
+/// merge queue entry where `queue` says (ADR-0078).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Ask {
     pub(super) parse: usize,
     pub(super) files: bool,
+    pub(super) queue: bool,
 }
 
-/// What the query reads of each pull request, its changed paths too where
-/// `files` says.
-fn fields(files: bool) -> String {
-    let changed = if files {
+/// What the query reads of each pull request, as `ask` says.
+fn fields(ask: Ask) -> String {
+    let changed = if ask.files {
         format!(" files(first: {MOST_FILES}) {{ totalCount nodes {{ path }} }}")
     } else {
         String::new()
     };
+    let entry = if ask.queue { ENTRY } else { "" };
     format!(
-        "number title url isDraft createdAt updatedAt baseRefName{changed} author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
+        "number title url isDraft createdAt updatedAt baseRefName{changed} author {{ __typename login }} labels(first: {MOST_NAMED}) {{ nodes {{ name }} }} reviewDecision reviewRequests(first: {MOST_NAMED}) {{ totalCount nodes {{ requestedReviewer {{ ... on User {{ login }} ... on Bot {{ login }} ... on Mannequin {{ login }} ... on Team {{ combinedSlug }} }} }} }} mergeable mergeStateStatus isInMergeQueue{entry} headRefOid commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state contexts(first: {MOST_NAMED}) {{ nodes {{ __typename ... on CheckRun {{ name conclusion }} ... on StatusContext {{ context state }} }} }} }} }} }} }}"
     )
 }
 
 /// The query for one page of a repository's open pull requests, the most
 /// recently updated first.
-fn query(files: bool) -> String {
+fn query(ask: Ask) -> String {
     format!(
         "query($owner: String!, $name: String!, $after: String) {{ repository(owner: $owner, name: $name) {{ visibility pullRequests(states: OPEN, first: {PAGE}, after: $after, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ pageInfo {{ hasNextPage endCursor }} nodes {{ {} }} }} }} }}",
-        fields(files)
+        fields(ask)
     )
 }
 
 /// The query reading each of a repository's pull requests `numbers` in
 /// full, under an alias holding its place.
-fn numbered_query(numbers: &[u64], files: bool) -> String {
-    let fields = fields(files);
+fn numbered_query(numbers: &[u64], ask: Ask) -> String {
+    let fields = fields(ask);
     let mut pulls = String::new();
     for (place, number) in numbers.iter().enumerate() {
         let _ = write!(
@@ -71,8 +77,8 @@ fn numbered_query(numbers: &[u64], files: bool) -> String {
 /// The query reading in full each of the pull requests of each repository
 /// of `groups`, a repository under the alias `r<place>` and each of its
 /// pull requests under `p<place>` (ADR-0062).
-fn scoped_query(groups: &[(&str, Vec<u64>)], files: bool) -> String {
-    let fields = fields(files);
+fn scoped_query(groups: &[(&str, Vec<u64>)], ask: Ask) -> String {
+    let fields = fields(ask);
     let mut declared = Vec::new();
     let mut repositories = String::new();
     for (place, (_, numbers)) in groups.iter().enumerate() {
@@ -102,7 +108,7 @@ pub(super) fn scoped_request(endpoint: &str, groups: &[(&str, Vec<u64>)], ask: A
         variables.insert(format!("o{place}"), json!(owner));
         variables.insert(format!("n{place}"), json!(name));
     }
-    let body = json!({ "query": scoped_query(groups, ask.files), "variables": variables });
+    let body = json!({ "query": scoped_query(groups, ask), "variables": variables });
     posted(endpoint, &body, ask.parse)
 }
 
@@ -111,7 +117,7 @@ pub(super) fn scoped_request(endpoint: &str, groups: &[(&str, Vec<u64>)], ask: A
 pub(super) fn request(endpoint: &str, path: &str, after: Option<&str>, ask: Ask) -> Request {
     let (owner, name) = path.split_once('/').unwrap_or((path, ""));
     let body = json!({
-        "query": query(ask.files),
+        "query": query(ask),
         "variables": { "owner": owner, "name": name, "after": after },
     });
     posted(endpoint, &body, ask.parse)
@@ -123,7 +129,7 @@ pub(super) fn request(endpoint: &str, path: &str, after: Option<&str>, ask: Ask)
 pub(super) fn numbered_request(endpoint: &str, path: &str, numbers: &[u64], ask: Ask) -> Request {
     let (owner, name) = path.split_once('/').unwrap_or((path, ""));
     let body = json!({
-        "query": numbered_query(numbers, ask.files),
+        "query": numbered_query(numbers, ask),
         "variables": { "owner": owner, "name": name },
     });
     posted(endpoint, &body, ask.parse)
@@ -273,10 +279,33 @@ struct Node {
     merge_state_status: Option<String>,
     #[serde(default)]
     is_in_merge_queue: bool,
+    merge_queue_entry: Option<Entry>,
     head_ref_oid: Option<String>,
     commits: Option<Connection<Commit>>,
     base_ref_name: Option<String>,
     files: Option<Files>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Entry {
+    position: u64,
+    state: String,
+    enqueued_at: Timestamp,
+    estimated_time_to_merge: Option<u64>,
+}
+
+impl Entry {
+    /// The entry as herald names it.
+    fn read(self) -> QueueEntry {
+        QueueEntry {
+            position: Some(self.position),
+            state: super::merging::state(&self.state),
+            since: Some(self.enqueued_at),
+            estimate: self.estimated_time_to_merge,
+            left: None,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -399,7 +428,10 @@ impl Node {
             reviewers,
             checks: checks(rollup),
             mergeable,
-            queued: self.is_in_merge_queue,
+            queue: self
+                .merge_queue_entry
+                .map(Entry::read)
+                .or_else(|| self.is_in_merge_queue.then_some(QueueEntry::entered(None))),
             forge,
             head: self.head_ref_oid,
             unread: false,

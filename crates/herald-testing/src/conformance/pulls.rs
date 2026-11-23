@@ -34,7 +34,7 @@ pub(super) fn kept(id: &str, number: u64, title: &str) -> KeptPull {
         reviewers: Vec::new(),
         checks: Checks::Absent,
         mergeable: Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some("abc123".to_owned()),
         unread: false,

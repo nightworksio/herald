@@ -83,7 +83,7 @@ pub fn sample_boards() -> [Board; 2] {
         reviewers: vec!["sample-reviewer".to_owned()],
         checks: Checks::Passed,
         mergeable: Mergeable::Clean,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some("0123456789abcdef".to_owned()),
         unread: false,

@@ -3,6 +3,8 @@
 //! repository the owner's selection takes, named and seen as its
 //! membership record says (ADR-0062).
 
+use std::collections::BTreeSet;
+
 use herald_core::{Listed, Owner, Pull, Validators};
 use herald_kinds::{Asked, Expand as _, Most, Relisted, Scope, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
@@ -204,6 +206,7 @@ impl Scoped {
             most_pulls: most.pulls,
             stated: false,
             files,
+            queue: false,
         }
     }
 
@@ -292,7 +295,9 @@ impl Scoped {
     /// repositories; else each one's reviews and checks, and first itself
     /// where its listing named no head, at most `most.pulls` of them and
     /// the rest read as unknown; each one's changed paths too where `files`
-    /// says, on GitLab at most `most.pulls` of them.
+    /// says, on GitLab at most `most.pulls` of them; each one's merge queue
+    /// entry too where `queue` says, through GraphQL with it or on GitLab
+    /// by one request a project (ADR-0078).
     ///
     /// # Errors
     ///
@@ -300,12 +305,12 @@ impl Scoped {
     async fn read_in_full(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
-        (most, files): (Most, bool),
+        (most, files, queue): (Most, bool, bool),
         pulls: Vec<Pull>,
     ) -> Result<Vec<Pull>, Unpolled> {
         let path = ReadPath::of(self.forge(), self.token.is_some());
         if path == ReadPath::Graphql {
-            return self.batched(http, pulls, files).await;
+            return self.batched(http, pulls, (files, queue)).await;
         }
         let mut read = Vec::with_capacity(pulls.len());
         for (place, mut pull) in pulls.into_iter().enumerate() {
@@ -315,6 +320,15 @@ impl Scoped {
                 pull.unread = true;
             }
             read.push(pull);
+        }
+        if queue && path == ReadPath::Listing {
+            let repositories: BTreeSet<String> =
+                read.iter().map(|pull| pull.repository.clone()).collect();
+            for repository in repositories {
+                let origin = self.origin(&repository);
+                let held = read.iter_mut().filter(|pull| pull.repository == repository);
+                super::trains::trained(http, (&origin, self.token.as_ref()), held).await?;
+            }
         }
         Ok(read)
     }
@@ -352,11 +366,15 @@ impl Scoped {
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         mut pulls: Vec<Pull>,
-        files: bool,
+        (files, queue): (bool, bool),
     ) -> Result<Vec<Pull>, Unpolled> {
         pulls.sort_by(|one, other| one.repository.cmp(&other.repository));
         let parse = self.root.reading().parse;
-        let ask = github::Ask { parse, files };
+        let ask = github::Ask {
+            parse,
+            files,
+            queue,
+        };
         let mut read = Vec::with_capacity(pulls.len());
         for chunk in pulls.chunks(PAGE) {
             let mut groups: Vec<(&str, Vec<u64>)> = Vec::new();
@@ -461,8 +479,12 @@ impl herald_kinds::Queue for Scoped {
             };
             let http = Erased(http);
             let listed = self.relisted(&http, (asked.most, scope), &[]).await?;
-            self.read_in_full(&http, (asked.most, asked.files), listed.pulls())
-                .await
+            self.read_in_full(
+                &http,
+                (asked.most, asked.files, asked.queue),
+                listed.pulls(),
+            )
+            .await
         })
     }
 
@@ -490,7 +512,7 @@ impl herald_kinds::Queue for Scoped {
         pulls: Vec<Pull>,
     ) -> herald_ports::Boxed<'a, Result<Vec<Pull>, Unpolled>> {
         Box::pin(async move {
-            self.read_in_full(&Erased(http), (asked.most, asked.files), pulls)
+            self.read_in_full(&Erased(http), (asked.most, asked.files, asked.queue), pulls)
                 .await
         })
     }
@@ -581,6 +603,7 @@ pub(crate) fn scope_cost(forge: Forge, tokened: bool, most: Most) -> herald_kind
                 pulls: most.pulls,
             },
         ),
+        queue: super::queue_read(forge, tokened, open),
     }
 }
 

@@ -128,7 +128,7 @@ impl Request {
                 .collect(),
             checks,
             mergeable,
-            queued: false,
+            queue: None,
             forge: (!status.is_empty()).then(|| (forge_turn(&status), status)),
             head: self.sha,
             unread: false,

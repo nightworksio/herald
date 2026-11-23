@@ -268,7 +268,7 @@ fn pull(repository: &str, visibility: Visibility) -> Pull {
         reviewers: Vec::new(),
         checks: crate::queue::Checks::Absent,
         mergeable: crate::queue::Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: None,
         unread: false,

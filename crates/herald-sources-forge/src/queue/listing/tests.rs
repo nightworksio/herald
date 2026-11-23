@@ -28,7 +28,7 @@ fn a_bare_pull_reads_as_a_private_unasked_one_of_its_repository() {
     assert_eq!((pull.number, pull.title.as_str()), (5, "Fix"));
     assert_eq!(pull.url, "https://codeberg.org/o/r/pulls/5");
     assert_eq!(pull.author, None);
-    assert!(!pull.bot && !pull.draft && !pull.queued);
+    assert!(!pull.bot && !pull.draft && !pull.queued());
     assert_eq!(pull.opened.to_string(), "2026-11-18T10:00:00Z");
     assert_eq!(pull.updated.to_string(), "2026-11-18T11:00:00Z");
     assert_eq!(

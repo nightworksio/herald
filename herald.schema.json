@@ -1858,6 +1858,56 @@
         }
       ]
     },
+    "Dequeued": {
+      "description": "Why a pull request left its forge's queue.",
+      "oneOf": [
+        {
+          "description": "It was merged.",
+          "type": "string",
+          "const": "merged"
+        },
+        {
+          "description": "Someone took it out.",
+          "type": "string",
+          "const": "removed"
+        },
+        {
+          "description": "The whole queue was emptied or rolled back.",
+          "type": "string",
+          "const": "cleared"
+        },
+        {
+          "description": "A required check failed on the queue's merge of it.",
+          "type": "string",
+          "const": "checks-failed"
+        },
+        {
+          "description": "A required check did not finish in time.",
+          "type": "string",
+          "const": "checks-timed-out"
+        },
+        {
+          "description": "It conflicts with what is ahead of it.",
+          "type": "string",
+          "const": "conflict"
+        },
+        {
+          "description": "The forge could not build the merge of it.",
+          "type": "string",
+          "const": "invalid"
+        },
+        {
+          "description": "Its branch protections no longer let it merge.",
+          "type": "string",
+          "const": "protections"
+        },
+        {
+          "description": "The forge named no reason herald knows.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
     "Destination": {
       "description": "A destination, by its kind.",
       "oneOf": [
@@ -4845,6 +4895,10 @@
             "$ref": "#/$defs/Day"
           }
         },
+        "dequeued": {
+          "description": "Whether it alerts on each pull request of its view that left its\nforge's merge queue, once each time one left: `true` for the\nreasons that are a failure of the pull request (\"checks-failed\",\n\"checks-timed-out\", \"conflict\", \"invalid\", \"protections\"), or the\nreasons it names, such as `[\"checks-failed\", \"removed\"]`; none where\nabsent. Why a pull request left is known where its source is read\nkept, from GitHub's `pull_request` `dequeued` webhook (ADR-0078).",
+          "$ref": "#/$defs/RuleDequeued"
+        },
         "every": {
           "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
           "$ref": "#/$defs/Duration"
@@ -4881,6 +4935,22 @@
         }
       },
       "additionalProperties": false
+    },
+    "RuleDequeued": {
+      "description": "What a rule alerts on of the pull requests that left the merge queue.",
+      "anyOf": [
+        {
+          "description": "The reasons that are a failure of the pull request where true, none\nwhere false.",
+          "type": "boolean"
+        },
+        {
+          "description": "The reasons named.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Dequeued"
+          }
+        }
+      ]
     },
     "Rules": {
       "description": "herald's own rules, each on where absent.",
@@ -8587,6 +8657,11 @@
           "items": {
             "$ref": "#/$defs/OverviewName"
           }
+        },
+        "queue": {
+          "description": "Whether it reads each pull request's entry in its forge's merge\nqueue: its position, state, when it entered and the forge's\nestimate, on GitHub with a token in the query that reads it, at no\nrequest of its own; false where absent. Without it a row still says\nwhether a pull request is in the queue where its forge does. A row\nshows the entry, and why it last left where a webhook said, as it\nshows the rest of the pull request (ADR-0078).",
+          "type": "boolean",
+          "default": false
         },
         "reconcile": {
           "description": "How long kept mode waits at least before listing a source's open\npull requests again, each page conditional on its last answer; every\nround where absent.",

@@ -1,6 +1,9 @@
 //! GitHub's and Forgejo's deliveries, which both describe alike.
 
-use herald_core::{Described, Folded, Lifecycle, Mergeable, Outcome, Verdict, Visibility};
+use herald_core::{
+    Described, Folded, Left, Lifecycle, Mergeable, Outcome, QueueEntry, QueueState, Verdict,
+    Visibility,
+};
 use herald_wire::SourceError;
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -9,6 +12,7 @@ use super::{Delivery, Read, Said, concluded, keyed};
 use crate::github::{Account, Label};
 use crate::owner::{flagged, named};
 use crate::queue::TRUSTED;
+use crate::queue::merging::{dequeued, grouped};
 use crate::wire::read;
 
 #[derive(Deserialize)]
@@ -92,11 +96,18 @@ struct CheckRun {
     completed_at: Option<Timestamp>,
 }
 
+#[derive(Deserialize)]
+struct MergeGroup {
+    head_ref: String,
+}
+
 /// One delivery of an event kept mode folds, each part the event does not
 /// carry absent.
 #[derive(Deserialize)]
 struct Delivered {
     action: Option<String>,
+    reason: Option<String>,
+    merge_group: Option<MergeGroup>,
     repository: Repository,
     pull_request: Option<Pull>,
     review: Option<Review>,
@@ -117,12 +128,12 @@ impl Pull {
     }
 
     /// It, as the delivery describes it, shown as `project` of the
-    /// repository at `path` seen by `visibility`, queued where `queued`
-    /// says.
+    /// repository at `path` seen by `visibility`, its merge queue entry as
+    /// `queue` says.
     fn described(
         self,
         (project, path, visibility): (&str, &str, Option<Visibility>),
-        queued: Option<bool>,
+        queue: Option<QueueEntry>,
     ) -> Described {
         let updated = self.updated();
         let lifecycle = match (self.state.as_str(), self.merged || self.merged_at.is_some()) {
@@ -167,7 +178,7 @@ impl Pull {
                     Mergeable::Conflict
                 }
             }),
-            queued,
+            queue,
             forge: None,
             opened: self.created_at,
             updated,
@@ -208,12 +219,16 @@ pub(super) fn folded(
     let named = (project, path.as_str(), visibility);
     let folded = match (delivery, delivered.pull_request) {
         (Delivery::Pull, Some(pull)) => {
-            let queued = match delivered.action.as_deref() {
-                Some("enqueued") => Some(true),
-                Some("dequeued") => Some(false),
+            let at = pull.updated();
+            let queue = match delivered.action.as_deref() {
+                Some("enqueued") => Some(QueueEntry::entered(Some(at))),
+                Some("dequeued") => {
+                    let reason = dequeued(delivered.reason.as_deref().unwrap_or_default());
+                    Some(QueueEntry::leaving(None, Left { at, reason }))
+                }
                 _ => None,
             };
-            vec![Folded::Pull(Box::new(pull.described(named, queued)))]
+            vec![Folded::Pull(Box::new(pull.described(named, queue)))]
         }
         (Delivery::Review(approved), Some(pull)) => {
             let acted = (pull.number, pull.updated());
@@ -265,6 +280,22 @@ pub(super) fn folded(
             }
         }
         (Delivery::Repository, _) => visibility.map(Folded::Visibility).into_iter().collect(),
+        (Delivery::MergeGroup, _) => {
+            let state = match delivered.action.as_deref() {
+                Some("checks_requested") => Some(QueueState::Checking),
+                Some("destroyed") if delivered.reason.as_deref() != Some("merged") => {
+                    Some(QueueState::Queued)
+                }
+                _ => None,
+            };
+            delivered
+                .merge_group
+                .and_then(|group| grouped(&group.head_ref))
+                .zip(state)
+                .map(|(number, state)| Folded::Queue { number, state })
+                .into_iter()
+                .collect()
+        }
         (Delivery::Pull | Delivery::Review(_) | Delivery::Remark, None) => Vec::new(),
     };
     Ok((path, key, folded))

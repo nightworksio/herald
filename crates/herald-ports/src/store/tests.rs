@@ -565,7 +565,7 @@ pub(crate) fn kept_pull() -> herald_core::KeptPull {
         reviewers: Vec::new(),
         checks: herald_core::Checks::Absent,
         mergeable: herald_core::Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: None,
         unread: false,

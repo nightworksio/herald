@@ -4,7 +4,8 @@
 
 use herald_config::{Config, NUDGE_TEMPLATE, QUEUE_TEMPLATE, load};
 use herald_core::{
-    Kind, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, Pinning, SourceName, Stages, TemplateName,
+    Dequeued, Kind, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, Pinning, SourceName, Stages,
+    TemplateName,
 };
 use jiff::SignedDuration;
 use jiff::civil::Time;
@@ -377,7 +378,45 @@ flaky = { rerun = true, runs = 101 }
     for wanted in [
         "rules.apply.flaky.mode: a rule only plans a re-run, so mode is \"plan\"; a re-run is made by an operator signed in through the forge, never by a rule on its own",
         "rules.wide.flaky.runs: a plan reads from 1 to 100 failed runs on a head, such as runs = 5",
-        "rules.idle: a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, or both; this one does neither",
+        "rules.idle: a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
+}
+
+#[test]
+fn a_rule_alerts_on_pull_requests_leaving_the_merge_queue_for_the_reasons_it_names() {
+    let config = loaded(&with(
+        r#"[rules.failed]
+dequeued = true
+
+[rules.named]
+stages = ["2d"]
+dequeued = ["removed", "checks-failed", "removed"]
+
+[[routes]]
+id = "alerts"
+sources = ["failed"]
+kinds = ["dequeued"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:dequeued"
+private = true
+"#,
+    ));
+    assert_eq!(config.rules["failed"].dequeued, Dequeued::FAILURES);
+    assert_eq!(
+        config.rules["named"].dequeued,
+        [Dequeued::ChecksFailed, Dequeued::Removed]
+    );
+    assert_eq!(config.routes[0].route.filter.kinds, [Kind::DEQUEUED]);
+    let error = errors(&with(
+        "[rules.off]\ndequeued = false\n\n[rules.none]\ndequeued = []\n\n[rules.odd]\ndequeued = [\"flaked\"]\n",
+    ));
+    for wanted in [
+        "rules.off: a rule nudges at its stages",
+        "rules.none: a rule nudges at its stages",
+        "rules.odd",
     ] {
         assert!(error.contains(wanted), "{wanted}\n{error}");
     }

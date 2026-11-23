@@ -787,12 +787,14 @@ fn mentioned(roles: Vec<String>, opt_in: Option<String>) -> Vec<RoleId> {
         .collect()
 }
 
-/// The kinds the rule `rule` announces: nudges where it names stages, and
-/// re-run plans where it plans them (ADR-0065).
+/// The kinds the rule `rule` announces: nudges where it names stages,
+/// re-run plans where it plans them (ADR-0065), and alerts on pull
+/// requests leaving the merge queue where it names reasons (ADR-0078).
 fn posted(rule: &Rule) -> Vec<Kind> {
     [
         rule.stages.is_some().then_some(Kind::NUDGE),
         rule.rerun.then_some(Kind::RERUN),
+        (!rule.dequeued.is_empty()).then_some(Kind::DEQUEUED),
     ]
     .into_iter()
     .flatten()

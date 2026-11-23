@@ -154,6 +154,33 @@ them once a head; a record kept before the view predicted conflicts is
 read in full once. `herald doctor` names what predicting conflicts adds
 to each report's requests.
 
+### Merge queue
+
+`queue = true` on a view reads where each pull request stands in its
+forge's merge queue or merge train (ADR-0078): its position, its state
+(`queued`, `checking`, `mergeable`, `merging` or `unmergeable`), when it
+entered and the forge's estimate in seconds. Each row's `queue` holds
+them, and `left` when and why it last left, where a webhook said. A
+pull request in the queue is `queued`; one that left is told by the
+other rules.
+
+| Forge | Queue entries |
+|-------|---------------|
+| GitHub with a token | `mergeQueueEntry` in the same GraphQL request as each pull request, no request more |
+| GitHub without a token | none: only GraphQL names the merge queue |
+| GitLab | `merge_trains?scope=active`, a request each project a round; a project whose trains its token may not read, as without Premium, answers 403 and shows none, but a 403 for the rate limit stops the read |
+| Forgejo, Gitea | none: they have no merge queue |
+
+Without `queue = true` GitHub's `isInMergeQueue` still puts a pull
+request in the queue, with no position or state. A GitHub Enterprise
+Server too old to name `mergeQueueEntry` refuses a query asking it:
+leave `queue` off there. `herald doctor` names each source's queue read
+and its cost, or why it reads none.
+
+The entry is part of its pull request: a private or internal
+repository's position, state and timing are shown, withheld and counted
+exactly as its row is.
+
 ### Areas
 
 A source names the areas of its repositories by path globs (ADR-0071):
@@ -328,7 +355,7 @@ into its record:
 
 | Forge | Deliveries |
 |-------|------------|
-| GitHub | `pull_request` (its merge queue's `enqueued` and `dequeued` too), `pull_request_review`, `pull_request_review_comment`, `issue_comment` on a pull request, `check_run`, `status`, `repository` |
+| GitHub | `pull_request` (its merge queue's `enqueued` and `dequeued` too, with why it left), `merge_group` (`checks_requested` and `destroyed` move a waiting entry), `pull_request_review`, `pull_request_review_comment`, `issue_comment` on a pull request, `check_run`, `status`, `repository` |
 | GitLab | `Merge Request Hook` (an approval is its actor's), `Pipeline Hook` (the head's one check, `pipeline`), `Note Hook` on a merge request |
 | Forgejo | `pull_request`, `pull_request_approved`, `pull_request_rejected`, `pull_request_comment`, `issue_comment` on a pull request, `status`, `repository` |
 
@@ -431,6 +458,7 @@ and nudges each open pull request that waited past one of its `stages`:
 |-----|--------------|--------------|
 | `stages` | how long a pull request waits before each nudge, 1 to 16 lengths such as `["2d", "7d"]` | no nudges |
 | `most` | the most pull requests it nudges, and the most re-runs it plans, a window; the rest wait for the next window | `20` |
+| `dequeued` | `true` alerts once on each pull request that left the merge queue for a failure of its own: `checks-failed`, `checks-timed-out`, `conflict`, `invalid` or `protections`; a list such as `["checks-failed", "removed"]` names the reasons, of those and `removed`, `cleared`, `merged` and `unknown` | no alerts |
 | `flaky` | `{ rerun = true }` plans a re-run of each flaky check (below); `mode` is `"plan"`, the only mode a rule takes; `runs` is the most failed runs on a head a plan reads, the newest first, 1 to 100 | no plans; `runs = 5` |
 | `view`, `every`, `at`, `days`, `zone` | as a report's | as a report's |
 
@@ -464,7 +492,15 @@ template = "herald:nudge"
 private = true
 ```
 
-A rule names `stages`, `flaky`, or both.
+The `dequeued` event carries `rule`, `reason`, `failure`, `left`,
+`repository`, `number`, `bot`, and `author` where the forge names it,
+and links the pull request as `pull`. Why a pull request left is known
+where its source is read kept, from GitHub's `dequeued` webhook; its
+identity holds when it left, so each departure alerts once. It reaches
+only private routes for a private or internal repository, as a nudge
+does. herald ships `herald:dequeued`.
+
+A rule names `stages`, `flaky`, `dequeued`, or more than one.
 
 ### Check triage and flaky checks
 

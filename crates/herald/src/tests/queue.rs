@@ -419,14 +419,37 @@ const SECRET_NAMED: [&str; 7] = [
     "c0ffee",
 ];
 
+/// The merge queue's estimate for `secret_kept`'s first pull request, in
+/// seconds, which no withheld output prints.
+const SECRET_ESTIMATE: u64 = 7_777;
+
 /// The path both of `secret_kept`'s pull requests change, which no output
 /// prints.
 const SECRET_PATH: &str = "plans/merger/launch.md";
 
+/// `secret_kept`'s first pull request's entry in the merge queue, third
+/// since `at`, and its second's, which left it for a failed check at `at`.
+fn secret_queues(at: jiff::Timestamp) -> [herald_core::QueueEntry; 2] {
+    let entry = herald_core::QueueEntry {
+        position: Some(3),
+        state: herald_core::QueueState::Checking,
+        since: Some(at),
+        estimate: Some(SECRET_ESTIMATE),
+        left: None,
+    };
+    let left = herald_core::Left {
+        at,
+        reason: herald_core::Dequeued::ChecksFailed,
+    };
+    let gone = herald_core::QueueEntry::leaving(Some(&entry), left);
+    [entry, gone]
+}
+
 /// `world`'s store keeping two private pull requests of
 /// `acme/secret-plans` that change one path, the first's check `test`
 /// failing on its head and having failed then passed on it an hour ago,
-/// read now; and its CI runs, a full page queued, one running on a head no
+/// the first third in the merge queue and the second having left it for a
+/// failed check, read now; and its CI runs, a full page queued, one running on a head no
 /// pull request is on, and the failed run 42 on the first head, whose job
 /// `test` failed.
 fn secret_kept(world: &World) {
@@ -440,7 +463,9 @@ fn secret_kept(world: &World) {
     };
     let store = kept(world);
     let pulls = store.pulls().unwrap();
+    let [waiting, gone] = secret_queues(ago);
     for (number, flipped) in [(7041, true), (7042, false)] {
+        let queue = if flipped { &waiting } else { &gone }.clone();
         let head = format!("c0ffee{number}");
         let (checks, flips) = if flipped {
             let flip = Flip {
@@ -469,7 +494,7 @@ fn secret_kept(world: &World) {
             reviewers: Vec::new(),
             checks,
             mergeable: herald_core::Mergeable::Clean,
-            queued: false,
+            queue: Some(queue),
             forge: None,
             head: Some(head),
             unread: false,
@@ -584,6 +609,71 @@ fn a_private_repository_s_areas_conflicts_flaky_check_runs_and_unread_line_are_p
     assert_eq!(read["withheld_pulls"], 2);
     let said = format!("{table}{json}{}", printed(&["rerun", "flaky"]));
     for named in SECRET_NAMED.iter().chain([&SECRET_PATH]) {
+        assert!(!said.contains(named), "{named}: {said}");
+    }
+}
+
+#[test]
+fn a_private_repository_s_merge_queue_position_state_and_timing_are_printed_nowhere_unless_said_private()
+ {
+    let config = CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"acme/secret-plans\"\n",
+    );
+    let setup = setup(&format!(
+        "{config}[views.kept]\nsources = [\"cli\"]\nmode = \"kept\"\nreconcile = \"1d\"\nqueue = true\n"
+    ));
+    let world = World::default();
+    secret_kept(&world);
+    let printed = |args: &[&str]| {
+        let run = herald(&setup, &world, args);
+        assert_eq!(run.code, DONE, "{}", run.err);
+        format!("{}{}", run.out, run.err)
+    };
+    let table = printed(&["queue", "kept", "--private"]);
+    assert!(
+        table.contains(", checking in the merge queue at 3"),
+        "{table}"
+    );
+    assert!(
+        table.contains(", left the merge queue: checks-failed"),
+        "{table}"
+    );
+    let json = printed(&["queue", "kept", "--format", "json", "--private"]);
+    let read: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let queues: Vec<&serde_json::Value> = read["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|group| group["rows"].as_array().unwrap())
+        .map(|row| &row["queue"])
+        .collect();
+    assert!(queues.iter().any(|queue| queue["position"] == 3
+        && queue["estimate_seconds"] == SECRET_ESTIMATE
+        && queue["state"] == "checking"));
+    assert!(
+        queues
+            .iter()
+            .any(|queue| queue["left"]["reason"] == "checks-failed")
+    );
+    let said = format!(
+        "{}{}",
+        printed(&["queue", "kept"]),
+        printed(&["queue", "kept", "--format", "json"])
+    );
+    let estimate = SECRET_ESTIMATE.to_string();
+    for named in [
+        "merge queue",
+        "checking",
+        "checks-failed",
+        "estimate",
+        "position",
+        "left",
+        estimate.as_str(),
+    ]
+    .iter()
+    .chain(SECRET_NAMED.iter())
+    {
         assert!(!said.contains(named), "{named}: {said}");
     }
 }

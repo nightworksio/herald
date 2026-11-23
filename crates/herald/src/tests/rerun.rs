@@ -277,7 +277,7 @@ fn flaky_seen(world: &World, visibility: herald_core::Visibility) {
         reviewers: Vec::new(),
         checks: Checks::Failed(vec!["test".to_owned()]),
         mergeable: herald_core::Mergeable::Clean,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some("h1".to_owned()),
         unread: false,

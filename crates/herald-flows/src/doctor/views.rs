@@ -13,7 +13,7 @@ use herald_core::stage_name;
 use herald_core::{
     Advising, AdvisoriesFrom, Capacity, Duration, Load, Surface, Teams, View, WITHHELD, advises,
 };
-use herald_kinds::{Checking, UNADVISED};
+use herald_kinds::{Checking, QueueRead, UNADVISED};
 
 /// What the time zone database bundled into this build adds to it, as a
 /// report naming a zone reads it.
@@ -28,12 +28,28 @@ const UNMERGEABLE: &str = "GitHub's REST API reads no mergeability, so none of i
 /// over them (ADR-0062).
 const SCOPED: &str = "it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each";
 
-/// What doctor says of a view predicting conflicts (ADR-0063).
+/// What doctor says a view's capacity overview needs of its token
+/// (ADR-0066).
 const CAPACITY_PERMISSIONS: &str = "Its token needs Actions: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api with the Reporter role on GitLab, self-managed included, and read access on Forgejo; a repository it may not read is named unread with why, never counted as idle.";
 
 /// What doctor says a view's advisories need of its token (ADR-0067).
 const ADVISORY_PERMISSIONS: &str = "Its token needs Dependabot alerts, Code scanning alerts and Secret scanning alerts: read as a GitHub App or fine-grained token, security_events (and repo for a private repository) as a classic token, and for an organization's own listings to act for an organization owner or security manager (with read:org as a classic token), the same on GitHub Enterprise Server and GHE.com; read_api with the Developer role on GitLab Ultimate, self-managed included. A listing it may not read is named unread with the permission it needs, never shown as clean. Forgejo raises no security alerts, so its repositories are named unread.";
 
+/// What a view reading the merge queue says of the requests it costs and
+/// what a source cannot read of it (ADR-0078).
+fn queue_read(read: QueueRead) -> String {
+    match read {
+        QueueRead::WithEach => {
+            "it reads each pull request's merge queue entry with the pull request".to_owned()
+        }
+        QueueRead::Requests(most) => format!(
+            "it reads its merge trains by at most {most} more requests a round; a project whose trains GitLab does not let its token read, as without Premium, shows none"
+        ),
+        QueueRead::Unread(why) => format!("it reads no merge queue entry: {why}"),
+    }
+}
+
+/// What doctor says of a view predicting conflicts (ADR-0063).
 const PATHS: &str = "it reads the paths each pull request's head changes, at most 100 each,";
 
 /// What doctor says of a view taking who may see a repository from what a
@@ -344,6 +360,10 @@ fn watched(
                     "; {reading} {PATHS} by at most {more} more requests a round"
                 ),
             };
+        }
+        if view.queue {
+            note.push_str("; ");
+            note.push_str(&queue_read(cost.queue));
         }
         note.push('.');
         notes.push(note);

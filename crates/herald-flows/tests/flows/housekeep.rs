@@ -500,7 +500,7 @@ fn housekeeping_forgets_pull_requests_closed_longer_ago_than_the_store_keeps_the
             reviewers: Vec::new(),
             checks: herald_core::Checks::Absent,
             mergeable: herald_core::Mergeable::Unknown,
-            queued: false,
+            queue: None,
             forge: None,
             head: None,
             unread: false,

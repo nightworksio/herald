@@ -35,6 +35,9 @@ pub(crate) enum Delivery {
     Status,
     /// A change of the repository itself, such as who may see it.
     Repository,
+    /// A merge group of GitHub's merge queue, whose checks were asked for
+    /// or which was destroyed (ADR-0078).
+    MergeGroup,
 }
 
 impl Delivery {
@@ -55,6 +58,7 @@ impl Delivery {
             (Forge::GitLab, "Pipeline Hook") | (Forge::GitHub, "check_run") => Some(Self::Check),
             (Forge::GitHub | Forge::Forgejo, "status") => Some(Self::Status),
             (Forge::GitHub | Forge::Forgejo, "repository") => Some(Self::Repository),
+            (Forge::GitHub, "merge_group") => Some(Self::MergeGroup),
             _ => None,
         }
     }

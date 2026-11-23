@@ -27,7 +27,7 @@ fn described(updated: i64) -> Described {
         reviewers: Some(vec!["octo".to_owned()]),
         head: Some("abc123".to_owned()),
         mergeable: None,
-        queued: None,
+        queue: None,
         forge: None,
         opened: at(1_000),
         updated: at(updated),
@@ -265,7 +265,7 @@ fn a_newer_description_moves_the_record_and_an_older_one_is_left_aside() {
     assert_eq!(left, kept);
     let mut newer = described(3_500);
     newer.head = Some("def456".to_owned());
-    newer.queued = Some(true);
+    newer.queue = Some(QueueEntry::entered(Some(at(3_400))));
     newer.visibility = Some(Visibility::Public);
     newer.forge = Some((Turn::WaitingOnReview, "blocked".to_owned()));
     newer.draft = true;
@@ -279,7 +279,7 @@ fn a_newer_description_moves_the_record_and_an_older_one_is_left_aside() {
     assert!(moved.checks.is_empty());
     assert_eq!(moved.pull.checks, Checks::Absent);
     assert_eq!(moved.pull.mergeable, Mergeable::Unknown);
-    assert!(moved.pull.queued && moved.pull.draft);
+    assert!(moved.pull.queued() && moved.pull.draft);
     assert_eq!(moved.pull.forge, newer.forge);
     assert_eq!(moved.pull.updated, at(3_500));
     assert_eq!(
@@ -537,4 +537,44 @@ fn a_pull_request_keeps_only_its_newest_flips() {
     }
     assert_eq!(kept.pull.flips.len(), MOST_FLIPS);
     assert_eq!(kept.pull.flips.last().unwrap().at, at(3_159));
+}
+
+#[test]
+fn a_delivery_enters_and_leaves_the_queue_and_a_merge_group_moves_a_waiting_entry() {
+    let kept = kept();
+    let mut entered = described(3_000);
+    entered.queue = Some(QueueEntry::entered(Some(at(3_000))));
+    let queued = KeptPull::fold(Some(kept), key(), &Folded::Pull(Box::new(entered))).unwrap();
+    assert!(queued.pull.queued());
+    let checking = Folded::Queue {
+        number: 7,
+        state: QueueState::Checking,
+    };
+    assert_eq!(checking.number(), Some(7));
+    let moved = KeptPull::fold(Some(queued), key(), &checking).unwrap();
+    assert_eq!(
+        moved.pull.queue.as_ref().map(|entry| entry.state),
+        Some(QueueState::Checking)
+    );
+    let mut dequeued = described(3_100);
+    let left = crate::queue::Left {
+        at: at(3_100),
+        reason: crate::queue::Dequeued::ChecksFailed,
+    };
+    dequeued.queue = Some(QueueEntry::leaving(None, left));
+    let gone = KeptPull::fold(Some(moved), key(), &Folded::Pull(Box::new(dequeued))).unwrap();
+    let entry = gone.pull.queue.clone().unwrap();
+    assert_eq!(
+        (entry.state, entry.since, entry.left),
+        (QueueState::Checking, Some(at(3_000)), Some(left))
+    );
+    assert!(!gone.pull.queued());
+    assert_eq!(gone.since.queued, at(3_100));
+    assert_eq!(KeptPull::fold(Some(gone.clone()), key(), &checking), None);
+    let reread = KeptPull::read(Some(&gone), key(), gone.pull.clone(), at(3_200));
+    assert_eq!(reread.pull.queue, Some(entry));
+    let mut cleared = gone.pull.clone();
+    cleared.queue = None;
+    let reread = KeptPull::read(Some(&gone), key(), cleared, at(3_200));
+    assert_eq!(reread.pull.queue, gone.pull.queue);
 }

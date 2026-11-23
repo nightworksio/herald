@@ -7,7 +7,8 @@ use minijinja::{Value, context};
 use std::collections::BTreeMap;
 
 use crate::queue::{
-    Advisories, Advisory, Batch, Failure, Grouped, Loaded, Loads, Overviews, Row, Running, Showing,
+    Advisories, Advisory, Batch, Failure, Grouped, Loaded, Loads, Overviews, QueueEntry, Row,
+    Running, Showing,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -19,6 +20,22 @@ pub fn waited(waited: SignedDuration) -> String {
         (0, 0) => format!("{minutes}m"),
         (0, hours) => format!("{hours}h"),
         (days, _) => format!("{days}d"),
+    }
+}
+
+/// A pull request's entry in its forge's merge queue, as a row shows it
+/// (ADR-0078).
+fn queue_value(entry: &QueueEntry) -> Value {
+    context! {
+        position => entry.position,
+        state => entry.state.name(),
+        since => entry.since.map(|at| at.to_string()),
+        estimate_seconds => entry.estimate,
+        left => entry.left.map(|left| context! {
+            at => left.at.to_string(),
+            reason => left.reason.name(),
+            failure => left.reason.failure(),
+        }),
     }
 }
 
@@ -49,6 +66,7 @@ fn row_value(row: &Row) -> Value {
             .iter()
             .map(|area| context! { name => area.name.as_str(), kind => area.kind.name() })
             .collect::<Vec<_>>(),
+        queue => pull.queue.as_ref().map(queue_value),
         decided => row
             .decided
             .iter()

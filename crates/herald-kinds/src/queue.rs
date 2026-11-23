@@ -63,6 +63,10 @@ pub struct Asked<'a> {
     /// Whether each pull request read in full has the paths its head
     /// changes read too, for a view predicting conflicts (ADR-0063).
     pub files: bool,
+    /// Whether each pull request read in full has its forge's merge queue
+    /// entry read too, where its forge names one in the same read
+    /// (ADR-0078).
+    pub queue: bool,
 }
 
 /// What reading a source's open pull requests costs each round, as doctor
@@ -86,6 +90,20 @@ pub struct QueueCost {
     /// The most requests reading the paths each pull request's head
     /// changes adds a round, where a view predicts conflicts (ADR-0063).
     pub files: usize,
+    /// How it reads each pull request's merge queue entry, where a view
+    /// reads the queue (ADR-0078).
+    pub queue: QueueRead,
+}
+
+/// How a source reads its pull requests' merge queue entries (ADR-0078).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueueRead {
+    /// With each pull request, at no request of its own.
+    WithEach,
+    /// By at most this many more requests a round.
+    Requests(usize),
+    /// Not at all, for this reason.
+    Unread(&'static str),
 }
 
 /// How a source reads a repository's CODEOWNERS file (ADR-0073).
@@ -324,7 +342,7 @@ mod tests {
             "bot": false, "draft": false, "labels": [],
             "opened": "2026-11-18T10:00:00Z", "updated": "2026-11-18T11:00:00Z",
             "review": "unasked", "reviewers": [], "checks": "absent", "mergeable": "unknown",
-            "queued": false, "forge": null, "head": null, "unread": false
+            "forge": null, "head": null, "unread": false
         }))
         .unwrap();
         let listed = Relisted::Listed {
@@ -336,6 +354,7 @@ mod tests {
         assert_eq!(listed.pulls(), [pull]);
         assert!(!Asked::default().stated);
         assert!(!Asked::default().files);
+        assert!(!Asked::default().queue);
         assert_eq!(Asked::default().most, Most::default());
     }
 }

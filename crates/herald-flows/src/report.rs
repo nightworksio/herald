@@ -172,6 +172,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
             }),
             stated: view.stated,
             files: view.conflicts || zoned,
+            queue: view.queue,
         };
         let keeps = ports.store.pulls().is_some();
         let http = &Budgeted::new(http, ports.budget, ports.clock);

@@ -45,7 +45,7 @@ fn secret_reviewed(world: &World) {
         reviewers: vec!["acme/merger-team".to_owned(), "ana-secret".to_owned()],
         checks: herald_core::Checks::Passed,
         mergeable: herald_core::Mergeable::Clean,
-        queued: false,
+        queue: None,
         forge: None,
         head: Some("c0ffee".to_owned()),
         unread: false,

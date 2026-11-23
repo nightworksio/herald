@@ -45,7 +45,7 @@ fn a_bare_merge_request_reads_as_a_private_unasked_one_of_its_project() {
     assert_eq!(pull.title, "Add feature");
     assert_eq!(pull.url, "https://gitlab.com/g/p/-/merge_requests/3");
     assert_eq!(pull.author, None);
-    assert!(!pull.bot && !pull.draft && !pull.queued);
+    assert!(!pull.bot && !pull.draft && !pull.queued());
     assert_eq!(pull.opened.to_string(), "2026-11-18T10:00:00Z");
     assert_eq!(pull.updated.to_string(), "2026-11-18T11:00:00Z");
     assert_eq!(

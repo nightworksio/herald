@@ -36,7 +36,7 @@ fn a_bare_node_reads_as_an_unasked_unchecked_pull_of_its_repository() {
     assert_eq!(pull.title, "Bump serde");
     assert_eq!(pull.url, "https://github.com/o/r/pull/4");
     assert_eq!(pull.author, None);
-    assert!(!pull.bot && !pull.draft && !pull.queued);
+    assert!(!pull.bot && !pull.draft && !pull.queued());
     assert_eq!(pull.labels, Vec::<String>::new());
     assert_eq!(pull.opened.to_string(), "2026-11-18T10:00:00Z");
     assert_eq!(pull.updated.to_string(), "2026-11-18T11:00:00Z");
@@ -151,7 +151,8 @@ fn mergeability_and_the_merge_state_are_read_and_a_queue_wins() {
     }
     let queued =
         pull(json!({ "isInMergeQueue": true, "mergeStateStatus": "CLEAN", "headRefOid": "abc" }));
-    assert!(queued.queued && !queued.unread);
+    assert!(queued.queued() && !queued.unread);
+    assert_eq!(queued.queue, Some(herald_core::QueueEntry::entered(None)));
     assert_eq!(queued.head.as_deref(), Some("abc"));
     assert_eq!(
         queued.forge,
@@ -253,6 +254,7 @@ fn a_page_is_asked_of_the_repository_after_its_cursor() {
     let ask = Ask {
         parse: 9,
         files: false,
+        queue: false,
     };
     let asked = request("https://ghe.example/api/graphql", "o/r", Some("c1"), ask);
     assert_eq!(asked.url.expose(), "https://ghe.example/api/graphql");
@@ -267,6 +269,8 @@ fn a_page_is_asked_of_the_repository_after_its_cursor() {
     assert!(query.contains("labels(first: 50)"));
     assert!(query.contains("baseRefName"));
     assert!(!query.contains("files("));
+    assert!(query.contains("isInMergeQueue headRefOid"));
+    assert!(!query.contains("mergeQueueEntry"));
     let first = request("https://api.github.com/graphql", "o", None, ask);
     let body: Value = serde_json::from_slice(&first.body).unwrap();
     assert_eq!(
@@ -280,6 +284,7 @@ fn a_view_predicting_conflicts_asks_each_pull_request_s_changed_paths_and_its_br
     let ask = Ask {
         parse: 9,
         files: true,
+        queue: false,
     };
     for asked in [
         request("https://api.github.com/graphql", "o/r", None, ask),
@@ -306,4 +311,42 @@ fn a_view_predicting_conflicts_asks_each_pull_request_s_changed_paths_and_its_br
     let whole = one(&json!({ "files": { "totalCount": 1, "nodes": [{ "path": "a.rs" }] } }));
     assert!(whole.files.unwrap().whole);
     assert_eq!(one(&json!({})).files, None);
+}
+
+#[test]
+fn a_view_reading_the_queue_asks_each_pull_request_s_entry_in_the_same_query() {
+    let ask = Ask {
+        parse: 9,
+        files: false,
+        queue: true,
+    };
+    for asked in [
+        request("https://api.github.com/graphql", "o/r", None, ask),
+        numbered_request("https://api.github.com/graphql", "o/r", &[1], ask),
+        scoped_request("https://api.github.com/graphql", &[("o/r", vec![1])], ask),
+    ] {
+        let body: Value = serde_json::from_slice(&asked.body).unwrap();
+        let query = body["query"].as_str().unwrap();
+        assert!(query.contains(
+            "isInMergeQueue mergeQueueEntry { position state enqueuedAt estimatedTimeToMerge } headRefOid"
+        ));
+    }
+    let read = one(&json!({ "isInMergeQueue": true, "mergeQueueEntry": {
+        "position": 3, "state": "AWAITING_CHECKS", "enqueuedAt": "2026-11-18T10:00:00Z",
+        "estimatedTimeToMerge": 900 } }));
+    assert_eq!(
+        read.queue,
+        Some(herald_core::QueueEntry {
+            position: Some(3),
+            state: herald_core::QueueState::Checking,
+            since: Some("2026-11-18T10:00:00Z".parse().unwrap()),
+            estimate: Some(900),
+            left: None,
+        })
+    );
+    let unestimated = one(&json!({ "isInMergeQueue": true, "mergeQueueEntry": {
+        "position": 1, "state": "QUEUED", "enqueuedAt": "2026-11-18T10:00:00Z",
+        "estimatedTimeToMerge": null } }));
+    assert_eq!(unestimated.queue.and_then(|entry| entry.estimate), None);
+    assert_eq!(one(&json!({ "mergeQueueEntry": null })).queue, None);
 }

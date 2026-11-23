@@ -14,6 +14,7 @@ mod area;
 mod codeowners;
 mod kept;
 mod load;
+mod merging;
 mod overlap;
 mod overview;
 mod triage;
@@ -46,6 +47,7 @@ pub use load::{
     MOST_LEAST_TEAM, MOST_LOGIN, MOST_TEAM_MEMBERS, MOST_TEAMS, SHORTEST_LOAD_WINDOW, Team,
     TeamMember, Teams, joined,
 };
+pub use merging::{Dequeued, Left, QueueEntry, QueueState};
 pub use overlap::overlaps;
 pub use overview::{
     CAPACITY_REPOSITORIES, Capacity, Head, MOST_CAPACITY_REPOSITORIES, Overviews, Running, Unread,
@@ -193,8 +195,10 @@ pub struct Pull {
     pub checks: Checks,
     /// Whether it merges cleanly.
     pub mergeable: Mergeable,
-    /// Whether it is in the forge's merge queue or train.
-    pub queued: bool,
+    /// Its entry in the forge's merge queue or train, or its last one
+    /// where it left it (ADR-0078).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<QueueEntry>,
     /// The state the forge's own status maps to, with the status as the
     /// forge names it, where the forge gives one.
     pub forge: Option<(Turn, String)>,
@@ -351,7 +355,7 @@ impl Pull {
         if self.unread {
             return (Turn::Unknown, Reason::Unread);
         }
-        if rules.queued && self.queued {
+        if rules.queued && self.queued() {
             return (Turn::Queued, Reason::Queued);
         }
         if rules.conflict && self.mergeable == Mergeable::Conflict {
@@ -405,6 +409,12 @@ impl Pull {
             .map_or((Turn::Unknown, Reason::Untold), |(label, state)| {
                 (*state, Reason::Label(label.clone()))
             })
+    }
+
+    /// Whether it is in the forge's merge queue or train now.
+    #[must_use]
+    pub fn queued(&self) -> bool {
+        self.queue.as_ref().is_some_and(QueueEntry::waiting)
     }
 
     /// Whether its checks all passed and it merges cleanly.

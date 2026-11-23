@@ -25,8 +25,8 @@ use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
     AdvisoriesFromFile, BUILT_IN_VIEW, BotsFile, CapacityFrom, DecidingFile, DecidingName,
-    GroupByFile, OverviewName, RULE_KEYS, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile,
-    TeamFile, ViewConfig, ViewFile, ViewMode,
+    DequeuedFile, GroupByFile, OverviewName, RULE_KEYS, Report, ReportFile, RerunMode, Rule,
+    RuleFile, RulesFile, TeamFile, ViewConfig, ViewFile, ViewMode,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -41,7 +41,7 @@ const ADVISORY_MOST: &str = "an advisories overview reads from 1 to 100 reposito
 const ADVISORIES_MOST: &str =
     "an advisories overview reads from 1 to 10000 open advisories, such as most_advisories = 1000";
 const ADVISORIES_UNSHOWN: &str = "advisories_from, advisory_repositories and most_advisories take effect with overviews = [\"advisories\"], which this view does not name";
-const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, or both; this one does neither";
+const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none";
 
 /// The names of `sources` that list their repositories' open pull requests.
 fn queued(sources: &BTreeMap<SourceName, Source>) -> Vec<SourceName> {
@@ -310,6 +310,7 @@ impl Loader<'_> {
             reconcile: file.reconcile.map(|every| every.0),
             stated: file.listed_visibility,
             conflicts: file.conflicts,
+            queue: file.queue,
             capacity,
             advisories,
             load,
@@ -475,6 +476,7 @@ impl Loader<'_> {
                 reconcile: None,
                 stated: false,
                 conflicts: false,
+                queue: false,
                 capacity: None,
                 advisories: None,
                 load: None,
@@ -665,7 +667,8 @@ impl Loader<'_> {
     }
 
     /// Whether the rule `file` writes at `path`, spanning `span`, plans
-    /// re-runs, where it does something at all: it nudges, plans, or both,
+    /// re-runs, where it does something at all: it nudges, plans, alerts on
+    /// pull requests leaving the merge queue (ADR-0078), or more than one,
     /// and plans only, a re-run being an operator's (ADR-0065).
     fn reruns(
         &mut self,
@@ -695,7 +698,11 @@ impl Loader<'_> {
             }
             None => (false, MOST_RUNS),
         };
-        if file.stages.is_none() && !rerun {
+        let dequeues = file
+            .dequeued
+            .as_ref()
+            .is_some_and(|dequeued| !dequeued.reasons().is_empty());
+        if file.stages.is_none() && !rerun && !dequeues {
             self.error(span, path, IDLE.to_owned());
             return None;
         }
@@ -747,6 +754,11 @@ impl Loader<'_> {
                         most,
                         rerun,
                         runs,
+                        dequeued: file
+                            .dequeued
+                            .as_ref()
+                            .map(DequeuedFile::reasons)
+                            .unwrap_or_default(),
                     },
                 );
             }

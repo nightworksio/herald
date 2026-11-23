@@ -70,7 +70,7 @@ fn the_built_in_view_reads_every_source_naming_a_repository_or_an_owner() {
             SourceName::new("org")
         ]
     );
-    assert!(!queue.stated);
+    assert!(!queue.stated && !queue.queue);
     assert_eq!(queue.most, Most::default());
     assert_eq!(
         (queue.mode, queue.reconcile),
@@ -113,6 +113,7 @@ mode = "kept"
 reconcile = "15m"
 listed_visibility = true
 conflicts = true
+queue = true
 broken_at = 5
 flaky = { window = "3d", least = 2 }
 overviews = ["capacity"]
@@ -157,7 +158,7 @@ zone = "Europe/Amsterdam"
     assert_eq!(mine.reconcile, Some(SignedDuration::from_mins(15)));
     assert!(mine.stated);
     assert!(!config.views["forge"].stated);
-    assert!(mine.conflicts);
+    assert!(mine.conflicts && mine.queue);
     assert_eq!(
         mine.capacity,
         Some(herald_core::Capacity::Members { most: 5 })
@@ -175,7 +176,7 @@ zone = "Europe/Amsterdam"
         config.views["forge"].view.triage,
         herald_core::Triage::default()
     );
-    assert!(!config.views["forge"].conflicts);
+    assert!(!config.views["forge"].conflicts && !config.views["forge"].queue);
     assert_eq!(config.views["forge"].mode, herald_config::ViewMode::Live);
     assert_eq!(config.views["everyone"].mode, herald_config::ViewMode::Auto);
     assert_eq!(config.views["everyone"].reconcile, None);

@@ -101,7 +101,7 @@ fn bare(
         reviewers: Vec::new(),
         checks: Checks::Absent,
         mergeable: Mergeable::Unknown,
-        queued: false,
+        queue: None,
         forge: None,
         head: None,
         unread: false,

@@ -16,6 +16,7 @@ mod credentials;
 mod cursor;
 mod decide;
 mod declined;
+mod dequeue;
 pub mod der;
 mod duration;
 mod escaping;
@@ -86,6 +87,7 @@ pub use decide::{
     Answer, Decided, LONGEST_OPTION, MOST_OPTIONS, Options, Question, Slot, decided, state,
 };
 pub use declined::Declined;
+pub use dequeue::{Dequeue, dequeue_event, dequeue_identity, dequeues};
 pub use duration::Duration;
 pub use escaping::{Escaping, safe_url, segment, unreserved};
 pub use event::{Draft, Event, Problem};
@@ -118,7 +120,8 @@ pub use kind::{
     SEVERITY, STALE, STATE_REASON, TOOL, TRIGGER, VERSION, VIEW, WORKFLOW, readable, versioned,
 };
 pub use kind::{
-    CALL, CHECK, FLIPS, REASON, REPOSITORY, RUN_ID, SPELL, STAGE, TURN, WAITED, WAITING_ON,
+    CALL, CHECK, FAILURE, FLIPS, LEFT, REASON, REPOSITORY, RUN_ID, SPELL, STAGE, TURN, WAITED,
+    WAITING_ON,
 };
 pub use latest::{Latest, Shown};
 pub use ledger::{
@@ -147,19 +150,19 @@ pub use queue::{
     ADVISORY_REPOSITORIES, Advised, AdvisedPost, AdvisedReports, Advising, Advisories,
     AdvisoriesFrom, Advisory, Area, AreaKind, Areas, Batch, Board, Bots, CAPACITY_REPOSITORIES,
     CODEOWNERS, Capacity, Changed, Checks, Closed, CodeOwner, Codeowners, CodeownersKey,
-    CodeownersRef, Deciding, Described, Dialect, Failure, Flip, Folded, Folding, Given, GroupBy,
-    Grouped, Head, KEPT_CODEOWNERS, KeptCodeowners, KeptPull, LEAST_TEAM, LOAD_WINDOW,
-    LONGEST_LOAD_WINDOW, Lifecycle, Load, Loaded, Loads, MOST_ADVISED_REPORTS, MOST_ADVISORIES,
-    MOST_ADVISORIES_ALLOWED, MOST_ADVISORY_REPOSITORIES, MOST_AREA_GLOB, MOST_AREA_GLOBS,
-    MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS, MOST_AREAS_READ, MOST_CAPACITY_REPOSITORIES,
-    MOST_CODEOWNERS, MOST_CODEOWNERS_LINES, MOST_CODEOWNERS_LOOKUPS, MOST_CODEOWNERS_PATTERN,
-    MOST_CODEOWNERS_READ, MOST_FLIPS, MOST_FORGE_TEAMS, MOST_LEAST_TEAM, MOST_LINE_OWNERS,
-    MOST_LOGIN, MOST_RULE_COMPILED, MOST_RULES_COMPILED, MOST_TEAM_MEMBERS, MOST_TEAMS, Mergeable,
-    Outcome, Overviews, Owned, Printed, Pull, PullKey, RECALLED, RULES_CACHE, Ran, Read, Reason,
-    Reconciled, RepositoryKey, Review, Reviewed, Row, Rules, Running, SHORTEST_LOAD_WINDOW,
-    Showing, Since, Skipped, Surface, Team, TeamMember, Teams, Triage, Turn, Unread, Verdict, View,
-    WITHHELD, Zoning, advises, board, grouped, joined, overlaps, rows, teams_reach,
-    teams_reach_each,
+    CodeownersRef, Deciding, Dequeued, Described, Dialect, Failure, Flip, Folded, Folding, Given,
+    GroupBy, Grouped, Head, KEPT_CODEOWNERS, KeptCodeowners, KeptPull, LEAST_TEAM, LOAD_WINDOW,
+    LONGEST_LOAD_WINDOW, Left, Lifecycle, Load, Loaded, Loads, MOST_ADVISED_REPORTS,
+    MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED, MOST_ADVISORY_REPOSITORIES, MOST_AREA_GLOB,
+    MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS, MOST_AREAS_READ,
+    MOST_CAPACITY_REPOSITORIES, MOST_CODEOWNERS, MOST_CODEOWNERS_LINES, MOST_CODEOWNERS_LOOKUPS,
+    MOST_CODEOWNERS_PATTERN, MOST_CODEOWNERS_READ, MOST_FLIPS, MOST_FORGE_TEAMS, MOST_LEAST_TEAM,
+    MOST_LINE_OWNERS, MOST_LOGIN, MOST_RULE_COMPILED, MOST_RULES_COMPILED, MOST_TEAM_MEMBERS,
+    MOST_TEAMS, Mergeable, Outcome, Overviews, Owned, Printed, Pull, PullKey, QueueEntry,
+    QueueState, RECALLED, RULES_CACHE, Ran, Read, Reason, Reconciled, RepositoryKey, Review,
+    Reviewed, Row, Rules, Running, SHORTEST_LOAD_WINDOW, Showing, Since, Skipped, Surface, Team,
+    TeamMember, Teams, Triage, Turn, Unread, Verdict, View, WITHHELD, Zoning, advises, board,
+    grouped, joined, overlaps, rows, teams_reach, teams_reach_each,
 };
 pub use rate::{Per, Rate};
 pub use render::{
