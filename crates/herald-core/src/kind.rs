@@ -28,6 +28,8 @@ impl Kind {
     pub const PULL_REQUEST: Self = Self(Cow::Borrowed("pull-request"));
     /// An issue on a forge.
     pub const ISSUE: Self = Self(Cow::Borrowed("issue"));
+    /// A milestone on a forge (ADR-0079).
+    pub const MILESTONE: Self = Self(Cow::Borrowed("milestone"));
     /// A report of a view's open pull requests, for one window.
     pub const REPORT: Self = Self(Cow::Borrowed("report"));
     /// A nudge: an open pull request that waited past a rule's stage.
@@ -286,6 +288,14 @@ pub const ISSUE_LINK: &str = "issue";
 pub const STATE_REASON: &str = "state_reason";
 /// A pull request's or an issue's labels, joined by ", ".
 pub const LABELS: &str = "labels";
+/// The link to a milestone's page, and the attribute naming its title.
+pub const MILESTONE_LINK: &str = "milestone";
+/// The day a milestone is due, as `YYYY-MM-DD`.
+pub const DUE: &str = "due";
+/// How many of a milestone's issues are open, as its forge counts them.
+pub const ISSUES_OPEN: &str = "issues_open";
+/// How many of a milestone's issues are closed, as its forge counts them.
+pub const ISSUES_CLOSED: &str = "issues_closed";
 /// What a run is read from: `actions`, the forge's own CI, or `checks`, a
 /// check suite or a commit status.
 pub const FROM: &str = "from";
@@ -423,6 +433,24 @@ fn issued() -> BTreeMap<String, AttributeSpec> {
         (BOT, AttributeType::Flag, false),
         (STATE_REASON, AttributeType::Text, false),
         (LABELS, AttributeType::Text, false),
+    ];
+    for (name, ty, required) in typed {
+        attributes.insert(name.to_owned(), AttributeSpec { ty, required });
+    }
+    attributes
+}
+
+/// The attributes of a milestone: a forge's signals', and what the
+/// milestone is.
+fn milestoned() -> BTreeMap<String, AttributeSpec> {
+    let mut attributes = signalled();
+    let typed = [
+        (ACTION, AttributeType::Text, true),
+        (NUMBER, AttributeType::Number, true),
+        (MILESTONE_LINK, AttributeType::Text, true),
+        (DUE, AttributeType::Text, false),
+        (ISSUES_OPEN, AttributeType::Number, false),
+        (ISSUES_CLOSED, AttributeType::Number, false),
     ];
     for (name, ty, required) in typed {
         attributes.insert(name.to_owned(), AttributeSpec { ty, required });
@@ -673,6 +701,13 @@ impl KindSpec {
                 false,
                 buttons(&[ISSUE_LINK]),
                 issued(),
+            ),
+            Self::new(
+                Kind::MILESTONE,
+                "A milestone on a forge, opened, closed, reopened or deleted.",
+                true,
+                buttons(&[MILESTONE_LINK]),
+                milestoned(),
             ),
             Self::new(
                 Kind::REPORT,

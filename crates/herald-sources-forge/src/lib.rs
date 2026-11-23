@@ -22,6 +22,7 @@ mod kind;
 mod limited;
 mod listing;
 mod members;
+mod milestones;
 mod moved;
 mod options;
 mod owner;
@@ -38,14 +39,16 @@ pub use forge::{Forge, Origin, Repository, Token};
 pub use ghcr::{GhcrKind, GhcrOptions, GhcrSource};
 pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
+pub use milestones::{ci_milestone, of_a_milestone};
 pub use options::{
     ALERT_ACTIONS, AlertAction, Alerts, Conclusion, Discovery, EDITS_DEPTH, FEED_PAGE, FEED_PAGES,
     FORGEJO_UNWRITTEN, GITHUB_SCOPES, GITLAB_SCOPES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED,
-    ISSUE_ACTIONS, IssueAction, Issues, KEEP_MEMBERS, KEY, MOST_CODEOWNERS_PATH,
-    MOST_CODEOWNERS_PATHS, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, MemberHooks, Members,
-    Override, PULL_ACTIONS, PackageVisibility, PullAction, Pulls, RUN_ACTIONS, RUN_FROM, RunAction,
-    RunFrom, Runs, Severity, SignIn, Signals, SourceOptions, TAG_WINDOW, TeamsFrom, Tool,
-    Transport, Values, Write,
+    ISSUE_ACTIONS, IssueAction, Issues, KEEP_MEMBERS, KEY, MILESTONE_ACTIONS, MOST_CODEOWNERS_PATH,
+    MOST_CODEOWNERS_PATHS, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, MOST_MILESTONES,
+    MOST_MILESTONES_ALLOWED, MemberHooks, Members, MilestoneAction, Milestones, Override,
+    PULL_ACTIONS, PackageVisibility, PullAction, Pulls, RUN_ACTIONS, RUN_FROM, RunAction, RunFrom,
+    Runs, Severity, SignIn, Signals, SourceOptions, TAG_WINDOW, TeamsFrom, Tool, Transport, Values,
+    Write,
 };
 pub use polled::tag_event_of;
 pub use queue::{MOST_OPEN, MOST_PULLS, Opened, PAGE, PER_PULL, Queued, ReadPath, cost};

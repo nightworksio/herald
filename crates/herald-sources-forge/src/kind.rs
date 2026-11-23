@@ -79,6 +79,24 @@ const PULLS_POLLED: &str = "a poll announces the opening and the merge or close 
 const ISSUES_UNFOLLOWED: &str = "an owner source announcing issues polls every member each round; a webhook or a GitHub App delivers them as they change";
 /// What doctor says of a source announcing issues with no webhook.
 const ISSUES_POLLED: &str = "a poll announces the opening and the closing of the issues it lists, the newest; a reopened issue comes only by webhook";
+/// What doctor says of a source announcing milestones: what a poll of them
+/// costs.
+const MILESTONES_COST: &str = "a poll asks each repository's open milestones once a round, conditionally, a page at a time up to milestones.most, and reads once each milestone that left the listing";
+/// What doctor says of an owner source announcing milestones through the
+/// owner's events or feed.
+const MILESTONES_UNFOLLOWED: &str = "an owner source announcing milestones polls every member each round; a webhook delivers them as they change";
+/// What doctor says of a source announcing milestones with no webhook.
+const MILESTONES_POLLED: &str = "a poll finds each milestone opened, closed or reopened within one round; a deleted milestone is withdrawn only by webhook";
+/// What doctor says of a Forgejo source announcing milestones.
+const FORGEJO_MILESTONES: &str = "Forgejo and Gitea send no milestone webhook (issue_milestone is an issue's change), so milestones are found only by polling";
+/// What doctor says of a GitLab source announcing milestones through a
+/// webhook.
+const GITLAB_MILESTONE_HOOK: &str = "GitLab sends its Milestone Hook from GitLab 18.2, so poll an older self-managed instance; the hook counts no issues, so a milestone it delivers names no counts";
+/// What doctor says of a GitLab source counting milestones' issues.
+const GITLAB_COUNTS: &str = "GitLab counts a milestone's issues only, and each milestone a poll announces costs one request more for them; milestones.counts = false saves it";
+/// What doctor says of a GitHub source counting milestones' issues.
+const GITHUB_COUNTS: &str =
+    "GitHub counts a milestone's issues and pull requests together, at no cost";
 /// What doctor says of a GitLab source announcing pull requests or issues
 /// through a webhook.
 const GITLAB_AUTHORS: &str = "GitLab's merge request and issue webhooks name only who acted, so an author is known from the opening alone, and pulls.authors and issues.authors take no other webhook event";
@@ -203,6 +221,8 @@ impl SourceConfig for ForgeSource {
         let alerted = self.options.may_take(Signal::Alert);
         let pulled = self.options.may_take(Signal::PullRequest);
         let issued = self.options.may_take(Signal::Issue);
+        let milestoned = self.options.may_take(Signal::Milestone);
+        let counted = milestoned && self.options.milestone_choice().counts;
         let hooked = self.options.webhook.is_some();
         let checked = self.options.run_choice().reads(RunFrom::Checks);
         let unheard = [
@@ -215,6 +235,19 @@ impl SourceConfig for ForgeSource {
             (pulled && !hooked, PULLS_POLLED),
             (issued && followed, ISSUES_UNFOLLOWED),
             (issued && !hooked, ISSUES_POLLED),
+            (milestoned, MILESTONES_COST),
+            (milestoned && followed, MILESTONES_UNFOLLOWED),
+            (milestoned && !hooked, MILESTONES_POLLED),
+            (
+                milestoned && self.forge == Forge::Forgejo,
+                FORGEJO_MILESTONES,
+            ),
+            (
+                milestoned && hooked && self.forge == Forge::GitLab,
+                GITLAB_MILESTONE_HOOK,
+            ),
+            (counted && self.forge == Forge::GitLab, GITLAB_COUNTS),
+            (counted && self.forge == Forge::GitHub, GITHUB_COUNTS),
             (
                 (pulled || issued) && hooked && self.forge == Forge::GitLab,
                 GITLAB_AUTHORS,
@@ -321,6 +354,9 @@ impl SourceConfig for ForgeSource {
         }
         if self.forge.pull_delivery(headers) {
             return self.pulled(payload).map_err(|error| error.to_string());
+        }
+        if self.forge.milestone_delivery(headers) {
+            return self.milestoned(payload).map_err(|error| error.to_string());
         }
         if let Some(name) = self.forge.issue_event(headers) {
             return self
@@ -490,6 +526,7 @@ impl SourceConfig for ForgeSource {
                     alerts: self.options.alert_choice(self.forge),
                     pulls: self.options.pull_choice(),
                     issues: self.options.issue_choice(),
+                    milestones: self.options.milestone_choice(),
                 }))
             }
         }
@@ -522,6 +559,15 @@ const UNISSUED: &str = "the source announces no issues of the repository";
 /// Why an issue delivery announces nothing where the source does not
 /// announce that issue.
 const UNCHOSEN_ISSUE: &str = "the issue is not one the source's issues announce";
+
+/// Why a milestone delivery announces nothing where the source announces
+/// no milestones of its repository.
+const UNMILESTONED: &str = "the source announces no milestones of the repository";
+/// Why a milestone delivery announces nothing where the source does not
+/// announce that milestone.
+const UNCHOSEN_MILESTONE: &str = "the milestone is not one the source's milestones announce";
+/// Why a milestone delivery announces nothing where it names no project.
+const UNPROJECTED_MILESTONE: &str = "a GitLab group's own milestone webhook names no project; milestones.group reads the group's milestones by polling";
 
 /// What a delivery of a signal names: what it is read as, the signal, the
 /// repository's full path, id and description, and the event it makes
@@ -616,6 +662,27 @@ impl ForgeSource {
             event: found.event,
         };
         self.signalled(signalled, (UNISSUED, UNCHOSEN_ISSUE))
+    }
+
+    /// What the milestone delivery `payload` asks the source to announce:
+    /// nothing where it names no project, as a GitLab group's own webhook
+    /// does.
+    fn milestoned(&self, payload: &[u8]) -> Result<Hooked, SourceError> {
+        let what = crate::milestones::hooked_what(self.forge);
+        let choice = self.options.milestone_choice();
+        let Some(found) = crate::milestones::delivered(self.forge, payload, &choice)? else {
+            return Ok(Hooked::Nothing(UNPROJECTED_MILESTONE));
+        };
+        let (id, delivered) = crate::delivered::delivered(self.forge, what, payload)?;
+        let signalled = Signalled {
+            what,
+            signal: Signal::Milestone,
+            path: found.path,
+            id,
+            delivered,
+            event: found.event,
+        };
+        self.signalled(signalled, (UNMILESTONED, UNCHOSEN_MILESTONE))
     }
 
     /// What the delivery `signalled` asks the source to announce: its event

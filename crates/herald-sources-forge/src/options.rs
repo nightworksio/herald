@@ -16,6 +16,10 @@ pub use discovery::Discovery;
 pub use hooks::MemberHooks;
 pub(crate) use issues::IssueChoice;
 pub use issues::{ISSUE_ACTIONS, IssueAction, Issues};
+pub(crate) use milestones::MilestoneChoice;
+pub use milestones::{
+    MILESTONE_ACTIONS, MOST_MILESTONES, MOST_MILESTONES_ALLOWED, MilestoneAction, Milestones,
+};
 pub use owner::{
     KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, Members, Values,
 };
@@ -353,6 +357,10 @@ pub struct SourceOptions {
     /// they did, and their labels and authors; every issue opened, closed
     /// or reopened where absent.
     pub issues: Option<Issues>,
+    /// Which milestones are announced where the signals take "milestone":
+    /// what they did, their titles, and whether their counts and a GitLab
+    /// group's milestones are read; every milestone closed where absent.
+    pub milestones: Option<Milestones>,
     /// The credential an operator's `herald rerun --apply` re-runs a
     /// planned job with, apart from `token` and `app`: never read by a
     /// poll, a report or the server (ADR-0068). A stolen write credential
@@ -472,6 +480,7 @@ impl SourceOptions {
         self.alerts_check(forge)?;
         self.pulls_check()?;
         self.issues_check(forge)?;
+        self.milestones_check(forge)?;
         self.write_check(forge)?;
         self.codeowners_check()?;
         match &self.api {
@@ -510,6 +519,7 @@ mod codeowners;
 mod discovery;
 mod hooks;
 mod issues;
+mod milestones;
 mod overrides;
 mod owner;
 mod packages;

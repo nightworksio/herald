@@ -63,6 +63,12 @@ pub(super) fn pushed(vars: &BTreeMap<String, String>) -> Option<&str> {
         .filter(|tag| pushed && !tag.is_empty())
 }
 
+/// The run's own event file, which GitHub Actions names.
+pub(super) fn event_file(vars: &BTreeMap<String, String>) -> Result<Vec<u8>, String> {
+    let path = variable(vars, "GITHUB_EVENT_PATH")?;
+    std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))
+}
+
 /// The release the run's own event publishes, if it does.
 pub(super) fn evented(
     (forge, rule): (Forge, PrereleaseRule),
@@ -77,9 +83,7 @@ pub(super) fn evented(
         );
         return Ok(None);
     }
-    let path = variable(vars, "GITHUB_EVENT_PATH")?;
-    let payload =
-        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
+    let payload = event_file(vars)?;
     let event = forge
         .event(&payload, rule)
         .map_err(|error| error.to_string())?;

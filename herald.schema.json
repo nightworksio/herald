@@ -4044,6 +4044,67 @@
       },
       "additionalProperties": false
     },
+    "MilestoneAction": {
+      "description": "What a milestone did that is announced.",
+      "oneOf": [
+        {
+          "description": "It was created.",
+          "type": "string",
+          "const": "opened"
+        },
+        {
+          "description": "It was closed.",
+          "type": "string",
+          "const": "closed"
+        },
+        {
+          "description": "It was opened again after it closed.",
+          "type": "string",
+          "const": "reopened"
+        },
+        {
+          "description": "It was deleted, which withdraws its announcement from each route\nthat withdraws (ADR-0048).",
+          "type": "string",
+          "const": "deleted"
+        }
+      ]
+    },
+    "Milestones": {
+      "description": "Which milestones a source announces, where its signals take\n\"milestone\".",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What a milestone did that is announced: `opened`, `closed`,\n`reopened`, `deleted`; `closed` where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MilestoneAction"
+          }
+        },
+        "counts": {
+          "description": "Whether a milestone names how many of its issues are open and\nclosed, as its forge counts them; true where absent. On GitLab each\nannounced milestone costs one request more.",
+          "type": "boolean"
+        },
+        "group": {
+          "description": "Whether the milestones of the GitLab group holding the project are\nread beside the project's own; false where absent.",
+          "type": "boolean"
+        },
+        "most": {
+          "description": "The most open milestones of a repository a poll follows, in the\norder its forge lists them; 100 where absent, at most 1000.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "titles": {
+          "description": "The titles, as globs as `include` writes them, one of which a\nmilestone announced matches; every milestone where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "Mode": {
       "description": "Whom herald's actors federate with.",
       "oneOf": [
@@ -5375,6 +5436,11 @@
           "description": "An issue opened, closed or reopened.",
           "type": "string",
           "const": "issue"
+        },
+        {
+          "description": "A milestone opened, closed, reopened or deleted.",
+          "type": "string",
+          "const": "milestone"
         }
       ]
     },
@@ -5747,6 +5813,10 @@
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
             },
+            "milestones": {
+              "description": "Which milestones are announced where the signals take \"milestone\":\nwhat they did, their titles, and whether their counts and a GitLab\ngroup's milestones are read; every milestone closed where absent.",
+              "$ref": "#/$defs/Milestones"
+            },
             "most_areas": {
               "description": "The most areas the source reads a repository's table or\nCODEOWNERS file naming: a table naming more is refused as the\nconfig is read, a file naming more is refused whole as it is read,\nand doctor says so; 200 where absent, and at most 2000, since each\narea is a group of a board and is matched against every changed\npath (ADR-0074).",
               "type": "integer",
@@ -6096,6 +6166,10 @@
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
             },
+            "milestones": {
+              "description": "Which milestones are announced where the signals take \"milestone\":\nwhat they did, their titles, and whether their counts and a GitLab\ngroup's milestones are read; every milestone closed where absent.",
+              "$ref": "#/$defs/Milestones"
+            },
             "most_areas": {
               "description": "The most areas the source reads a repository's table or\nCODEOWNERS file naming: a table naming more is refused as the\nconfig is read, a file naming more is refused whole as it is read,\nand doctor says so; 200 where absent, and at most 2000, since each\narea is a group of a board and is matched against every changed\npath (ADR-0074).",
               "type": "integer",
@@ -6444,6 +6518,10 @@
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
               "$ref": "#/$defs/Members"
+            },
+            "milestones": {
+              "description": "Which milestones are announced where the signals take \"milestone\":\nwhat they did, their titles, and whether their counts and a GitLab\ngroup's milestones are read; every milestone closed where absent.",
+              "$ref": "#/$defs/Milestones"
             },
             "most_areas": {
               "description": "The most areas the source reads a repository's table or\nCODEOWNERS file naming: a table naming more is refused as the\nconfig is read, a file naming more is refused whole as it is read,\nand doctor says so; 200 where absent, and at most 2000, since each\narea is a group of a board and is matched against every changed\npath (ADR-0074).",

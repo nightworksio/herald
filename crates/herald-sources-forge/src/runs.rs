@@ -271,6 +271,12 @@ impl Forge {
             .filter(|name| crate::issues::hooked(self, name))
     }
 
+    /// Whether the webhook `headers` name a milestone's event.
+    pub(crate) fn milestone_delivery(self, headers: &[(&str, &str)]) -> bool {
+        self.event_named(headers)
+            .is_some_and(|name| crate::milestones::hooked(self, name))
+    }
+
     /// The name of the event a webhook's `headers` deliver.
     pub(crate) fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
         let names: &[&str] = match self {
@@ -377,6 +383,7 @@ pub(crate) struct Found {
     pub(crate) events: Vec<Event>,
     pub(crate) validators: Option<Validators>,
     pub(crate) listings: BTreeMap<String, Validators>,
+    pub(crate) ids: BTreeMap<String, Vec<String>>,
 }
 
 /// How a repository's runs are polled.
@@ -539,6 +546,7 @@ pub(crate) fn merged(mut polled: Polled, runs: Found) -> Polled {
         polled.signals.insert(Signal::Run, validators);
     }
     polled.listings.extend(runs.listings);
+    polled.ids.extend(runs.ids);
     polled
 }
 
@@ -565,6 +573,7 @@ pub(crate) fn merged_into(
         listings: cursor
             .map(|cursor| cursor.listings.clone())
             .unwrap_or_default(),
+        ids: cursor.map(|cursor| cursor.ids.clone()).unwrap_or_default(),
         ..Polled::default()
     };
     let mut polled = merged(polled.unwrap_or_else(kept), runs);

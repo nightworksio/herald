@@ -1319,6 +1319,12 @@ A GitHub repository's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `sources.<name>.milestones` | table | Which milestones are announced where the signals take "milestone": what they did, their titles, and whether their counts and a GitLab group's milestones are read; every milestone closed where absent. |
+| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`; `closed` where absent. |
+| `sources.<name>.milestones.counts` | boolean | Whether a milestone names how many of its issues are open and closed, as its forge counts them; true where absent. On GitLab each announced milestone costs one request more. |
+| `sources.<name>.milestones.group` | boolean | Whether the milestones of the GitLab group holding the project are read beside the project's own; false where absent. |
+| `sources.<name>.milestones.most` | integer | The most open milestones of a repository a poll follows, in the order its forge lists them; 100 where absent, at most 1000. |
+| `sources.<name>.milestones.titles` | array of string | The titles, as globs as `include` writes them, one of which a milestone announced matches; every milestone where empty. |
 | `sources.<name>.most_areas` | integer | The most areas the source reads a repository's table or CODEOWNERS file naming: a table naming more is refused as the config is read, a file naming more is refused whole as it is read, and doctor says so; 200 where absent, and at most 2000, since each area is a group of a board and is matched against every changed path (ADR-0074). |
 | `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file downloaded and read, a longer file refused unread; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073, ADR-0074). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
@@ -1442,6 +1448,12 @@ A GitLab project's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `sources.<name>.milestones` | table | Which milestones are announced where the signals take "milestone": what they did, their titles, and whether their counts and a GitLab group's milestones are read; every milestone closed where absent. |
+| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`; `closed` where absent. |
+| `sources.<name>.milestones.counts` | boolean | Whether a milestone names how many of its issues are open and closed, as its forge counts them; true where absent. On GitLab each announced milestone costs one request more. |
+| `sources.<name>.milestones.group` | boolean | Whether the milestones of the GitLab group holding the project are read beside the project's own; false where absent. |
+| `sources.<name>.milestones.most` | integer | The most open milestones of a repository a poll follows, in the order its forge lists them; 100 where absent, at most 1000. |
+| `sources.<name>.milestones.titles` | array of string | The titles, as globs as `include` writes them, one of which a milestone announced matches; every milestone where empty. |
 | `sources.<name>.most_areas` | integer | The most areas the source reads a repository's table or CODEOWNERS file naming: a table naming more is refused as the config is read, a file naming more is refused whole as it is read, and doctor says so; 200 where absent, and at most 2000, since each area is a group of a board and is matched against every changed path (ADR-0074). |
 | `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file downloaded and read, a longer file refused unread; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073, ADR-0074). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
@@ -1565,6 +1577,12 @@ A Forgejo or Gitea repository's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `sources.<name>.milestones` | table | Which milestones are announced where the signals take "milestone": what they did, their titles, and whether their counts and a GitLab group's milestones are read; every milestone closed where absent. |
+| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`; `closed` where absent. |
+| `sources.<name>.milestones.counts` | boolean | Whether a milestone names how many of its issues are open and closed, as its forge counts them; true where absent. On GitLab each announced milestone costs one request more. |
+| `sources.<name>.milestones.group` | boolean | Whether the milestones of the GitLab group holding the project are read beside the project's own; false where absent. |
+| `sources.<name>.milestones.most` | integer | The most open milestones of a repository a poll follows, in the order its forge lists them; 100 where absent, at most 1000. |
+| `sources.<name>.milestones.titles` | array of string | The titles, as globs as `include` writes them, one of which a milestone announced matches; every milestone where empty. |
 | `sources.<name>.most_areas` | integer | The most areas the source reads a repository's table or CODEOWNERS file naming: a table naming more is refused as the config is read, a file naming more is refused whole as it is read, and doctor says so; 200 where absent, and at most 2000, since each area is a group of a board and is matched against every changed path (ADR-0074). |
 | `sources.<name>.most_codeowners` | [Size](#size) | The most of a CODEOWNERS file downloaded and read, a longer file refused unread; "128KiB" where absent, and at most "3MiB", GitHub's own limit (ADR-0073, ADR-0074). |
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
@@ -2326,6 +2344,10 @@ How the homeserver carries commands to herald.
 ### MemberHooks
 
 Who registers a project webhook on each member of a GitLab owner.
+
+### MilestoneAction
+
+What a milestone did that is announced.
 
 ### Mode
 

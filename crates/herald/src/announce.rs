@@ -11,11 +11,13 @@ use herald_config::{Config, Uses};
 use herald_core::{Event, RouteId, Signal, SourceName};
 use herald_flows::{Fresh, Outcome, Stop, Within, announce_within, held_or_announced};
 use herald_ports::{Base, Keyring, Outbound, Store};
-use herald_sources_forge::{Forge, ForgeSource, Signals, SourceOptions, ci_run, of_a_run};
+use herald_sources_forge::{
+    Forge, ForgeSource, Signals, SourceOptions, ci_milestone, ci_run, of_a_milestone, of_a_run,
+};
 
 use super::dry_run::Dry;
 use super::output::say;
-use super::release::{Ci, evented, project, pushed, tagged, variable};
+use super::release::{Ci, event_file, evented, project, pushed, tagged, variable};
 use super::stores::{Native, composed};
 use super::{Connect, Connection, Connector, DONE, STOPPED, place, waiting};
 
@@ -126,6 +128,9 @@ async fn released(
     if tag.is_none() && forge == Forge::GitHub && of_a_run(forge, name) {
         return ran(options, (forge, &signals), (name, vars), out);
     }
+    if tag.is_none() && forge == Forge::GitHub && of_a_milestone(forge, name) {
+        return milestoned(options, (forge, &signals), vars, out);
+    }
     let tag = tag.or_else(|| {
         (forge != Forge::GitLab && signals.takes(Signal::Tag))
             .then(|| pushed(vars))
@@ -178,9 +183,7 @@ fn ran(
         );
         return Ok(None);
     }
-    let path = variable(vars, "GITHUB_EVENT_PATH")?;
-    let payload =
-        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
+    let payload = event_file(vars)?;
     let ran = ci_run((forge, options), (name, &payload)).map_err(|error| error.to_string())?;
     if ran.is_none() {
         say(
@@ -189,6 +192,33 @@ fn ran(
         );
     }
     Ok(ran)
+}
+
+/// The milestone a GitHub Actions run's own `milestone` event names: its
+/// event where `signals` take milestones and the source's `milestones`
+/// choose it.
+fn milestoned(
+    options: &SourceOptions,
+    (forge, signals): (Forge, &Signals),
+    vars: &BTreeMap<String, String>,
+    out: &mut dyn Write,
+) -> Result<Option<Event>, String> {
+    if !signals.takes(Signal::Milestone) {
+        say(
+            out,
+            "The run's event is milestone, and the source announces no milestones of the repository; nothing to announce.",
+        );
+        return Ok(None);
+    }
+    let payload = event_file(vars)?;
+    let event = ci_milestone((forge, options), &payload).map_err(|error| error.to_string())?;
+    if event.is_none() {
+        say(
+            out,
+            "The milestone is not one the source's milestones announce; nothing to announce.",
+        );
+    }
+    Ok(event)
 }
 
 /// An event, and the sources and routes it is announced from and to.
@@ -250,7 +280,7 @@ fn reported(told: Vec<Result<Fresh, Stop>>, out: &mut dyn Write) -> u8 {
             }
         };
         if let Some(due) = fresh.held {
-            let version = fresh.event.version().unwrap_or(fresh.event.title());
+            let version = fresh.event.named();
             say(
                 out,
                 &format!("The tag {version} is held for its Release until {due}."),

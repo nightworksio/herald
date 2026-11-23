@@ -105,16 +105,19 @@ pub(crate) enum Sent {
     Issues,
     /// Its confidential issues.
     ConfidentialIssues,
+    /// Its milestones.
+    Milestones,
 }
 
 impl Sent {
     /// Everything it may send.
-    pub(crate) const ALL: [Self; 5] = [
+    pub(crate) const ALL: [Self; 6] = [
         Self::Pipelines,
         Self::Vulnerabilities,
         Self::MergeRequests,
         Self::Issues,
         Self::ConfidentialIssues,
+        Self::Milestones,
     ];
 
     /// The key GitLab's hook API turns it on by.
@@ -125,6 +128,7 @@ impl Sent {
             Self::MergeRequests => "merge_requests_events",
             Self::Issues => "issues_events",
             Self::ConfidentialIssues => "confidential_issues_events",
+            Self::Milestones => "milestone_events",
         }
     }
 }

@@ -127,7 +127,7 @@ pub fn polled(swept: &Swept) -> Vec<String> {
 fn freshly(source: &str, announced: &[Fresh]) -> Vec<String> {
     let mut lines = Vec::new();
     for fresh in announced {
-        let event = fresh.event.version().unwrap_or(fresh.event.title());
+        let event = fresh.event.named();
         if let Some(due) = fresh.held {
             lines.push(format!(
                 "{source} {event}: held for its Release until {due}"

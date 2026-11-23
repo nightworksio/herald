@@ -8,7 +8,10 @@
 //! delivered or polled, is named as an alert of its repository's id and
 //! carries only the attributes an alert carries; a pull request,
 //! delivered or polled, is named as a pull request of its repository's id,
-//! and an issue as an issue of its repository's id; a repository's open
+//! and an issue as an issue of its repository's id; a milestone,
+//! delivered, read by a CI run or polled, is named as a milestone of its
+//! repository's id or its group's, its body no longer than a description
+//! may run; a repository's open
 //! pull requests read for a view are its own, as many as the view lists;
 //! and a bump pattern reads a package its title writes.
 
@@ -24,7 +27,7 @@ use herald_kinds::{Changed, Credential, Polling, Rounded, SourceConfig as _};
 use herald_ports::{Http, HttpError, Request, Response, Secret};
 use herald_sources_forge::{
     AlertAction, Alerts, ForgeSource, GhcrOptions, GhcrSource, Pulls, RunFrom, Runs, SourceOptions,
-    Transport, ci_run,
+    Milestones, Transport, ci_milestone, ci_run,
 };
 use herald_sources_forge::{Forge, Hooked, Repository, Signals};
 use herald_wire::PARSE_LIMIT;
@@ -473,6 +476,83 @@ fn issues(bytes: &[u8]) {
     }
 }
 
+/// What a source announcing every milestone of every forge, its GitLab
+/// group's among them, makes of `bytes` as a milestone's delivery, a CI
+/// run's milestone event, and every answer of a poll that follows open
+/// milestones it saw before.
+fn milestones(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let headers = [
+        ("X-GitHub-Event", "milestone"),
+        ("X-Gitlab-Event", "Milestone Hook"),
+    ];
+    let cursor = herald_core::Cursor {
+        ids: BTreeMap::from([
+            ("milestone".to_owned(), vec!["1".to_owned(), "2".to_owned()]),
+            ("milestone/closed".to_owned(), vec!["3".to_owned()]),
+            ("milestone-group".to_owned(), vec!["4".to_owned()]),
+        ]),
+        ..herald_core::Cursor::default()
+    };
+    for forge in FORGES {
+        let options = SourceOptions {
+            repository: Some("fuzzer/fuzzed".to_owned()),
+            signals: Some(vec![Signal::Milestone]),
+            milestones: Some(Milestones {
+                actions: Some(vec![
+                    herald_sources_forge::MilestoneAction::Opened,
+                    herald_sources_forge::MilestoneAction::Closed,
+                    herald_sources_forge::MilestoneAction::Reopened,
+                    herald_sources_forge::MilestoneAction::Deleted,
+                ]),
+                group: (forge == Forge::GitLab).then_some(true),
+                ..Milestones::default()
+            }),
+            ..SourceOptions::default()
+        };
+        let milestoned = |event: &Event, id: &str| {
+            let identity = event.identity().as_str();
+            assert!(
+                identity.contains(&format!("/{id}/milestone/")) || identity.contains("/group/"),
+                "{event:?}"
+            );
+            assert!(event.body().len() <= 4_096, "{event:?}");
+        };
+        if let Ok(Some(event)) = ci_milestone((forge, &options), bytes) {
+            let origin = event.origin().expect("a CI run's milestone names its origin");
+            milestoned(&event, &origin.id);
+        }
+        let source = ForgeSource {
+            forge,
+            options,
+            names: None,
+        };
+        for header in headers {
+            if let Ok(Hooked::Event(event)) = source.hooked(&[header], bytes) {
+                let origin = event.origin().expect("a delivered milestone names its origin");
+                milestoned(&event, &origin.id);
+            }
+        }
+        if let Polling::One(poll) = source.poller(None, false)
+            && let Ok(Some(polled)) = pollster::block_on(poll.polled(
+                &http,
+                Some(&cursor),
+                jiff::Timestamp::UNIX_EPOCH,
+            ))
+        {
+            for event in &polled.events {
+                let origin = event.origin().expect("a polled milestone names its origin");
+                milestoned(event, &origin.id);
+            }
+            assert!(
+                polled.ids.values().all(|ids| ids.len() <= 100),
+                "{:?}",
+                polled.ids
+            );
+        }
+    }
+}
+
 /// A repository's open pull requests read for a view by every path: each
 /// pull request is of its repository, none more than the view lists, and
 /// only those past the most read in full read as unknown.
@@ -623,6 +703,7 @@ fuzz_target!(|bytes: &[u8]| {
     pulls(bytes);
     folded(bytes);
     issues(bytes);
+    milestones(bytes);
     let response = Response {
         status: 200,
         headers: Vec::new(),

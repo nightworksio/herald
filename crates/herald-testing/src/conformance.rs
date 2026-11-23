@@ -252,6 +252,7 @@ fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
             .collect(),
         packages: BTreeMap::from([("herald".to_owned(), validators.clone())]),
         listings: BTreeMap::from([("check-suite".to_owned(), validators)]),
+        ids: BTreeMap::from([("milestone".to_owned(), vec![etag.to_owned()])]),
         newest: Some(NOON),
         sequence: Some(7),
         log: Some(3),

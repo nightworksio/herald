@@ -10,7 +10,8 @@ use crate::alerts;
 use crate::forge::{Repository, validators};
 use crate::issues;
 use crate::kind::{originated, projected};
-use crate::options::{AlertChoice, IssueChoice, PullChoice, RunChoice};
+use crate::milestones;
+use crate::options::{AlertChoice, IssueChoice, MilestoneChoice, PullChoice, RunChoice};
 use crate::packages::{Asking, PackageList, Packaging, merged, packaged_of};
 use crate::pulls;
 use crate::runs;
@@ -38,6 +39,7 @@ pub(crate) struct Releases {
     pub(crate) alerts: AlertChoice,
     pub(crate) pulls: PullChoice,
     pub(crate) issues: IssueChoice,
+    pub(crate) milestones: MilestoneChoice,
 }
 
 /// What a poll asked of a repository's runs and alerts, with the
@@ -47,6 +49,7 @@ struct Signalled<'a> {
     alerts: Option<(alerts::Asking<'a>, alerts::Asked)>,
     pulls: Option<(pulls::Asking<'a>, pulls::Asked)>,
     issues: Option<(issues::Asking<'a>, issues::Asked)>,
+    milestones: Option<(milestones::Asking<'a>, milestones::Followed)>,
 }
 
 impl Signalled<'_> {
@@ -65,6 +68,10 @@ impl Signalled<'_> {
                 .issues
                 .as_ref()
                 .is_some_and(|(_, asked)| asked.changed())
+            || self
+                .milestones
+                .as_ref()
+                .is_some_and(|(_, followed)| followed.changed)
     }
 
     /// `polled` with the runs and alerts of `repository` its listings
@@ -81,6 +88,9 @@ impl Signalled<'_> {
         }
         if let Some((asking, asked)) = self.issues {
             polled = runs::merged(polled, asking.read(&asked, repository)?);
+        }
+        if let Some((asking, followed)) = self.milestones {
+            polled = runs::merged(polled, asking.read(followed, repository)?);
         }
         Ok(polled)
     }
@@ -241,6 +251,7 @@ pub async fn tag_event_of(
         alerts: crate::SourceOptions::default().alert_choice(origin.forge()),
         pulls: crate::SourceOptions::default().pull_choice(),
         issues: crate::SourceOptions::default().issue_choice(),
+        milestones: crate::SourceOptions::default().milestone_choice(),
     };
     let http = Erased(http);
     let forge = origin.forge();
@@ -316,11 +327,19 @@ impl Releases {
             }
             None => None,
         };
+        let milestones = match self.milestone_asking() {
+            Some(asking) => {
+                let followed = asking.asked(http, cursor).await?;
+                Some((asking, followed))
+            }
+            None => None,
+        };
         Ok(Signalled {
             runs,
             alerts,
             pulls,
             issues,
+            milestones,
         })
     }
 
@@ -343,6 +362,18 @@ impl Releases {
             token: self.token.as_ref(),
             choice: &self.issues,
         })
+    }
+
+    /// How its repository's milestones are asked, where its signals take
+    /// them.
+    fn milestone_asking(&self) -> Option<milestones::Asking<'_>> {
+        self.signals
+            .takes(Signal::Milestone)
+            .then_some(milestones::Asking {
+                origin: &self.origin,
+                token: self.token.as_ref(),
+                choice: &self.milestones,
+            })
     }
 
     /// How its repository's alerts are asked, where its signals take them.
