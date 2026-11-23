@@ -2,10 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::{SignedDuration, Timestamp};
 
-use super::{Failure, Overviews, Pull, Readiness, Reason, Release, Rules, Triage, Turn};
+use super::base::{Based, Bases};
+use super::{Failure, Judging, Overviews, Pull, Readiness, Reason, Release, Rules, Triage, Turn};
 use crate::bump::{Bump, BumpPattern, read_bump};
 use crate::decide::Slot;
 use crate::glob::Glob;
+use crate::members::Visibility;
 use crate::nudge::pull_identity;
 
 /// What a view does with a bot's pull requests.
@@ -351,18 +353,40 @@ pub fn rows(view: &View, pulls: &[Pull], now: Timestamp) -> Vec<Row> {
         .collect()
 }
 
+/// What a surface's release verdict is judged on beside the rows it shows
+/// (ADR-0081, ADR-0083).
+#[derive(Debug, Clone, Copy)]
+pub struct Beside<'a> {
+    /// The rows of the release withheld from the surface.
+    pub withheld: &'a [Row],
+    /// Every base branch of the release read.
+    pub bases: &'a [Based],
+    /// The strictest repository the surface may see.
+    pub sees: Visibility,
+}
+
+impl Default for Beside<'_> {
+    fn default() -> Self {
+        Self {
+            withheld: &[],
+            bases: &[],
+            sees: Visibility::Private,
+        }
+    }
+}
+
 /// The rows `view` shows of `pulls` at `now`: grouped, the bots' batched
 /// where it batches them, each oldest first.
 #[must_use]
 pub fn board(view: &View, pulls: &[Pull], now: Timestamp) -> Board {
-    grouped(view, rows(view, pulls, now), &[])
+    grouped(view, rows(view, pulls, now), Beside::default())
 }
 
 /// `rows` as `view` shows them: grouped, the bots' batched where it
-/// batches them, each oldest first, its release judged beside `withheld`,
-/// the rows of it withheld from the surface (ADR-0081).
+/// batches them, each oldest first, its release judged beside `beside`'s
+/// rows and base branches withheld from the surface (ADR-0081, ADR-0083).
 #[must_use]
-pub fn grouped(view: &View, rows: Vec<Row>, withheld: &[Row]) -> Board {
+pub fn grouped(view: &View, rows: Vec<Row>, beside: Beside<'_>) -> Board {
     let counts = Turn::ALL
         .into_iter()
         .map(|state| (state, rows.iter().filter(|row| row.state == state).count()))
@@ -375,7 +399,18 @@ pub fn grouped(view: &View, rows: Vec<Row>, withheld: &[Row]) -> Board {
             (&left.pull.repository, left.pull.number)
                 .cmp(&(&right.pull.repository, right.pull.number))
         });
-        release.verdict(&judged, &withheld.iter().collect::<Vec<_>>())
+        let withheld: Vec<&Row> = beside.withheld.iter().collect();
+        let bases = Bases::seen(beside.bases, beside.sees);
+        release.verdict(
+            Judging {
+                rows: &judged,
+                bases: &bases.shown,
+            },
+            Judging {
+                rows: &withheld,
+                bases: &bases.withheld,
+            },
+        )
     });
     let mut groups: BTreeMap<(usize, String), Vec<Row>> = BTreeMap::new();
     let mut batches: BTreeMap<Option<Bump>, Vec<Row>> = BTreeMap::new();

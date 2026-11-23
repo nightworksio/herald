@@ -87,6 +87,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         pulls::pulls(kept, &mut checks).await?;
         pulls::reconciled(kept, &mut checks).await?;
         pulls::codeowners(kept, &mut checks).await?;
+        pulls::bases(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.recalls() {
@@ -229,6 +230,13 @@ const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
 const CODEOWNED: (Timestamp, Timestamp) = (
     Timestamp::constant(1_793_455_200, 0),
     Timestamp::constant(1_793_458_800, 0),
+);
+
+/// When the base branches the conformance check keeps were first and last
+/// read: an hour apart, after every CODEOWNERS file's.
+const BASED: (Timestamp, Timestamp) = (
+    Timestamp::constant(1_793_462_400, 0),
+    Timestamp::constant(1_793_466_000, 0),
 );
 
 const LAST_MODIFIED: &str = "Sat, 31 Oct 2026 12:00:00 GMT";

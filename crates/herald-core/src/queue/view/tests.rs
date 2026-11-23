@@ -636,7 +636,10 @@ fn a_release_shows_only_the_pull_requests_it_picks_and_judges_them_in_order() {
         .iter()
         .filter_map(|held| match held {
             crate::queue::Held::Shown(holding) => {
-                Some((holding.repository.as_str(), holding.number))
+                let crate::queue::Holder::Pull { number, .. } = holding.holder else {
+                    return None;
+                };
+                Some((holding.repository.as_str(), number))
             }
             crate::queue::Held::Private => None,
         })
@@ -656,10 +659,17 @@ fn a_release_is_judged_beside_the_rows_withheld_from_the_surface() {
     };
     let shown = rows(&view, &[carried(1)], now());
     let withheld = rows(&view, &[carried(2)], now());
-    let board = grouped(&view, shown.clone(), &withheld);
+    let board = grouped(
+        &view,
+        shown.clone(),
+        Beside {
+            withheld: &withheld,
+            ..Beside::default()
+        },
+    );
     assert_eq!(board.total(), 1);
     assert_eq!(board.readiness.unwrap().ready(), None);
-    let whole = grouped(&view, shown, &[]);
+    let whole = grouped(&view, shown, Beside::default());
     assert_eq!(whole.readiness.unwrap().ready(), Some(true));
 }
 

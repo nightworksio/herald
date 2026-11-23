@@ -1,10 +1,12 @@
 //! The pull requests kept mode keeps, one record per pull request in one
 //! directory, where each source's reconcile stands (ADR-0061), and each
 //! CODEOWNERS file a source read, one record per file in one directory,
-//! read only under its own key (ADR-0074, ADR-0076).
+//! read only under its own key (ADR-0074, ADR-0076), and each base
+//! branch's checks a source read, the same way (ADR-0083).
 
 use herald_core::{
-    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+    BaseKey, CodeownersKey, KeptBase, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey,
+    SourceName,
 };
 use herald_ports::{Pulls, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
@@ -55,6 +57,12 @@ impl<R: RecordBackend> Pulls for RecordStore<R> {
                 self.removed(&path).await?;
             }
         }
+        for path in self.records.list(paths::BASES).await? {
+            let kept = self.listed::<KeptBase>(&path).await?;
+            if kept.is_some_and(|kept| kept.value.at < before) {
+                self.removed(&path).await?;
+            }
+        }
         Ok(())
     }
 
@@ -91,6 +99,20 @@ impl<R: RecordBackend> Pulls for RecordStore<R> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::codeowners(&kept.key), kept, expected)
+            .await
+    }
+
+    async fn base(&self, key: &BaseKey) -> Result<Option<Versioned<KeptBase>>, StoreError> {
+        let kept = self.record::<KeptBase>(&paths::base(key)).await?;
+        Ok(kept.filter(|kept| kept.value.key == *key))
+    }
+
+    async fn put_base(
+        &self,
+        kept: &KeptBase,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::base(&kept.key), kept, expected)
             .await
     }
 }

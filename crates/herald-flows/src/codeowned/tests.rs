@@ -124,6 +124,14 @@ impl Queue for Served {
     ) -> Boxed<'a, Result<herald_core::Header, Unpolled>> {
         unread()
     }
+    fn based<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: (&'a str, &'a str),
+        _: Option<&'a herald_core::KeptBase>,
+    ) -> Boxed<'a, Result<herald_kinds::BaseFound, Unpolled>> {
+        unread()
+    }
     fn codeowners<'a>(
         &'a self,
         _: &'a dyn DynHttp,

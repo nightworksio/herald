@@ -1,12 +1,13 @@
 use herald_core::{
-    CodeownersKey, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey, SourceName,
+    BaseKey, CodeownersKey, KeptBase, KeptCodeowners, KeptPull, PullKey, Reconciled, RepositoryKey,
+    SourceName,
 };
 use herald_ports::{Pulls, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
 use super::{Fault, Faulty, refused};
 use crate::conformance::NOON;
-use crate::conformance::pulls::{LONG_BRANCH, codeowned, kept, repository};
+use crate::conformance::pulls::{LONG_BRANCH, based, codeowned, kept, repository};
 
 impl Pulls for Faulty {
     async fn pull(&self, key: &PullKey) -> Result<Option<Versioned<KeptPull>>, StoreError> {
@@ -55,7 +56,10 @@ impl Pulls for Faulty {
     async fn expire_pulls(&self, before: Timestamp) -> Result<(), StoreError> {
         self.refuses()?;
         let codeowned = before > NOON + jiff::SignedDuration::from_hours(1);
+        let bases = before > crate::conformance::CODEOWNED.1;
         match self.fault {
+            Fault::ExpiresNoBases if bases => Ok(()),
+            Fault::ExpiresEveryBase if bases => self.inner.expire_pulls(Timestamp::MAX).await,
             Fault::ExpiresNoPull => Ok(()),
             Fault::ExpiresNoCodeowners if codeowned => Ok(()),
             Fault::ExpiresEveryClosedPull => self.inner.expire_pulls(Timestamp::MAX).await,
@@ -161,6 +165,38 @@ impl Pulls for Faulty {
             _ => self.inner.put_codeowners(kept, expected).await,
         }
     }
+
+    async fn base(&self, key: &BaseKey) -> Result<Option<Versioned<KeptBase>>, StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::HoldsAnUnwrittenBase => Ok(Some(Versioned {
+                value: based(("herald", "main"), "held", NOON)?,
+                version: Version(1),
+            })),
+            Fault::ForgetsALongBranchBase if key.branch.len() > LONG_BRANCH => Ok(None),
+            Fault::SharesBases => {
+                let shared = BaseKey {
+                    source: SourceName::new("herald"),
+                    ..key.clone()
+                };
+                self.inner.base(&shared).await
+            }
+            _ => self.inner.base(key).await,
+        }
+    }
+
+    async fn put_base(
+        &self,
+        kept: &KeptBase,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.refuses()?;
+        let current = self.inner.base(&kept.key).await?.map(|read| read.version);
+        match self.fault {
+            Fault::OverwritesAnyBaseVersion => self.inner.put_base(kept, current).await,
+            _ => self.inner.put_base(kept, expected).await,
+        }
+    }
 }
 
 #[test]
@@ -241,6 +277,36 @@ fn a_store_that_breaks_its_promises_on_pull_requests_is_refused() {
         (
             Fault::ForgetsALongBranchCodeowners,
             "a CODEOWNERS file of a long branch name was not kept",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_breaks_its_promises_on_base_branches_is_refused() {
+    refused(&[
+        (
+            Fault::HoldsAnUnwrittenBase,
+            "a new store holds a base branch",
+        ),
+        (
+            Fault::OverwritesAnyBaseVersion,
+            "a base branch was written over a version it did not expect",
+        ),
+        (
+            Fault::SharesBases,
+            "a base branch was not the one written last under its key",
+        ),
+        (
+            Fault::ExpiresNoBases,
+            "a base branch read before the expiry was kept",
+        ),
+        (
+            Fault::ExpiresEveryBase,
+            "a base branch read at the expiry was forgotten",
+        ),
+        (
+            Fault::ForgetsALongBranchBase,
+            "a base branch of a long name was not kept",
         ),
     ]);
 }

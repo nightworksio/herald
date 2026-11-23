@@ -1,10 +1,11 @@
 use herald_core::{
-    Checks, Codeowners, CodeownersKey, Dialect, KeptCodeowners, KeptPull, Mergeable, Pull, PullKey,
-    Reconciled, RepositoryKey, Review, SourceName, Validators, Visibility,
+    BaseKey, Checks, Codeowners, CodeownersKey, Dialect, KeptBase, KeptCheck, KeptCodeowners,
+    KeptPull, Mergeable, Pull, PullKey, Reconciled, RepositoryKey, Review, SourceName, Validators,
+    Visibility,
 };
 use herald_ports::{Pulls, StoreError, Version, Written};
 
-use super::{CODEOWNED, Checks as Checked, NOON};
+use super::{BASED, CODEOWNED, Checks as Checked, NOON};
 
 /// The repository of id `id` on github.com.
 pub(super) fn repository(id: &str) -> RepositoryKey {
@@ -228,6 +229,82 @@ pub(super) async fn codeowners<S: Pulls>(
         store.codeowners(&moved.key).await?.is_some()
             && store.codeowners(&default.key).await?.is_some(),
         "a CODEOWNERS file read at the expiry was forgotten",
+    );
+    Ok(())
+}
+
+/// A base branch `branch` of `o/r` read by the source `source`, kept as
+/// read at `at` with the validator `etag`.
+pub(super) fn based(
+    (source, branch): (&str, &str),
+    etag: &str,
+    at: jiff::Timestamp,
+) -> Result<KeptBase, StoreError> {
+    let key = BaseKey {
+        source: SourceName::new(source),
+        repository: "o/r".to_owned(),
+        branch: branch.to_owned(),
+    };
+    let part = KeptCheck {
+        validators: Validators {
+            etag: Some(etag.to_owned()),
+            last_modified: None,
+        },
+        checks: Checks::Failed(vec!["build".to_owned()]),
+    };
+    KeptBase::of(key, vec![part], at).ok_or(StoreError::corrupt(
+        "a base branch read with a validator is not kept",
+    ))
+}
+
+/// Whether each base branch a source read is kept by source, repository
+/// and branch, written with compare-and-set, and forgotten once last read
+/// before an expiry (ADR-0083).
+pub(super) async fn bases<S: Pulls>(store: &S, checks: &mut Checked) -> Result<(), StoreError> {
+    let (first, last) = BASED;
+    let read = based(("herald", "main"), "\"1\"", first)?;
+    checks.ensure(
+        store.base(&read.key).await?.is_none(),
+        "a new store holds a base branch",
+    );
+    let version = checks.written(store.put_base(&read, None).await?);
+    checks.ensure(
+        store.put_base(&read, None).await? == Written::Conflict,
+        "a base branch was written over a version it did not expect",
+    );
+    let moved = based(("herald", "main"), "\"2\"", last)?;
+    checks.written(store.put_base(&moved, Some(version)).await?);
+    let other = based(("other", "main"), "\"3\"", first)?;
+    checks.written(store.put_base(&other, None).await?);
+    checks.ensure(
+        store
+            .base(&read.key)
+            .await?
+            .is_some_and(|kept| kept.value == moved)
+            && store
+                .base(&other.key)
+                .await?
+                .is_some_and(|kept| kept.value == other),
+        "a base branch was not the one written last under its key",
+    );
+    let branch = format!("feature/{}", "ü".repeat(LONG_BRANCH));
+    let long = based(("herald", &branch), "\"4\"", last)?;
+    checks.written(store.put_base(&long, None).await?);
+    checks.ensure(
+        store
+            .base(&long.key)
+            .await?
+            .is_some_and(|kept| kept.value == long),
+        "a base branch of a long name was not kept",
+    );
+    store.expire_pulls(last).await?;
+    checks.ensure(
+        store.base(&other.key).await?.is_none(),
+        "a base branch read before the expiry was kept",
+    );
+    checks.ensure(
+        store.base(&moved.key).await?.is_some(),
+        "a base branch read at the expiry was forgotten",
     );
     Ok(())
 }

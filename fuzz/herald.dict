@@ -130,3 +130,7 @@
 "@@"
 "@org/team"
 "\x0A\x0A\x0A"
+"check_runs"
+"conclusion"
+"statuses"
+"allow_failure"

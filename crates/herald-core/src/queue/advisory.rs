@@ -196,12 +196,22 @@ impl Printed {
         !matches!(self, Self::Withheld)
     }
 
-    /// Whether the rows of a repository seen as `visibility` are printed:
-    /// a public one's always, a private or internal one's only where the
-    /// operator said the output is private.
+    /// The strictest repository whose rows are printed: a public one's
+    /// always, a private or internal one's only where the operator said
+    /// the output is private.
     #[must_use]
-    pub const fn prints(self, visibility: Visibility) -> bool {
-        matches!(visibility, Visibility::Public) || !matches!(self, Self::Withheld)
+    pub const fn sees(self) -> Visibility {
+        match self {
+            Self::Withheld => Visibility::Public,
+            Self::Configured | Self::Asked => Visibility::Private,
+        }
+    }
+
+    /// Whether the rows of a repository seen as `visibility` are printed,
+    /// as [`Self::sees`] says.
+    #[must_use]
+    pub fn prints(self, visibility: Visibility) -> bool {
+        visibility <= self.sees()
     }
 
     /// `pulls` as they are printed, and those withheld.
@@ -227,6 +237,9 @@ impl Printed {
         overviews.header = overviews
             .header
             .map(|header| header.shown(|visibility| self.prints(visibility)));
+        overviews
+            .bases
+            .retain(|based| self.prints(based.visibility));
         overviews
     }
 }

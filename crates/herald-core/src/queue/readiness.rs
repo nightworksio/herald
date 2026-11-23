@@ -1,6 +1,8 @@
 //! A view's release readiness: the open pull requests its selectors pick,
-//! and whether any of them holds the release back (ADR-0081).
+//! and whether any of them, or a base branch they merge into, holds the
+//! release back (ADR-0081, ADR-0083).
 
+use super::base::{BaseRead, Based};
 use super::{Checks, Pull, Review, Row};
 use crate::glob::Glob;
 
@@ -75,11 +77,20 @@ pub enum Blocker {
     Draft,
     /// A pull request a reviewer asked to change.
     Changes,
+    /// A base branch the release's pull requests merge into whose head
+    /// has a failed check (ADR-0083).
+    Base,
 }
 
 impl Blocker {
     /// Every blocker, in the order a verdict names them.
-    pub const ALL: [Self; 4] = [Self::Label, Self::Failed, Self::Draft, Self::Changes];
+    pub const ALL: [Self; 5] = [
+        Self::Label,
+        Self::Failed,
+        Self::Draft,
+        Self::Changes,
+        Self::Base,
+    ];
 
     /// The blocker as a config, a template and JSON name it.
     #[must_use]
@@ -89,6 +100,7 @@ impl Blocker {
             Self::Failed => "failed",
             Self::Draft => "draft",
             Self::Changes => "changes",
+            Self::Base => "base",
         }
     }
 }
@@ -134,13 +146,14 @@ pub struct Release {
     pub header: bool,
 }
 
-/// Why one pull request holds a release back.
+/// Why one pull request or base branch holds a release back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HeldBy {
     /// A blocker of the view's.
     Blocked(Blocker),
-    /// It was listed past the most a view reads in full, so whether it
-    /// blocks is not known.
+    /// It was not read in full, so whether it blocks is not known: a pull
+    /// request listed past the most a view reads in full, or a base branch
+    /// whose checks could not be read.
     Unread,
 }
 
@@ -155,19 +168,34 @@ impl HeldBy {
     }
 }
 
-/// One pull request holding a release back, and why.
+/// What holds a release back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Holder {
+    /// A pull request.
+    Pull {
+        /// Its number.
+        number: u64,
+        /// Its page.
+        url: String,
+    },
+    /// A base branch the release's pull requests merge into (ADR-0083).
+    Base {
+        /// The branch.
+        branch: String,
+    },
+}
+
+/// One pull request or base branch holding a release back, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Holding {
     /// Why.
     pub held_by: HeldBy,
     /// Its repository's full path.
     pub repository: String,
-    /// Its number.
-    pub number: u64,
-    /// Its page.
-    pub url: String,
-    /// The blocker labels it carries, or the checks that failed, at most
-    /// [`MOST_HELD_CHECKS`] of them.
+    /// What holds it.
+    pub holder: Holder,
+    /// The blocker labels it carries, the checks that failed, at most
+    /// [`MOST_HELD_CHECKS`] of them, or why a base branch was not read.
     pub named: Vec<String>,
     /// How many more it carries or failed past those named.
     pub more: usize,
@@ -176,10 +204,27 @@ pub struct Holding {
 /// One hold on a release, as a surface is told it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Held {
-    /// A pull request the surface is shown.
+    /// A pull request or base branch the surface is shown.
     Shown(Holding),
-    /// A pull request withheld from it: nothing of it is told.
+    /// One withheld from it: nothing of it is told.
     Private,
+}
+
+/// What a surface's release verdict is judged on: pull requests' rows and
+/// base branches.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Judging<'a> {
+    /// The rows.
+    pub rows: &'a [&'a Row],
+    /// The base branches.
+    pub bases: &'a [&'a Based],
+}
+
+impl Judging<'_> {
+    /// Whether it holds nothing to judge.
+    const fn is_empty(&self) -> bool {
+        self.rows.is_empty() && self.bases.is_empty()
+    }
 }
 
 /// What a verdict was judged on.
@@ -224,7 +269,7 @@ impl Readiness {
 }
 
 /// `names`, at most [`MOST_HELD_CHECKS`] of them, and how many more.
-fn capped(mut names: Vec<String>) -> (Vec<String>, usize) {
+pub(crate) fn capped(mut names: Vec<String>) -> (Vec<String>, usize) {
     let more = names.len().saturating_sub(MOST_HELD_CHECKS);
     names.truncate(MOST_HELD_CHECKS);
     (names, more)
@@ -281,7 +326,29 @@ impl Release {
             },
             Blocker::Draft => pull.draft.then(Vec::new),
             Blocker::Changes => (pull.review == Review::ChangesRequested).then(Vec::new),
+            Blocker::Base => None,
         }
+    }
+
+    /// What holds the release back by `based`, where it reads base
+    /// branches: a check failed on its head, or that it could not be read.
+    fn based(&self, based: &Based) -> Option<(HeldBy, Vec<String>)> {
+        if !self.blocked_by.contains(&Blocker::Base) {
+            return None;
+        }
+        match &based.read {
+            BaseRead::Checked(Checks::Failed(names)) => {
+                Some((HeldBy::Blocked(Blocker::Base), names.clone()))
+            }
+            BaseRead::Checked(Checks::Absent | Checks::Pending | Checks::Passed) => None,
+            BaseRead::Unread(reason) => Some((HeldBy::Unread, vec![reason.clone()])),
+        }
+    }
+
+    /// Whether the release reads the checks of its base branches.
+    #[must_use]
+    pub fn reads_bases(&self) -> bool {
+        self.blocked_by.contains(&Blocker::Base)
     }
 
     /// What holds `pull` back: each blocker the view names by it, or that
@@ -301,22 +368,37 @@ impl Release {
     }
 
     /// The verdict one surface is told: what holds each of `shown`, the
-    /// rows it shows, back, and of `withheld`, the rows of the release
-    /// withheld from it, only what [`Withheld`] lets it be told.
+    /// rows it shows and the base branches it may see, back, and of
+    /// `withheld`, the rows and base branches of the release withheld from
+    /// it, only what [`Withheld`] lets it be told.
     #[must_use]
-    pub fn verdict(&self, shown: &[&Row], withheld: &[&Row]) -> Readiness {
+    pub fn verdict(&self, shown: Judging<'_>, withheld: Judging<'_>) -> Readiness {
         let mut readiness = Readiness::default();
-        for row in shown {
-            for (held_by, named) in self.holds(&row.pull) {
-                let (named, more) = capped(named);
-                readiness.held(Held::Shown(Holding {
-                    held_by,
-                    repository: row.pull.repository.clone(),
+        let mut hold = |(held_by, named): (HeldBy, Vec<String>), repository: &str, holder| {
+            let (named, more) = capped(named);
+            readiness.held(Held::Shown(Holding {
+                held_by,
+                repository: repository.to_owned(),
+                holder,
+                named,
+                more,
+            }));
+        };
+        for row in shown.rows {
+            for held in self.holds(&row.pull) {
+                let holder = Holder::Pull {
                     number: row.pull.number,
                     url: row.pull.url.clone(),
-                    named,
-                    more,
-                }));
+                };
+                hold(held, &row.pull.repository, holder);
+            }
+        }
+        for based in shown.bases {
+            if let Some(held) = self.based(based) {
+                let holder = Holder::Base {
+                    branch: based.branch.clone(),
+                };
+                hold(held, &based.repository, holder);
             }
         }
         if withheld.is_empty() {
@@ -330,10 +412,18 @@ impl Release {
             }
             Withheld::Shown => readiness.judged = Judged::Shown,
             Withheld::Masked => {
-                for row in withheld {
-                    if !self.holds(&row.pull).is_empty() {
-                        readiness.held(Held::Private);
-                    }
+                let rows = withheld
+                    .rows
+                    .iter()
+                    .filter(|row| !self.holds(&row.pull).is_empty())
+                    .count();
+                let bases = withheld
+                    .bases
+                    .iter()
+                    .filter(|based| self.based(based).is_some())
+                    .count();
+                for _ in 0..rows + bases {
+                    readiness.held(Held::Private);
                 }
             }
         }

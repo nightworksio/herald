@@ -9,8 +9,8 @@ use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
 use herald_core::{
-    Advisories, Blocker, Board, Header, Held, HeldBy, Judged, Loaded, Loads, Printed, QueueEntry,
-    Readiness, Row, Showing, WITHHELD, view_json, waited,
+    Advisories, Blocker, Board, Header, Held, HeldBy, Holder, Judged, Loaded, Loads, Printed,
+    QueueEntry, Readiness, Row, Showing, WITHHELD, view_json, waited,
 };
 
 use super::cli::QueueFormat;
@@ -142,14 +142,28 @@ fn held(held: &Held) -> String {
     } else {
         String::new()
     };
+    let repository = &holding.repository;
+    let number = match &holding.holder {
+        Holder::Base { branch } => {
+            return match holding.held_by {
+                HeldBy::Unread => {
+                    format!("  base {branch} of {repository} unread, because {named}")
+                }
+                HeldBy::Blocked(_) => {
+                    format!("  base {branch} of {repository} failed {named}{more}")
+                }
+            };
+        }
+        Holder::Pull { number, .. } => number,
+    };
     let why = match holding.held_by {
         HeldBy::Blocked(Blocker::Label) => format!("carries {named}{more}"),
-        HeldBy::Blocked(Blocker::Failed) => format!("failed {named}{more}"),
+        HeldBy::Blocked(Blocker::Failed | Blocker::Base) => format!("failed {named}{more}"),
         HeldBy::Blocked(Blocker::Draft) => "is a draft".to_owned(),
         HeldBy::Blocked(Blocker::Changes) => "has changes requested".to_owned(),
         HeldBy::Unread => "was not read in full".to_owned(),
     };
-    format!("  {}#{} {why}", holding.repository, holding.number)
+    format!("  {repository}#{number} {why}")
 }
 
 /// The release verdict `readiness` holds as lines of a table: ready, not

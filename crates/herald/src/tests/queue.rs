@@ -3,7 +3,7 @@ use serde_json::json;
 use super::world::*;
 use crate::*;
 
-const LISTED: &str =
+pub(super) const LISTED: &str =
     "/repos/cli/cli/pulls?state=open&sort=updated&direction=desc&per_page=100&page=1";
 
 fn viewed() -> String {

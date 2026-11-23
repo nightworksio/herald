@@ -19,7 +19,7 @@ pub(super) const CHECKS: &str = "a commit's checks";
 pub(super) const FILES: &str = "a pull request's changed files";
 
 /// The state a commit status on Forgejo has while it runs.
-const RUNNING: &str = "pending";
+pub(super) const RUNNING: &str = "pending";
 
 /// The state a check run on GitHub has once it ran.
 const COMPLETED: &str = "completed";
@@ -186,7 +186,7 @@ struct Status {
 }
 
 /// What checks say, each a name, whether it ran, and whether it failed.
-fn fold(checks: impl Iterator<Item = (String, bool, bool)>) -> Checks {
+pub(super) fn fold(checks: impl Iterator<Item = (String, bool, bool)>) -> Checks {
     let checks: Vec<(String, bool, bool)> = checks.collect();
     if checks.is_empty() {
         return Checks::Absent;

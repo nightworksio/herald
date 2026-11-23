@@ -772,3 +772,24 @@ fn an_owner_s_member_reads_its_own_milestones_seen_as_asked() {
     assert_eq!(header.milestones[0].repository, "o/vault");
     assert_eq!(header.milestones[0].visibility, Visibility::Private);
 }
+
+#[test]
+fn an_owner_s_member_reads_its_own_base_branch() {
+    let queue = scoped(Forge::GitHub, true);
+    let runs = json!({ "total_count": 1, "check_runs": [
+        { "name": "test", "status": "completed", "conclusion": "failure" },
+    ] });
+    let http = ScriptedHttp::new(vec![
+        answer(200, &runs),
+        answer(200, &json!({ "state": "pending", "statuses": [] })),
+    ]);
+    let found = pollster::block_on(queue.based(&http, ("o/vault", "main"), None)).unwrap();
+    assert_eq!(
+        http.asked()[0].0,
+        "https://api.github.com/repos/o/vault/commits/main/check-runs?per_page=100"
+    );
+    assert_eq!(
+        found.read,
+        herald_core::BaseRead::Checked(Checks::Failed(vec!["test".to_owned()]))
+    );
+}

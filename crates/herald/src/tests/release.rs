@@ -113,6 +113,7 @@ fn a_masked_release_names_a_private_hold_private_and_nothing_more_unless_said_pr
                 "repository": null,
                 "number": null,
                 "url": null,
+                "branch": null,
                 "named": [],
                 "more": 0,
             }],
@@ -130,16 +131,24 @@ fn a_masked_release_names_a_private_hold_private_and_nothing_more_unless_said_pr
 
 #[test]
 fn a_release_verdict_names_each_hold_its_labels_or_checks_and_those_past_the_bound() {
-    use herald_core::{Blocker, Held, HeldBy, Holding, Judged, Readiness};
-    let holding = |held_by: HeldBy, named: &[&str], more: usize| {
+    use herald_core::{Blocker, Held, HeldBy, Holder, Holding, Judged, Readiness};
+    let held = |held_by: HeldBy, holder: Holder, (named, more): (&[&str], usize)| {
         Held::Shown(Holding {
             held_by,
             repository: "a/b".to_owned(),
-            number: 3,
-            url: String::new(),
+            holder,
             named: named.iter().map(|name| (*name).to_owned()).collect(),
             more,
         })
+    };
+    let pull = || Holder::Pull {
+        number: 3,
+        url: String::new(),
+    };
+    let holding =
+        |held_by: HeldBy, named: &[&str], more: usize| held(held_by, pull(), (named, more));
+    let base = || Holder::Base {
+        branch: "main".to_owned(),
     };
     let readiness = Readiness {
         holds: vec![
@@ -147,6 +156,12 @@ fn a_release_verdict_names_each_hold_its_labels_or_checks_and_those_past_the_bou
             holding(HeldBy::Blocked(Blocker::Failed), &["test", "lint"], 2),
             holding(HeldBy::Blocked(Blocker::Draft), &[], 0),
             holding(HeldBy::Blocked(Blocker::Changes), &[], 0),
+            held(HeldBy::Blocked(Blocker::Base), base(), (&["build"], 1)),
+            held(
+                HeldBy::Unread,
+                base(),
+                (&["its forge could not be reached"], 0),
+            ),
             Held::Private,
         ],
         more: 6,
@@ -155,11 +170,13 @@ fn a_release_verdict_names_each_hold_its_labels_or_checks_and_those_past_the_bou
     assert_eq!(
         crate::queueing::judged(&readiness),
         [
-            "release: not ready, 11 reasons",
+            "release: not ready, 13 reasons",
             "  a/b#3 carries blocker",
             "  a/b#3 failed test, lint and 2 more",
             "  a/b#3 is a draft",
             "  a/b#3 has changes requested",
+            "  base main of a/b failed build and 1 more",
+            "  base main of a/b unread, because its forge could not be reached",
             "  (private)",
             "  and 6 more",
         ]
@@ -276,5 +293,70 @@ fn a_release_s_header_of_a_private_repository_is_printed_only_with_private() {
         ),
         "{}",
         refused.out
+    );
+}
+
+#[test]
+fn a_private_repository_s_failing_base_branch_is_printed_only_with_private() {
+    let world = World::default();
+    listed(&world);
+    {
+        let mut state = world.state.lock().unwrap();
+        let (_, listing) = state.forge[super::queue::LISTED].clone();
+        let mut pulls: serde_json::Value = serde_json::from_str(&listing).unwrap();
+        pulls[0]["base"] = json!({ "ref": "main" });
+        state
+            .forge
+            .insert(super::queue::LISTED.to_owned(), (200, pulls.to_string()));
+        let runs = json!({ "total_count": 1, "check_runs": [
+            { "name": "test", "status": "completed", "conclusion": "failure" },
+        ] });
+        state.forge.insert(
+            "/repos/cli/cli/commits/main/check-runs?per_page=100".to_owned(),
+            (200, runs.to_string()),
+        );
+        state.forge.insert(
+            "/repos/cli/cli/commits/main/status?per_page=100".to_owned(),
+            (
+                200,
+                json!({ "state": "pending", "statuses": [] }).to_string(),
+            ),
+        );
+    }
+    let setup = setup(&format!(
+        "{CONFIG}[views.ship]\nmost_pulls = 0\nrelease = {{ milestone = \"v2.*\", header = false }}\n"
+    ));
+    let table = herald(&setup, &world, &["queue", "ship"]);
+    assert!(!table.out.contains("base main"), "{}", table.out);
+    assert_eq!(
+        table.out.lines().nth(1),
+        Some("release: not known, some pull requests are private"),
+        "{} {}",
+        table.out,
+        table.err
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&herald(&setup, &world, &["queue", "ship", "--format", "json"]).out)
+            .unwrap();
+    assert_eq!(json["overviews"]["bases"], json!([]));
+    let printed = herald(&setup, &world, &["queue", "ship", "--private"]);
+    assert!(
+        printed.out.contains("  base main of cli/cli failed test"),
+        "{}",
+        printed.out
+    );
+    let json: serde_json::Value = serde_json::from_str(
+        &herald(
+            &setup,
+            &world,
+            &["queue", "ship", "--private", "--format", "json"],
+        )
+        .out,
+    )
+    .unwrap();
+    assert_eq!(
+        json["overviews"]["bases"],
+        json!([{ "repository": "cli/cli", "branch": "main", "state": "failed",
+            "failing": ["test"], "more": 0, "reason": null }])
     );
 }

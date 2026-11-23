@@ -43,6 +43,19 @@ fn overviews() -> Overviews {
         advisories: None,
         load: None,
         header: None,
+        bases: vec![
+            based("o/app", Visibility::Public),
+            based("o/vault", Visibility::Private),
+        ],
+    }
+}
+
+fn based(repository: &str, visibility: Visibility) -> crate::queue::Based {
+    crate::queue::Based {
+        repository: repository.to_owned(),
+        visibility,
+        branch: "main".to_owned(),
+        read: crate::queue::BaseRead::Checked(crate::queue::Checks::Passed),
     }
 }
 
@@ -74,6 +87,11 @@ fn an_audience_sees_only_the_runs_and_unread_repositories_it_may_see() {
     let public = overviews().seen_by(Visibility::Public);
     assert_eq!(public.capacity.as_ref().map(Vec::len), Some(3));
     assert_eq!(public.unread, []);
+    assert_eq!(public.bases, [based("o/app", Visibility::Public)]);
+    assert_eq!(
+        overviews().seen_by(Visibility::Internal).bases,
+        [based("o/app", Visibility::Public)]
+    );
     assert_eq!(overviews().seen_by(Visibility::Private), overviews());
     let counted = Overviews {
         load: Some(crate::queue::Loads::default()),
@@ -103,6 +121,7 @@ fn a_view_shows_only_the_runs_and_unread_repositories_of_the_repositories_it_hol
     );
     assert_eq!(within.capacity.as_ref().map(Vec::len), Some(3));
     assert_eq!(within.unread, []);
+    assert_eq!(within.bases, [based("o/app", Visibility::Public)]);
     assert_eq!(
         overviews().within(&View::default(), repository),
         overviews()
@@ -132,4 +151,5 @@ fn merged_overviews_hold_the_runs_and_unread_repositories_of_both() {
         (merged.capacity.map(|runs| runs.len()), merged.unread.len()),
         (Some(8), 3)
     );
+    assert_eq!(merged.bases.len(), 6);
 }

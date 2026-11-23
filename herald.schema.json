@@ -632,6 +632,11 @@
           "description": "One a reviewer asked to change.",
           "type": "string",
           "const": "changes"
+        },
+        {
+          "description": "A base branch whose head has a failed check.",
+          "type": "string",
+          "const": "base"
         }
       ]
     },
@@ -4814,7 +4819,7 @@
       "type": "object",
       "properties": {
         "blocked_by": {
-          "description": "What holds it back: every one where absent. \"label\", a pull request\ncarrying a blocker label; \"failed\", one whose check failed;\n\"draft\", a draft; \"changes\", one a reviewer asked to change. A pull\nrequest not read in full holds it back whatever this says.",
+          "description": "What holds it back: every one where absent. \"label\", a pull request\ncarrying a blocker label; \"failed\", one whose check failed;\n\"draft\", a draft; \"changes\", one a reviewer asked to change;\n\"base\", a base branch its pull requests merge into whose head has a\nfailed check, each read once a round by one request (two on\nGitHub, one more on GitLab where its pipeline failed), asked on the\nvalidators kept where the store keeps pull requests, at most 20\nbranches; one that could not be read holds it back too (ADR-0083).\nA pull request not read in full holds it back whatever this says.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Blocker"

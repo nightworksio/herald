@@ -220,6 +220,24 @@ pub(crate) fn codeowners(key: &herald_core::CodeownersKey) -> String {
     format!("{CODEOWNERS}/{named}.json")
 }
 
+pub(crate) const BASES: &str = "bases";
+
+/// Where the base branch keyed `key` is kept: every branch in one
+/// directory, its source, repository and branch written as one segment,
+/// or past [`MOST_NAMED`] bytes as that segment's digest (ADR-0083).
+pub(crate) fn base(key: &herald_core::BaseKey) -> String {
+    let named = segment(&format!(
+        "{}\n{}\n{}",
+        key.source.as_str(),
+        key.repository,
+        key.branch
+    ));
+    if named.len() > MOST_NAMED {
+        return format!("{BASES}/{}.json", herald_core::digest(&named));
+    }
+    format!("{BASES}/{named}.json")
+}
+
 /// Where the reconcile of `source` stands.
 pub(crate) fn reconciled(source: &SourceName) -> String {
     format!("reconciled/{}.json", segment(source.as_str()))
@@ -266,6 +284,29 @@ mod tests {
         assert_eq!(key("s", "o/r", None), "codeowners/s~0ao~2fr~0a.json");
         assert_ne!(key("s", "o/r", Some("")), key("s", "o/r", None));
         assert_ne!(key("s/o", "r", None), key("s", "o/r", None));
+    }
+
+    #[test]
+    fn a_base_branch_is_kept_by_source_repository_and_branch_and_past_the_most_bytes_by_digest() {
+        let key = |branch: &str| {
+            base(&herald_core::BaseKey {
+                source: SourceName::new("s"),
+                repository: "o/r".to_owned(),
+                branch: branch.to_owned(),
+            })
+        };
+        assert_eq!(key("main"), "bases/s~0ao~2fr~0amain.json");
+        let start = segment("s\no/r\n");
+        let most = "a".repeat(MOST_NAMED - start.len());
+        assert_eq!(key(&most), format!("bases/{start}{most}.json"));
+        let past = format!("{most}a");
+        assert_eq!(
+            key(&past),
+            format!(
+                "bases/{}.json",
+                herald_core::digest(&format!("{start}{past}"))
+            )
+        );
     }
 
     #[test]

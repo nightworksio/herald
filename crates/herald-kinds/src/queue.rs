@@ -1,8 +1,9 @@
 use std::fmt;
 
 use herald_core::{
-    Advising, Advisories, AreaKind, Capacity, Codeowners, CodeownersRef, Glob, Header,
-    KeptCodeowners, Listed, Overviews, Owner, Pull, Rerun, Teams, Validators, Visibility,
+    Advising, Advisories, AreaKind, BaseRead, Capacity, Codeowners, CodeownersRef, Glob, Header,
+    KeptBase, KeptCheck, KeptCodeowners, Listed, Overviews, Owner, Pull, Rerun, Teams, Validators,
+    Visibility,
 };
 use herald_ports::{Boxed, DynHttp};
 
@@ -139,6 +140,17 @@ pub struct Found {
     /// kept with it; none where it was not read in full or the forge
     /// answered none (ADR-0074).
     pub etag: Option<String>,
+}
+
+/// What a read of a base branch's head found (ADR-0083).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseFound {
+    /// What its checks were read as.
+    pub read: BaseRead,
+    /// Each request's answer with the validators it came with, in the
+    /// order asked, to be kept for the next read; none where it was not
+    /// read.
+    pub parts: Vec<KeptCheck>,
 }
 
 /// What a reconcile's listing of a repository's open pull requests found
@@ -314,6 +326,18 @@ pub trait Queue: fmt::Debug + Send + Sync {
         read: (&'a str, &'a Glob, Visibility),
         now: jiff::Timestamp,
     ) -> Boxed<'a, Result<Header, Unpolled>>;
+
+    /// The combined check state of the head of the branch `read.1` of the
+    /// repository at the full path `read.0`, asked through `http`, each
+    /// request conditional on `kept`'s validators where it was kept from a
+    /// read asking the same, an unchanged answer read as kept; the branch
+    /// named unread with why where the forge refused (ADR-0083).
+    fn based<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        read: (&'a str, &'a str),
+        kept: Option<&'a KeptBase>,
+    ) -> Boxed<'a, Result<BaseFound, Unpolled>>;
 
     /// `pulls`, as [`Queue::listed`] found them, each read in full.
     fn completed<'a>(

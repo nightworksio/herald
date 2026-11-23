@@ -561,6 +561,19 @@ impl herald_kinds::Queue for Scoped {
         })
     }
 
+    fn based<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (repository, branch): (&'a str, &'a str),
+        kept: Option<&'a herald_core::KeptBase>,
+    ) -> herald_ports::Boxed<'a, Result<herald_kinds::BaseFound, Unpolled>> {
+        Box::pin(async move {
+            let origin = self.origin(repository);
+            let reading = (&origin, self.token.as_ref());
+            super::base::based(&Erased(http), reading, branch, kept).await
+        })
+    }
+
     fn team_owner(&self) -> String {
         format!("{} {}", self.root.api(), self.owner)
     }

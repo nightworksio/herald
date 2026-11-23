@@ -226,7 +226,11 @@ fn herald_queue_unprivate_is_told_not_ready_by_a_printed_hold_and_not_known_with
         let [Held::Shown(holding)] = readiness.holds.as_slice() else {
             panic!("one shown hold: {readiness:?}");
         };
-        assert_eq!((holding.repository.as_str(), holding.number), ("o/open", 1));
+        assert_eq!(holding.repository, "o/open");
+        assert!(matches!(
+            holding.holder,
+            herald_core::Holder::Pull { number: 1, .. }
+        ));
         let json = view_json(Showing {
             view: "queue",
             board: &held,
