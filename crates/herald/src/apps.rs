@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use herald_config::Config;
-use herald_core::{SourceName, digest};
+use herald_core::{Printed, SourceName, digest};
 use herald_environment::SystemClock;
 use herald_ports::Clock as _;
 use tokio::io::{AsyncRead, AsyncReadExt as _};
@@ -22,6 +22,8 @@ pub(crate) struct Written<'a> {
     pub(crate) event: &'a str,
     /// Whether to print the requests and send nothing.
     pub(crate) dry_run: bool,
+    /// How private the operator said the output is.
+    pub(crate) printed: Printed,
 }
 
 /// A new token for `app` printed once, with the line herald.toml keeps for
@@ -84,7 +86,8 @@ pub(crate) async fn announcing_event(
         within: Some(&named.routes),
         event: &event,
     };
-    announcing(config, vars, connect, routed, written.dry_run, out).await
+    let said = (written.dry_run, written.printed);
+    announcing(config, vars, connect, routed, said, out).await
 }
 
 /// The bytes of the event file `event` names, or of `stdin` when it is `-`.

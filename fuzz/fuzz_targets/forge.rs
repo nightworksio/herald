@@ -479,7 +479,7 @@ fn issues(bytes: &[u8]) {
 /// What a source announcing every milestone of every forge, its GitLab
 /// group's among them, makes of `bytes` as a milestone's delivery, a CI
 /// run's milestone event, and every answer of a poll that follows open
-/// milestones it saw before.
+/// milestones it saw before, at the end of time so every due day passed.
 fn milestones(bytes: &[u8]) {
     let http = Answering(bytes.to_vec());
     let headers = [
@@ -490,6 +490,11 @@ fn milestones(bytes: &[u8]) {
         ids: BTreeMap::from([
             ("milestone".to_owned(), vec!["1".to_owned(), "2".to_owned()]),
             ("milestone/closed".to_owned(), vec!["3".to_owned()]),
+            (
+                "milestone/due".to_owned(),
+                vec!["1:2000-01-01".to_owned(), "2:9999-12-31".to_owned()],
+            ),
+            ("milestone/overdue".to_owned(), vec!["2:9999-12-31".to_owned()]),
             ("milestone-group".to_owned(), vec!["4".to_owned()]),
         ]),
         ..herald_core::Cursor::default()
@@ -504,6 +509,7 @@ fn milestones(bytes: &[u8]) {
                     herald_sources_forge::MilestoneAction::Closed,
                     herald_sources_forge::MilestoneAction::Reopened,
                     herald_sources_forge::MilestoneAction::Deleted,
+                    herald_sources_forge::MilestoneAction::Overdue,
                 ]),
                 group: (forge == Forge::GitLab).then_some(true),
                 ..Milestones::default()
@@ -537,7 +543,7 @@ fn milestones(bytes: &[u8]) {
             && let Ok(Some(polled)) = pollster::block_on(poll.polled(
                 &http,
                 Some(&cursor),
-                jiff::Timestamp::UNIX_EPOCH,
+                jiff::Timestamp::MAX,
             ))
         {
             for event in &polled.events {

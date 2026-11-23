@@ -8,6 +8,7 @@ use crate::key::Identity;
 use crate::kind::{Attribute, Kind, prerelease_in, version_in};
 use crate::members::Visibility;
 use crate::origin::Origin;
+use crate::queue::Printed;
 use crate::route::SourceName;
 
 /// An event as a source parsed it, before [`Event::normalise`] checks it.
@@ -283,15 +284,23 @@ impl Event {
         version_in(&self.attributes)
     }
 
-    /// What output that may be read in public, such as a CI job's log,
-    /// names it by: its version, else its title, where it is public; an
-    /// event of a private or internal repository is named only as private
-    /// (ADR-0067).
+    /// What output that may be read in public, such as a CI job's or a
+    /// server's log, names it by: its version, else its title, where it is
+    /// public; an event of a private or internal repository is named only
+    /// as private (ADR-0067).
     #[must_use]
     pub fn named(&self) -> &str {
+        self.named_in(Printed::Withheld)
+    }
+
+    /// What a command's output, as private as `printed` says, names it by:
+    /// as [`Event::named`] does, but by its version or title wherever the
+    /// operator said the output is private (ADR-0080).
+    #[must_use]
+    pub fn named_in(&self, printed: Printed) -> &str {
         match self.bounded_by() {
-            Some(Visibility::Private | Visibility::Internal) => Self::PRIVATELY_NAMED,
-            Some(Visibility::Public) | None => self.version().unwrap_or(&self.title),
+            Some(visibility) if !printed.prints(visibility) => Self::PRIVATELY_NAMED,
+            Some(_) | None => self.version().unwrap_or(&self.title),
         }
     }
 
@@ -467,7 +476,12 @@ pub(crate) mod tests {
         assert_eq!(untitled.named(), "php-mutation-gate v0.1.0");
         for hidden in [Visibility::Private, Visibility::Internal] {
             assert_eq!(event().seen_as(hidden).named(), Event::PRIVATELY_NAMED);
+            let hidden = event().seen_as(hidden);
+            assert_eq!(hidden.named_in(Printed::Withheld), Event::PRIVATELY_NAMED);
+            assert_eq!(hidden.named_in(Printed::Configured), "v0.1.0");
+            assert_eq!(hidden.named_in(Printed::Asked), "v0.1.0");
         }
+        assert_eq!(event().named_in(Printed::Withheld), "v0.1.0");
     }
 
     #[test]

@@ -2,8 +2,8 @@
 
 use herald_compose::told;
 use herald_core::{
-    Asked, Chore, Command, DestinationName, Draft, Event, Identity, Key, Place, RouteId, Schedule,
-    SourceName, Step,
+    Asked, Chore, Command, DestinationName, Draft, Event, Identity, Key, Place, Printed, RouteId,
+    Schedule, SourceName, Step, Visibility,
 };
 use herald_flows::{
     Announced, Answer, Chored, Did, FollowError, Followed, Fresh, Housekept, HousekeptSchedule,
@@ -149,6 +149,60 @@ fn fresh(held: Option<jiff::Timestamp>) -> Fresh {
         announced,
         held,
     }
+}
+
+#[test]
+fn a_private_event_is_named_as_private_unless_the_output_is_said_private() {
+    let private = || {
+        let mut fresh = fresh(None);
+        fresh.event = fresh.event.seen_as(Visibility::Private);
+        fresh
+    };
+    let polled = |outcome: Sweep, printed| {
+        told::polled_as(
+            &Swept {
+                source: SourceName::new("gate"),
+                member: None,
+                outcome,
+            },
+            printed,
+        )
+    };
+    let released = || Sweep::Released {
+        announced: vec![private()],
+        withheld: None,
+    };
+    let reported = || Sweep::Reported {
+        pulls: 1,
+        announced: vec![private()],
+        cursor: Remembered::Advanced,
+    };
+    assert_eq!(
+        told::polled(&Swept {
+            source: SourceName::new("gate"),
+            member: None,
+            outcome: released(),
+        }),
+        ["gate (private): releases: announced (post)"]
+    );
+    assert_eq!(
+        polled(released(), Printed::Withheld),
+        ["gate (private): releases: announced (post)"]
+    );
+    for printed in [Printed::Configured, Printed::Asked] {
+        assert_eq!(
+            polled(released(), printed),
+            ["gate v1.0.0: releases: announced (post)"]
+        );
+        assert_eq!(
+            polled(reported(), printed)[1],
+            "gate v1.0.0: releases: announced (post)"
+        );
+    }
+    assert_eq!(
+        polled(reported(), Printed::Withheld)[1],
+        "gate (private): releases: announced (post)"
+    );
 }
 
 #[test]

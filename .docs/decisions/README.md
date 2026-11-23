@@ -86,7 +86,7 @@ no separate requirements document, and there are no requirement IDs.
 | [0066](0066-a-view-shows-its-repositories-ci-capacity.md) | A view shows its repositories' CI capacity | Accepted |
 | [0067](0067-a-view-shows-its-repositories-advisories-to-private-routes-alone.md) | A view shows its repositories' advisories to private routes alone | Accepted |
 | [0068](0068-an-operator-signed-in-at-the-forge-re-runs-a-planned-job-once.md) | An operator signed in at the forge re-runs a planned job once | Accepted |
-| [0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md) | herald's commands withhold private repositories' rows unless their output is said private | Accepted |
+| [0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md) | herald's commands withhold private repositories' rows unless their output is said private | Accepted; extended by [0080](0080-a-poll-announces-a-milestone-overdue-by-its-own-clock-and-poll-and-announce-name-private-events-where-said-private.md) |
 | [0070](0070-the-nightly-run-mutates-what-changed-and-the-weekly-run-everything.md) | The nightly run mutates what changed, and the weekly run everything | Accepted |
 | [0071](0071-a-source-names-its-repositories-areas-by-path-globs.md) | A source names its repositories' areas by path globs | Accepted |
 | [0072](0072-a-route-narrows-pull-request-events-by-the-areas-their-paths-fall-in.md) | A route narrows pull request events by the areas their paths fall in | Accepted |
@@ -96,4 +96,5 @@ no separate requirements document, and there are no requirement IDs.
 | [0076](0076-a-kept-codeowners-file-s-long-name-is-its-digest.md) | A kept CODEOWNERS file's long name is its digest | Accepted |
 | [0077](0077-a-source-may-read-its-forge-s-teams-and-only-a-private-surface-counts-them.md) | A source may read its forge's teams, and only a private surface counts them | Accepted |
 | [0078](0078-a-pull-request-s-merge-queue-entry-is-read-with-it-and-rides-its-row-s-visibility.md) | A pull request's merge queue entry is read with it and rides its row's visibility | Accepted |
-| [0079](0079-a-milestone-is-a-versioned-forge-signal-a-poll-finds-by-following-the-open-ones.md) | A milestone is a versioned forge signal a poll finds by following the open ones | Accepted |
+| [0079](0079-a-milestone-is-a-versioned-forge-signal-a-poll-finds-by-following-the-open-ones.md) | A milestone is a versioned forge signal a poll finds by following the open ones | Accepted; amended by [0080](0080-a-poll-announces-a-milestone-overdue-by-its-own-clock-and-poll-and-announce-name-private-events-where-said-private.md) |
+| [0080](0080-a-poll-announces-a-milestone-overdue-by-its-own-clock-and-poll-and-announce-name-private-events-where-said-private.md) | A poll announces a milestone overdue by its own clock, and poll and announce name private events where said private | Accepted |

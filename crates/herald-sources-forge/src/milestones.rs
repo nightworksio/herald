@@ -1,6 +1,7 @@
 //! A repository's milestones, each announced as the `milestone` signal
 //! (ADR-0079): delivered by webhook, or found by a poll that follows the
-//! open ones and reads each that left the listing once.
+//! open ones and reads each that left the listing once; only a poll finds
+//! one overdue, by its own clock (ADR-0080).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -12,7 +13,9 @@ use herald_core::{
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _, Request};
 use herald_wire::SourceError;
-use jiff::Timestamp;
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
+use jiff::{Timestamp, ToSpan as _};
 
 use crate::forge::Repository;
 use crate::limited::checked;
@@ -55,6 +58,11 @@ pub(crate) struct Milestone {
 }
 
 impl Milestone {
+    /// Its due day, where it has one.
+    fn due_day(&self) -> Option<Date> {
+        self.due.as_deref().and_then(|due| due.parse().ok())
+    }
+
     /// When it closed: the forge's own mark, else its last change.
     fn closed_at(&self) -> Timestamp {
         self.closed.or(self.updated).unwrap_or(self.created)
@@ -68,6 +76,11 @@ impl Milestone {
             MilestoneAction::Reopened | MilestoneAction::Deleted => {
                 self.updated.unwrap_or(self.created)
             }
+            MilestoneAction::Overdue => self
+                .due_day()
+                .and_then(|due| due.checked_add(1.day()).ok())
+                .and_then(|day| day.to_zoned(TimeZone::UTC).ok())
+                .map_or(self.created, |day| day.timestamp()),
         }
     }
 
@@ -84,6 +97,13 @@ impl Milestone {
             ),
             MilestoneAction::Reopened => {
                 format!("{}/{}", action.name(), self.occurred(action).as_second())
+            }
+            MilestoneAction::Overdue => {
+                format!(
+                    "{}/{}",
+                    action.name(),
+                    self.due.as_deref().unwrap_or_default()
+                )
             }
         }
     }
@@ -323,6 +343,24 @@ fn written(ids: &[u64]) -> Vec<String> {
     ids.iter().map(u64::to_string).collect()
 }
 
+/// The day of each id `cursor` keeps under `key`, as `<id>:<day>`.
+fn kept_days(cursor: Option<&Cursor>, key: &str) -> BTreeMap<u64, Date> {
+    cursor
+        .and_then(|cursor| cursor.ids.get(key))
+        .into_iter()
+        .flatten()
+        .filter_map(|kept| {
+            let (id, day) = kept.split_once(':')?;
+            Some((id.parse().ok()?, day.parse().ok()?))
+        })
+        .collect()
+}
+
+/// `days`, as a cursor keeps them.
+fn written_days(days: &BTreeMap<u64, Date>) -> Vec<String> {
+    days.iter().map(|(id, day)| format!("{id}:{day}")).collect()
+}
+
 /// What a poll found of a repository's milestones: the validators and ids
 /// to keep, whether any listing changed, and each milestone that did
 /// something since.
@@ -350,15 +388,17 @@ impl Asking<'_> {
         }
     }
 
-    /// What a poll since `cursor` finds through `http` of the milestones
-    /// it follows: each listing asked conditional on what `cursor` keeps,
-    /// a page at a time up to `most`; each milestone that left a listing
-    /// read once, as closed where it closed; and on GitLab the counts of
-    /// each one announced, where they are read.
+    /// What a poll at `now` since `cursor` finds through `http` of the
+    /// milestones it follows: each listing asked conditional on what
+    /// `cursor` keeps, a page at a time up to `most`; each milestone that
+    /// left a listing read once, as closed where it closed; each open one
+    /// whose due day ended before `now` overdue; and on GitLab the counts
+    /// of each one announced, where they are read.
     pub(crate) async fn asked(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         cursor: Option<&Cursor>,
+        now: Timestamp,
     ) -> Result<Followed, Unpolled> {
         let mut followed = Followed::default();
         let group = self.choice.group && self.origin.forge() == Forge::GitLab;
@@ -366,16 +406,17 @@ impl Asking<'_> {
             .into_iter()
             .flatten()
         {
-            self.follow(http, cursor, listing, &mut followed).await?;
+            self.follow(http, (cursor, now), listing, &mut followed)
+                .await?;
         }
         Ok(followed)
     }
 
-    /// `followed` with what `listing` finds since `cursor`.
+    /// `followed` with what `listing` finds at `now` since `cursor`.
     async fn follow(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
-        cursor: Option<&Cursor>,
+        (cursor, now): (Option<&Cursor>, Timestamp),
         listing: Listing,
         followed: &mut Followed,
     ) -> Result<(), Unpolled> {
@@ -421,10 +462,12 @@ impl Asking<'_> {
                 break;
             }
         }
+        let current: BTreeSet<u64> = open.iter().copied().collect();
+        self.overdue(http, (cursor, now), (listing, &current, &listed), followed)
+            .await?;
         let closed_key = format!("{key}/closed");
         let mut closed = kept_ids(cursor, &closed_key).unwrap_or_default();
         if let Some(kept) = kept_ids(cursor, key).filter(|_| followed.changed) {
-            let current: BTreeSet<u64> = open.iter().copied().collect();
             let mut was: BTreeSet<u64> = kept.into_iter().collect();
             for page in 2..=pages {
                 match kept_ids(cursor, &format!("{key}/{page}")) {
@@ -472,6 +515,68 @@ impl Asking<'_> {
         }
         closed.truncate(self.choice.most);
         followed.ids.insert(closed_key, written(&closed));
+        Ok(())
+    }
+
+    /// `followed` with each milestone of `open`, those `listing` names,
+    /// whose due day ended before `now`, once a due day, where the source
+    /// announces it overdue: read from `listed`, those listed this round,
+    /// else once by its own path. The due days of `open` are kept, and of
+    /// them those already past, whatever the source announces, so a first
+    /// poll, or one that newly announces `overdue`, finds only the days
+    /// that pass after it.
+    async fn overdue(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        (cursor, now): (Option<&Cursor>, Timestamp),
+        (listing, open, listed): (Listing, &BTreeSet<u64>, &BTreeMap<u64, Milestone>),
+        followed: &mut Followed,
+    ) -> Result<(), Unpolled> {
+        let key = listing.kept();
+        let (due_key, overdue_key) = (format!("{key}/due"), format!("{key}/overdue"));
+        let mut dues = kept_days(cursor, &due_key);
+        for (id, milestone) in listed {
+            match milestone.due_day() {
+                Some(day) => dues.insert(*id, day),
+                None => dues.remove(id),
+            };
+        }
+        dues.retain(|id, _| open.contains(id));
+        let mut overdue = kept_days(cursor, &overdue_key);
+        overdue.retain(|id, day| dues.get(id) == Some(day));
+        let today = now.to_zoned(TimeZone::UTC).date();
+        let first = kept_ids(cursor, key).is_none();
+        let announced = !first && self.choice.actions.contains(&MilestoneAction::Overdue);
+        let passed: Vec<(u64, Date)> = dues
+            .iter()
+            .filter(|(id, day)| **day < today && overdue.get(id) != Some(day))
+            .map(|(id, day)| (*id, *day))
+            .collect();
+        for (id, day) in passed {
+            overdue.insert(id, day);
+            followed.changed = true;
+            if !announced {
+                continue;
+            }
+            let read = match listed.get(&id) {
+                Some(milestone) => Some(milestone.clone()),
+                None => self.read_one(http, listing, id).await?,
+            };
+            let Some(milestone) = read.filter(|read| read.open && read.due_day() == Some(day))
+            else {
+                continue;
+            };
+            let action = MilestoneAction::Overdue;
+            self.found(
+                http,
+                listing,
+                ForgeMilestone { milestone, action },
+                followed,
+            )
+            .await?;
+        }
+        followed.ids.insert(due_key, written_days(&dues));
+        followed.ids.insert(overdue_key, written_days(&overdue));
         Ok(())
     }
 

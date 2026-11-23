@@ -54,7 +54,7 @@ pub use signals::stopped;
 use announce::{Announce, Routed, announcing, announcing_from};
 use cli::{Cli, Command, Reading, RunForge, Running, Tokens};
 use doctoring::DoctorArgs;
-use herald_compose::told::{chored, polled, skipped, why};
+use herald_compose::told::{chored, polled_as, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Hosting};
 use output::{Scrubbing, hidden, masked, say, warned};
 use preview::previewing;
@@ -210,12 +210,15 @@ async fn ran(
             event,
             app,
             dry_run,
+            private,
         } => {
+            let printed = Printed::of(private, config.cli.private);
             if let (Some(event), Some(app)) = (&event, &app) {
                 let written = apps::Written {
                     app,
                     event,
                     dry_run,
+                    printed,
                 };
                 apps::announcing_event(&config, vars, connect, written, out).await
             } else {
@@ -223,11 +226,15 @@ async fn ran(
                     forge: from.map_or(Forge::GitHub, RunForge::forge),
                     release: release.as_deref(),
                     dry_run,
+                    printed,
                 };
                 announcing_from(&config, vars, connect, announcing, out).await
             }
         }
-        Running::Poll => polling(&config, vars, connect, out).await,
+        Running::Poll { private } => {
+            let printed = Printed::of(private, config.cli.private);
+            polling(&config, vars, connect, printed, out).await
+        }
         Running::Housekeep => housekeeping(&config, vars, connect, out).await,
         Running::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
@@ -428,6 +435,7 @@ async fn polling(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
+    printed: Printed,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let composed = composed(
@@ -457,7 +465,7 @@ async fn polling(
         {
             code = STOPPED;
         }
-        for line in polled(swept) {
+        for line in polled_as(swept, printed) {
             say(out, &line);
         }
     }

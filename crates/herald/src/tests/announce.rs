@@ -490,6 +490,53 @@ fn with_tag(world: &World) {
     }
 }
 
+#[test]
+fn a_held_tag_of_a_private_repository_is_named_only_where_the_output_is_said_private() {
+    let private = |world: &World| {
+        with_tag(world);
+        world.state.lock().unwrap().forge.insert(
+            "/repos/cli/cli".to_owned(),
+            (
+                200,
+                r#"{"id":212613049,"name":"cli","visibility":"private","html_url":"https://github.com/cli/cli"}"#
+                    .to_owned(),
+            ),
+        );
+    };
+    let held = signalled("signals = [\"release\", \"tag\"]\n");
+    let world = World::default();
+    private(&world);
+    let withheld = herald(&held, &world, &ANNOUNCE);
+    assert_eq!(withheld.code, DONE, "{}", withheld.err);
+    assert!(
+        withheld
+            .out
+            .starts_with("The tag (private) is held for its Release until "),
+        "{}",
+        withheld.out
+    );
+    assert!(!withheld.out.contains("v1"), "{}", withheld.out);
+    let configured = signalled("signals = [\"release\", \"tag\"]\n");
+    let path = configured.directory.path().join("herald.toml");
+    let config = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{config}[cli]\nprivate = true\n")).unwrap();
+    for (setup, args) in [
+        (&held, &["announce", "--from", "github", "--private"][..]),
+        (&configured, &ANNOUNCE[..]),
+    ] {
+        let world = World::default();
+        private(&world);
+        let named = herald(setup, &world, args);
+        assert!(
+            named
+                .out
+                .starts_with("The tag v1 is held for its Release until "),
+            "{}",
+            named.out
+        );
+    }
+}
+
 fn signalled(extra: &str) -> Setup {
     let mut setup = setup(&CONFIG.replace(
         "repository = \"cli/cli\"\n",

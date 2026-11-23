@@ -423,7 +423,7 @@ What herald's commands print.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `cli.private` | boolean | Whether `herald queue` and `herald rerun` print the rows and plans of private and internal repositories without `--private`: false where absent, so they are withheld and counted. Set it only where their output stays private: a CI job's log on a public repository is public. Advisories are printed with `--private` alone, whatever it says. |
+| `cli.private` | boolean | Whether `herald queue` and `herald rerun` print the rows and plans of private and internal repositories, and `herald poll` and `herald announce` name their events by version or title, without `--private`: false where absent, so rows are withheld and counted and events named "(private)". Set it only where their output stays private: a CI job's log on a public repository is public. Advisories are printed with `--private` alone, whatever it says. A server's log names such events "(private)" always. |
 
 ## `destinations`
 
@@ -1320,7 +1320,7 @@ A GitHub repository's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>.milestones` | table | Which milestones are announced where the signals take "milestone": what they did, their titles, and whether their counts and a GitLab group's milestones are read; every milestone closed where absent. |
-| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`; `closed` where absent. |
+| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`, `overdue` (found only by a poll); `closed` where absent. |
 | `sources.<name>.milestones.counts` | boolean | Whether a milestone names how many of its issues are open and closed, as its forge counts them; true where absent. On GitLab each announced milestone costs one request more. |
 | `sources.<name>.milestones.group` | boolean | Whether the milestones of the GitLab group holding the project are read beside the project's own; false where absent. |
 | `sources.<name>.milestones.most` | integer | The most open milestones of a repository a poll follows, in the order its forge lists them; 100 where absent, at most 1000. |
@@ -1449,7 +1449,7 @@ A GitLab project's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>.milestones` | table | Which milestones are announced where the signals take "milestone": what they did, their titles, and whether their counts and a GitLab group's milestones are read; every milestone closed where absent. |
-| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`; `closed` where absent. |
+| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`, `overdue` (found only by a poll); `closed` where absent. |
 | `sources.<name>.milestones.counts` | boolean | Whether a milestone names how many of its issues are open and closed, as its forge counts them; true where absent. On GitLab each announced milestone costs one request more. |
 | `sources.<name>.milestones.group` | boolean | Whether the milestones of the GitLab group holding the project are read beside the project's own; false where absent. |
 | `sources.<name>.milestones.most` | integer | The most open milestones of a repository a poll follows, in the order its forge lists them; 100 where absent, at most 1000. |
@@ -1578,7 +1578,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>.milestones` | table | Which milestones are announced where the signals take "milestone": what they did, their titles, and whether their counts and a GitLab group's milestones are read; every milestone closed where absent. |
-| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`; `closed` where absent. |
+| `sources.<name>.milestones.actions` | array of [MilestoneAction](#milestoneaction) | What a milestone did that is announced: `opened`, `closed`, `reopened`, `deleted`, `overdue` (found only by a poll); `closed` where absent. |
 | `sources.<name>.milestones.counts` | boolean | Whether a milestone names how many of its issues are open and closed, as its forge counts them; true where absent. On GitLab each announced milestone costs one request more. |
 | `sources.<name>.milestones.group` | boolean | Whether the milestones of the GitLab group holding the project are read beside the project's own; false where absent. |
 | `sources.<name>.milestones.most` | integer | The most open milestones of a repository a poll follows, in the order its forge lists them; 100 where absent, at most 1000. |
