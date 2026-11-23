@@ -287,6 +287,29 @@ mod tests {
     }
 
     #[test]
+    fn a_base_branch_is_kept_by_source_repository_and_branch_and_past_the_most_bytes_by_digest() {
+        let key = |branch: &str| {
+            base(&herald_core::BaseKey {
+                source: SourceName::new("s"),
+                repository: "o/r".to_owned(),
+                branch: branch.to_owned(),
+            })
+        };
+        assert_eq!(key("main"), "bases/s~0ao~2fr~0amain.json");
+        let start = segment("s\no/r\n");
+        let most = "a".repeat(MOST_NAMED - start.len());
+        assert_eq!(key(&most), format!("bases/{start}{most}.json"));
+        let past = format!("{most}a");
+        assert_eq!(
+            key(&past),
+            format!(
+                "bases/{}.json",
+                herald_core::digest(&format!("{start}{past}"))
+            )
+        );
+    }
+
+    #[test]
     fn a_codeowners_file_named_past_the_most_bytes_is_kept_by_its_digest() {
         let key = |reference: &str| {
             codeowners(&herald_core::CodeownersKey {

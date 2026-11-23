@@ -287,6 +287,19 @@ fn an_unchanged_base_branch_is_read_on_its_kept_validators_and_not_again() {
         BaseRead::Checked(Checks::Failed(vec!["lint".to_owned()]))
     );
     assert_eq!(board.readiness.unwrap().ready(), Some(false));
+    let key = herald_core::BaseKey {
+        source: herald_core::SourceName::new("o-open"),
+        repository: "o/open".to_owned(),
+        branch: "main".to_owned(),
+    };
+    let kept = pollster::block_on(herald_ports::Pulls::base(&store, &key))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        kept.version,
+        herald_ports::Version(1),
+        "an unchanged branch was written again"
+    );
 }
 
 #[test]

@@ -130,6 +130,15 @@ fn a_github_base_branch_joins_its_check_runs_and_its_commit_statuses() {
     ]);
     let found = read(Forge::GitHub, &none, ("main", None)).unwrap();
     assert_eq!(found.read, BaseRead::Checked(Checks::Absent));
+    let passed = ScriptedHttp::new(vec![
+        answer(200, &runs(&[("build", "completed", Some("success"))])),
+        answer(
+            200,
+            &json!({ "state": "success", "statuses": [{ "context": "c", "state": "success" }] }),
+        ),
+    ]);
+    let found = read(Forge::GitHub, &passed, ("main", None)).unwrap();
+    assert_eq!(found.read, BaseRead::Checked(Checks::Passed));
 }
 
 #[test]
