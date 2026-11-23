@@ -1,6 +1,8 @@
-//! A report's release verdict, judged from the rows each route is shown:
-//! a route shown only the public repositories' rows is told nothing of a
-//! private one's pull request holding the release back (ADR-0081).
+//! A report's release verdict on each route: a route shown only the
+//! public repositories' rows is told the verdict is not known, judged by
+//! those rows, or the whole verdict with a private hold named private, as
+//! the release's `withheld` says, and nothing more of a private pull
+//! request (ADR-0081).
 
 use herald_config::{Uses, load};
 use herald_flows::{Connected, Ports, prepare, report};
@@ -31,7 +33,7 @@ kind = "github"
 repository = "o/closed"
 token = { secret = "HERALD_GITHUB_TOKEN" }
 [views.queue]
-release = { milestone = "v2.*" }
+release = { milestone = "v2.*"WITHHELD }
 [reports.daily]
 [run]
 routes = 1
@@ -51,7 +53,7 @@ template = "t"
 private = true
 [templates.t]
 title = "{{ view.name }}"
-body = "{{ view.total }}{% if view.readiness %} {% if view.readiness.ready %}ready{% else %}not ready:{% for hold in view.readiness.holds %} {{ hold.repository }}:{{ hold.number }}={{ hold.reason }}{% endfor %}{% endif %}{% endif %}"
+body = "{{ view.total }}{% if view.readiness %} {% if view.readiness.ready is none %}unknown{% elif view.readiness.ready %}ready{% else %}not ready:{% for hold in view.readiness.holds %} {% if hold.private %}private{% else %}{{ hold.repository }}:{{ hold.number }}={{ hold.reason }}{% endif %}{% endfor %}{% endif %}{% endif %}"
 "#;
 
 /// A GraphQL page of the repository `path`, seen as `visibility`, with an
@@ -72,18 +74,20 @@ fn page(path: &str, visibility: &str, draft: bool) -> String {
     .to_string()
 }
 
-#[test]
-fn a_public_route_is_judged_by_the_public_rows_alone() {
+/// What the private route and then the public route are told where the
+/// release says `withheld` and the private repository's pull request is a
+/// draft where `draft` says.
+fn told(withheld: &str, draft: bool) -> Vec<String> {
     let config = load(
         "herald.toml",
-        TEXT,
+        &TEXT.replace("WITHHELD", withheld),
         &|_| Err("no file".to_owned()),
         &crate::harness::kinds(),
     )
     .unwrap();
     let store = healthy();
     let script = Script::answering(&[
-        (GRAPHQL, 200, &page("o/closed", "PRIVATE", true)),
+        (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
         (GRAPHQL, 200, &page("o/open", "PUBLIC", false)),
         TEAM,
         POSTED,
@@ -103,7 +107,7 @@ fn a_public_route_is_judged_by_the_public_rows_alone() {
     };
     let swept = pollster::block_on(report(&config, &connected, &ports, "r1"));
     assert_eq!(swept.len(), 1, "{swept:?}");
-    let bodies: Vec<String> = script
+    script
         .seen()
         .into_iter()
         .zip(script.bodies())
@@ -115,6 +119,35 @@ fn a_public_route_is_judged_by_the_public_rows_alone() {
                 .unwrap_or_default()
                 .replace('\\', "")
         })
-        .collect();
-    assert_eq!(bodies, ["2 not ready: o/closed:1=draft", "1 ready"]);
+        .collect()
+}
+
+#[test]
+fn a_public_route_is_told_the_verdict_is_not_known_by_default() {
+    for withheld in ["", ", withheld = \"unknown\""] {
+        assert_eq!(
+            told(withheld, true),
+            ["2 not ready: o/closed:1=draft", "1 unknown"]
+        );
+        assert_eq!(told(withheld, false), ["2 ready", "1 unknown"]);
+    }
+}
+
+#[test]
+fn a_public_route_judged_by_what_it_is_shown_is_told_ready() {
+    let shown = ", withheld = \"shown\"";
+    assert_eq!(
+        told(shown, true),
+        ["2 not ready: o/closed:1=draft", "1 ready"]
+    );
+}
+
+#[test]
+fn a_masked_public_route_is_told_the_whole_verdict_with_the_private_hold_named_private() {
+    let masked = ", withheld = \"masked\"";
+    assert_eq!(
+        told(masked, true),
+        ["2 not ready: o/closed:1=draft", "1 not ready: private"]
+    );
+    assert_eq!(told(masked, false), ["2 ready", "1 ready"]);
 }

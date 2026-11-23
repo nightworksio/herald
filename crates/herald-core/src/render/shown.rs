@@ -7,8 +7,8 @@ use minijinja::{Value, context};
 use std::collections::BTreeMap;
 
 use crate::queue::{
-    Advisories, Advisory, Batch, Failure, Grouped, Loaded, Loads, Overviews, QueueEntry, Readiness,
-    Row, Running, Showing,
+    Advisories, Advisory, Batch, Failure, Grouped, Held, Loaded, Loads, Overviews, QueueEntry,
+    Readiness, Row, Running, Showing,
 };
 
 /// How long `waited` is, in its largest whole unit: days, hours or
@@ -225,23 +225,37 @@ fn overviews_value(overviews: &Overviews) -> Value {
     Value::from(keys)
 }
 
-/// Whether a release is ready, and each pull request holding it back
-/// (ADR-0081).
+/// One hold on a release: a private one naming nothing of its pull
+/// request (ADR-0081).
+fn held_value(held: &Held) -> Value {
+    match held {
+        Held::Shown(holding) => context! {
+            private => false,
+            reason => holding.held_by.name(),
+            repository => holding.repository.as_str(),
+            number => holding.number,
+            url => holding.url.as_str(),
+            named => holding.named.clone(),
+            more => holding.more,
+        },
+        Held::Private => context! {
+            private => true,
+            reason => Value::from(()),
+            repository => Value::from(()),
+            number => Value::from(()),
+            url => Value::from(()),
+            named => Vec::<String>::new(),
+            more => 0,
+        },
+    }
+}
+
+/// Whether a release is ready, none where that is not known, and each
+/// pull request holding it back (ADR-0081).
 fn readiness_value(readiness: &Readiness) -> Value {
     context! {
         ready => readiness.ready(),
-        holds => readiness
-            .holds
-            .iter()
-            .map(|holding| context! {
-                reason => holding.held_by.name(),
-                repository => holding.repository.as_str(),
-                number => holding.number,
-                url => holding.url.as_str(),
-                named => holding.named.clone(),
-                more => holding.more,
-            })
-            .collect::<Vec<_>>(),
+        holds => readiness.holds.iter().map(held_value).collect::<Vec<_>>(),
         more => readiness.more,
     }
 }

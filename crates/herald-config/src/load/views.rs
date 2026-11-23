@@ -14,7 +14,7 @@ use herald_core::{
     MOST_ADVISORY_REPOSITORIES, MOST_BLOCKER_LABELS, MOST_CAPACITY_REPOSITORIES, MOST_LEAST_TEAM,
     MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES, MOST_TEAMS, Release, ReleasePull,
     ReportSchedule, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages, Team, Teams, Triage,
-    View, zone,
+    View, Withheld, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -28,7 +28,7 @@ use crate::views::{
     AdvisoriesFromFile, BUILT_IN_VIEW, BlockerFile, BotsFile, CapacityFrom, CombineFile,
     DecidingFile, DecidingName, DequeuedFile, GroupByFile, OverviewName, RULE_KEYS,
     ReleasePullFile, ReleaseTool, Report, ReportFile, RerunMode, Rule, RuleFile, RulesFile,
-    TeamFile, ViewConfig, ViewFile, ViewMode,
+    TeamFile, ViewConfig, ViewFile, ViewMode, WithheldFile,
 };
 
 /// Why a rule may not re-run a check itself (ADR-0065).
@@ -185,6 +185,11 @@ impl Loader<'_> {
             },
             blocker_labels: self.globs(labels, (&at("blocker_labels"), span)),
             blocked_by,
+            withheld: match written.withheld {
+                Some(WithheldFile::Shown) => Withheld::Shown,
+                Some(WithheldFile::Masked) => Withheld::Masked,
+                Some(WithheldFile::Unknown) | None => Withheld::Unknown,
+            },
         })
     }
 

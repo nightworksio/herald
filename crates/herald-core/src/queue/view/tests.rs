@@ -605,6 +605,7 @@ fn release(milestone: &str) -> crate::queue::Release {
         combine: crate::queue::Combine::All,
         blocker_labels: Vec::new(),
         blocked_by: crate::queue::Blocker::ALL.to_vec(),
+        withheld: crate::queue::Withheld::Unknown,
     }
 }
 
@@ -632,9 +633,33 @@ fn a_release_shows_only_the_pull_requests_it_picks_and_judges_them_in_order() {
     let held: Vec<(&str, u64)> = readiness
         .holds
         .iter()
-        .map(|holding| (holding.repository.as_str(), holding.number))
+        .filter_map(|held| match held {
+            crate::queue::Held::Shown(holding) => {
+                Some((holding.repository.as_str(), holding.number))
+            }
+            crate::queue::Held::Private => None,
+        })
         .collect();
     assert_eq!(held, [("a/a", 9), ("b/b", 1)]);
+}
+
+#[test]
+fn a_release_is_judged_beside_the_rows_withheld_from_the_surface() {
+    let view = View {
+        release: Some(release("v2.0")),
+        ..View::default()
+    };
+    let carried = |number: u64| Pull {
+        milestone: Some("v2.0".to_owned()),
+        ..waited(1, number)
+    };
+    let shown = rows(&view, &[carried(1)], now());
+    let withheld = rows(&view, &[carried(2)], now());
+    let board = grouped(&view, shown.clone(), &withheld);
+    assert_eq!(board.total(), 1);
+    assert_eq!(board.readiness.unwrap().ready(), None);
+    let whole = grouped(&view, shown, &[]);
+    assert_eq!(whole.readiness.unwrap().ready(), Some(true));
 }
 
 #[test]

@@ -364,6 +364,7 @@ release = { milestone = "v2.0" }
 | `release.combine` | `"all"`: each selector named picks it; `"any"`: one does |
 | `release.blocker_labels` | `["blocker", "release-blocker"]`, globs, at most 50 |
 | `release.blocked_by` | every one of `"label"`, `"failed"`, `"draft"`, `"changes"` |
+| `release.withheld` | `"unknown"`: a surface some of its pull requests are withheld from is told the verdict is not known; `"shown"`: judged by those shown; `"masked"`: the whole verdict, a withheld hold named private |
 
 At least one of `milestone`, `label`, `branch` and `pull` is named. The
 view shows only the pull requests its release picks. A pull request
@@ -372,16 +373,21 @@ carries a blocker label, a check failed, it is a draft, or a reviewer
 asked for changes. One listed past `most_pulls` holds it back whatever
 `blocked_by` says, since its checks and reviews are not known.
 
-The verdict is judged from the rows a surface shows: a route of a report
-from those its audience may see, `herald queue` from those it prints. A
-private repository's pull request never reaches a public route's
-verdict, nor `herald queue`'s output without `--private`. A template
-reads `view.readiness`:
+A surface may be shown only some of a release's pull requests: a public
+route of a report is not shown a private repository's, nor is
+`herald queue` without `--private`. There `withheld` says what it is
+told. By default the verdict is not known: the table says `release: not
+known, some pull requests are private`, and nothing says which, how many
+or why. `"shown"` judges the release by the pull requests shown alone,
+and the table says `release: ready, by the pull requests printed`.
+`"masked"` tells the whole verdict, each withheld pull request holding
+the release back one hold saying only that it is private, `(private)` in
+the table. A template reads `view.readiness`:
 
 | Key | What |
 |---|---|
-| `ready` | whether nothing holds it back |
-| `holds` | each `{ reason, repository, number, url, named, more }`: `reason` one of `label`, `failed`, `draft`, `changes`, `unread`; `named` the blocker labels or failed checks, at most 10, `more` past those |
+| `ready` | whether nothing holds it back; none where that is not known |
+| `holds` | each `{ private, reason, repository, number, url, named, more }`: `reason` one of `label`, `failed`, `draft`, `changes`, `unread`; `named` the blocker labels or failed checks, at most 10, `more` past those; a private one's keys are none or empty |
 | `more` | the holds past the 100 named |
 
 ### Live or kept

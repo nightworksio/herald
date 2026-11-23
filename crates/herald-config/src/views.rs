@@ -28,7 +28,7 @@ pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pul
 
 /// The body of [`QUEUE_TEMPLATE`]: the release verdict where the view
 /// shows one, each group's rows, oldest first, then each batch of bumps.
-pub(crate) const QUEUE_BODY: &str = "{% if view.readiness %}**release: {% if view.readiness.ready %}ready{% else %}not ready{% endif %}**\n{% for hold in view.readiness.holds %}- [{{ hold.repository }}#{{ hold.number }}]({{ hold.url }}) {{ hold.reason }}{% if hold.named %}: {{ hold.named | join(\", \") }}{% endif %}{% if hold.more %} and {{ hold.more }} more{% endif %}\n{% endfor %}{% if view.readiness.more %}- and {{ view.readiness.more }} more\n{% endif %}\n{% endif %}{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}{% if row.queue and not row.queue.left %}, {{ row.queue.state }} in the merge queue{% if row.queue.position %} at {{ row.queue.position }}{% endif %}{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
+pub(crate) const QUEUE_BODY: &str = "{% if view.readiness %}**release: {% if view.readiness.ready is none %}not known, some pull requests are private{% elif view.readiness.ready %}ready{% else %}not ready{% endif %}**\n{% for hold in view.readiness.holds %}{% if hold.private %}- (private)\n{% else %}- [{{ hold.repository }}#{{ hold.number }}]({{ hold.url }}) {{ hold.reason }}{% if hold.named %}: {{ hold.named | join(\", \") }}{% endif %}{% if hold.more %} and {{ hold.more }} more{% endif %}\n{% endif %}{% endfor %}{% if view.readiness.more %}- and {{ view.readiness.more }} more\n{% endif %}\n{% endif %}{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}{% if row.queue and not row.queue.left %}, {{ row.queue.state }} in the merge queue{% if row.queue.position %} at {{ row.queue.position }}{% endif %}{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.\n{% endif %}{% if view.overviews.load %}**load**\n{% for team in view.overviews.load.teams %}- team {{ team.name }}: {{ team.requested }} requested{% if team.reviewed is not none %}, {{ team.reviewed }} reviewed{% endif %}\n{% endfor %}{% for area in view.overviews.load.areas %}- {{ area.name }} ({{ area.kind }}): {{ area.requested }} requested{% if area.reviewed is not none %}, {{ area.reviewed }} reviewed{% endif %}\n{% endfor %}{% if view.overviews.load.other %}- other: {{ view.overviews.load.other.requested }} requested{% if view.overviews.load.other.reviewed is not none %}, {{ view.overviews.load.other.reviewed }} reviewed{% endif %}\n{% endif %}{% endif %}{% if view.overviews.advisories %}**advisories**: {{ view.overviews.advisories.count }} open{% if view.overviews.advisories.more %}, more not read{% endif %}\n{% for advisory in view.overviews.advisories.open %}- [{{ advisory.repository }}]({{ advisory.url }}) {{ advisory.tool }}{% if advisory.severity %} {{ advisory.severity }}{% endif %}: {{ advisory.summary or \"unnamed\" }}, {{ advisory.state }}, {{ advisory.age }} old\n{% endfor %}{% for unread in view.overviews.advisories.unread %}- {{ unread.repository }} unread, because {{ unread.reason }}\n{% endfor %}{% endif %}{% if view.overviews.withheld %}{{ view.overviews.withheld }}{% endif %}";
 
 /// The template herald ships for a rule's re-run plan, which a route names
 /// as `template = "herald:rerun"` and `[templates."herald:rerun"]`
@@ -444,6 +444,27 @@ pub(crate) struct ReleaseFile {
     /// "draft", a draft; "changes", one a reviewer asked to change. A pull
     /// request not read in full holds it back whatever this says.
     pub(crate) blocked_by: Option<Vec<BlockerFile>>,
+    /// How a surface some of its pull requests are withheld from, a
+    /// private or internal repository's, is told the verdict: "unknown"
+    /// where absent, not known because some pull requests are private;
+    /// "shown", judged by the pull requests it shows alone; "masked", the
+    /// whole verdict, each withheld one holding it back said only to be
+    /// private.
+    pub(crate) withheld: Option<WithheldFile>,
+}
+
+/// How a release is told where some of its pull requests are withheld.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "ReleaseWithheld")]
+pub(crate) enum WithheldFile {
+    /// Not known, because some pull requests are private.
+    Unknown,
+    /// Judged by the pull requests shown alone.
+    Shown,
+    /// The whole verdict, each withheld pull request holding it back said
+    /// only to be private.
+    Masked,
 }
 
 /// How a release's selectors combine.

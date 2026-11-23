@@ -4847,6 +4847,10 @@
         "pull": {
           "description": "Its release pull request: \"release-please\" or \"changesets\", by the\nhead branch each opens it on, or `{ head = \"<glob>\" }` or\n`{ title = \"<glob>\" }`, each ignoring case.",
           "$ref": "#/$defs/ReleasePull"
+        },
+        "withheld": {
+          "description": "How a surface some of its pull requests are withheld from, a\nprivate or internal repository's, is told the verdict: \"unknown\"\nwhere absent, not known because some pull requests are private;\n\"shown\", judged by the pull requests it shows alone; \"masked\", the\nwhole verdict, each withheld one holding it back said only to be\nprivate.",
+          "$ref": "#/$defs/ReleaseWithheld"
         }
       },
       "additionalProperties": false
@@ -4908,6 +4912,26 @@
           "description": "The changesets action, on a head branch `changeset-release/*`.",
           "type": "string",
           "const": "changesets"
+        }
+      ]
+    },
+    "ReleaseWithheld": {
+      "description": "How a release is told where some of its pull requests are withheld.",
+      "oneOf": [
+        {
+          "description": "Not known, because some pull requests are private.",
+          "type": "string",
+          "const": "unknown"
+        },
+        {
+          "description": "Judged by the pull requests shown alone.",
+          "type": "string",
+          "const": "shown"
+        },
+        {
+          "description": "The whole verdict, each withheld pull request holding it back said\nonly to be private.",
+          "type": "string",
+          "const": "masked"
         }
       ]
     },

@@ -1,4 +1,4 @@
-# ADR-0081: a view's release picks its pull requests by selectors, and is judged ready by the rows each surface shows
+# ADR-0081: a view's release picks its pull requests by selectors, and a surface some are withheld from is told its verdict is not known
 
 **Status:** Accepted
 **Date:** 2026-11-23
@@ -19,6 +19,9 @@ Every row a surface shows follows its repository's visibility
 (ADR-0062, ADR-0069): a public route is shown only public rows, and
 `herald queue` withholds a private one's unless said private. A verdict
 is a fact about rows, so it may leak a hidden row as surely as the row.
+Yet a verdict judged by the rows shown alone may tell a public route a
+release is ready while a private repository's pull request holds it
+back.
 
 ## Decision
 
@@ -49,19 +52,38 @@ is a fact about rows, so it may leak a hidden row as surely as the row.
    table prints `release: ready` or `release: not ready, <n> reasons`
    and a line a hold. At most 100 holds are named and at most 10 checks
    or labels a hold; those past each are counted.
-4. **Judged by the rows a surface shows.** The verdict is computed where
-   a board's rows are grouped, from those rows alone: each route of a
-   report from the rows its audience is shown, `herald queue` from the
-   rows it prints. A private repository's pull request never reaches a
-   public route's verdict, nor `herald queue`'s output without
-   `--private` or `[cli] private`; there the table says the verdict is
-   by the pull requests printed, beside the count withheld.
+4. **A surface some pull requests are withheld from is told what
+   `withheld` says.** The verdict is computed where a board's rows are
+   grouped, from the rows the surface is shown and the release's rows
+   withheld from it: each route of a report against the rows its
+   audience may not see, `herald queue` against those it does not print
+   without `--private` or `[cli] private`. Where none is withheld, the
+   verdict is the whole one. Where any is, `withheld` on the release
+   says what the surface is told:
+   - `"unknown"`, where absent: the verdict is neither ready nor not
+     ready. `ready` is none in templates and `null` in JSON, and the
+     table says `release: not known, some pull requests are private`.
+     The holds of the rows shown are still listed. That some pull
+     requests are private is said; which, how many and why are not.
+   - `"shown"`: the verdict is judged by the rows shown alone, and the
+     table says `release: ready, by the pull requests printed`.
+   - `"masked"`: the whole verdict. Each withheld pull request holding
+     the release back is one hold `{ private = true }`, its other keys
+     none, listed after the holds shown: no repository, number, title,
+     label, check or reason, however many blockers it meets, and in no
+     place among the shown holds that would tell its repository's name.
+   `ready` is none rather than a three-state key, so a template or JSON
+   reader asking whether a release is ready is never told yes when that
+   is not known; one that wants to say not known asks whether it is
+   none.
 
 ## Consequences
 
-A release board costs no request beyond the view's own reads. A public
-route may be told a release is ready while a private repository's pull
-request holds it back: it is told nothing of what it may not see, and
-the private route beside it is told the whole verdict. A board's header
+A release board costs no request beyond the view's own reads. By
+default a public route is never told a release is ready while a private
+repository's pull request holds it back: it is told the verdict is not
+known, and the private route beside it is told the whole verdict. A
+`"masked"` release tells it how many private pull requests hold the
+release back, and nothing else of them. A board's header
 of the milestone itself and its base branch's checks need reads of their
 own and are not part of this decision.

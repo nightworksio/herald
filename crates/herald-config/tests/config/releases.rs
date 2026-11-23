@@ -4,7 +4,7 @@
 
 use herald_config::{Config, load};
 use herald_core::{
-    BLOCKER_LABELS, Blocker, Combine, Glob, MOST_BLOCKER_LABELS, Release, ReleasePull,
+    BLOCKER_LABELS, Blocker, Combine, Glob, MOST_BLOCKER_LABELS, Release, ReleasePull, Withheld,
 };
 
 const EXAMPLE: &str = r#"version = 1
@@ -63,6 +63,7 @@ fn one_milestone_is_a_release_with_every_blocker_and_the_shipped_labels() {
             combine: Combine::All,
             blocker_labels: globs(&BLOCKER_LABELS),
             blocked_by: Blocker::ALL.to_vec(),
+            withheld: Withheld::Unknown,
         }
     );
 }
@@ -82,6 +83,7 @@ fn every_selector_combine_labels_and_blockers_are_read() {
             combine: Combine::Any,
             blocker_labels: globs(&["stop"]),
             blocked_by: vec![Blocker::Draft, Blocker::Failed],
+            withheld: Withheld::Unknown,
         }
     );
     let all =
@@ -170,4 +172,20 @@ fn a_release_picking_nothing_past_its_labels_or_with_an_unread_glob_is_refused()
     assert!(error.contains("views.ship.release.pull.title:"), "{error}");
     let error = errors("{ milestone = \"v2\", blocked_by = [\"base\"] }");
     assert!(error.contains("views.ship"), "{error}");
+    let error = errors("{ milestone = \"v2\", withheld = \"hidden\" }");
+    assert!(error.contains("views.ship"), "{error}");
+}
+
+#[test]
+fn how_a_release_is_told_where_pull_requests_are_withheld_is_read() {
+    let told = |withheld: &str| {
+        loaded(&format!(
+            "{{ milestone = \"v2\", withheld = \"{withheld}\" }}"
+        ))
+        .withheld
+    };
+    assert_eq!(
+        ["unknown", "shown", "masked"].map(told),
+        [Withheld::Unknown, Withheld::Shown, Withheld::Masked]
+    );
 }

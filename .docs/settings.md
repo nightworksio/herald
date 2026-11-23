@@ -2207,6 +2207,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `views.<name>.release.withheld` | [ReleaseWithheld](#releasewithheld) | How a surface some of its pull requests are withheld from, a private or internal repository's, is told the verdict: "unknown" where absent, not known because some pull requests are private; "shown", judged by the pull requests it shows alone; "masked", the whole verdict, each withheld one holding it back said only to be private. |
 | `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
 | `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
 | `views.<name>.rules.approval` | boolean | One waits on review until it is approved. |
@@ -2454,6 +2455,10 @@ A kind of record a store may keep beside its ledger, cursors, schedules and deli
 ### ReleaseTool
 
 A release pull request by the tool that opens it.
+
+### ReleaseWithheld
+
+How a release is told where some of its pull requests are withheld.
 
 ### Replay
 

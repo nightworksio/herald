@@ -93,6 +93,22 @@ impl Blocker {
     }
 }
 
+/// How a release is judged on a surface some of its pull requests are
+/// withheld from, a private or internal repository's that the surface may
+/// not see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Withheld {
+    /// The verdict is not known, saying only that some pull requests are
+    /// private.
+    #[default]
+    Unknown,
+    /// The verdict is judged by the pull requests shown alone.
+    Shown,
+    /// The whole verdict, each withheld pull request holding the release
+    /// back named private and nothing more.
+    Masked,
+}
+
 /// A view's release: which open pull requests are its, and what holds it
 /// back.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +127,8 @@ pub struct Release {
     pub blocker_labels: Vec<Glob>,
     /// What holds it back.
     pub blocked_by: Vec<Blocker>,
+    /// How it is judged where some of its pull requests are withheld.
+    pub withheld: Withheld,
 }
 
 /// Why one pull request holds a release back.
@@ -152,20 +170,53 @@ pub struct Holding {
     pub more: usize,
 }
 
+/// One hold on a release, as a surface is told it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Held {
+    /// A pull request the surface is shown.
+    Shown(Holding),
+    /// A pull request withheld from it: nothing of it is told.
+    Private,
+}
+
+/// What a verdict was judged on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Judged {
+    /// Every pull request the release picks.
+    #[default]
+    Whole,
+    /// Those shown alone, some being withheld.
+    Shown,
+    /// Nothing: some being withheld, the verdict is not known.
+    Unknown,
+}
+
 /// Whether a release is ready, and what holds it back.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Readiness {
-    /// The holds, at most [`MOST_HOLDS`], the rows' order kept.
-    pub holds: Vec<Holding>,
+    /// The holds, at most [`MOST_HOLDS`]: the shown ones in the rows'
+    /// order, then the private ones.
+    pub holds: Vec<Held>,
     /// How many holds past those named.
     pub more: usize,
+    /// What it was judged on.
+    pub judged: Judged,
 }
 
 impl Readiness {
-    /// Whether nothing holds the release back.
+    /// Whether nothing holds the release back, where that is known.
     #[must_use]
-    pub fn ready(&self) -> bool {
-        self.holds.is_empty()
+    pub fn ready(&self) -> Option<bool> {
+        (self.judged != Judged::Unknown).then_some(self.holds.is_empty())
+    }
+
+    /// `hold` named, or counted past [`MOST_HOLDS`].
+    fn held(&mut self, hold: Held) {
+        if self.holds.len() == MOST_HOLDS {
+            self.more += 1;
+        } else {
+            self.holds.push(hold);
+        }
     }
 }
 
@@ -239,27 +290,37 @@ impl Release {
             .collect()
     }
 
-    /// The verdict on `rows`, the rows one surface shows: what holds each
-    /// back, so nothing of a row the surface is not shown leaves through
-    /// it.
+    /// The verdict one surface is told: what holds each of `shown`, the
+    /// rows it shows, back, and of `withheld`, the rows of the release
+    /// withheld from it, only what [`Withheld`] lets it be told.
     #[must_use]
-    pub fn verdict(&self, rows: &[&Row]) -> Readiness {
+    pub fn verdict(&self, shown: &[&Row], withheld: &[&Row]) -> Readiness {
         let mut readiness = Readiness::default();
-        for row in rows {
+        for row in shown {
             for (held_by, named) in self.holds(&row.pull) {
-                if readiness.holds.len() == MOST_HOLDS {
-                    readiness.more += 1;
-                    continue;
-                }
                 let (named, more) = capped(named);
-                readiness.holds.push(Holding {
+                readiness.held(Held::Shown(Holding {
                     held_by,
                     repository: row.pull.repository.clone(),
                     number: row.pull.number,
                     url: row.pull.url.clone(),
                     named,
                     more,
-                });
+                }));
+            }
+        }
+        if withheld.is_empty() {
+            return readiness;
+        }
+        match self.withheld {
+            Withheld::Unknown => readiness.judged = Judged::Unknown,
+            Withheld::Shown => readiness.judged = Judged::Shown,
+            Withheld::Masked => {
+                for row in withheld {
+                    if !self.holds(&row.pull).is_empty() {
+                        readiness.held(Held::Private);
+                    }
+                }
             }
         }
         readiness

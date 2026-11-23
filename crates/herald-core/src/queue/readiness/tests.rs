@@ -20,6 +20,7 @@ fn release() -> Release {
             .map(|label| Glob::new(label).unwrap())
             .collect(),
         blocked_by: Blocker::ALL.to_vec(),
+        withheld: Withheld::Unknown,
     }
 }
 
@@ -44,15 +45,30 @@ fn numbered(number: u64) -> Pull {
 }
 
 fn verdict(release: &Release, pulls: Vec<Pull>) -> Readiness {
-    let rows: Vec<Row> = pulls.into_iter().map(row).collect();
-    let shown: Vec<&Row> = rows.iter().collect();
-    release.verdict(&shown)
+    beside(release, pulls, Vec::new())
 }
 
-fn reasons(readiness: &Readiness) -> Vec<(&'static str, u64, Vec<String>)> {
+fn beside(release: &Release, pulls: Vec<Pull>, withheld: Vec<Pull>) -> Readiness {
+    let rows: Vec<Row> = pulls.into_iter().map(row).collect();
+    let hidden: Vec<Row> = withheld.into_iter().map(row).collect();
+    let shown: Vec<&Row> = rows.iter().collect();
+    release.verdict(&shown, &hidden.iter().collect::<Vec<_>>())
+}
+
+fn shown(readiness: &Readiness) -> Vec<&Holding> {
     readiness
         .holds
         .iter()
+        .map(|held| match held {
+            Held::Shown(holding) => holding,
+            Held::Private => panic!("a private hold"),
+        })
+        .collect()
+}
+
+fn reasons(readiness: &Readiness) -> Vec<(&'static str, u64, Vec<String>)> {
+    shown(readiness)
+        .into_iter()
         .map(|holding| {
             (
                 holding.held_by.name(),
@@ -61,6 +77,13 @@ fn reasons(readiness: &Readiness) -> Vec<(&'static str, u64, Vec<String>)> {
             )
         })
         .collect()
+}
+
+fn drafted(number: u64) -> Pull {
+    Pull {
+        draft: true,
+        ..numbered(number)
+    }
 }
 
 #[test]
@@ -187,9 +210,9 @@ fn a_release_pull_request_is_told_by_its_tool_s_head_branch_or_a_title() {
 #[test]
 fn nothing_holding_it_back_is_ready() {
     let readiness = verdict(&release(), vec![numbered(1), numbered(2)]);
-    assert!(readiness.ready());
+    assert_eq!(readiness.ready(), Some(true));
     assert_eq!(readiness, Readiness::default());
-    assert!(verdict(&release(), Vec::new()).ready());
+    assert_eq!(verdict(&release(), Vec::new()).ready(), Some(true));
 }
 
 #[test]
@@ -218,7 +241,7 @@ fn each_blocker_holds_it_back_naming_the_labels_or_checks() {
         &release(),
         vec![labelled, failed, draft, changes, numbered(5)],
     );
-    assert!(!readiness.ready());
+    assert_eq!(readiness.ready(), Some(false));
     assert_eq!(
         reasons(&readiness),
         vec![
@@ -232,7 +255,7 @@ fn each_blocker_holds_it_back_naming_the_labels_or_checks() {
             ("changes", 4, Vec::new()),
         ]
     );
-    let first = &readiness.holds[0];
+    let first = shown(&readiness)[0];
     assert_eq!(first.repository, "nightworksio/herald");
     assert_eq!(first.url, "https://github.com/nightworksio/herald/pull/7");
     assert_eq!(first.more, 0);
@@ -275,7 +298,7 @@ fn only_the_blockers_named_hold_it_back() {
         blocked_by: Vec::new(),
         ..release
     };
-    assert!(verdict(&none, vec![failed]).ready());
+    assert_eq!(verdict(&none, vec![failed]).ready(), Some(true));
 }
 
 #[test]
@@ -286,7 +309,7 @@ fn checks_pending_absent_or_passed_and_other_labels_hold_nothing_back() {
         review: Review::Requested,
         ..numbered(1)
     });
-    assert!(verdict(&release(), pulls.to_vec()).ready());
+    assert_eq!(verdict(&release(), pulls.to_vec()).ready(), Some(true));
 }
 
 #[test]
@@ -309,16 +332,13 @@ fn a_pull_request_not_read_in_full_holds_it_back_whatever_blocks() {
 #[test]
 fn a_verdict_names_at_most_its_bound_and_counts_the_rest() {
     let pulls: Vec<Pull> = (1..=u64::try_from(MOST_HOLDS).unwrap() + 2)
-        .map(|number| Pull {
-            draft: true,
-            ..numbered(number)
-        })
+        .map(drafted)
         .collect();
     let readiness = verdict(&release(), pulls);
     assert_eq!(readiness.holds.len(), MOST_HOLDS);
     assert_eq!(readiness.more, 2);
     assert_eq!(
-        readiness.holds.last().map(|holding| holding.number),
+        shown(&readiness).last().map(|holding| holding.number),
         Some(u64::try_from(MOST_HOLDS).unwrap())
     );
 }
@@ -333,7 +353,7 @@ fn a_hold_names_at_most_its_bound_of_checks_and_counts_the_rest() {
         ..numbered(1)
     };
     let readiness = verdict(&release(), vec![failed]);
-    let holding = &readiness.holds[0];
+    let holding = shown(&readiness)[0];
     assert_eq!(holding.named, checks[..MOST_HELD_CHECKS].to_vec());
     assert_eq!(holding.more, 3);
 }
@@ -344,4 +364,83 @@ fn blockers_and_reasons_have_their_names() {
     assert_eq!(names, ["label", "failed", "draft", "changes"]);
     assert_eq!(HeldBy::Unread.name(), "unread");
     assert_eq!(HeldBy::Blocked(Blocker::Changes).name(), "changes");
+}
+
+#[test]
+fn a_release_some_of_whose_pull_requests_are_withheld_is_not_known_by_default() {
+    let release = release();
+    let readiness = beside(&release, vec![numbered(1)], vec![numbered(2)]);
+    assert_eq!(readiness.ready(), None);
+    assert_eq!(readiness.judged, Judged::Unknown);
+    assert_eq!(readiness.holds, []);
+    let held = beside(&release, vec![drafted(1)], vec![drafted(2)]);
+    assert_eq!(held.ready(), None);
+    assert_eq!(reasons(&held), vec![("draft", 1, Vec::new())]);
+    let whole = beside(&release, vec![numbered(1)], Vec::new());
+    assert_eq!(whole.ready(), Some(true));
+    assert_eq!(whole.judged, Judged::Whole);
+}
+
+#[test]
+fn a_release_judged_by_what_is_shown_says_nothing_of_what_is_withheld() {
+    let release = Release {
+        withheld: Withheld::Shown,
+        ..release()
+    };
+    let readiness = beside(&release, vec![numbered(1)], vec![drafted(2)]);
+    assert_eq!(readiness.ready(), Some(true));
+    assert_eq!(readiness.judged, Judged::Shown);
+    assert_eq!(readiness.holds, []);
+    let held = beside(&release, vec![drafted(1)], vec![drafted(2)]);
+    assert_eq!(held.ready(), Some(false));
+    assert_eq!(reasons(&held), vec![("draft", 1, Vec::new())]);
+    assert_eq!(
+        beside(&release, vec![numbered(1)], Vec::new()).judged,
+        Judged::Whole
+    );
+}
+
+#[test]
+fn a_masked_release_names_each_withheld_pull_request_holding_it_private_once_after_the_shown() {
+    let release = Release {
+        withheld: Withheld::Masked,
+        ..release()
+    };
+    let twice = Pull {
+        review: Review::ChangesRequested,
+        labels: vec!["blocker".to_owned()],
+        ..drafted(1)
+    };
+    let unread = Pull {
+        unread: true,
+        ..numbered(2)
+    };
+    let readiness = beside(&release, vec![drafted(9)], vec![twice, numbered(3), unread]);
+    assert_eq!(readiness.ready(), Some(false));
+    assert_eq!(readiness.judged, Judged::Whole);
+    let Held::Shown(first) = &readiness.holds[0] else {
+        panic!("a private hold first");
+    };
+    assert_eq!(first.number, 9);
+    assert_eq!(&readiness.holds[1..], [Held::Private, Held::Private]);
+    let clear = beside(&release, vec![numbered(1)], vec![numbered(2)]);
+    assert_eq!(clear.ready(), Some(true));
+    assert_eq!(clear, Readiness::default());
+}
+
+#[test]
+fn private_holds_count_within_the_bound_of_holds() {
+    let release = Release {
+        withheld: Withheld::Masked,
+        ..release()
+    };
+    let most = u64::try_from(MOST_HOLDS).unwrap();
+    let under: Vec<Pull> = (1..most).map(drafted).collect();
+    let readiness = beside(&release, under.clone(), vec![drafted(most)]);
+    assert_eq!(readiness.holds.len(), MOST_HOLDS);
+    assert_eq!(readiness.more, 0);
+    assert_eq!(readiness.holds.last(), Some(&Held::Private));
+    let over = beside(&release, under, vec![drafted(most), drafted(most + 1)]);
+    assert_eq!(over.holds.len(), MOST_HOLDS);
+    assert_eq!(over.more, 1);
 }

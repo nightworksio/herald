@@ -187,8 +187,8 @@ pub struct Board {
     /// How many pull requests of private or internal repositories were
     /// withheld from it, where its output was not said to be private.
     pub withheld: usize,
-    /// Whether its release is ready, by the rows it shows, where its view
-    /// shows one (ADR-0081).
+    /// Whether its release is ready, where its view shows one, as its
+    /// surface may be told (ADR-0081).
     pub readiness: Option<Readiness>,
 }
 
@@ -355,13 +355,14 @@ pub fn rows(view: &View, pulls: &[Pull], now: Timestamp) -> Vec<Row> {
 /// where it batches them, each oldest first.
 #[must_use]
 pub fn board(view: &View, pulls: &[Pull], now: Timestamp) -> Board {
-    grouped(view, rows(view, pulls, now))
+    grouped(view, rows(view, pulls, now), &[])
 }
 
 /// `rows` as `view` shows them: grouped, the bots' batched where it
-/// batches them, each oldest first.
+/// batches them, each oldest first, its release judged beside `withheld`,
+/// the rows of it withheld from the surface (ADR-0081).
 #[must_use]
-pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
+pub fn grouped(view: &View, rows: Vec<Row>, withheld: &[Row]) -> Board {
     let counts = Turn::ALL
         .into_iter()
         .map(|state| (state, rows.iter().filter(|row| row.state == state).count()))
@@ -374,7 +375,7 @@ pub fn grouped(view: &View, rows: Vec<Row>) -> Board {
             (&left.pull.repository, left.pull.number)
                 .cmp(&(&right.pull.repository, right.pull.number))
         });
-        release.verdict(&judged)
+        release.verdict(&judged, &withheld.iter().collect::<Vec<_>>())
     });
     let mut groups: BTreeMap<(usize, String), Vec<Row>> = BTreeMap::new();
     let mut batches: BTreeMap<Option<Bump>, Vec<Row>> = BTreeMap::new();
