@@ -159,10 +159,7 @@ pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
         let shown = grouped(
             &view.view,
             decided_rows(flow, view, &pulls).await,
-            herald_core::Beside {
-                sees: printed.sees(),
-                ..herald_core::Beside::default()
-            },
+            herald_core::Beside::default(),
         );
         let plans = crate::reruns::plans((connected, ports), rule, (view, &shown))
             .await
