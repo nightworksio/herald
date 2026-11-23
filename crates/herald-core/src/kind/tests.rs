@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_twelve_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_thirteen_kinds_and_only_releases_package_versions_and_milestones_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -107,6 +107,7 @@ fn herald_ships_twelve_kinds_and_only_releases_and_package_versions_are_versione
             ("alert", false),
             ("pull-request", false),
             ("issue", false),
+            ("milestone", true),
             ("report", false),
             ("nudge", false),
             ("rerun", false),
@@ -133,6 +134,7 @@ fn herald_ships_twelve_kinds_and_only_releases_and_package_versions_are_versione
             Some(&signalled),
             None,
             None,
+            Some(&signalled),
             Some(&signalled),
             Some(&signalled),
             Some(&signalled),
@@ -224,7 +226,8 @@ fn an_alert_names_its_tool_and_number_and_never_what_it_found() {
     assert_eq!(
         private,
         [
-            false, false, false, false, false, true, false, false, false, false, false, false
+            false, false, false, false, false, true, false, false, false, false, false, false,
+            false
         ]
     );
     assert_eq!(alert.links, [LinkSpec::named("alert")]);
@@ -358,6 +361,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "alert",
             "pull-request",
             "issue",
+            "milestone",
             "report",
             "nudge",
             "rerun",
@@ -452,15 +456,62 @@ fn an_issue_names_its_number_what_it_did_and_why_it_closed() {
 }
 
 #[test]
+fn a_milestone_is_versioned_by_its_title_and_names_its_due_day_and_counts() {
+    let shipped = KindSpec::shipped();
+    let milestone = &shipped[8];
+    assert_eq!(milestone.kind, Kind::MILESTONE);
+    assert!(milestone.versioned);
+    assert!(!milestone.private);
+    assert_eq!(milestone.links, [LinkSpec::named("milestone")]);
+    let mut attributes = crate::versioned("v1.4", false);
+    attributes.extend([
+        (
+            crate::ACTION.to_owned(),
+            Attribute::Text("closed".to_owned()),
+        ),
+        (crate::NUMBER.to_owned(), Attribute::Number(3.into())),
+        (
+            crate::MILESTONE_LINK.to_owned(),
+            Attribute::Text("v1.4".to_owned()),
+        ),
+        (
+            crate::DUE.to_owned(),
+            Attribute::Text("2026-12-01".to_owned()),
+        ),
+        (crate::ISSUES_OPEN.to_owned(), Attribute::Number(0.into())),
+        (
+            crate::ISSUES_CLOSED.to_owned(),
+            Attribute::Number(12.into()),
+        ),
+    ]);
+    assert!(milestone.check(&attributes).is_ok());
+    for required in [
+        crate::ACTION,
+        crate::NUMBER,
+        crate::MILESTONE_LINK,
+        crate::VERSION,
+    ] {
+        let mut missing = attributes.clone();
+        missing.remove(required);
+        assert!(milestone.check(&missing).is_err(), "{required}");
+    }
+    for optional in [crate::DUE, crate::ISSUES_OPEN, crate::ISSUES_CLOSED] {
+        let mut missing = attributes.clone();
+        missing.remove(optional);
+        assert!(milestone.check(&missing).is_ok(), "{optional}");
+    }
+}
+
+#[test]
 fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
     let shipped = KindSpec::shipped();
-    let report = &shipped[8];
+    let report = &shipped[9];
     assert_eq!(report.kind, Kind::REPORT);
     let own: Vec<bool> = shipped.iter().map(|spec| spec.kind.own()).collect();
     assert_eq!(
         own,
         [
-            false, false, false, false, false, false, false, false, true, true, true, true
+            false, false, false, false, false, false, false, false, false, true, true, true, true
         ]
     );
     assert_eq!(report.links, []);
@@ -482,7 +533,7 @@ fn a_report_names_its_view_and_how_many_it_shows_and_links_nothing() {
 #[test]
 fn a_nudge_names_its_rule_stage_and_pull_request_and_links_the_pull_request() {
     let shipped = KindSpec::shipped();
-    let nudge = &shipped[9];
+    let nudge = &shipped[10];
     assert_eq!(nudge.kind, Kind::NUDGE);
     assert_eq!(nudge.links, [LinkSpec::named("pull")]);
     let attributes: Vec<(&str, AttributeType, bool)> = nudge
@@ -511,7 +562,7 @@ fn a_nudge_names_its_rule_stage_and_pull_request_and_links_the_pull_request() {
 #[test]
 fn a_rerun_plan_names_its_check_evidence_and_call_and_links_the_pull_request_and_run() {
     let shipped = KindSpec::shipped();
-    let plan = &shipped[10];
+    let plan = &shipped[11];
     assert_eq!(plan.kind, Kind::RERUN);
     assert_eq!(
         plan.links,

@@ -96,3 +96,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0076](0076-a-kept-codeowners-file-s-long-name-is-its-digest.md) | A kept CODEOWNERS file's long name is its digest | Accepted |
 | [0077](0077-a-source-may-read-its-forge-s-teams-and-only-a-private-surface-counts-them.md) | A source may read its forge's teams, and only a private surface counts them | Accepted |
 | [0078](0078-a-pull-request-s-merge-queue-entry-is-read-with-it-and-rides-its-row-s-visibility.md) | A pull request's merge queue entry is read with it and rides its row's visibility | Accepted |
+| [0079](0079-a-milestone-is-a-versioned-forge-signal-a-poll-finds-by-following-the-open-ones.md) | A milestone is a versioned forge signal a poll finds by following the open ones | Accepted |

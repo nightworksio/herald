@@ -166,6 +166,7 @@ fn a_gitlab_member_s_hook_sends_what_its_own_signals_take_confidential_issues_on
             "vulnerability_events",
             "merge_requests_events",
             "issues_events",
+            "milestone_events",
         ] {
             assert_eq!(posted[key], json!(taken), "{key}");
         }

@@ -265,6 +265,7 @@ static JOINED: Cursor = Cursor {
     notes: std::collections::BTreeMap::new(),
     packages: std::collections::BTreeMap::new(),
     listings: std::collections::BTreeMap::new(),
+    ids: std::collections::BTreeMap::new(),
     newest: None,
     sequence: None,
     log: None,

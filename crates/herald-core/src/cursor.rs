@@ -39,6 +39,10 @@ pub struct Cursor {
     /// signal reads, by the listing's name, such as a run's `check-suite`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub listings: BTreeMap<String, Validators>,
+    /// The ids of what a signal follows by listing, such as a repository's
+    /// open milestones, by the listing's name (ADR-0079).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ids: BTreeMap<String, Vec<String>>,
     /// When the newest event it announced occurred, where its source
     /// leaves older ones it finds unannounced (ADR-0042).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -142,6 +146,8 @@ pub struct Polled {
     /// The validators the server returned for each further listing a
     /// signal reads, by the listing's name.
     pub listings: BTreeMap<String, Validators>,
+    /// The ids of what a signal follows by listing, by the listing's name.
+    pub ids: BTreeMap<String, Vec<String>>,
     /// When the newest event its source announced occurred, where the
     /// source keeps that mark; the cursor's own mark stays where it is
     /// not given.
@@ -257,6 +263,7 @@ impl Cursor {
             notes,
             packages: polled.packages.clone(),
             listings: polled.listings.clone(),
+            ids: polled.ids.clone(),
             newest: polled.newest.or(self.newest),
             sequence: polled.sequence.or(self.sequence),
             log: polled.log.or(self.log),
@@ -281,6 +288,7 @@ impl Cursor {
             signals: self.signals.clone(),
             packages: self.packages.clone(),
             listings: self.listings.clone(),
+            ids: self.ids.clone(),
             newest: self.newest,
             sequence: self.sequence,
             log: self.log,

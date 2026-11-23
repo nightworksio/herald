@@ -674,7 +674,7 @@ fn a_mistake_inside_a_section_is_named_by_its_key_path() {
     let unknown =
         errors(&EXAMPLE.replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]"));
     assert!(
-            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", \"alert\", \"pull-request\", \"issue\", \"report\", \"nudge\", \"rerun\", \"dequeued\", or declare it under [kinds.tweet]"),
+            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", \"alert\", \"pull-request\", \"issue\", \"milestone\", \"report\", \"nudge\", \"rerun\", \"dequeued\", or declare it under [kinds.tweet]"),
             "{unknown}"
         );
     assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");

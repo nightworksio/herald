@@ -65,6 +65,7 @@ fn a_member_with_a_hook_to_herald_keeps_it_and_one_without_is_given_one() {
             "merge_requests_events": false,
             "issues_events": false,
             "confidential_issues_events": false,
+            "milestone_events": false,
         })
     );
     assert_eq!(posted.method, Method::Post);
@@ -82,6 +83,21 @@ fn a_member_announcing_runs_is_given_a_hook_sending_its_pipelines() {
     assert_eq!(posted["pipeline_events"], json!(true));
     assert_eq!(posted["vulnerability_events"], json!(false));
     assert_eq!(posted["releases_events"], json!(true));
+}
+
+#[test]
+fn a_member_announcing_milestones_is_given_a_hook_sending_them() {
+    let made = ScriptedHttp::new(vec![
+        answer(200, &json!([])),
+        answer(201, &json!({ "id": 1 })),
+    ]);
+    assert_eq!(
+        registering(&made, &[Sent::Milestones]),
+        Ok(Registered::Made)
+    );
+    let posted: Value = serde_json::from_slice(&made.requests()[1].body).unwrap();
+    assert_eq!(posted["milestone_events"], json!(true));
+    assert_eq!(posted["issues_events"], json!(false));
 }
 
 #[test]

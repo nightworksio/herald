@@ -628,6 +628,7 @@ fn hooked(
 
 mod alerts;
 mod issues;
+mod milestones;
 mod pulls;
 mod runs;
 

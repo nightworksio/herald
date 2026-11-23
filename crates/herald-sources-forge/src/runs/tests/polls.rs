@@ -212,6 +212,7 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
             last_modified: None,
         }),
         listings: BTreeMap::from([("status".to_owned(), Validators::default())]),
+        ids: BTreeMap::from([("milestone".to_owned(), vec!["2".to_owned()])]),
     };
     let cursor = Cursor {
         etag: Some("releases".to_owned()),
@@ -219,6 +220,7 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
         signals: BTreeMap::from([(Signal::Tag, Validators::default())]),
         packages: BTreeMap::from([("p".to_owned(), Validators::default())]),
         listings: BTreeMap::from([("check-suite".to_owned(), Validators::default())]),
+        ids: BTreeMap::from([("milestone/closed".to_owned(), vec!["1".to_owned()])]),
         ..Cursor::default()
     };
     let changed = Asked(vec![(Ran::Run, None, answer(200, &json!({}), None))]);
@@ -234,6 +236,8 @@ fn runs_merge_into_a_poll_keeping_the_cursor_s_validators_where_the_rest_found_n
     assert!(kept.packages.contains_key("p"));
     assert!(kept.listings.contains_key("status"));
     assert!(kept.listings.contains_key("check-suite"));
+    assert_eq!(kept.ids["milestone"], ["2"]);
+    assert_eq!(kept.ids["milestone/closed"], ["1"]);
     assert_eq!(
         kept.last_modified.as_deref(),
         Some("Tue, 17 Nov 2026 08:00:00 GMT")

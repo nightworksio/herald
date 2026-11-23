@@ -283,6 +283,22 @@ impl Event {
         version_in(&self.attributes)
     }
 
+    /// What output that may be read in public, such as a CI job's log,
+    /// names it by: its version, else its title, where it is public; an
+    /// event of a private or internal repository is named only as private
+    /// (ADR-0067).
+    #[must_use]
+    pub fn named(&self) -> &str {
+        match self.bounded_by() {
+            Some(Visibility::Private | Visibility::Internal) => Self::PRIVATELY_NAMED,
+            Some(Visibility::Public) | None => self.version().unwrap_or(&self.title),
+        }
+    }
+
+    /// What [`Event::named`] names an event of a private or internal
+    /// repository by.
+    pub const PRIVATELY_NAMED: &str = "(private)";
+
     /// The attribute named `name`.
     #[must_use]
     pub fn attribute(&self, name: &str) -> Option<&Attribute> {
@@ -436,6 +452,22 @@ pub(crate) mod tests {
 
     pub(crate) fn event() -> Event {
         Event::normalise(draft()).unwrap()
+    }
+
+    #[test]
+    fn output_names_a_public_event_by_its_version_or_title_and_a_private_one_only_as_private() {
+        assert_eq!(event().named(), "v0.1.0");
+        assert_eq!(event().seen_as(Visibility::Public).named(), "v0.1.0");
+        let untitled = Event::normalise(Draft {
+            attributes: BTreeMap::new(),
+            kind: Kind::FEED_ENTRY,
+            ..draft()
+        })
+        .unwrap();
+        assert_eq!(untitled.named(), "php-mutation-gate v0.1.0");
+        for hidden in [Visibility::Private, Visibility::Internal] {
+            assert_eq!(event().seen_as(hidden).named(), Event::PRIVATELY_NAMED);
+        }
     }
 
     #[test]

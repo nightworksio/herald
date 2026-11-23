@@ -178,6 +178,7 @@ impl Owned {
             alerts: self.options.alert_choice(self.forge),
             pulls: self.options.pull_choice(),
             issues: self.options.issue_choice(),
+            milestones: self.options.milestone_choice(),
         }
     }
 
@@ -301,6 +302,26 @@ impl Owned {
         let asked = asking.asked(http, cursor).await?;
         let issues = asking.read(&asked, &described)?;
         Ok((asked.changed(), issues))
+    }
+
+    /// What the member `repository`'s milestones since `cursor` are, read
+    /// through `http`, and whether a listing of them changed.
+    async fn milestoned(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        repository: &Listed,
+        cursor: Option<&Cursor>,
+    ) -> Result<(bool, crate::runs::Found), Unpolled> {
+        let (described, origin) = self.reached(repository)?;
+        let choice = self.options.milestone_choice();
+        let asking = crate::milestones::Asking {
+            origin: &origin,
+            token: self.token.as_ref(),
+            choice: &choice,
+        };
+        let followed = asking.asked(http, cursor).await?;
+        let changed = followed.changed;
+        Ok((changed, asking.read(followed, &described)?))
     }
 
     /// What the member `repository`'s alerts since `cursor` are, read
@@ -530,6 +551,7 @@ impl Owned {
                 Sent::ConfidentialIssues,
                 signals.takes(Signal::Issue) && confidential,
             ),
+            (Sent::Milestones, signals.takes(Signal::Milestone)),
         ]
         .into_iter()
         .filter_map(|(sent, taken)| taken.then_some(sent))
@@ -663,6 +685,7 @@ impl Expand for Owned {
                 || self.options.may_take(Signal::Alert)
                 || self.options.may_take(Signal::PullRequest)
                 || self.options.may_take(Signal::Issue)
+                || self.options.may_take(Signal::Milestone)
             {
                 return None;
             }
@@ -806,6 +829,13 @@ impl Expand for Owned {
                         .issued(&http, repository, *cursor)
                         .await
                         .map(|issued| crate::runs::merged_into(found, issued, *cursor)),
+                    answered => answered,
+                };
+                let answered = match answered {
+                    Ok(found) if signals.takes(Signal::Milestone) => self
+                        .milestoned(&http, repository, *cursor)
+                        .await
+                        .map(|milestoned| crate::runs::merged_into(found, milestoned, *cursor)),
                     answered => answered,
                 };
                 polled.push(answered.and_then(|found| {

@@ -628,13 +628,12 @@ of a repository's packages. A new source announces its newest `backfill`
 versions, as it does releases; a source that already polled before it
 took packages remembers the versions it first finds without announcing
 them. GitLab's image tags carry no time in their listing, so a new source
-remembers the tags it first finds without announcing any. GitHub's `registry_package` and `package` webhooks
-and Forgejo's `package` webhook poll the source at once.
+remembers the tags it first finds without announcing any. GitHub's `registry_package` and `package` webhooks and Forgejo's `package` webhook poll the source at once.
 
-### CI runs, alerts, pull requests and issues
+### CI runs, alerts, pull requests, issues and milestones
 
-A forge source's `signals` also take `run`, `alert`, `pull-request` and
-`issue`, each announced by webhook and poll with one vocabulary on every
+A forge source's `signals` also take `run`, `alert`, `pull-request`,
+`issue` and `milestone`, each announced by webhook and poll with one vocabulary on every
 forge, narrowed per source and matched by a route's `match.attributes`:
 
 - `run`: CI runs, from GitHub Actions, GitLab pipelines, Forgejo Actions,
@@ -646,6 +645,7 @@ forge, narrowed per source and matched by a route's `match.attributes`:
 - `pull-request`: pull requests and merge requests opened, readied for
   review and merged, with a `bot` attribute. [`.docs/pulls.md`](.docs/pulls.md)
 - `issue`: issues opened, closed and reopened. [`.docs/issues.md`](.docs/issues.md)
+- `milestone`: milestones closed, opened, reopened and deleted. [`.docs/milestones.md`](.docs/milestones.md)
 
 ### The queue
 

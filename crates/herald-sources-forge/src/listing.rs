@@ -3,7 +3,7 @@
 
 use herald_core::{Cursor, Validators};
 use herald_kinds::Unpolled;
-use herald_ports::{DynHttp, Erased, Http as _, Response};
+use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
 
 use crate::forge::validators;
 use crate::limited::checked;
@@ -45,14 +45,25 @@ impl Asked {
         path: &str,
         (cursor, key): (Option<&Cursor>, &str),
     ) -> Result<Self, Unpolled> {
+        let request = origin.get(path, token)?;
+        Self::requested(http, (origin.forge(), request), (cursor, key)).await
+    }
+
+    /// The listing `request` asks of `forge` through `http`, conditional on
+    /// what `cursor` keeps under `key`.
+    pub(crate) async fn requested(
+        http: &Erased<'_, dyn DynHttp + '_>,
+        (forge, request): (Forge, Request),
+        (cursor, key): (Option<&Cursor>, &str),
+    ) -> Result<Self, Unpolled> {
         let kept = cursor.and_then(|cursor| cursor.listings.get(key)).cloned();
-        let request = origin.get(path, token)?.conditional(
+        let request = request.conditional(
             kept.as_ref().and_then(|kept| kept.etag.as_deref()),
             kept.as_ref().and_then(|kept| kept.last_modified.as_deref()),
         );
         let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
         Ok(Self {
-            forge: origin.forge(),
+            forge,
             kept,
             answer,
         })

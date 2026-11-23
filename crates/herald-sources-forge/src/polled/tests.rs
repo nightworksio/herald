@@ -74,6 +74,7 @@ fn releases(
         alerts: crate::SourceOptions::default().alert_choice(crate::Forge::GitHub),
         pulls: crate::SourceOptions::default().pull_choice(),
         issues: crate::SourceOptions::default().issue_choice(),
+        milestones: crate::SourceOptions::default().milestone_choice(),
     }
 }
 

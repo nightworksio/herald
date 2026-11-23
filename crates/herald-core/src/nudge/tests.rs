@@ -156,7 +156,7 @@ fn a_nudge_is_an_event_of_its_rule_pull_spell_and_stage_seen_as_its_repository()
     assert_eq!(read(BOT), Some(Attribute::Flag(false)));
     assert_eq!(read(WAITING_ON), text("ana, org/core"));
     assert!(
-        crate::KindSpec::shipped()[9]
+        crate::KindSpec::shipped()[10]
             .check(event.attributes())
             .is_ok()
     );
