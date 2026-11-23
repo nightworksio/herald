@@ -101,6 +101,14 @@ fn a_release_pull_request_is_named_by_its_tool_or_its_head_branch() {
         Some(ReleasePull::Changesets)
     );
     assert_eq!(
+        loaded("{ label = \"ship\" }").label,
+        Some(Glob::new("ship").unwrap())
+    );
+    assert_eq!(
+        loaded("{ branch = \"release/*\" }").branch,
+        Some(Glob::new("release/*").unwrap())
+    );
+    assert_eq!(
         loaded("{ pull = { head = \"releases/next\" } }").pull,
         Some(ReleasePull::Head(Glob::new("releases/next").unwrap()))
     );

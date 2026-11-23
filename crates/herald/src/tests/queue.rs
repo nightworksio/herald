@@ -878,6 +878,17 @@ fn a_release_verdict_names_each_hold_its_labels_or_checks_and_those_past_the_bou
         crate::queueing::judged(&Readiness::default(), 1),
         ["release: ready, by the pull requests printed"]
     );
+    let alone = Readiness {
+        holds: vec![holding(HeldBy::Unread, &[], 0)],
+        more: 0,
+    };
+    assert_eq!(
+        crate::queueing::judged(&alone, 0),
+        [
+            "release: not ready, 1 reason",
+            "  a/b#3 was not read in full"
+        ]
+    );
     let one_more = Readiness {
         holds: vec![holding(HeldBy::Unread, &[], 0)],
         more: 1,
