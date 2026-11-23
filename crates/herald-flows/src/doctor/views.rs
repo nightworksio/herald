@@ -11,7 +11,8 @@ use herald_config::{Config, Guard, Report, RouteConfig, Rule, ViewConfig, ViewMo
 use herald_core::report::UTC;
 use herald_core::stage_name;
 use herald_core::{
-    Advising, AdvisoriesFrom, Capacity, Duration, Load, Surface, Teams, View, WITHHELD, advises,
+    Advising, AdvisoriesFrom, Capacity, Duration, Load, MOST_HEADER_MILESTONES,
+    MOST_HEADER_REPOSITORIES, Surface, Teams, View, WITHHELD, advises,
 };
 use herald_kinds::{Checking, QueueRead, UNADVISED};
 
@@ -31,6 +32,9 @@ const SCOPED: &str = "it reads only the repositories the owner's membership reco
 /// What doctor says a view's capacity overview needs of its token
 /// (ADR-0066).
 const CAPACITY_PERMISSIONS: &str = "Its token needs Actions: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api with the Reporter role on GitLab, self-managed included, and read access on Forgejo; a repository it may not read is named unread with why, never counted as idle.";
+
+/// What doctor says a release's header needs of its token (ADR-0082).
+const HEADER_PERMISSIONS: &str = "Its token needs Issues: read or Pull requests: read as a GitHub App or fine-grained token, repo (public_repo for a public repository) as a classic token, the same on GitHub Enterprise Server and GHE.com, read_api on GitLab, self-managed included, and read access to the repository's issues on Forgejo; a repository it may not read is named unread with why, never shown as having no milestone.";
 
 /// What doctor says a view's advisories need of its token (ADR-0067).
 const ADVISORY_PERMISSIONS: &str = "Its token needs Dependabot alerts, Code scanning alerts and Secret scanning alerts: read as a GitHub App or fine-grained token, security_events (and repo for a private repository) as a classic token, and for an organization's own listings to act for an organization owner or security manager (with read:org as a classic token), the same on GitHub Enterprise Server and GHE.com; read_api with the Developer role on GitLab Ultimate, self-managed included. A listing it may not read is named unread with the permission it needs, never shown as clean. Forgejo raises no security alerts, so its repositories are named unread.";
@@ -245,6 +249,14 @@ fn capacity_note((named, view): (&str, &str), (capacity, held): (Capacity, &View
 }
 
 /// What doctor says of the view `view`, which the report or rule called
+/// `named` watches, heading its release with its milestones (ADR-0082).
+fn header_note((named, view): (&str, &str)) -> String {
+    format!(
+        "The {named} heads the view {view}'s release with its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most {MOST_HEADER_REPOSITORIES} repositories, those past it named unread; on GitLab one more request for each milestone matched to count its issues, at most {MOST_HEADER_MILESTONES} a repository. {HEADER_PERMISSIONS}"
+    )
+}
+
+/// What doctor says of the view `view`, which the report or rule called
 /// `named` watches, reading advisories as `advising` says (ADR-0067).
 fn advisories_note((named, view): (&str, &str), (advising, held): (Advising, &View)) -> String {
     let (most, repositories) = (advising.most, advising.repositories);
@@ -310,6 +322,34 @@ fn teams_notes(config: &Config, view: &ViewConfig) -> Vec<String> {
         .collect()
 }
 
+/// What doctor says of the overviews of `view`, which the report or rule
+/// called `named` watches as `shown`: its capacity, its release's header,
+/// its advisories, its load and its sources' forge teams.
+fn overview_notes(config: &Config, (named, shown): (&str, &str), view: &ViewConfig) -> Vec<String> {
+    let mut overviews = Vec::new();
+    overviews.extend(
+        view.capacity
+            .map(|capacity| capacity_note((named, shown), (capacity, &view.view))),
+    );
+    overviews.extend(
+        view.view
+            .release
+            .as_ref()
+            .and_then(herald_core::Release::headed)
+            .map(|_| header_note((named, shown))),
+    );
+    overviews.extend(
+        view.advisories
+            .map(|advising| advisories_note((named, shown), (advising, &view.view))),
+    );
+    overviews.extend(
+        view.load
+            .map(|load| load_note((named, shown), (load, &config.teams))),
+    );
+    overviews.extend(teams_notes(config, view));
+    overviews
+}
+
 /// Each note on the report or rule `name`, called `named`, watching
 /// `view` as `report` says.
 fn watched(
@@ -368,19 +408,7 @@ fn watched(
         note.push('.');
         notes.push(note);
     }
-    notes.extend(
-        view.capacity
-            .map(|capacity| capacity_note((named, &report.view), (capacity, &view.view))),
-    );
-    notes.extend(
-        view.advisories
-            .map(|advising| advisories_note((named, &report.view), (advising, &view.view))),
-    );
-    notes.extend(
-        view.load
-            .map(|load| load_note((named, &report.view), (load, &config.teams))),
-    );
-    notes.extend(teams_notes(config, view));
+    notes.extend(overview_notes(config, (named, &report.view), view));
     if let Some(zone) = report
         .schedule
         .zone

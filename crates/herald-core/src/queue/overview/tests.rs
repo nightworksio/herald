@@ -42,6 +42,7 @@ fn overviews() -> Overviews {
         heads: vec![head("o/app", "h1")],
         advisories: None,
         load: None,
+        header: None,
     }
 }
 

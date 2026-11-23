@@ -4836,6 +4836,10 @@
           "description": "How its selectors combine: \"all\" where absent, each picking a pull\nrequest, or \"any\".",
           "$ref": "#/$defs/Combine"
         },
+        "header": {
+          "description": "Whether the board heads it with each open milestone its milestone\nselector matches: its title, due day, whether it is overdue and its\nopen and closed issues, each repository it shows a pull request of\nread by one more request a round (ADR-0082). True where absent; it\nneeds a milestone selector.",
+          "type": "boolean"
+        },
         "label": {
           "description": "A label its pull requests carry, a glob ignoring case.",
           "type": "string"

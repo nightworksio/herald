@@ -2182,6 +2182,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.release.blocker_labels` | array of string | The labels that block it, each a glob ignoring case: `["blocker", "release-blocker"]` where absent, at most 50. |
 | `views.<name>.release.branch` | string | The branch its pull requests merge into, a glob ignoring case, such as "release/*". |
 | `views.<name>.release.combine` | [Combine](#combine) | How its selectors combine: "all" where absent, each picking a pull request, or "any". |
+| `views.<name>.release.header` | boolean | Whether the board heads it with each open milestone its milestone selector matches: its title, due day, whether it is overdue and its open and closed issues, each repository it shows a pull request of read by one more request a round (ADR-0082). True where absent; it needs a milestone selector. |
 | `views.<name>.release.label` | string | A label its pull requests carry, a glob ignoring case. |
 | `views.<name>.release.milestone` | string | The milestone its pull requests carry, by title, a glob ignoring case, such as "v2.0". |
 

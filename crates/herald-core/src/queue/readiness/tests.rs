@@ -21,6 +21,7 @@ fn release() -> Release {
             .collect(),
         blocked_by: Blocker::ALL.to_vec(),
         withheld: Withheld::Unknown,
+        header: true,
     }
 }
 

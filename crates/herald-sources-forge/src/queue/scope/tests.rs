@@ -746,3 +746,29 @@ fn a_gitlab_group_read_with_the_queue_reads_each_project_s_trains_once() {
         herald_kinds::QueueRead::Requests(300)
     );
 }
+
+#[test]
+fn an_owner_s_member_reads_its_own_milestones_seen_as_asked() {
+    let queue = scoped(Forge::GitHub, true);
+    let milestone = json!([{
+        "id": 1, "number": 1, "title": "v2.0", "description": null, "state": "open",
+        "open_issues": 1, "closed_issues": 3, "created_at": "2026-10-01T08:00:00Z",
+        "updated_at": "2026-10-02T08:00:00Z", "closed_at": null, "due_on": null,
+        "html_url": "https://github.com/o/vault/milestone/1",
+    }]);
+    let http = ScriptedHttp::new(vec![answer(200, &milestone)]);
+    let glob = herald_core::Glob::new("v2.*").unwrap();
+    let header = pollster::block_on(queue.milestoned(
+        &http,
+        ("o/vault", &glob, Visibility::Private),
+        jiff::Timestamp::UNIX_EPOCH,
+    ))
+    .unwrap();
+    assert_eq!(
+        http.asked()[0].0,
+        "https://api.github.com/repos/o/vault/milestones?state=open&per_page=30"
+    );
+    assert_eq!(header.milestones.len(), 1);
+    assert_eq!(header.milestones[0].repository, "o/vault");
+    assert_eq!(header.milestones[0].visibility, Visibility::Private);
+}

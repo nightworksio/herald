@@ -116,6 +116,14 @@ impl Queue for Served {
     fn repository(&self) -> Option<&str> {
         None
     }
+    fn milestoned<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: (&'a str, &'a herald_core::Glob, herald_core::Visibility),
+        _: jiff::Timestamp,
+    ) -> Boxed<'a, Result<herald_core::Header, Unpolled>> {
+        unread()
+    }
     fn codeowners<'a>(
         &'a self,
         _: &'a dyn DynHttp,

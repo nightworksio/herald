@@ -606,6 +606,7 @@ fn release(milestone: &str) -> crate::queue::Release {
         blocker_labels: Vec::new(),
         blocked_by: crate::queue::Blocker::ALL.to_vec(),
         withheld: crate::queue::Withheld::Unknown,
+        header: true,
     }
 }
 

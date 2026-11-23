@@ -561,7 +561,9 @@ fn milestones(bytes: &[u8]) {
 
 /// A repository's open pull requests read for a view by every path: each
 /// pull request is of its repository, none more than the view lists, and
-/// only those past the most read in full read as unknown.
+/// only those past the most read in full read as unknown; and its release
+/// header, each milestone of it, seen as it, matching the glob, none past
+/// the most named.
 fn queued(bytes: &[u8]) {
     let http = Answering(bytes.to_vec());
     let most = herald_kinds::Most { open: 150, pulls: 2 };
@@ -592,6 +594,21 @@ fn queued(bytes: &[u8]) {
                     counted.capacity.iter().flatten().all(|run| run.repository == "fuzzer/fuzzed"),
                     "{counted:?}"
                 );
+            }
+            let glob = herald_core::Glob::new("v*").unwrap();
+            if let Ok(header) = pollster::block_on(queue.milestoned(
+                &http,
+                ("fuzzer/fuzzed", &glob, herald_core::Visibility::Internal),
+                jiff::Timestamp::UNIX_EPOCH,
+            )) {
+                assert!(header.milestones.len() <= herald_core::MOST_HEADER_MILESTONES, "{header:?}");
+                assert!(
+                    header.milestones.iter().all(|milestone| milestone.repository == "fuzzer/fuzzed"
+                        && milestone.visibility == herald_core::Visibility::Internal
+                        && glob.matches(&milestone.title)),
+                    "{header:?}"
+                );
+                assert!(header.unread.len() <= 2, "{header:?}");
             }
             let advising = herald_core::Advising {
                 from: herald_core::AdvisoriesFrom::Owner,

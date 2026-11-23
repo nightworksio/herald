@@ -2,13 +2,14 @@
 //! table or as JSON (ADR-0055).
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::io::Write;
 
 use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{BUILT_IN_VIEW, Config, Uses};
 use herald_core::{
-    Advisories, Blocker, Board, Held, HeldBy, Judged, Loaded, Loads, Printed, QueueEntry,
+    Advisories, Blocker, Board, Header, Held, HeldBy, Judged, Loaded, Loads, Printed, QueueEntry,
     Readiness, Row, Showing, WITHHELD, view_json, waited,
 };
 
@@ -72,6 +73,15 @@ fn table(view: &str, board: &Board) -> Vec<String> {
         board.stale
     )];
     lines.extend(board.readiness.as_ref().map(judged).into_iter().flatten());
+    lines.extend(
+        board
+            .overviews
+            .header
+            .as_ref()
+            .map(headed)
+            .into_iter()
+            .flatten(),
+    );
     for group in &board.groups {
         let name = if group.name.is_empty() {
             "everyone"
@@ -158,6 +168,42 @@ pub(crate) fn judged(readiness: &Readiness) -> Vec<String> {
     if readiness.more > 0 {
         lines.push(format!("  and {} more", readiness.more));
     }
+    lines
+}
+
+/// The release's header `header` holds as lines of a table: each open
+/// milestone its selector matches, and each repository whose milestones
+/// could not be read (ADR-0082).
+fn headed(header: &Header) -> Vec<String> {
+    let mut lines: Vec<String> = header
+        .milestones
+        .iter()
+        .map(|milestone| {
+            let mut line = format!(
+                "  milestone {} of {}",
+                milestone.title, milestone.repository
+            );
+            if let Some(due) = milestone.due {
+                let _ = write!(line, ", due {due}");
+                if milestone.overdue {
+                    line.push_str(", overdue");
+                }
+            }
+            if let Some((open, closed)) = milestone.counts {
+                let _ = write!(line, ", {open} open, {closed} closed");
+            }
+            if let Some(url) = &milestone.url {
+                let _ = write!(line, "  {url}");
+            }
+            line
+        })
+        .collect();
+    lines.extend(header.unread.iter().map(|unread| {
+        format!(
+            "  milestones of {} unread, because {}",
+            unread.repository, unread.reason
+        )
+    }));
     lines
 }
 

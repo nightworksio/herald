@@ -64,6 +64,7 @@ fn one_milestone_is_a_release_with_every_blocker_and_the_shipped_labels() {
             blocker_labels: globs(&BLOCKER_LABELS),
             blocked_by: Blocker::ALL.to_vec(),
             withheld: Withheld::Unknown,
+            header: true,
         }
     );
 }
@@ -84,6 +85,7 @@ fn every_selector_combine_labels_and_blockers_are_read() {
             blocker_labels: globs(&["stop"]),
             blocked_by: vec![Blocker::Draft, Blocker::Failed],
             withheld: Withheld::Unknown,
+            header: true,
         }
     );
     let all =
@@ -187,5 +189,24 @@ fn how_a_release_is_told_where_pull_requests_are_withheld_is_read() {
     assert_eq!(
         ["unknown", "shown", "masked"].map(told),
         [Withheld::Unknown, Withheld::Shown, Withheld::Masked]
+    );
+}
+
+#[test]
+fn a_release_is_headed_by_its_milestones_unless_it_says_not_and_a_header_needs_a_milestone() {
+    let headed = loaded("{ milestone = \"v2\" }");
+    assert!(headed.header);
+    assert_eq!(headed.headed(), Some(&Glob::new("v2").unwrap()));
+    let unheaded = loaded("{ milestone = \"v2\", header = false }");
+    assert!(!unheaded.header);
+    assert_eq!(unheaded.headed(), None);
+    let labelled = loaded("{ label = \"ship\" }");
+    assert!(labelled.header);
+    assert_eq!(labelled.headed(), None);
+    assert!(!loaded("{ label = \"ship\", header = false }").header);
+    let error = errors("{ label = \"ship\", header = true }");
+    assert!(
+        error.contains("views.ship.release.header: a release's header names the open milestones its milestone selector matches"),
+        "{error}"
     );
 }
