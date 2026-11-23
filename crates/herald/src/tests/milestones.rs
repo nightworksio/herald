@@ -3,7 +3,7 @@ use herald_ports::{Algorithm, Secret, Signer as _};
 use serde_json::{Value, json};
 
 use super::world::*;
-use crate::DONE;
+use crate::{DONE, STOPPED};
 
 const PUBLIC: &str = "/channels/1566200000000000100/messages";
 const PRIVATE: &str = "/channels/1566200000000000200/messages";
@@ -206,6 +206,20 @@ fn a_ci_run_s_milestone_event_of_a_private_repository_reaches_only_a_private_rou
         ),
         "{}",
         run.out
+    );
+}
+
+#[test]
+fn a_ci_run_s_garbled_milestone_event_stops_the_announcement() {
+    let garbled = setup_with(MILESTONES, "milestone");
+    std::fs::write(garbled.directory.path().join("event.json"), "{}").unwrap();
+    let run = herald(&garbled, &World::default(), &ANNOUNCE);
+    assert_eq!(run.code, STOPPED);
+    assert!(
+        run.err
+            .contains("GitHub's milestone event could not be read"),
+        "{}",
+        run.err
     );
 }
 

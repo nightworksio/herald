@@ -207,6 +207,25 @@ fn a_milestone_says_its_title_counts_due_day_and_description_and_is_versioned_by
 }
 
 #[test]
+fn a_milestone_of_a_repository_named_nothing_makes_no_event() {
+    let body = github(3, "closed", "v1.4").to_string();
+    let milestone = github::one(Forge::GitHub, "w", 4_096, body.as_bytes()).unwrap();
+    let found = ForgeMilestone {
+        milestone,
+        action: MilestoneAction::Closed,
+    };
+    let unnamed = Repository {
+        name: " ".to_owned(),
+        ..repository()
+    };
+    let error = found.event("w", &unnamed, true).unwrap_err();
+    assert!(
+        matches!(error, SourceError::Invalid { what: "w", .. }),
+        "{error}"
+    );
+}
+
+#[test]
 fn a_description_is_cut_to_four_kibibytes_on_a_character() {
     let mut long = github(3, "closed", "v1.4");
     long["description"] = json!("é".repeat(DESCRIPTION_MOST));
