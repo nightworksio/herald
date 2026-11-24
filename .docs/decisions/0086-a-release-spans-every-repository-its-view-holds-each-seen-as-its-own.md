@@ -34,12 +34,20 @@ can count, and so learn that hidden repositories exist.
 - On a GitLab owner with `milestones.group = true`, the header also
   reads the group milestones of each group at or under the owner above a
   member the view holds, once a group whatever the number of members,
-  with the group's issue listing and issue statistics. A group is seen
-  as the strictest member under it, held by the view or not, since its
-  counts and listing take every project under it. Each of its issues is
-  named by the project its reference names, seen as the strictest of that
-  member and of its own confidentiality, private where no member holds
-  it, and dropped where the view does not hold its project.
+  with the group's issue listing and issue statistics. Everything read
+  from a group is seen as private: its milestones, their counts, their
+  issues and why it was not read. A group milestone's title, counts and
+  issues take every project of the group, including projects the source
+  does not list: excluded by a filter, archived, or hidden from the
+  token's listing. A public group may hold private projects, so neither
+  the group's own visibility nor the listed members can show that a
+  public audience may see them. Each of its issues is named by the
+  project its reference names, and dropped where the view does not hold
+  that project.
+- Where two reads ask for one repository and see it apart, it is seen
+  as the strictest of them. A one-repository source's own repository is
+  seen as private only where the release picks none of its pull requests;
+  where it does, it is seen as those pull requests are.
 - The header reads at most 20 repositories and groups a round, across
   every source of the view. They are ordered public, then internal, then
   private; within each, those holding a pull request of the release
@@ -58,8 +66,8 @@ can count, and so learn that hidden repositories exist.
   private or internal members: the reads it may see are made first, and
   each item it may not see is dropped before it is shown, whatever
   `release.withheld` says of the verdict.
-- A group with one private project under it is never shown to a public
-  audience, even where the view holds only its public projects.
+- Group milestones serve private routes alone. A public route still sees
+  each public member's own milestones and issues.
 - A view of a large owner makes up to 20 more requests a round, plus the
   milestone and issue requests each read already makes; doctor names the
   cost.

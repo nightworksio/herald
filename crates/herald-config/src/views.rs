@@ -489,8 +489,9 @@ pub(crate) struct ReleaseFile {
     /// and issues its header and rows read, that repository's alone. Absent,
     /// the release spans every repository the view holds: on an owner
     /// source each member, and with `milestones.group` on a GitLab owner the
-    /// own milestones of each group at or under it, at most 20 read a round
-    /// with public ones first, each seen as its own repository (ADR-0086).
+    /// own milestones of each group at or under it, seen as private, at most
+    /// 20 read a round with public ones first, each repository seen as its
+    /// own (ADR-0086).
     pub(crate) repository: Option<String>,
 }
 

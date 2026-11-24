@@ -413,8 +413,10 @@ spent on what a public route may not see. Each is seen as its
 repository: a public route, and `herald queue` without `--private`, are
 shown the public repositories' alone, and learn nothing of a private or
 internal member, not even that it exists, beyond what `withheld` tells.
-A group is seen as the strictest member under it, held by the view or
-not, since its milestones count every project's issues. A repository or
+Everything read from a group, its milestones, their counts and their
+issues, is seen as private: a group milestone covers every project of
+the group, including those the source does not list, so none is known to
+be public. A repository two reads see apart is seen as the stricter. A repository or
 group past the 20, or whose milestones could not be read, is named with
 why. A template reads `view.overviews.header`:
 
@@ -430,8 +432,8 @@ one more request a round for each milestone matched, one page of the
 source's `page`, at most 50 rows a repository. `header = false` keeps
 the issues and leaves the milestones out. The release's pull requests
 still judge whether it is ready. Each issue is seen as its repository,
-a group milestone's issue as the member holding it, private where none
-does, and a confidential GitLab issue as private: a public route, and `herald
+a group milestone's issue as private, and a confidential GitLab issue as
+private: a public route, and `herald
 queue` without `--private`, are shown the public repositories' public
 issues alone. A milestone whose issues fill the page, a repository past
 the 50, and a listing the token may not read are named unread in

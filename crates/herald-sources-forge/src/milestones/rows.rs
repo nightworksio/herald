@@ -117,11 +117,6 @@ async fn carried(
             milestone.title
         )
     });
-    let seen = if holder.group.is_some() {
-        Visibility::Public
-    } else {
-        visibility
-    };
     let issues = crate::issues::listed(forge, reading.parse, &answer.body)
         .map_err(Unpolled::unreadable)?
         .into_iter()
@@ -131,7 +126,7 @@ async fn carried(
             visibility: if issue.confidential {
                 Visibility::Private
             } else {
-                seen
+                visibility
             },
             number: issue.number,
             title: issue.title,

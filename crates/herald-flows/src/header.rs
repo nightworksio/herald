@@ -3,22 +3,21 @@
 //! and the open issues they carry where those are its rows, read once a
 //! round (ADR-0082, ADR-0084, ADR-0086).
 
-use herald_core::{Headed, Header, Listed, Unread, View};
+use herald_core::{Headed, Header, Unread, View};
 use herald_kinds::Queue;
 use herald_ports::{Clock, Http};
 use jiff::Timestamp;
 
 use crate::budget::Budgeted;
 
-/// What one source reads a release's header through: its queue, its
-/// budgeted HTTP, and the members of the owner it reads, none where it
-/// reads one repository.
-pub(crate) type Reaching<'r, H, C> = (&'r dyn Queue, &'r Budgeted<'r, H, C>, &'r [Listed]);
+/// What one source reads a release's header through: its queue and its
+/// budgeted HTTP.
+pub(crate) type Reaching<'r, H, C> = (&'r dyn Queue, &'r Budgeted<'r, H, C>);
 
 /// The header of `view`'s release, where it shows one or its rows are
 /// issues: each of `asked` [`herald_core::heading`] reads, read at `now`
 /// through the source of `reached` it names, in that order, a GitLab
-/// group's issues each seen as the member holding it; each named unread
+/// group's issues kept where the view holds their projects; each named unread
 /// with why where it could not be read or lay past the bound.
 pub(crate) async fn header<H: Http, C: Clock>(
     view: &View,
@@ -38,9 +37,9 @@ pub(crate) async fn header<H: Http, C: Clock>(
             .get(headed.source)
             .map(|reaching| (headed, reaching))
     });
-    for (headed, &(queue, http, members)) in sourced {
+    for (headed, &(queue, http)) in sourced {
         match queue.milestoned(http, (headed, glob), (heading, now)).await {
-            Ok(found) => header.merge(found.read_as(view, (headed, members))),
+            Ok(found) => header.merge(found.read_as(view, headed)),
             Err(unpolled) => header.unread.push(Unread {
                 repository: headed.path.clone(),
                 visibility: headed.visibility,

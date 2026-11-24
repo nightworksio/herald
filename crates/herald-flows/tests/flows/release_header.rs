@@ -582,11 +582,11 @@ fn a_public_route_is_told_nothing_of_an_owner_s_private_or_internal_members_unde
 }
 
 #[test]
-fn a_gitlab_owner_s_group_milestone_issues_are_each_seen_as_the_member_holding_it() {
+fn a_gitlab_owner_s_group_milestones_are_private_and_its_issues_kept_where_the_view_holds_them() {
     let owner = "[sources.org]\nkind = \"gitlab\"\nowner = \"o\"\ntoken = { secret = \"HERALD_GITHUB_TOKEN\" }\nsignals = [\"milestone\"]\nmilestones = { group = true }";
     let text = TEXT.replace("SOURCES", owner).replace(
         "release = { milestone = \"v2.*\" }",
-        "mode = \"live\"\nrelease = { milestone = \"v2.*\", rows = \"issues\", header = false }",
+        "mode = \"live\"\nrepositories = [\"o/api\", \"o/vault\"]\nrelease = { milestone = \"v2.*\", rows = \"issues\", header = false }",
     );
     let issue = |full: &str, number: u64| {
         json!({
@@ -657,9 +657,8 @@ fn a_gitlab_owner_s_group_milestone_issues_are_each_seen_as_the_member_holding_i
     assert_eq!(
         seen,
         [
-            ("o/api", Visibility::Public),
+            ("o/api", Visibility::Private),
             ("o/vault", Visibility::Private),
-            ("o/other", Visibility::Private),
         ],
         "{:?}",
         script.seen()

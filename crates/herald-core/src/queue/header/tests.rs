@@ -270,7 +270,7 @@ fn read(headed: &[Headed]) -> Vec<(&str, Visibility, bool, bool)> {
 #[test]
 fn a_source_asks_for_its_picked_repositories_its_own_its_members_and_their_groups_under_its_owner()
 {
-    let view = released(&["o/api", "o/sub/web", "p/q/r"], None);
+    let view = released(&["o/api", "o/sub/web", "op/x", "p/q/r"], None);
     let pulls = [
         carried("o/api", Visibility::Public, "v2.0"),
         carried("o/sub/web", Visibility::Internal, "v9.0"),
@@ -279,7 +279,7 @@ fn a_source_asks_for_its_picked_repositories_its_own_its_members_and_their_group
         member("o/api", Visibility::Public),
         member("o/sub/web", Visibility::Internal),
         member("o/sub/deep/x", Visibility::Public),
-        member("o/subway", Visibility::Private),
+        member("op/x", Visibility::Public),
         member("o/secret", Visibility::Private),
         member("p/q/r", Visibility::Public),
     ];
@@ -293,12 +293,17 @@ fn a_source_asks_for_its_picked_repositories_its_own_its_members_and_their_group
             ("o/api", Visibility::Public, false, false),
             ("o/sub/web", Visibility::Internal, false, false),
             ("o/sub/deep/x", Visibility::Public, false, false),
-            ("o/subway", Visibility::Private, false, false),
+            ("op/x", Visibility::Public, false, false),
             ("o/secret", Visibility::Private, false, false),
             ("p/q/r", Visibility::Public, false, false),
             ("o", Visibility::Private, false, true),
-            ("o/sub", Visibility::Internal, false, true),
+            ("o/sub", Visibility::Private, false, true),
         ]
+    );
+    let picked_own = header_asked(&view, (0, None), (&pulls, Some("O/API"), &[]));
+    assert_eq!(
+        read(&picked_own),
+        [("o/api", Visibility::Public, true, false)]
     );
     let ungrouped = header_asked(&view, (0, None), (&pulls, None, &members));
     assert!(ungrouped.iter().all(|headed| !headed.group));
@@ -330,20 +335,52 @@ fn a_header_reads_each_repository_once_held_public_first_then_picked_then_by_pat
         headed("x/y", Visibility::Public, (true, false)),
         headed("o", Visibility::Internal, (false, true)),
         headed("o/web", Visibility::Public, (false, false)),
+        headed("o/aaa", Visibility::Private, (false, false)),
     ];
     let (read_, unread) = heading(&view, asked);
     assert_eq!(
         read(&read_),
         [
-            ("o/own", Visibility::Public, true, false),
             ("o/web", Visibility::Public, false, false),
             ("o/alpha", Visibility::Internal, true, false),
             ("o", Visibility::Internal, false, true),
             ("o/beta", Visibility::Internal, false, false),
+            ("o/own", Visibility::Private, true, false),
             ("o/zed", Visibility::Private, true, false),
+            ("o/aaa", Visibility::Private, false, false),
         ]
     );
     assert_eq!(unread, []);
+}
+
+#[test]
+fn copies_of_one_repository_seen_apart_are_read_as_the_strictest_and_shown_no_public_audience() {
+    let view = released(&[], None);
+    let public = headed("o/app", Visibility::Public, (false, false));
+    let private = headed("O/App", Visibility::Private, (true, false));
+    for asked in [
+        vec![public.clone(), private.clone()],
+        vec![private.clone(), public.clone()],
+    ] {
+        let (read_, _) = heading(&view, asked);
+        assert_eq!(read_.len(), 1);
+        assert_eq!(
+            (read_[0].visibility, read_[0].picked),
+            (Visibility::Private, true)
+        );
+        let found = Header {
+            milestones: vec![milestone(&read_[0].path, read_[0].visibility)],
+            issues: Some(vec![issue(&read_[0].path, read_[0].visibility)]),
+            unread: vec![unread(&read_[0].path, read_[0].visibility)],
+        };
+        let overviews = Overviews {
+            header: Some(found),
+            ..Overviews::default()
+        };
+        let seen = overviews.seen_by(Visibility::Public).header.unwrap();
+        assert_eq!(seen.strictest(), None, "{seen:?}");
+        assert_eq!(seen.issues, Some(Vec::new()));
+    }
 }
 
 #[test]
@@ -417,59 +454,41 @@ fn a_header_reads_at_most_the_most_and_names_the_rest_unread_as_each_is_seen() {
 }
 
 #[test]
-fn a_group_s_issues_are_each_seen_as_the_member_holding_it_and_kept_where_the_view_holds_it() {
-    let view = released(&["o/api", "o/web", "o/gone"], None);
-    let members = [
-        member("o/api", Visibility::Public),
-        member("o/web", Visibility::Internal),
-    ];
+fn a_group_s_issues_are_kept_where_the_view_holds_their_project_and_a_repository_s_all() {
+    let view = released(&["o/api", "o/web"], None);
     let found = Header {
-        milestones: vec![milestone("o", Visibility::Internal)],
+        milestones: vec![milestone("o", Visibility::Private)],
         issues: Some(vec![
-            issue("o/api", Visibility::Public),
             issue("o/api", Visibility::Private),
-            issue("O/WEB", Visibility::Public),
-            issue("o/gone", Visibility::Public),
-            issue("o/hidden", Visibility::Public),
+            issue("O/WEB", Visibility::Private),
+            issue("o/hidden", Visibility::Private),
         ]),
         unread: Vec::new(),
     };
-    let group = headed("o", Visibility::Internal, (false, true));
-    let seen = found.clone().read_as(&view, (&group, &members));
-    let issues: Vec<(&str, Visibility)> = seen
-        .issues
-        .iter()
-        .flatten()
-        .map(|issue| (issue.repository.as_str(), issue.visibility))
-        .collect();
-    assert_eq!(
-        issues,
-        [
-            ("o/api", Visibility::Public),
-            ("o/api", Visibility::Private),
-            ("O/WEB", Visibility::Internal),
-            ("o/gone", Visibility::Private),
-        ]
-    );
+    let group = headed("o", Visibility::Private, (false, true));
+    let seen = found.clone().read_as(&view, &group);
+    assert_eq!(issued(&seen), ["o/api", "O/WEB"]);
     assert_eq!(seen.milestones, found.milestones);
     let repository = headed("o/api", Visibility::Public, (false, false));
-    assert_eq!(found.clone().read_as(&view, (&repository, &[])), found);
+    assert_eq!(found.clone().read_as(&view, &repository), found);
     let unlisted = Header {
         issues: None,
         ..found
     };
-    assert_eq!(unlisted.read_as(&view, (&group, &members)).issues, None);
+    assert_eq!(unlisted.read_as(&view, &group).issues, None);
 }
 
 #[test]
-fn a_public_audience_learns_nothing_of_a_private_or_internal_member_under_each_withheld_mode() {
+fn a_public_audience_learns_nothing_of_a_private_or_internal_member_or_a_group_under_each_withheld_mode()
+ {
     use crate::queue::{Beside, Withheld, grouped, rows};
     let now = jiff::Timestamp::from_second(1_000_000).unwrap();
-    let mut members: Vec<Listed> = (0..MOST_HEADER_REPOSITORIES)
-        .map(|index| member(&format!("o/p{index:02}"), Visibility::Public))
-        .collect();
-    members.push(member("o/vault", Visibility::Private));
-    members.push(member("o/inside", Visibility::Internal));
+    let members = [
+        member("o/p00", Visibility::Public),
+        member("o/sub/app", Visibility::Public),
+        member("o/vault", Visibility::Private),
+        member("o/inside", Visibility::Internal),
+    ];
     let public = [carried("o/p00", Visibility::Public, "v2.0")];
     let private = [Pull {
         labels: vec!["blocker".to_owned()],
@@ -483,34 +502,35 @@ fn a_public_audience_learns_nothing_of_a_private_or_internal_member_under_each_w
         let pulls: Vec<Pull> = public.iter().chain(&private).cloned().collect();
         let asked = header_asked(&view, (0, Some("o")), (&pulls, None, &members));
         let (read_, bounded) = heading(&view, asked);
+        assert_eq!(bounded, []);
         let mut header = Header {
-            unread: bounded,
             issues: Some(Vec::new()),
             ..Header::default()
         };
         for headed in &read_ {
+            let held = if headed.group {
+                format!("{}/secret", headed.path)
+            } else {
+                headed.path.clone()
+            };
             let found = Header {
                 milestones: vec![OpenMilestone {
-                    title: format!("v2.0-{}", headed.path),
+                    title: format!("{}@v2.0", headed.path),
                     counts: (headed.visibility != Visibility::Public).then_some((7_301, 7_302)),
                     ..milestone(&headed.path, headed.visibility)
                 }],
-                issues: Some(vec![issue(&headed.path, headed.visibility)]),
+                issues: Some(vec![issue(&held, headed.visibility)]),
                 unread: vec![unread(&headed.path, headed.visibility)],
             };
-            header.merge(found.read_as(&view, (headed, &members)));
+            header.merge(found.read_as(&view, headed));
         }
-        let mut private_view = header.clone();
-        private_view.merge(Header {
-            milestones: vec![OpenMilestone {
-                counts: Some((7_301, 7_302)),
-                ..milestone("o/vault", Visibility::Private)
-            }],
-            issues: Some(vec![issue("o/inside", Visibility::Internal)]),
-            unread: vec![unread("o/inside", Visibility::Internal)],
-        });
+        let groups = header
+            .milestones
+            .iter()
+            .filter(|milestone| milestone.title == "o@v2.0" || milestone.title == "o/sub@v2.0");
+        assert_eq!(groups.count(), 2, "{header:?}");
         let overviews = Overviews {
-            header: Some(private_view),
+            header: Some(header),
             ..Overviews::default()
         };
         let seen = overviews.seen_by(Visibility::Public);
@@ -521,10 +541,13 @@ fn a_public_audience_learns_nothing_of_a_private_or_internal_member_under_each_w
         };
         let board = grouped(&view, rows(&view, &public, now), beside);
         let told = format!("{seen:?} {:?} {:?}", board.readiness, board.groups);
-        for secret in ["vault", "inside", "7301", "7302", "v2.0-vault"] {
+        for secret in ["vault", "inside", "secret", "7301", "7302", "o@", "o/sub@"] {
             assert!(!told.contains(secret), "{withheld:?} told {secret}: {told}");
         }
-        assert!(told.contains("o/p00"), "{told}");
+        assert!(
+            told.contains("o/p00@v2.0") && told.contains("o/sub/app@v2.0"),
+            "{told}"
+        );
         assert_eq!(seen.header.unwrap().strictest(), Some(Visibility::Public));
     }
 }

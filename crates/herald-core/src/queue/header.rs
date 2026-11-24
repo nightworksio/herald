@@ -160,10 +160,11 @@ pub struct Headed {
 /// What the source at `source` asks `view`'s release header to read, where
 /// its release has a header or issue rows: each
 /// repository of `pulls` the release picks, seen as its rows are; the one
-/// repository `own` it reads, seen as private; each member of `members`
-/// as listed; and where `groups` names the owner whose GitLab group
-/// milestones it reads, each group at or under it above a member `view`
-/// holds (ADR-0086).
+/// repository `own` it reads, seen as private where the release picks no
+/// pull request of it; each member of `members` as listed; and where
+/// `groups` names the owner whose GitLab group milestones it reads, each
+/// group at or under it above a member `view` holds, seen as private
+/// (ADR-0086).
 #[must_use]
 pub fn header_asked(
     view: &View,
@@ -188,17 +189,23 @@ pub fn header_asked(
         .iter()
         .filter(|pull| release.picks(pull))
         .map(|pull| repository(&pull.repository, pull.visibility, true));
-    let own = own.map(|path| repository(path, Visibility::Private, false));
+    let own = own
+        .filter(|path| {
+            !pulls
+                .iter()
+                .any(|pull| pull.repository.eq_ignore_ascii_case(path) && release.picks(pull))
+        })
+        .map(|path| repository(path, Visibility::Private, false));
     let listed = members
         .iter()
         .map(|member| repository(&member.path, member.visibility, false));
     let grouped = groups
         .into_iter()
         .flat_map(|owner| grouped(view, (owner, members)))
-        .map(|(path, visibility)| Headed {
+        .map(|path| Headed {
             source,
             path,
-            visibility,
+            visibility: Visibility::Private,
             picked: false,
             group: true,
         });
@@ -206,34 +213,23 @@ pub fn header_asked(
 }
 
 /// The GitLab groups at or under `owner` above a member of `members` that
-/// `view` holds, each once as the members name it, seen as the strictest
-/// member under it, held or not, since its milestones count the issues of
-/// every project under it.
-fn grouped(view: &View, (owner, members): (&str, &[Listed])) -> Vec<(String, Visibility)> {
-    let mut groups: BTreeMap<String, (String, Visibility)> = BTreeMap::new();
+/// `view` holds, each once as the members name it. A group milestone's
+/// title, counts and issues take every project of the group, listed or
+/// not, so none is known to be public.
+fn grouped(view: &View, (owner, members): (&str, &[Listed])) -> Vec<String> {
+    let mut groups: BTreeMap<String, String> = BTreeMap::new();
     for member in members.iter().filter(|member| view.holds(&member.path)) {
         let mut path = member.path.as_str();
         while let Some((group, _)) = path.rsplit_once('/') {
             if group.eq_ignore_ascii_case(owner) || under(group, owner) {
                 groups
                     .entry(group.to_ascii_lowercase())
-                    .or_insert_with(|| (group.to_owned(), strictest(group, members)));
+                    .or_insert_with(|| group.to_owned());
             }
             path = group;
         }
     }
     groups.into_values().collect()
-}
-
-/// The strictest visibility of the members of `members` under the group at
-/// `group`, private where none is.
-fn strictest(group: &str, members: &[Listed]) -> Visibility {
-    members
-        .iter()
-        .filter(|member| under(&member.path, group))
-        .map(|member| member.visibility)
-        .max()
-        .unwrap_or(Visibility::Private)
 }
 
 /// Whether the full path `path` lies under the group at `group`, ignoring
@@ -246,8 +242,8 @@ fn under(path: &str, group: &str) -> bool {
 /// Which of `asked` `view`'s release header reads, in the order read, and
 /// each of those past [`MOST_HEADER_REPOSITORIES`] named unread with why:
 /// each repository `view` and its release hold, and each group where the
-/// release is held to no one repository, once, seen as the least strict
-/// it was asked as; public before internal before private, so the bound
+/// release is held to no one repository, once, seen as the strictest it
+/// was asked as; public before internal before private, so the bound
 /// never spends what an audience may see on what it may not, those holding
 /// a pull request of the release first, then by path (ADR-0086).
 #[must_use]
@@ -263,7 +259,7 @@ pub fn heading(view: &View, asked: Vec<Headed>) -> (Vec<Headed>, Vec<Unread>) {
     }) {
         let key = (headed.group, headed.path.to_ascii_lowercase());
         let kept = once.entry(key).or_insert_with(|| headed.clone());
-        kept.visibility = kept.visibility.min(headed.visibility);
+        kept.visibility = kept.visibility.max(headed.visibility);
         kept.picked |= headed.picked;
     }
     let mut read: Vec<Headed> = once.into_values().collect();
@@ -290,24 +286,15 @@ pub fn heading(view: &View, asked: Vec<Headed>) -> (Vec<Headed>, Vec<Unread>) {
 }
 
 impl Header {
-    /// `self`, read as `headed` asked: where a GitLab group's, each issue
-    /// seen as the strictest of how it was read and the member of
-    /// `members` holding it, private where none does, and kept only where
-    /// `view` holds its repository (ADR-0086).
+    /// `self`, read as `headed` asked: where a GitLab group's, its issues
+    /// kept only where `view` holds the project holding each (ADR-0086).
     #[must_use]
-    pub fn read_as(mut self, view: &View, (headed, members): (&Headed, &[Listed])) -> Self {
+    pub fn read_as(mut self, view: &View, headed: &Headed) -> Self {
         if !headed.group {
             return self;
         }
         if let Some(issues) = self.issues.as_mut() {
             issues.retain(|issue| view.holds(&issue.repository));
-            for issue in issues {
-                let member = members
-                    .iter()
-                    .find(|member| member.path.eq_ignore_ascii_case(&issue.repository));
-                let seen = member.map_or(Visibility::Private, |member| member.visibility);
-                issue.visibility = issue.visibility.max(seen);
-            }
         }
         self
     }

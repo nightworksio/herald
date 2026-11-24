@@ -4858,7 +4858,7 @@
           "$ref": "#/$defs/ReleasePull"
         },
         "repository": {
-          "description": "The one repository the release is held to, by full path such as\n\"acme/api\", ignoring case: its pull requests, and the milestones\nand issues its header and rows read, that repository's alone. Absent,\nthe release spans every repository the view holds: on an owner\nsource each member, and with `milestones.group` on a GitLab owner the\nown milestones of each group at or under it, at most 20 read a round\nwith public ones first, each seen as its own repository (ADR-0086).",
+          "description": "The one repository the release is held to, by full path such as\n\"acme/api\", ignoring case: its pull requests, and the milestones\nand issues its header and rows read, that repository's alone. Absent,\nthe release spans every repository the view holds: on an owner\nsource each member, and with `milestones.group` on a GitLab owner the\nown milestones of each group at or under it, seen as private, at most\n20 read a round with public ones first, each repository seen as its\nown (ADR-0086).",
           "type": "string"
         },
         "rows": {

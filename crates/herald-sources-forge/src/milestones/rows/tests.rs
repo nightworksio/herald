@@ -351,7 +351,7 @@ fn a_repository_names_at_most_the_most_issue_rows_and_says_how_many_carry_its_mi
 }
 
 #[test]
-fn a_gitlab_group_s_rows_are_each_named_by_the_project_holding_it_and_public_unless_confidential() {
+fn a_gitlab_group_s_rows_are_each_named_by_the_project_holding_it_and_seen_as_the_group() {
     let placed = |full: &str| json!({ "references": { "full": full } });
     let http = ScriptedHttp::new(vec![
         answer(200, &json!([milestone(Forge::GitLab, 1, "v2.0")])),
@@ -390,9 +390,9 @@ fn a_gitlab_group_s_rows_are_each_named_by_the_project_holding_it_and_public_unl
     assert_eq!(
         seen,
         [
-            ("o/sub/api", 4, Visibility::Public),
+            ("o/sub/api", 4, Visibility::Internal),
             ("o/sub/web", 4, Visibility::Private),
-            ("o/sub", 6, Visibility::Public),
+            ("o/sub", 6, Visibility::Internal),
         ]
     );
     let milestone = &header.milestones[0];

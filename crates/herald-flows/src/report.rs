@@ -167,7 +167,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         ..Overviews::default()
     };
     let mut checked = 0;
-    let (mut heads, mut spans) = (Vec::new(), Vec::new());
+    let mut heads = Vec::new();
     for (index, &(name, queue, http)) in reached.iter().enumerate() {
         let members = scoped_members(ports, (name, queue.as_ref())).await?;
         let source = config.sources.get(name);
@@ -222,11 +222,12 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 capacity::capacity_of((view, capacity), reached, asking, &read, ports).await;
             overviews.merge(counted.within(&view.view, |path: &str| queue.holds(path)));
         }
-        let span = members.map(|(_, members)| members).unwrap_or_default();
-        let asking = (read.as_slice(), queue.repository(), span.as_slice());
+        let span = members
+            .as_ref()
+            .map_or(&[][..], |(_, members)| members.as_slice());
+        let asking = (read.as_slice(), queue.repository(), span);
         let grouping = (index, queue.milestone_groups());
         heads.extend(herald_core::header_asked(&view.view, grouping, asking));
-        spans.push(span);
         let reached = (name, queue.as_ref(), http);
         let keeping = (ports.store.pulls(), ports.clock.now());
         let bases = crate::based::bases(&view.view, reached, (&read, keeping), &mut checked).await;
@@ -240,8 +241,7 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
     let heading: Vec<_> = reached
         .iter()
         .zip(&budgeted)
-        .zip(&spans)
-        .map(|((&(_, queue, _), http), span)| (queue.as_ref(), http, span.as_slice()))
+        .map(|(&(_, queue, _), http)| (queue.as_ref(), http))
         .collect();
     let asked = (heads, ports.clock.now());
     overviews.header = crate::header::header(&view.view, &heading, asked).await;
