@@ -67,7 +67,7 @@ impl ReportSchedule {
     /// it, none where none began in the last week.
     #[must_use]
     pub fn window(&self, now: Timestamp) -> Option<Timestamp> {
-        let today = now.to_zoned(self.zone.clone()).date();
+        let today = now.to_zoned_datetime(self.zone.clone()).date();
         std::iter::successors(Some(today), |date| date.yesterday().ok())
             .take(LOOKBACK + 1)
             .find_map(|date| {
@@ -80,7 +80,7 @@ impl ReportSchedule {
 
     /// The windows that begin on `date`, earliest first: none on a day it
     /// does not name. A wall-clock time a change of offset skips begins
-    /// once the clock passes it.
+    /// once the clock passes it, one it repeats at its first passing.
     fn starts(&self, date: Date) -> Vec<Timestamp> {
         if !self.days.is_empty() && !self.days.contains(&date.weekday()) {
             return Vec::new();
@@ -88,7 +88,11 @@ impl ReportSchedule {
         let step = self.every.clamp(SHORTEST, DAY);
         (0..MOST_WINDOWS)
             .map_while(|index| self.at.checked_add(step.checked_mul(index)?).ok())
-            .filter_map(|time| date.to_datetime(time).to_zoned(self.zone.clone()).ok())
+            .filter_map(|time| {
+                date.to_datetime(time)
+                    .to_zoned_datetime(self.zone.clone())
+                    .ok()
+            })
             .map(|zoned| zoned.timestamp())
             .collect()
     }

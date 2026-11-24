@@ -155,7 +155,7 @@ fn since_when(since: &str, now: Timestamp) -> Result<Timestamp, String> {
     since
         .parse::<Date>()
         .ok()
-        .and_then(|day| day.to_zoned(TimeZone::UTC).ok())
+        .and_then(|day| day.to_zoned_datetime(TimeZone::UTC).ok())
         .map(|zoned| zoned.timestamp())
         .or_else(|| since.parse::<Timestamp>().ok())
         .or_else(|| Duration::parse(since).and_then(|ago| now.checked_sub(ago.0).ok()))

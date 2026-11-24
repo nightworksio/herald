@@ -541,8 +541,8 @@ fn a_public_audience_learns_nothing_of_a_private_or_internal_member_or_a_group_u
         };
         let board = grouped(&view, rows(&view, &public, now), beside);
         let told = format!("{seen:?} {:?} {:?}", board.readiness, board.groups);
-        for secret in ["vault", "inside", "secret", "7301", "7302", "o@", "o/sub@"] {
-            assert!(!told.contains(secret), "{withheld:?} told {secret}: {told}");
+        for word in ["vault", "inside", "secret", "7301", "7302", "o@", "o/sub@"] {
+            assert!(!told.contains(word), "{withheld:?} told {word}: {told}");
         }
         assert!(
             told.contains("o/p00@v2.0") && told.contains("o/sub/app@v2.0"),

@@ -48,9 +48,11 @@ impl Described {
             title: self.title,
             description: self.description,
             open: self.state == "open",
-            due: self
-                .due_on
-                .map(|due| due.to_zoned(jiff::tz::TimeZone::UTC).date().to_string()),
+            due: self.due_on.map(|due| {
+                due.to_zoned_datetime(jiff::tz::TimeZone::UTC)
+                    .date()
+                    .to_string()
+            }),
             counts: self.open_issues.zip(self.closed_issues),
             created: self.created_at,
             updated: self.updated_at,

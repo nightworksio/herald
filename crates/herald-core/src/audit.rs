@@ -104,7 +104,7 @@ impl AuditDay {
 /// The UTC day `at` falls on, as `YYYY-MM-DD`.
 #[must_use]
 pub fn utc_day(at: Timestamp) -> String {
-    at.to_zoned(TimeZone::UTC).date().to_string()
+    at.to_zoned_datetime(TimeZone::UTC).date().to_string()
 }
 
 /// How many requests a peer made in the window of its rate that began at

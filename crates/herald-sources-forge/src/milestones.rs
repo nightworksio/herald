@@ -83,7 +83,7 @@ impl Milestone {
             MilestoneAction::Overdue => self
                 .due_day()
                 .and_then(|due| due.checked_add(1.day()).ok())
-                .and_then(|day| day.to_zoned(TimeZone::UTC).ok())
+                .and_then(|day| day.to_zoned_datetime(TimeZone::UTC).ok())
                 .map_or(self.created, |day| day.timestamp()),
         }
     }
@@ -548,7 +548,7 @@ impl Asking<'_> {
         dues.retain(|id, _| open.contains(id));
         let mut overdue = kept_days(cursor, &overdue_key);
         overdue.retain(|id, day| dues.get(id) == Some(day));
-        let today = now.to_zoned(TimeZone::UTC).date();
+        let today = now.to_zoned_datetime(TimeZone::UTC).date();
         let first = kept_ids(cursor, key).is_none();
         let announced = !first && self.choice.actions.contains(&MilestoneAction::Overdue);
         let passed: Vec<(u64, Date)> = dues

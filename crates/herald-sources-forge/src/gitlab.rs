@@ -95,7 +95,7 @@ pub(crate) fn when<'de, D: Deserializer<'de>>(
     let parsed = match text.strip_suffix(UTC) {
         Some(civil) => civil
             .parse::<DateTime>()
-            .and_then(|civil| civil.to_zoned(TimeZone::UTC))
+            .and_then(|civil| civil.to_zoned_datetime(TimeZone::UTC))
             .map(|zoned| zoned.timestamp()),
         None => text.parse::<Timestamp>(),
     };
