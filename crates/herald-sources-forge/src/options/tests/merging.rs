@@ -84,6 +84,20 @@ fn a_queue_merges_in_the_source_s_one_repository_or_one_it_names_under_the_owner
 }
 
 #[test]
+fn a_forge_source_answers_a_merge_queue_with_its_options() {
+    for forge in [Forge::GitHub, Forge::GitLab, Forge::Forgejo] {
+        let source = crate::ForgeSource {
+            forge,
+            options: one("o/r"),
+            names: None,
+        };
+        let answered = herald_kinds::SourceConfig::merging(&source, &asking(None));
+        assert_eq!(answered, Some(one("o/r").merging(forge, &asking(None))));
+        assert_eq!(answered.unwrap().unwrap().repository, "o/r");
+    }
+}
+
+#[test]
 fn every_forge_s_own_host_is_where_a_queue_s_steps_go() {
     for (forge, api) in [
         (Forge::GitHub, "https://ghe.example/api/v3"),
