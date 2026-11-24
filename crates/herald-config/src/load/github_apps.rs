@@ -10,6 +10,7 @@ use herald_kinds::{ConfiguredStore, Source};
 use super::{Loader, Value};
 use crate::config::GithubApp;
 use crate::file::GithubAppFile;
+use crate::merging::MergeQueue;
 
 /// Whether `id` could be a GitHub App's client id: letters, digits, `.`,
 /// `_` and `-`.
@@ -22,7 +23,8 @@ fn client_id(id: &str) -> bool {
 
 impl Loader<'_> {
     /// The GitHub Apps `value` gives, each checked against the sources of
-    /// `sourced` that read or write as one.
+    /// `sourced` that read or write as one and the merge queues of `queued`
+    /// that write as one.
     pub(super) fn apps_of(
         &mut self,
         value: Option<Value<'_>>,
@@ -31,10 +33,14 @@ impl Loader<'_> {
             &BTreeMap<SourceName, Source>,
             &BTreeMap<SourceName, Range<usize>>,
         ),
+        queued: (
+            &BTreeMap<String, MergeQueue>,
+            &BTreeMap<String, Range<usize>>,
+        ),
     ) -> BTreeMap<String, GithubApp> {
         let apps = self.github_apps(value, store);
         self.installed(sourced, &apps);
-        self.written(sourced, &apps);
+        self.written((sourced.0, queued.0), (sourced.1, queued.1), &apps);
         apps
     }
 

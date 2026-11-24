@@ -305,6 +305,10 @@ struct FileSchema {
     /// name; `queue`, over every source, where none replaces it.
     #[serde(default)]
     views: BTreeMap<String, crate::views::ViewFile>,
+    /// The merge queues, by name: each a base branch whose pull requests
+    /// a writer queues the forge's merge queue or herald's own merges.
+    #[serde(default)]
+    merge_queues: BTreeMap<String, crate::merging::MergeQueueFile>,
     /// The reports routes name among their sources, by name.
     #[serde(default)]
     reports: BTreeMap<String, crate::views::ReportFile>,

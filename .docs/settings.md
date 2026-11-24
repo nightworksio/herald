@@ -753,6 +753,48 @@ The installation's marker key.
 | `markers.key` | table | The secret holding the marker key, such as `HERALD_MARKER_SECRET`. |
 | `markers.key.secret` | string | The secret's name. |
 
+## `merge_queues`
+
+The merge queues, by name: each a base branch whose pull requests a writer queues the forge's merge queue or herald's own merges.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `merge_queues.<name>.applied_by` | [AppliedBy](#appliedby) | Where its steps are taken: "command", by `herald merge-queue --apply`; "server", by `herald server`, which then reads the write credential. "command" where absent. |
+| `merge_queues.<name>.branch` | string | The base branch it merges into; one table per branch. |
+
+### `merge_queues.<name>.enter`: A label of this name added to the pull request
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `merge_queues.<name>.enter` | table | A label of this name added to the pull request. |
+| `merge_queues.<name>.enter.label` | string |  |
+
+### `merge_queues.<name>.enter`: A comment on the pull request whose whole body, trimmed, is this command
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `merge_queues.<name>.enter` | table | A comment on the pull request whose whole body, trimmed, is this command. |
+| `merge_queues.<name>.enter.comment` | string |  |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `merge_queues.<name>.least` | [Permission](#permission) | The least role the person who queues holds on the repository: "write" (GitHub write, GitLab Developer, Forgejo write, or above), "maintain" or "admin"; "write" where absent. |
+| `merge_queues.<name>.may_fail` | array of string | The checks, by name, that may be red or missing on the branch; never one the forge requires. |
+| `merge_queues.<name>.message` | [Message](#message) | The commit message: "forge", the forge's own for the method, or "pull", the pull request's title and body, with "merge" or "squash" alone; "forge" where absent. |
+| `merge_queues.<name>.method` | [Method](#method) | How it merges: "merge", "squash", "rebase", "fast-forward", or "repository", the repository's one allowed method. A queue without it does not start. |
+| `merge_queues.<name>.repository` | string | The repository it merges in, by full path, where the source is an owner; the source's own where absent. |
+| `merge_queues.<name>.retries` | table | The checks whose failed job is re-run, at most `times` on one head, before the pull request leaves; none where absent, and none on Forgejo. |
+| `merge_queues.<name>.retries.checks` | array of string | The checks, by name, whose failed job is re-run. |
+| `merge_queues.<name>.retries.times` | integer | The most re-runs on one head. |
+| `merge_queues.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: "forge" hands each pull request to the forge's merge queue or merge train; "herald" runs herald's own serial queue, also where the forge has one. "forge" where absent. |
+| `merge_queues.<name>.source` | string | The source whose repository it merges in: one of kind "github", "gitlab" or "forgejo". |
+| `merge_queues.<name>.wait` | [Duration](#duration) | How long it waits for a head's checks before the pull request leaves; "2h" where absent. |
+| `merge_queues.<name>.write` | table | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`, the same as its source's `write` or another. The queue does not start without it. |
+| `merge_queues.<name>.write.app` | string | The GitHub App the writes are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, installed with the permissions its writes need alone. |
+| `merge_queues.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `merge_queues.<name>.write.token` | table | A token that may make the writes, other than the one the source reads with. |
+| `merge_queues.<name>.write.token.secret` | string | The secret's name. |
+
 ## `models`
 
 The models tasks ask, by name: each a decision model or a server speaking OpenAI's chat completions.
@@ -1384,13 +1426,14 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
 | `sources.<name>.transport` | [Transport](#transport) | How an owner's members are polled; "auto" where absent. GitHub offers auto, graphql, rest and events; GitLab auto, graphql and rest; Forgejo auto, rest and feed. |
+| `sources.<name>.update` | [Update](#update) | How a merge queue brings a pull request's branch up to date with its base through the forge: "merge" merges the base in, keeping the author's commits and signatures; "rebase" rebases the branch. GitLab offers a rebase alone; "rebase" there and "merge" elsewhere where absent (ADR-0087). |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 | `sources.<name>.write` | table | The credential an operator's `herald rerun --apply` re-runs a planned job with, apart from `token` and `app`: never read by a poll, a report or the server (ADR-0068). A stolen write credential re-runs without herald, so give it nothing but re-running. |
-| `sources.<name>.write.app` | string | The GitHub App re-runs are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, best installed with `actions: write` alone on the repositories concerned. |
+| `sources.<name>.write.app` | string | The GitHub App the writes are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, installed with the permissions its writes need alone. |
 | `sources.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
-| `sources.<name>.write.token` | table | A token that may re-run the repository's workflow runs or retry its pipelines, other than the one the source reads with. |
+| `sources.<name>.write.token` | table | A token that may make the writes, other than the one the source reads with. |
 | `sources.<name>.write.token.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `gitlab`
@@ -1513,13 +1556,14 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
 | `sources.<name>.transport` | [Transport](#transport) | How an owner's members are polled; "auto" where absent. GitHub offers auto, graphql, rest and events; GitLab auto, graphql and rest; Forgejo auto, rest and feed. |
+| `sources.<name>.update` | [Update](#update) | How a merge queue brings a pull request's branch up to date with its base through the forge: "merge" merges the base in, keeping the author's commits and signatures; "rebase" rebases the branch. GitLab offers a rebase alone; "rebase" there and "merge" elsewhere where absent (ADR-0087). |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 | `sources.<name>.write` | table | The credential an operator's `herald rerun --apply` re-runs a planned job with, apart from `token` and `app`: never read by a poll, a report or the server (ADR-0068). A stolen write credential re-runs without herald, so give it nothing but re-running. |
-| `sources.<name>.write.app` | string | The GitHub App re-runs are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, best installed with `actions: write` alone on the repositories concerned. |
+| `sources.<name>.write.app` | string | The GitHub App the writes are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, installed with the permissions its writes need alone. |
 | `sources.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
-| `sources.<name>.write.token` | table | A token that may re-run the repository's workflow runs or retry its pipelines, other than the one the source reads with. |
+| `sources.<name>.write.token` | table | A token that may make the writes, other than the one the source reads with. |
 | `sources.<name>.write.token.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `forgejo`
@@ -1642,13 +1686,14 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
 | `sources.<name>.transport` | [Transport](#transport) | How an owner's members are polled; "auto" where absent. GitHub offers auto, graphql, rest and events; GitLab auto, graphql and rest; Forgejo auto, rest and feed. |
+| `sources.<name>.update` | [Update](#update) | How a merge queue brings a pull request's branch up to date with its base through the forge: "merge" merges the base in, keeping the author's commits and signatures; "rebase" rebases the branch. GitLab offers a rebase alone; "rebase" there and "merge" elsewhere where absent (ADR-0087). |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 | `sources.<name>.write` | table | The credential an operator's `herald rerun --apply` re-runs a planned job with, apart from `token` and `app`: never read by a poll, a report or the server (ADR-0068). A stolen write credential re-runs without herald, so give it nothing but re-running. |
-| `sources.<name>.write.app` | string | The GitHub App re-runs are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, best installed with `actions: write` alone on the repositories concerned. |
+| `sources.<name>.write.app` | string | The GitHub App the writes are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, installed with the permissions its writes need alone. |
 | `sources.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
-| `sources.<name>.write.token` | table | A token that may re-run the repository's workflow runs or retry its pipelines, other than the one the source reads with. |
+| `sources.<name>.write.token` | table | A token that may make the writes, other than the one the source reads with. |
 | `sources.<name>.write.token.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `ghcr`
@@ -2242,6 +2287,10 @@ Which repositories an advisories overview reads.
 
 What an alert did that is announced.
 
+### AppliedBy
+
+Where a queue's steps are taken.
+
 ### Approve
 
 Who decides whether a follow of herald's actors is taken.
@@ -2389,6 +2438,18 @@ How the homeserver carries commands to herald.
 ### MemberHooks
 
 Who registers a project webhook on each member of a GitLab owner.
+
+### MergeRuns
+
+Who runs a branch's queue.
+
+### Message
+
+The commit message a merge is made with.
+
+### Method
+
+How a queue merges a pull request.
 
 ### MilestoneAction
 
@@ -2547,6 +2608,10 @@ How an owner's members are polled.
 ### Turn
 
 Whose turn an open pull request is.
+
+### Update
+
+How a pull request's branch is brought up to date with its base.
 
 ### Values
 

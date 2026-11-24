@@ -991,6 +991,7 @@ mod app;
 mod areas;
 mod codeowners;
 mod issues;
+mod merging;
 mod packages;
 mod pulls;
 

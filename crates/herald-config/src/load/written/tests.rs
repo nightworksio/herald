@@ -101,6 +101,6 @@ fn a_write_app_no_table_gives_is_left_to_the_check_that_names_it() {
     let mut config = load("herald.toml", &given, &|_| Err(String::new()), &kinds).unwrap();
     config.github_apps.clear();
     let loader = Loader::new("herald.toml", &given, &kinds);
-    let kept = apart(config, loader, &BTreeMap::new()).unwrap();
+    let kept = apart(config, loader, (&BTreeMap::new(), &BTreeMap::new())).unwrap();
     assert!(kept.github_apps.is_empty());
 }

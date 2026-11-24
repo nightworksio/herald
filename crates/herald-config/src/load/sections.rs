@@ -12,7 +12,7 @@ use crate::config::{Config, Schedule, Server};
 use crate::file::{HttpFile, MarkersFile, ScheduleFile, ServerFile};
 
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 27] = [
+const SECTIONS: [&str; 28] = [
     "version",
     "kinds",
     "store",
@@ -24,6 +24,7 @@ const SECTIONS: [&str; 27] = [
     "apps",
     "github_apps",
     "views",
+    "merge_queues",
     "reports",
     "rules",
     "boards",
@@ -56,6 +57,7 @@ pub(super) struct Sections<'i> {
     pub(super) apps: Option<Value<'i>>,
     pub(super) github_apps: Option<Value<'i>>,
     pub(super) views: Option<Value<'i>>,
+    pub(super) merge_queues: Option<Value<'i>>,
     pub(super) reports: Option<Value<'i>>,
     pub(super) rules: Option<Value<'i>>,
     pub(super) boards: Option<Value<'i>>,
@@ -90,6 +92,7 @@ impl Loader<'_> {
                 "apps" => &mut sections.apps,
                 "github_apps" => &mut sections.github_apps,
                 "views" => &mut sections.views,
+                "merge_queues" => &mut sections.merge_queues,
                 "reports" => &mut sections.reports,
                 "rules" => &mut sections.rules,
                 "boards" => &mut sections.boards,

@@ -1,9 +1,8 @@
 //! The keys that let an operator re-run a planned job: the source's write
 //! credential and how the operator signs in (ADR-0068).
 
-use std::num::NonZeroU64;
-
-use herald_core::{Permission, SecretRef, kind_name, web_url};
+pub use herald_core::merging::Write;
+use herald_core::{Permission, web_url};
 use herald_kinds::{Installation, Installed, SignIn as Signing, WriteCredential};
 
 use super::SourceOptions;
@@ -42,27 +41,11 @@ pub fn unread<'a>(forge: Forge, scopes: impl IntoIterator<Item = &'a str>) -> Op
         .find(|scope| !read_only(forge).contains(scope))
 }
 
+/// Why a write credential that is an App is refused off GitHub.
+pub const GITHUB_APPS: &str = "write.app is a GitHub source's; give write.token";
+
 /// Why a Forgejo source can neither write nor sign an operator in.
 pub const FORGEJO_UNWRITTEN: &str = "Forgejo has no API to re-run a job, nor a device flow to sign an operator in, so a Forgejo source takes neither write nor sign_in";
-
-/// The credential a source re-runs planned runs with, apart from the one
-/// it reads with (ADR-0068).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Write {
-    /// A token that may re-run the repository's workflow runs or retry its
-    /// pipelines, other than the one the source reads with.
-    pub token: Option<SecretRef>,
-    /// The GitHub App re-runs are made as, by the name of its
-    /// `[github_apps.<name>]` table, in place of `token`: an App other
-    /// than the one the source reads as, best installed with `actions:
-    /// write` alone on the repositories concerned.
-    pub app: Option<String>,
-    /// The id of the App's installation tokens are minted for; looked up
-    /// on the owner, or on the repository, where absent.
-    #[schemars(with = "Option<NonZeroU64>")]
-    pub installation: Option<NonZeroU64>,
-}
 
 /// How an operator signs in at the forge to apply a re-run, by the forge's
 /// OAuth device flow (ADR-0068).
@@ -123,27 +106,17 @@ impl SourceOptions {
             return Err(FORGEJO_UNWRITTEN.to_owned());
         }
         if let Some(write) = &self.write {
-            match (&write.token, &write.app, write.installation) {
-                (Some(_), Some(_), _) | (None, None, _) => {
-                    return Err("a source re-runs with a token or a GitHub App, one of them; give write.token or write.app".to_owned());
+            write.check()?;
+            match (&write.token, &write.app) {
+                (None, Some(_)) if forge != Forge::GitHub => {
+                    return Err(GITHUB_APPS.to_owned());
                 }
-                (Some(_), None, Some(_)) => {
-                    return Err("write.installation names the App's installation a token is minted for; give write.app, or remove write.installation".to_owned());
-                }
-                (None, Some(_), _) if forge != Forge::GitHub => {
-                    return Err("write.app is a GitHub source's; give write.token".to_owned());
-                }
-                (None, Some(app), _) if !kind_name(app) => {
-                    return Err(format!(
-                        "\"{app}\" is not an App's name; give the name of its [github_apps.<name>] table"
-                    ));
-                }
-                (None, Some(app), _) if self.app.as_deref() == Some(app) => {
+                (None, Some(app)) if self.app.as_deref() == Some(app) => {
                     return Err(format!(
                         "write.app names the App \"{app}\" the source reads as; re-runs are made as another App, installed with actions: write alone"
                     ));
                 }
-                (Some(token), None, _)
+                (Some(token), None)
                     if self
                         .token
                         .as_ref()

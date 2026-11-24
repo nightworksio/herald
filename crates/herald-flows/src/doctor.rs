@@ -16,6 +16,7 @@ mod areas;
 mod codeowners;
 mod federation;
 mod layer;
+mod merging;
 mod online;
 mod peers;
 mod recalls;
@@ -839,6 +840,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     tasks::decided(config, here, &mut findings.notes);
     peers::signed(config, &mut findings.notes);
     peers::bound(config, &mut findings);
+    merging::queued(config, &mut findings);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);

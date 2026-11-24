@@ -15,6 +15,16 @@ use super::templates::Written;
 use super::{Loader, Value, list};
 use crate::kinds::At;
 
+/// `destinations` without where each is written.
+pub(super) fn unspanned(
+    destinations: BTreeMap<DestinationName, (Destination, Range<usize>)>,
+) -> BTreeMap<DestinationName, Destination> {
+    destinations
+        .into_iter()
+        .map(|(name, (destination, _))| (name, destination))
+        .collect()
+}
+
 impl Loader<'_> {
     pub(super) fn destinations<'i>(
         &mut self,
