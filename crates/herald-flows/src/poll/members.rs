@@ -274,6 +274,7 @@ static JOINED: Cursor = Cursor {
     projects: std::collections::BTreeMap::new(),
     advised: Vec::new(),
     pending: Vec::new(),
+    verdicts: std::collections::BTreeMap::new(),
 };
 
 /// The members `chunk` polled together through `http`, as one request

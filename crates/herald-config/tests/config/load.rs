@@ -140,7 +140,7 @@ fn a_name_that_resolves_to_nothing_names_what_there_is() {
         .replace("template = \"package-release\"", "template = \"other\"");
     assert_eq!(
         errors(&text),
-        "herald.toml:18:12 routes[0].sources: no source, app, report or rule is named \"herald\"; the sources, apps, reports and rules are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"herald:dequeued\", \"herald:nudge\", \"herald:queue\", \"herald:recalled\", \"herald:rerun\", \"package-release\""
+        "herald.toml:18:12 routes[0].sources: no source, app, report or rule is named \"herald\"; the sources, apps, reports and rules are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"herald:dequeued\", \"herald:nudge\", \"herald:queue\", \"herald:readiness\", \"herald:recalled\", \"herald:rerun\", \"package-release\""
     );
 }
 
@@ -674,7 +674,7 @@ fn a_mistake_inside_a_section_is_named_by_its_key_path() {
     let unknown =
         errors(&EXAMPLE.replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]"));
     assert!(
-            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", \"alert\", \"pull-request\", \"issue\", \"milestone\", \"report\", \"nudge\", \"rerun\", \"dequeued\", or declare it under [kinds.tweet]"),
+            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", \"run\", \"alert\", \"pull-request\", \"issue\", \"milestone\", \"report\", \"nudge\", \"rerun\", \"dequeued\", \"readiness\", or declare it under [kinds.tweet]"),
             "{unknown}"
         );
     assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");

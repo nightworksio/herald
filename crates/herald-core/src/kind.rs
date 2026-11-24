@@ -39,12 +39,22 @@ impl Kind {
     /// A rule's alert on a pull request that left its forge's merge queue
     /// (ADR-0078).
     pub const DEQUEUED: Self = Self(Cow::Borrowed("dequeued"));
+    /// A rule's alert on its view's release: it turned ready, or is still
+    /// not ready as a milestone's due day nears (ADR-0085).
+    pub const READINESS: Self = Self(Cow::Borrowed("readiness"));
 
     /// Whether only herald itself announces its events, as a report from a
     /// view or a rule's nudge: no app and no other herald's feed gives one.
     #[must_use]
     pub fn own(&self) -> bool {
-        [Self::REPORT, Self::NUDGE, Self::RERUN, Self::DEQUEUED].contains(self)
+        [
+            Self::REPORT,
+            Self::NUDGE,
+            Self::RERUN,
+            Self::DEQUEUED,
+            Self::READINESS,
+        ]
+        .contains(self)
     }
 
     /// The kind named `name`.
@@ -299,6 +309,18 @@ pub const ISSUES_CLOSED: &str = "issues_closed";
 /// What a run is read from: `actions`, the forge's own CI, or `checks`, a
 /// check suite or a commit status.
 pub const FROM: &str = "from";
+/// The attribute naming what a rule's alert on a release tells: `ready`,
+/// or `late` (ADR-0085).
+pub const VERDICT: &str = "verdict";
+/// The attribute counting what holds a release back, as its audience is
+/// told (ADR-0085).
+pub const HOLDS: &str = "holds";
+/// The attribute naming the title of the milestone a late release is due
+/// with (ADR-0085).
+pub const MILESTONE_TITLE: &str = "milestone_title";
+/// The attribute counting the days until a milestone's due day, below zero
+/// once it passed (ADR-0085).
+pub const DAYS: &str = "days";
 
 /// Whether `name` can name an attribute or a link as a template reads it:
 /// lowercase letters, digits and `_`, starting with a letter.
@@ -510,6 +532,22 @@ fn dequeued() -> BTreeMap<String, AttributeSpec> {
     .collect()
 }
 
+/// The attributes of a rule's alert on a release (ADR-0085).
+fn readied() -> BTreeMap<String, AttributeSpec> {
+    [
+        (RULE, AttributeType::Text, true),
+        (VIEW, AttributeType::Text, true),
+        (VERDICT, AttributeType::Text, true),
+        (HOLDS, AttributeType::Number, true),
+        (MILESTONE_TITLE, AttributeType::Text, false),
+        (DUE, AttributeType::Text, false),
+        (DAYS, AttributeType::Number, false),
+    ]
+    .into_iter()
+    .map(|(name, ty, required)| (name.to_owned(), AttributeSpec { ty, required }))
+    .collect()
+}
+
 /// The attributes of a re-run plan (ADR-0065).
 fn planned() -> BTreeMap<String, AttributeSpec> {
     [
@@ -593,6 +631,11 @@ pub struct KindSpec {
     pub private: bool,
 }
 
+/// The links `names` names, each a button.
+fn buttons(names: &[&str]) -> Vec<LinkSpec> {
+    names.iter().map(|&name| LinkSpec::named(name)).collect()
+}
+
 impl KindSpec {
     /// The kind `kind`, described as `description`, whose events carry
     /// `attributes`, and a version where it is `versioned`, with the links
@@ -643,7 +686,6 @@ impl KindSpec {
     /// The kinds herald's own sources and apps announce.
     #[must_use]
     pub fn shipped() -> Vec<Self> {
-        let buttons = |names: &[&str]| names.iter().map(|&name| LinkSpec::named(name)).collect();
         vec![
             Self::new(
                 Kind::RELEASE,
@@ -709,6 +751,16 @@ impl KindSpec {
                 buttons(&[MILESTONE_LINK]),
                 milestoned(),
             ),
+        ]
+            .into_iter()
+            .chain(Self::own())
+            .collect()
+    }
+
+    /// The kinds only herald itself announces: its reports and its rules'
+    /// nudges, plans and alerts.
+    fn own() -> Vec<Self> {
+        vec![
             Self::new(
                 Kind::REPORT,
                 "A report of a view's open pull requests, for one window.",
@@ -736,6 +788,13 @@ impl KindSpec {
                 false,
                 buttons(&[PULL_LINK]),
                 dequeued(),
+            ),
+            Self::new(
+                Kind::READINESS,
+                "A rule's alert on its view's release: it turned ready, or is still not ready as a milestone's due day nears.",
+                false,
+                buttons(&[MILESTONE_LINK]),
+                readied(),
             ),
         ]
     }

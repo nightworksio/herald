@@ -55,6 +55,18 @@ pub(crate) const DEQUEUED_TITLE: &str =
 /// The body of [`DEQUEUED_TEMPLATE`]: why it left, and when.
 pub(crate) const DEQUEUED_BODY: &str = "{{ event.title }} left the merge queue at {{ event.attributes.left }}: {{ event.attributes.reason }}.";
 
+/// The template herald ships for a rule's alert on its view's release,
+/// which a route names as `template = "herald:readiness"` and
+/// `[templates."herald:readiness"]` replaces (ADR-0085).
+pub const READINESS_TEMPLATE: &str = "herald:readiness";
+
+/// The title of [`READINESS_TEMPLATE`].
+pub(crate) const READINESS_TITLE: &str = "{{ event.attributes.view }} is {% if event.attributes.verdict == \"ready\" %}ready{% else %}not ready{% endif %}";
+
+/// The body of [`READINESS_TEMPLATE`]: nothing holds the release back, or
+/// how many holds do and when its milestone is due.
+pub(crate) const READINESS_BODY: &str = "{% if event.attributes.verdict == \"ready\" %}Nothing holds the release of {{ event.attributes.view }} back.{% else %}{{ event.attributes.holds }} still hold the release of {{ event.attributes.view }} back; {{ event.attributes.milestone_title }} {% if event.attributes.days >= 0 %}is due in {{ event.attributes.days }} days, on{% else %}was due on{% endif %} {{ event.attributes.due }}.{% endif %}";
+
 /// The template herald edits a living post to once its route no longer
 /// receives the advisories section it showed: fixed, so no config can make
 /// it say what was removed (ADR-0067).
@@ -159,6 +171,8 @@ pub struct Rule {
     /// alerts on, once each time one left; none where it does not
     /// (ADR-0078).
     pub dequeued: Vec<herald_core::Dequeued>,
+    /// What it alerts on of its view's release (ADR-0085).
+    pub release: herald_core::Alerting,
 }
 
 /// What a view does with a bot's pull requests.
@@ -725,7 +739,7 @@ pub(crate) const REPORT_KEYS: [&str; 5] = ["view", "every", "at", "days", "zone"
 pub(crate) const BOARD_KEYS: [&str; 3] = ["id", "sources", "living"];
 
 /// The keys of `[rules.<name>]` beside a report's.
-pub(crate) const RULE_KEYS: [&str; 4] = ["stages", "most", "flaky", "dequeued"];
+pub(crate) const RULE_KEYS: [&str; 5] = ["stages", "most", "flaky", "dequeued", "release"];
 
 /// What `[rules.<name>]` writes beside the view it watches and when it
 /// looks, which it writes as a report does.
@@ -757,6 +771,29 @@ pub(crate) struct RuleFile {
     /// absent. Why a pull request left is known where its source is read
     /// kept, from GitHub's `pull_request` `dequeued` webhook (ADR-0078).
     pub(crate) dequeued: Option<DequeuedFile>,
+    /// What it alerts on of its view's release, as
+    /// `{ ready = true, late = 7 }`: once the release turns ready, and once
+    /// it is still held back `late` days before the due day of the
+    /// milestone due first, from 0 to 365; each audience of its routes
+    /// judged and alerted as its board tells it, a public route never told
+    /// of a private repository. Neither where absent (ADR-0085).
+    #[schemars(with = "Option<ReleaseRuleFile>")]
+    pub(crate) release: Option<Spanned<ReleaseRuleFile>>,
+}
+
+/// What a rule alerts on of its view's release.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "ReleaseRule")]
+pub(crate) struct ReleaseRuleFile {
+    /// Whether it alerts once the release turns ready; false where absent.
+    pub(crate) ready: Option<bool>,
+    /// How many days before the due day of the milestone due first it
+    /// alerts on the release still held back, once a milestone and due
+    /// day; it needs the release's header or issue rows to read the
+    /// milestones. None where absent.
+    #[schemars(range(max = herald_core::MOST_LATE_DAYS))]
+    pub(crate) late: Option<u16>,
 }
 
 impl DequeuedFile {

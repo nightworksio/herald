@@ -440,9 +440,27 @@ fn keep_seen(
         Option<herald_core::QueueEntry>,
     ),
 ) {
-    use herald_core::{Flip, KeptPull, PullKey};
-    use herald_ports::Pulls as _;
-    let pull = herald_core::Pull {
+    let pull = seen_pull(
+        (host, repository),
+        (number, title),
+        ((checks, visibility), queue),
+    );
+    keep_pull(store, host, pull);
+}
+
+/// The pull request `number` of `repository` at `host` titled `title`,
+/// its checks and visibility `seen`, in the merge queue as `queue`, whose
+/// check `test` failed then passed on its head `h1` an hour before noon.
+fn seen_pull(
+    (host, repository): (&str, &str),
+    (number, title): (u64, &str),
+    ((checks, visibility), queue): (
+        (herald_core::Checks, herald_core::Visibility),
+        Option<herald_core::QueueEntry>,
+    ),
+) -> herald_core::Pull {
+    use herald_core::Flip;
+    herald_core::Pull {
         project: "open".to_owned(),
         repository: repository.to_owned(),
         visibility,
@@ -473,10 +491,15 @@ fn keep_seen(
             head: "h1".to_owned(),
             at: hours(-1),
         }],
-    };
+    }
+}
+
+fn keep_pull(store: &Failing, host: &str, pull: herald_core::Pull) {
+    use herald_core::{KeptPull, PullKey};
+    use herald_ports::Pulls as _;
     let pulled = PullKey {
         repository: key(host),
-        number,
+        number: pull.number,
     };
     let record = KeptPull::read(None, pulled, pull, NOON);
     pollster::block_on(store.put_pull(&record, None)).unwrap();
@@ -727,4 +750,159 @@ fn a_rule_alerts_once_on_a_private_pull_request_that_left_the_queue_for_a_failur
     let again = Script::answering(&[]);
     let swept = round(&config, &store, &again, hours(1));
     assert_eq!(announced(&swept[0])[0].1, [("alerts".to_owned(), false)]);
+}
+
+const READINESS: &str = r#"[views.ship]
+sources = ["open"]
+mode = "kept"
+reconcile = "1d"
+release = { milestone = "v2.0", blocked_by = ["failed"], header = false }
+[rules.ship]
+view = "ship"
+release = { ready = true }
+every = "1h"
+at = "00:00"
+[[routes]]
+id = "alerts"
+sources = ["ship"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:readiness"
+private = true
+[[routes]]
+id = "public"
+sources = ["ship"]
+destination = "slack"
+template = "herald:readiness"
+private = false
+"#;
+
+#[test]
+fn a_release_that_turns_ready_is_told_to_each_audience_once_and_only_as_its_board_tells_it() {
+    use herald_core::{Checks, Cursor, Identity, ReleaseVerdict, Visibility};
+    use herald_ports::Pulls as _;
+    use herald_ports::{Cursors as _, Store as _};
+    let store = healthy();
+    let mark = herald_core::Reconciled {
+        repository: Some(key("github.com")),
+        at: Some(NOON),
+        ..herald_core::Reconciled::default()
+    };
+    pollster::block_on(store.put_reconciled(&SourceName::new("open"), &mark, None)).unwrap();
+    for (number, visibility) in [(1, Visibility::Public), (2, Visibility::Private)] {
+        let seen = ((Checks::Passed, visibility), None);
+        let mut pull = seen_pull(("github.com", "o/open"), (number, "Change"), seen);
+        pull.milestone = Some("v2.0".to_owned());
+        keep_pull(&store, "github.com", pull);
+    }
+    let told = Cursor {
+        seen: vec![Identity::new("rule/ship/earlier")],
+        verdicts: [
+            (Visibility::Private, ReleaseVerdict::Held),
+            (Visibility::Public, ReleaseVerdict::Held),
+        ]
+        .into(),
+        ..Cursor::default()
+    };
+    let cursors = store.cursors();
+    pollster::block_on(cursors.put_cursor(&SourceName::new("ship"), &told, None)).unwrap();
+    for (withheld, public) in [("unknown", false), ("shown", true)] {
+        let config = config(&READINESS.replace(
+            "blocked_by = [\"failed\"]",
+            &format!("blocked_by = [\"failed\"], withheld = \"{withheld}\""),
+        ));
+        let slack = ("«secret:HERALD_SLACK_WEBHOOK»", 200, "ok");
+        let script = Script::answering(&[if public { slack } else { POSTED }]);
+        let swept = round(&config, &store, &script, NOON);
+        let mut wanted = vec![(
+            "rule/ship/release/private/ready/rule/ship/earlier".to_owned(),
+            vec![("alerts".to_owned(), withheld == "unknown")],
+        )];
+        if public {
+            wanted.push((
+                "rule/ship/release/public/ready/rule/ship/earlier".to_owned(),
+                vec![("public".to_owned(), true)],
+            ));
+        }
+        assert_eq!(announced(&swept[0]), wanted, "{withheld}");
+        let posted = script
+            .bodies()
+            .iter()
+            .map(|body| String::from_utf8_lossy(body).into_owned())
+            .collect::<Vec<_>>();
+        assert!(
+            posted.iter().all(|body| !body.contains("pull/2")),
+            "{posted:?}"
+        );
+        let kept = pollster::block_on(cursors.cursor(&SourceName::new("ship")))
+            .unwrap()
+            .unwrap();
+        let public_verdict = if public {
+            ReleaseVerdict::Ready
+        } else {
+            ReleaseVerdict::Unknown
+        };
+        assert_eq!(
+            kept.value.verdicts,
+            [
+                (Visibility::Private, ReleaseVerdict::Ready),
+                (Visibility::Public, public_verdict)
+            ]
+            .into()
+        );
+        if public {
+            continue;
+        }
+        let mut rewound = kept.value.clone();
+        rewound.seen = told.seen.clone();
+        rewound.verdicts = told.verdicts.clone();
+        pollster::block_on(cursors.put_cursor(
+            &SourceName::new("ship"),
+            &rewound,
+            Some(kept.version),
+        ))
+        .unwrap();
+    }
+    let config = config(READINESS);
+    let again = Script::answering(&[]);
+    let swept = round(&config, &store, &again, hours(1));
+    assert!(announced(&swept[0]).is_empty(), "{swept:?}");
+}
+
+#[test]
+fn a_release_alert_that_makes_no_event_stops_the_rule_until_the_next_round() {
+    use herald_core::{Checks, Cursor, Identity, ReleaseVerdict, Visibility};
+    use herald_ports::{Cursors as _, Pulls as _, Store as _};
+    let store = healthy();
+    let mark = herald_core::Reconciled {
+        repository: Some(key("github.com")),
+        at: Some(NOON),
+        ..herald_core::Reconciled::default()
+    };
+    pollster::block_on(store.put_reconciled(&SourceName::new("open"), &mark, None)).unwrap();
+    let mut pull = seen_pull(
+        ("github.com", "o/open"),
+        (1, "Change"),
+        ((Checks::Passed, Visibility::Public), None),
+    );
+    pull.milestone = Some("v2.0".to_owned());
+    keep_pull(&store, "github.com", pull);
+    let told = Cursor {
+        seen: vec![Identity::new("rule/ship/earlier")],
+        verdicts: [(Visibility::Public, ReleaseVerdict::Held)].into(),
+        ..Cursor::default()
+    };
+    let cursors = store.cursors();
+    pollster::block_on(cursors.put_cursor(&SourceName::new("ship"), &told, None)).unwrap();
+    let config = config(
+        &READINESS
+            .replace("[views.ship]", "[views.\" \"]")
+            .replace("view = \"ship\"", "view = \" \""),
+    );
+    let script = Script::answering(&[]);
+    let swept = round(&config, &store, &script, NOON);
+    let Sweep::Stopped(Stop::Source(reason)) = &swept[0].outcome else {
+        panic!("{swept:?}");
+    };
+    assert!(reason.contains("project"), "{reason}");
 }

@@ -8,8 +8,8 @@ use std::sync::Arc;
 use herald_config::{Config, Report, ViewConfig};
 use herald_core::{
     Advised, Advisories, Beside, Board, Cursor, Given, Identity, Listed, Loads, Overviews, Printed,
-    Pull, RouteId, Row, Showing, SourceName, Surface, Teams, Visibility, advises, grouped, joined,
-    report_event, steps, teams_reach, teams_reach_each,
+    Pull, ReleaseVerdict, RouteId, Row, Showing, SourceName, Surface, Teams, Visibility, advises,
+    grouped, joined, report_event, steps, teams_reach, teams_reach_each,
 };
 use herald_kinds::{Asked, Queue, Scope, Teamed};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned};
@@ -52,7 +52,7 @@ pub(crate) struct Read {
 
 impl Read {
     /// Who may see the strictest of what it holds.
-    fn strictest(&self) -> Visibility {
+    pub(crate) fn strictest(&self) -> Visibility {
         let runs = self
             .overviews
             .capacity
@@ -452,12 +452,14 @@ pub(crate) async fn due<S: Store, C: Clock, G: Signer>(
 /// went out: kept where a route no advisories section reaches stopped;
 /// else the window `identity` remembered over `record`, each route sent a
 /// section that stopped kept pending, so the next run sends it alone and
-/// no other route's post depends on how long the section was (ADR-0067).
+/// no other route's post depends on how long the section was (ADR-0067),
+/// and the verdict a rule told each audience on its view's release
+/// remembered as `verdicts` (ADR-0085).
 pub(crate) async fn settled<S: Store, C: Clock, G: Signer>(
     ports: &Ports<'_, S, C, G>,
     (name, identity): (&str, Identity),
     record: Option<&Versioned<Cursor>>,
-    announced: &[Fresh],
+    (announced, verdicts): (&[Fresh], BTreeMap<Visibility, ReleaseVerdict>),
 ) -> Remembered {
     let routes = || announced.iter().flat_map(|fresh| &fresh.announced);
     if routes().any(|announced| matches!(announced.outcome, Outcome::Stopped { .. })) {
@@ -473,6 +475,7 @@ pub(crate) async fn settled<S: Store, C: Clock, G: Signer>(
         advised: record
             .map(|record| record.value.advised.clone())
             .unwrap_or_default(),
+        verdicts,
         ..Cursor::default()
     };
     let written = ports
@@ -502,7 +505,7 @@ fn living<H>(connected: &Connected<H>) -> Vec<RouteId> {
 /// those `private` names, or to all where it names none, and the public
 /// repositories' rows to the rest where there are any; each audience
 /// parted into the routes that keep a living post and those that do not.
-fn audiences(
+pub(crate) fn audiences(
     (config, name): (&Config, &str),
     rows: &[Row],
     (strictest, private): (Visibility, Option<Vec<RouteId>>),
@@ -829,7 +832,7 @@ async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
         ports,
         (name, begun.identity),
         record.as_ref(),
-        &begun.announced,
+        (&begun.announced, BTreeMap::new()),
     )
     .await;
     Sweep::Reported {

@@ -788,13 +788,15 @@ fn mentioned(roles: Vec<String>, opt_in: Option<String>) -> Vec<RoleId> {
 }
 
 /// The kinds the rule `rule` announces: nudges where it names stages,
-/// re-run plans where it plans them (ADR-0065), and alerts on pull
-/// requests leaving the merge queue where it names reasons (ADR-0078).
+/// re-run plans where it plans them (ADR-0065), alerts on pull
+/// requests leaving the merge queue where it names reasons (ADR-0078), and
+/// alerts on its view's release where it names any (ADR-0085).
 fn posted(rule: &Rule) -> Vec<Kind> {
     [
         rule.stages.is_some().then_some(Kind::NUDGE),
         rule.rerun.then_some(Kind::RERUN),
         (!rule.dequeued.is_empty()).then_some(Kind::DEQUEUED),
+        (rule.release != herald_core::Alerting::default()).then_some(Kind::READINESS),
     ]
     .into_iter()
     .flatten()

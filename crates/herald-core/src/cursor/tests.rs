@@ -161,6 +161,7 @@ fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators()
             projects: BTreeMap::new(),
             advised: Vec::new(),
             pending: Vec::new(),
+            verdicts: std::collections::BTreeMap::new(),
         }
     );
     assert_eq!(advanced.validators(Signal::Tag), Some(&tags));
