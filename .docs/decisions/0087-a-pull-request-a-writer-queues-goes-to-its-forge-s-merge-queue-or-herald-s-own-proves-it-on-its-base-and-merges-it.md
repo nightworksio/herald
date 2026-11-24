@@ -116,13 +116,16 @@ once.
     queue's own, and a `method` naming another does not start.
 11. **A failure leaves at once.** A pull request whose check fails, whose
     checks time out, whose update conflicts or fails, whose head moves,
-    whose gesture is taken back, that the forge says cannot merge, or
-    whose merge the forge refuses, leaves herald's queue at once. Its
-    `Pull.queue.left` holds when and why (`checks-failed`,
-    `checks-timed-out`, `conflict`, `cannot-update`, `head-moved`,
-    `removed`, `unmergeable`, `merge-refused`), so ADR-0078's `dequeued`
-    rule tells people, every reason but `removed` a failure of the pull
-    request. `retries = { checks = [...], times = N }` re-runs
+    whose gesture is taken back, that the forge says cannot merge, whose
+    merge the forge refuses, or whose record herald could not read whole,
+    leaves herald's queue at once. Its `Pull.queue.left` holds when and
+    why (`checks-failed`, `checks-timed-out`, `conflict`,
+    `cannot-update`, `head-moved`, `removed`, `unmergeable`,
+    `merge-refused`, `unread`), so ADR-0078's `dequeued` rule tells
+    people, every reason but `removed` a failure of the pull request.
+    `unread` says that what decides whether a pull request stands or is
+    green could not be read whole; it counts as a failure and is never
+    taken as `removed`. `retries = { checks = [...], times = N }` re-runs
     the failed job of a check it names, at most N times on one head,
     through ADR-0068's narrowest call, before the pull request leaves;
     none where absent; Forgejo has no re-run call, so its queues take no

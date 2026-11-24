@@ -95,7 +95,12 @@ A pull request leaves at once, with its reason, when a check fails
 update conflicts (`conflict`) or cannot be made (`cannot-update`, as for
 a fork that does not let maintainers edit), its head moves
 (`head-moved`), its gesture is taken back (`removed`), the forge says it
-cannot merge (`unmergeable`) or refuses the merge (`merge-refused`).
+cannot merge (`unmergeable`) or refuses the merge (`merge-refused`), or
+what decides whether it stands or is green could not be read whole
+(`unread`): a failure, never taken as `removed`. herald reads at most 500
+of a pull request's label events, comments or timeline entries and one
+page of its head's checks, so a pull request with more leaves as
+`unread`.
 A view's row holds the reason in `queue.left`, and a rule with `dequeued
 = true` tells people.
 
