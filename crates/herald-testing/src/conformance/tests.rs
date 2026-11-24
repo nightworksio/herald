@@ -159,7 +159,7 @@ enum Fault {
     SharesActionsAcrossHeads,
     SharesActionsAcrossJobs,
     OverwritesAnyGestureVersion,
-    SharesGesturesAcrossTimes,
+    SharesGesturesAcrossKeys,
 }
 
 struct Faulty {

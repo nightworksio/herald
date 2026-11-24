@@ -12,8 +12,8 @@ use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{Config, Uses};
 use herald_core::Printed;
-use herald_core::merging::{HandedOff, Left, Verdict};
-use herald_flows::{Found, Judged, MergeQueueRead, Next, Took};
+use herald_core::merging::{HandedOff, Left, TakenOut, Verdict};
+use herald_flows::{Cancel, Cancels, Found, Judged, MergeQueueRead, Next, Took, TookOut, Undo};
 
 use super::output::say;
 use super::queueing::withheld_line;
@@ -49,6 +49,10 @@ fn next(next: &Next) -> String {
         Next::Idle => {
             "due to be handed to the forge's queue, but the queue takes no step".to_owned()
         }
+        Next::Handed {
+            outcome: HandedOff::FoundQueued,
+            at,
+        } => format!("herald recorded at {at}: {}", HandedOff::FoundQueued.said()),
         Next::Handed { outcome, at } => {
             format!(
                 "herald recorded handing it to the forge's queue at {at}: {}",
@@ -69,12 +73,71 @@ fn took_line(took: &Took) -> String {
                 .to_owned()
         }
         Took::Unsettled => HandedOff::Unsettled.said().to_owned(),
+        Took::FoundQueued => format!("not handed over: {}", HandedOff::FoundQueued.said()),
         Took::Refused(why) => format!("not handed over: {why}"),
         Took::Unrecorded(outcome) => format!(
             "{}, but herald's record of it could not be updated, so herald never hands it over again for this gesture",
             outcome.said()
         ),
     }
+}
+
+/// What a queue does with a pull request whose gesture was taken back, or
+/// whose gesture's maker lost the queue's least role, in words.
+fn undo_line(undo: &Undo) -> String {
+    match undo {
+        Undo::TakeOut => "next, it is taken out of the forge's queue".to_owned(),
+        Undo::Idle => {
+            "due to be taken out of the forge's queue, but the queue takes no step".to_owned()
+        }
+        Undo::Uncarried(why) => format!("not taken out: {why}"),
+        Undo::Stays => "role_lost = \"stay\" leaves it in the forge's queue".to_owned(),
+        Undo::Recorded { outcome, at } => format!(
+            "herald recorded taking it out of the forge's queue at {at}: {}",
+            outcome.said()
+        ),
+        Undo::Took(TookOut::Out) => "taken out of the forge's queue".to_owned(),
+        Undo::Took(TookOut::Declined(said)) => {
+            format!("the forge refused to take it out of its queue: {said}")
+        }
+        Undo::Took(TookOut::Unsettled) => TakenOut::Unsettled.said().to_owned(),
+        Undo::Took(TookOut::Unrecorded(outcome)) => format!(
+            "{}, but herald's record of it could not be updated, so herald never asks again for this cancel",
+            outcome.said()
+        ),
+    }
+}
+
+/// `cancel` on one line.
+fn cancel_line(cancel: &Cancel) -> String {
+    let taken = &cancel.taken;
+    let Some(marked) = &cancel.cancel else {
+        let maker = cancel.renamed.as_ref().map_or_else(
+            || "whose gesture's maker no longer holds the queue's least role".to_owned(),
+            |by| format!("whose gesture herald recorded as made by {by}, an account the forge no longer names for it"),
+        );
+        return format!(
+            "  #{} {} {maker}: {}",
+            taken.number,
+            taken.url,
+            undo_line(&cancel.next)
+        );
+    };
+    let by = if marked.by.is_empty() {
+        "an account the forge no longer names"
+    } else {
+        marked.by.as_str()
+    };
+    let role = taken
+        .role_of(&marked.by)
+        .map_or("no role", herald_core::Permission::name);
+    format!(
+        "  #{} {} taken back by {by} ({role}) at {}: {}",
+        taken.number,
+        taken.url,
+        marked.at,
+        undo_line(&cancel.next)
+    )
 }
 
 /// `judged` on one line.
@@ -119,6 +182,16 @@ pub(crate) fn queue_lines(read: &MergeQueueRead) -> Vec<String> {
                 lines.push("  no pull request is queued".to_owned());
             }
             lines.extend(entries.iter().map(entry_line));
+            match &read.cancels {
+                Cancels::Read(cancels) => lines.extend(cancels.iter().map(cancel_line)),
+                Cancels::Unread(Some(reason)) => {
+                    lines.push(format!("  the forge's queue not read for cancels: {reason}"));
+                }
+                Cancels::Unread(None) => lines.push(
+                    "  the forge's queue not read for cancels; --private, or [cli] private, prints why"
+                        .to_owned(),
+                ),
+            }
         }
         Found::Withheld(withheld) => lines.extend(withheld_line("  the entries of ", *withheld)),
         Found::Unread(Some(reason)) => lines.push(format!("  not read: {reason}")),

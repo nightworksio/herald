@@ -786,6 +786,7 @@ The merge queues, by name: each a base branch whose pull requests a writer queue
 | `merge_queues.<name>.retries` | table | The checks whose failed job is re-run, at most `times` on one head, before the pull request leaves; none where absent, and none on Forgejo. |
 | `merge_queues.<name>.retries.checks` | array of string | The checks, by name, whose failed job is re-run. |
 | `merge_queues.<name>.retries.times` | integer | The most re-runs on one head. |
+| `merge_queues.<name>.role_lost` | [RoleLost](#rolelost) | What becomes of a pull request herald handed to the forge's queue, or found already there, once the person whose gesture it is no longer holds `least` (a lower role, none, or an account since deleted), whether or not a cancel herald does not carry out stands: "take-out", taken out on herald's next applying run, which says why; "stay", left in the forge's queue and said so. Refused with `runs = "herald"`. "take-out" where absent. |
 | `merge_queues.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: "forge" hands each pull request to the forge's merge queue or merge train; "herald" runs herald's own serial queue, also where the forge has one. "forge" where absent. |
 | `merge_queues.<name>.skew` | [Duration](#duration) | How far apart the forge's stamps of a gesture and of a push may be, its services' clocks never quite agreeing: a push stamped up to this before a gesture, or before a GitLab approval, counts as after it, so the gesture vouches for no head that push may have brought; "5s" where absent. |
 | `merge_queues.<name>.source` | string | The source whose repository it merges in: one of kind "github", "gitlab" or "forgejo". |
@@ -2548,6 +2549,10 @@ Who may see a repository.
 ### RerunMode
 
 How a rule acts on a flaky check.
+
+### RoleLost
+
+What becomes of a pull request herald handed to the forge's queue once the person whose gesture it is no longer holds the queue's least role, with no cancel herald carries out standing.
 
 ### Rotation
 

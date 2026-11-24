@@ -1,8 +1,8 @@
 //! A merge queue's reads on Forgejo and Gitea, such as Codeberg.
 
+use herald_core::Glob;
 use herald_core::merging::{Check, CheckState};
-use herald_core::{Glob, Permission};
-use herald_kinds::{Branched, Entered, Proved, Unpolled};
+use herald_kinds::{Branched, Entered, Holds, Proved, Unpolled};
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -274,11 +274,13 @@ pub(super) async fn role(
     reader: &ForgeMergeReader,
     http: &Erased<'_, dyn DynHttp + '_>,
     actor: &Actor,
-) -> Result<Option<Permission>, Unpolled> {
+) -> Result<Holds, Unpolled> {
     let login = whole(&actor.login, "login")?;
     let request = reader.get(&format!("/collaborators/{login}/permission"))?;
     let read: Option<Collaborator> = reader.read(http, request, "a person's role").await?;
-    Ok(read.and_then(|collaborator| forgejo_role(&collaborator.permission)))
+    Ok(read
+        .and_then(|collaborator| forgejo_role(&collaborator.permission))
+        .map_or(Holds::Nothing, Holds::Role))
 }
 
 /// The pushes pull request `number`'s timeline records, each forced one

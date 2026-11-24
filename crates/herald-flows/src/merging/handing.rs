@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use herald_config::MergeQueue;
 use herald_core::merging::{GestureRecord, HandOff, HandedOff, Heads, Left, unvouched};
-use herald_kinds::{Branched, Entered, Handed, MergeReader, Source, WriteWith};
+use herald_kinds::{Answered, Branched, Entered, MergeReader, Source, WriteWith};
 use herald_ports::{
     Actions, Base, Clock, DynHttp, Http, Signer, Store, Version, Versioned, Written,
 };
@@ -56,11 +56,11 @@ pub const RACED: &str =
 /// One queue made ready to hand pull requests over: its source, its write
 /// credential held apart, the name it is recorded by, and a connection to
 /// the forge's API alone.
-struct Ready<H> {
-    source: Source,
-    writing: Writing,
-    credential: String,
-    written: H,
+pub(super) struct Ready<H> {
+    pub(super) source: Source,
+    pub(super) writing: Writing,
+    pub(super) credential: String,
+    pub(super) written: H,
 }
 
 /// `queue`'s write credential read through `handing` and held apart from
@@ -71,7 +71,7 @@ struct Ready<H> {
 ///
 /// Where it names no write credential, its source is gone, a credential
 /// cannot be read or is the read one, or no connection can be made.
-async fn ready<S: Store, C: Clock, G: Signer, H: Http>(
+pub(super) async fn ready<S: Store, C: Clock, G: Signer, H: Http>(
     flow: Flow<'_, '_, S, C, G, H>,
     handing: &Handing<'_, H>,
     queue: &MergeQueue,
@@ -136,6 +136,7 @@ fn unauthorised(
 fn took(outcome: HandedOff, said: Option<String>, why: Option<String>) -> Took {
     match outcome {
         HandedOff::Queued => Took::Queued,
+        HandedOff::FoundQueued => Took::FoundQueued,
         HandedOff::Refused => Took::Declined(said.unwrap_or_default()),
         HandedOff::HeadMoved => Took::HeadMoved,
         HandedOff::Unsettled => Took::Unsettled,
@@ -183,7 +184,8 @@ async fn refused_back(
 /// `kept` where one was read: read again through `reader` and `http` and
 /// checked, recorded in `store`, its write App's token minted only then,
 /// the call made naming the head the forge must find, and what came of it
-/// recorded. A lost answer is read back, never asked again.
+/// recorded. One already in the forge's queue is recorded as found there,
+/// and no call is made. A lost answer is read back, never asked again.
 async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
     (ports, store, ready): (&Ports<'_, S, C, G>, &A, &Ready<H>),
     read: (&dyn MergeReader, &dyn DynHttp),
@@ -215,19 +217,32 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
     let mut record = kept.as_ref().map_or_else(
         || GestureRecord {
             key,
+            by: fresh.gesture.by.clone(),
+            at: fresh.gesture.at,
             queue: named.to_owned(),
             seen: fresh.head.clone(),
             seen_at: now,
             hand_off: None,
+            taken_out: Vec::new(),
         },
         |kept| kept.value.clone(),
     );
+    let outcome = match reader.queued(http, fresh.number).await {
+        Ok(false) => HandedOff::Calling,
+        Ok(true) => HandedOff::FoundQueued,
+        Err(error) => {
+            return Took::Refused(format!(
+                "whether it is already in the forge's queue could not be read right before the step, so nothing was handed over: {}",
+                error.into_reason()
+            ));
+        }
+    };
     record.hand_off = Some(HandOff {
         head: fresh.head.clone(),
         base: branched.head.clone(),
         credential: ready.credential.clone(),
         at: now,
-        outcome: HandedOff::Calling,
+        outcome,
     });
     let at = match store.put_gesture(&record, version(kept.as_ref())).await {
         Ok(Written::Written(at)) => at,
@@ -238,6 +253,9 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
             ));
         }
     };
+    if outcome == HandedOff::FoundQueued {
+        return took(outcome, None, None);
+    }
     let narrowing = (
         queue.forge.repository.as_str(),
         handing_off as fn(&str) -> _,
@@ -264,9 +282,9 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
     let (outcome, said, why) = match answer {
         _ if written.unsent() => (HandedOff::Unsent, None, None),
         Err(unsent) => (HandedOff::Unsent, None, Some(unsent.into_reason())),
-        Ok(Handed::Queued) => (HandedOff::Queued, None, None),
-        Ok(Handed::Refused(said)) => (refused_back(read, queue, &fresh).await, Some(said), None),
-        Ok(Handed::Lost) => match reader.queued(http, fresh.number).await {
+        Ok(Answered::Done) => (HandedOff::Queued, None, None),
+        Ok(Answered::Refused(said)) => (refused_back(read, queue, &fresh).await, Some(said), None),
+        Ok(Answered::Lost) => match reader.queued(http, fresh.number).await {
             Ok(true) => (HandedOff::Queued, None, None),
             _ => (HandedOff::Unsettled, None, None),
         },
@@ -275,33 +293,25 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
 }
 
 /// `judged`, the entries of the queue `named`, `queue`, on the base
-/// `branched`, each one due handed over with the write credential `flow`
-/// and `handing` make ready, once, and only where one is due, its record
-/// kept in `store`.
+/// `branched`, each one due handed over as `prepared` makes it ready, its
+/// record kept in `store`.
 pub(super) async fn stepped<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
-    (flow, handing): (Flow<'_, '_, S, C, G, H>, &Handing<'_, H>),
+    (ports, prepared): (&Ports<'_, S, C, G>, &Result<Ready<H>, String>),
     store: &A,
     read: (&dyn MergeReader, &dyn DynHttp),
     (named, queue): (&str, &MergeQueue),
     branched: &Branched,
     judged: Vec<(Judged, Option<Versioned<GestureRecord>>)>,
 ) -> Found {
-    if !judged
-        .iter()
-        .any(|(judged, _)| judged.next == Next::HandOff)
-    {
-        return Found::Entries(judged.into_iter().map(|(judged, _)| judged).collect());
-    }
-    let prepared = ready(flow, handing, queue).await;
     let mut entries = Vec::with_capacity(judged.len());
     for (judged, kept) in judged {
         if judged.next != Next::HandOff {
             entries.push(judged);
             continue;
         }
-        let took = match &prepared {
+        let took = match prepared {
             Ok(ready) => {
-                let made = (flow.2, store, ready);
+                let made = (ports, store, ready);
                 let gestured = (&judged.entered, kept);
                 handed_off(made, read, (named, queue, branched), gestured).await
             }

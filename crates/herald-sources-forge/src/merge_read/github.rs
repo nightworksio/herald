@@ -1,11 +1,11 @@
 //! A merge queue's reads on GitHub, GitHub Enterprise Server and GHE.com.
 
-use herald_core::Permission;
 use herald_core::merging::{Check, CheckState};
-use herald_kinds::{Branched, Entered, Proved, Unpolled};
+use herald_kinds::{Branched, Entered, Holds, Proved, Unpolled};
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 use super::{
     APPROVED, Actor, ForgeMergeReader, MOST_MARKS, Mark, OPEN, Opened, PULL, Push, Pushes, Review,
@@ -20,6 +20,12 @@ const QUEUE_ENTRY: &str = "the pull request's place in the merge queue";
 
 /// The query asking whether a pull request is in the merge queue.
 const QUEUED: &str = "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { isInMergeQueue } } }";
+
+/// The query listing the pull requests in a branch's merge queue.
+const IN_QUEUE: &str = "query($owner: String!, $name: String!, $branch: String!) { repository(owner: $owner, name: $name) { mergeQueue(branch: $branch) { entries(first: 100) { totalCount nodes { pullRequest { number } } } } } }";
+
+/// What the listing of a branch's merge queue is called in an error.
+const QUEUE_ENTRIES: &str = "the branch's merge queue";
 
 /// The most check runs, and statuses, one head's read takes.
 const MOST_CHECKS: usize = 100;
@@ -149,6 +155,41 @@ struct QueuedPull {
 }
 
 #[derive(Deserialize)]
+struct InQueueData {
+    repository: Option<InQueueRepository>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InQueueRepository {
+    merge_queue: Option<MergeQueue>,
+}
+
+#[derive(Deserialize)]
+struct MergeQueue {
+    entries: QueueEntries,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueueEntries {
+    total_count: usize,
+    #[serde(default)]
+    nodes: Vec<Option<QueueEntry>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueueEntry {
+    pull_request: Option<Numbered>,
+}
+
+#[derive(Deserialize)]
+struct Numbered {
+    number: u64,
+}
+
+#[derive(Deserialize)]
 struct Event {
     #[serde(default)]
     id: Option<u64>,
@@ -177,8 +218,7 @@ struct Collaborator {
 
 #[derive(Deserialize)]
 struct Permitted {
-    #[serde(default)]
-    permissions: GithubPermissions,
+    permissions: Option<GithubPermissions>,
 }
 
 #[derive(Deserialize)]
@@ -307,6 +347,36 @@ pub(super) async fn one(
         .map(Opened::from))
 }
 
+/// The data of GitHub's GraphQL answer to the query `query` with the
+/// variable `key` set to `value` on the repository, read as `what`, where
+/// it answered with no error.
+async fn answered<T: DeserializeOwned>(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (query, (key, value)): (&str, (&str, serde_json::Value)),
+    what: &'static str,
+) -> Result<T, Unpolled> {
+    let (owner, name) =
+        reader.origin.path().split_once('/').ok_or_else(|| {
+            Unpolled::Unreadable(format!("{} names no owner", reader.origin.path()))
+        })?;
+    let mut variables = serde_json::Map::new();
+    variables.insert("owner".to_owned(), owner.into());
+    variables.insert("name".to_owned(), name.into());
+    variables.insert(key.to_owned(), value);
+    let body = serde_json::json!({ "query": query, "variables": variables });
+    let request = crate::forge::authorized(
+        crate::Forge::GitHub,
+        crate::graphql::posted(&reader.graphql, &body, reader.origin.reading().parse),
+        reader.token.as_ref(),
+    );
+    let answered: Answered<T> = reader.needed(http, request, what).await?;
+    match answered.data {
+        Some(data) if answered.errors.is_empty() => Ok(data),
+        _ => Err(Unpolled::Unreadable(format!("GitHub did not say {what}"))),
+    }
+}
+
 /// Whether pull request `number` is in the merge queue, by GitHub's
 /// GraphQL API.
 pub(super) async fn queued(
@@ -314,26 +384,48 @@ pub(super) async fn queued(
     http: &Erased<'_, dyn DynHttp + '_>,
     number: u64,
 ) -> Result<bool, Unpolled> {
-    let (owner, name) =
-        reader.origin.path().split_once('/').ok_or_else(|| {
-            Unpolled::Unreadable(format!("{} names no owner", reader.origin.path()))
-        })?;
-    let body = serde_json::json!({
-        "query": QUEUED,
-        "variables": { "owner": owner, "name": name, "number": number },
-    });
-    let request = crate::forge::authorized(
-        crate::Forge::GitHub,
-        crate::graphql::posted(&reader.graphql, &body, reader.origin.reading().parse),
-        reader.token.as_ref(),
-    );
-    let answered: Answered<QueuedData> = reader.needed(http, request, QUEUE_ENTRY).await?;
-    match answered.data.and_then(|data| data.repository?.pull_request) {
-        Some(pull) if answered.errors.is_empty() => Ok(pull.is_in_merge_queue),
-        _ => Err(Unpolled::Unreadable(format!(
-            "GitHub did not say whether pull request {number} is in the merge queue"
-        ))),
+    let asked = (QUEUED, ("number", number.into()));
+    let data: QueuedData = answered(reader, http, asked, QUEUE_ENTRY).await?;
+    data.repository
+        .and_then(|repository| repository.pull_request)
+        .map(|pull| pull.is_in_merge_queue)
+        .ok_or_else(|| {
+            Unpolled::Unreadable(format!(
+                "GitHub did not say whether pull request {number} is in the merge queue"
+            ))
+        })
+}
+
+/// The pull requests in `branch`'s merge queue, by GitHub's GraphQL API;
+/// none where the branch has no merge queue.
+pub(super) async fn in_queue(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    branch: &str,
+) -> Result<Vec<u64>, Unpolled> {
+    let asked = (IN_QUEUE, ("branch", branch.into()));
+    let data: InQueueData = answered(reader, http, asked, QUEUE_ENTRIES).await?;
+    let Some(queue) = data
+        .repository
+        .and_then(|repository| repository.merge_queue)
+    else {
+        return Ok(Vec::new());
+    };
+    let numbers: Vec<u64> = queue
+        .entries
+        .nodes
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.pull_request.map(|pull| pull.number))
+        .collect();
+    if numbers.len() < queue.entries.total_count {
+        return Err(Unpolled::Unreadable(format!(
+            "GitHub listed {} of the {} pull requests in the branch's merge queue",
+            numbers.len(),
+            queue.entries.total_count
+        )));
     }
+    Ok(numbers)
 }
 
 /// The label `label` added to and removed from pull request `number`, each
@@ -405,13 +497,19 @@ pub(super) async fn role(
     reader: &ForgeMergeReader,
     http: &Erased<'_, dyn DynHttp + '_>,
     actor: &Actor,
-) -> Result<Option<Permission>, Unpolled> {
+) -> Result<Holds, Unpolled> {
     let login = whole(&actor.login, "login")?;
     let request = reader.get(&format!("/collaborators/{login}/permission"))?;
     let read: Option<Collaborator> = reader.read(http, request, "a person's role").await?;
-    Ok(read
-        .and_then(|collaborator| collaborator.user)
-        .and_then(|user| user.permissions.role()))
+    Ok(match read {
+        None => Holds::Nothing,
+        Some(Collaborator {
+            user: Some(Permitted {
+                permissions: Some(permissions),
+            }),
+        }) => permissions.role().map_or(Holds::Nothing, Holds::Role),
+        Some(_) => Holds::Unsaid,
+    })
 }
 
 /// The pushes GitHub's activity of the repository holding `pull`'s head

@@ -1,4 +1,4 @@
-use herald_core::merging::{GestureKey, GestureRecord, HandedOff};
+use herald_core::merging::{GestureKey, GestureRecord, HandedOff, TakenOut};
 use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Version, Versioned, Written};
 
@@ -40,10 +40,15 @@ impl Actions for Failing {
         gesture: &GestureRecord,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        let settled = gesture
-            .hand_off
-            .as_ref()
-            .is_some_and(|hand_off| hand_off.outcome != HandedOff::Calling);
+        let settled = gesture.taken_out.last().map_or_else(
+            || {
+                gesture
+                    .hand_off
+                    .as_ref()
+                    .is_some_and(|hand_off| hand_off.outcome != HandedOff::Calling)
+            },
+            |out| out.outcome != TakenOut::Calling,
+        );
         match self.fault {
             Fault::WritesActions => Err(broken()),
             Fault::ActionsConflict => Ok(Written::Conflict),

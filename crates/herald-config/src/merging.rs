@@ -1,7 +1,9 @@
 //! The merge queues, each a base branch whose queued pull requests the
 //! forge's merge queue or herald's own merges (ADR-0087).
 
-use herald_core::merging::{AppliedBy, Enter, Message, Method, Retries, Runs, Vouches, Write};
+use herald_core::merging::{
+    AppliedBy, Enter, Message, Method, Retries, RoleLost, Runs, Vouches, Write,
+};
 use herald_core::{Duration, Installation, Permission, SourceName};
 use herald_kinds::{Installed, Merging, WriteCredential};
 use jiff::SignedDuration;
@@ -69,6 +71,14 @@ pub(crate) struct MergeQueueFile {
     /// --apply`; "server", by `herald server`, which then reads the write
     /// credential. "command" where absent.
     pub(crate) applied_by: Option<AppliedBy>,
+    /// What becomes of a pull request herald handed to the forge's queue,
+    /// or found already there, once the person whose gesture it is no
+    /// longer holds `least` (a lower role, none, or an account since
+    /// deleted), whether or not a cancel herald does not carry out stands:
+    /// "take-out", taken out on herald's next applying run, which says
+    /// why; "stay", left in the forge's queue and said so. Refused with
+    /// `runs = "herald"`. "take-out" where absent.
+    pub(crate) role_lost: Option<RoleLost>,
     /// The credential its steps are made with, held apart from every one
     /// herald reads with: `{ token = { secret = "NAME" } }` or `{ app =
     /// "<github_apps name>" }`, the same as its source's `write` or another.
@@ -108,6 +118,9 @@ pub struct MergeQueue {
     pub retries: Option<Retries>,
     /// Where its steps are taken.
     pub applied_by: AppliedBy,
+    /// What becomes of a pull request it handed to the forge's queue once
+    /// the person whose gesture it handed over lost its least role.
+    pub role_lost: RoleLost,
     /// The credential its steps are made with; it does not start without
     /// one.
     pub write: Option<Write>,

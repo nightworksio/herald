@@ -246,7 +246,10 @@ fn an_apply_hands_each_pull_request_due_to_the_forge_s_merge_queue() {
         ("/repos/cli/cli/pulls/2", fresh(2, "h2")),
         (
             "/graphql",
-            json!({ "data": { "enqueuePullRequest": { "mergeQueueEntry": { "id": "MQE" } } } }),
+            json!({ "data": {
+                "repository": { "pullRequest": { "isInMergeQueue": false } },
+                "enqueuePullRequest": { "mergeQueueEntry": { "id": "MQE" } }
+            } }),
         ),
     ];
     {

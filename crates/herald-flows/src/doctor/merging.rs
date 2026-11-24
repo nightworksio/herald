@@ -1,10 +1,12 @@
 //! What doctor says of each merge queue (ADR-0087): where it merges and
 //! through whose queue, how, how a branch is brought up to date, its write
-//! credential, where its steps are taken, and why one does not start.
+//! credential, where its steps are taken, what becomes of a pull request
+//! it handed over once its gesture's maker lost the role, and why one does
+//! not start.
 
 use herald_config::{Config, MergeQueue};
 use herald_core::Duration;
-use herald_core::merging::{AppliedBy, Runs, Vouches};
+use herald_core::merging::{AppliedBy, RoleLost, Runs, Vouches};
 
 use super::{Findings, gap};
 
@@ -28,6 +30,15 @@ fn said(name: &str, queue: &MergeQueue) -> String {
             "its steps taken by `herald server`, which then reads its write credential"
         }
     };
+    let role_lost = match (queue.runs, queue.role_lost) {
+        (Runs::Forge, RoleLost::TakeOut) => {
+            ", a pull request it handed over taken out of the forge's queue once its gesture's maker no longer holds its least role"
+        }
+        (Runs::Forge, RoleLost::Stay) => {
+            ", a pull request it handed over left in the forge's queue once its gesture's maker no longer holds its least role"
+        }
+        (Runs::Herald, _) => "",
+    };
     let vouches = match queue.vouches {
         Vouches::Gesture => "the head at the gesture's time on the forge",
         Vouches::Seen => "the head herald first reads with the gesture",
@@ -36,7 +47,7 @@ fn said(name: &str, queue: &MergeQueue) -> String {
         }
     };
     format!(
-        "The merge queue {name} merges into {} of {} on {} {runs}, with {method}, a gesture vouching for {vouches}, a push stamped up to {} before it counted as after it, a branch brought up to date by {}, {write}, {applied}. It reads with its source's read credential: {}.",
+        "The merge queue {name} merges into {} of {} on {} {runs}, with {method}, a gesture vouching for {vouches}, a push stamped up to {} before it counted as after it, a branch brought up to date by {}, {write}, {applied}{role_lost}. It reads with its source's read credential: {}.",
         queue.branch,
         queue.forge.repository,
         queue.forge.forge,

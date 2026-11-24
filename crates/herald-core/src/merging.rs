@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::{SecretRef, kind_name};
 
-pub use record::{GestureKey, GestureRecord, HandOff, HandedOff};
+pub use record::{CancelKey, GestureKey, GestureRecord, HandOff, HandedOff, TakeOut, TakenOut};
 pub use verdict::{Check, CheckState, Heads, Left, Read, Verdict, unvouched, verdict, vouched};
 
 /// The label a pull request is queued by where `enter` is absent.
@@ -140,6 +140,19 @@ pub enum AppliedBy {
     Command,
     /// By `herald server`, each round and as webhooks arrive.
     Server,
+}
+
+/// What becomes of a pull request herald handed to the forge's queue once
+/// the person whose gesture it is no longer holds the queue's least role,
+/// with no cancel herald carries out standing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum RoleLost {
+    /// herald takes it out of the forge's queue on its next run.
+    #[default]
+    TakeOut,
+    /// It stays in the forge's queue.
+    Stay,
 }
 
 /// How a pull request's branch is brought up to date with its base.

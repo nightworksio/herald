@@ -7,10 +7,10 @@
 use herald_config::{Config, MergeQueue};
 use herald_core::Printed;
 use herald_core::merging::{
-    AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Read, Runs, Verdict, Vouches,
-    unvouched, verdict,
+    AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Read, Runs, TakenOut, Verdict,
+    Vouches, unvouched, verdict,
 };
-use herald_kinds::{Branched, EnterAsked, Entered, MergeReader};
+use herald_kinds::{Branched, EnterAsked, Entered, Marked, MergeReader, TakenBack};
 use herald_ports::{
     Actions, Base, Clock, DynHttp, DynSecrets, Http, Signer, Store, Version, Versioned, Written,
 };
@@ -20,10 +20,15 @@ use crate::{Connected, Ports, Stop};
 
 mod branch;
 mod handing;
+mod taking;
 
 pub use branch::merge_branch;
 pub use handing::{
     DRAFTED, GONE, RACED, REGESTURED, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED,
+};
+pub use taking::{
+    RACED_OUT, RECANCELLED, UNHANDED, UNMATCHED_OUT, UNNAMED_CANCEL, UNREAD_CANCEL, UNROLED_CANCEL,
+    UNSAID_ROLE, UNTAKEN,
 };
 
 /// Why a queue without a method does not start.
@@ -51,6 +56,10 @@ const GITLAB: &str = "gitlab";
 
 /// Why a queue run by the forge takes no step where the forge says it has
 /// no merge queue on the branch.
+/// Why an entry is not stepped where herald's record of its gesture's id
+/// names another maker or time than the forge does now.
+pub const UNMATCHED: &str = "herald's record of this gesture's id names another maker or time than the forge does now, so it is not the same gesture and herald writes nothing for it";
+
 const NO_FORGE_QUEUE: &str = "the forge says the branch has no merge queue or merge train, so with runs = \"forge\" the queue does not start; give runs = \"herald\" to run herald's own";
 
 /// What a queue does next with one of its entries.
@@ -87,6 +96,9 @@ pub enum Took {
     /// The forge took it into its queue, or reading it back found it
     /// there.
     Queued,
+    /// It was already in the forge's queue right before the step, so no
+    /// call was made and it was recorded as found there.
+    FoundQueued,
     /// The forge refused it, saying this.
     Declined(String),
     /// Its head is no longer the one its gesture vouches for: read again
@@ -101,6 +113,81 @@ pub enum Took {
     /// updated, so the record still says the call is being made and herald
     /// never hands it over again for this gesture.
     Unrecorded(HandedOff),
+}
+
+/// What a queue does with a pull request in the forge's queue whose
+/// gesture was taken back, or whose gesture's maker no longer holds the
+/// queue's least role.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Undo {
+    /// It is taken out of the forge's queue.
+    TakeOut,
+    /// It would be taken out, but the queue takes no step, as its read
+    /// says why.
+    Idle,
+    /// A cancel herald could not carry out, or a role lost it could not
+    /// take it out for, and why: it stays in the forge's queue.
+    Uncarried(String),
+    /// The person whose gesture herald handed over no longer holds the
+    /// queue's least role, and the queue's `role_lost = "stay"` leaves it
+    /// in the forge's queue.
+    Stays,
+    /// herald recorded taking it out for this cancel at `at`, and it came
+    /// to `outcome`; it is not asked again.
+    Recorded {
+        /// What came of it.
+        outcome: TakenOut,
+        /// When herald recorded it.
+        at: Timestamp,
+    },
+    /// What this apply did with it.
+    Took(TookOut),
+}
+
+/// What an apply did with a pull request due to be taken out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TookOut {
+    /// The forge took it out of its queue, or reading it back found it
+    /// out.
+    Out,
+    /// The forge refused to take it out, saying this, and it is still
+    /// there.
+    Declined(String),
+    /// The forge's answer was lost and it is still in the forge's queue;
+    /// herald never asks again for this cancel.
+    Unsettled,
+    /// The call came to this, but herald's record of it could not be
+    /// updated, so the record still says the call is being made and herald
+    /// never asks again for this cancel.
+    Unrecorded(TakenOut),
+}
+
+/// A pull request in the forge's queue whose gesture was taken back, or
+/// whose gesture's maker no longer holds the queue's least role, with what
+/// the queue does about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cancel {
+    /// The pull request and its marks, as the forge says.
+    pub taken: TakenBack,
+    /// The cancel judged against the gesture herald handed over: the one
+    /// that takes it out, or one herald could not carry out; none where it
+    /// is taken out, or stays, for the role lost.
+    pub cancel: Option<Marked>,
+    /// What the queue does.
+    pub next: Undo,
+    /// Who herald recorded made the gesture it handed over, where the forge
+    /// names someone else for it now, as for an account gone.
+    pub renamed: Option<String>,
+}
+
+/// What a merge queue's read of the cancels found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cancels {
+    /// Each pull request in the forge's queue whose gesture was taken
+    /// back; none where its entries were not read.
+    Read(Vec<Cancel>),
+    /// They could not be read, and why where the output may say.
+    Unread(Option<String>),
 }
 
 /// One entry of a queue, with what the queue does next with it.
@@ -140,6 +227,9 @@ pub struct MergeQueueRead {
     pub idle: Vec<String>,
     /// What its read found.
     pub found: Found,
+    /// The pull requests in the forge's queue whose gesture was taken
+    /// back.
+    pub cancels: Cancels,
 }
 
 /// A run's config, connections and ports.
@@ -257,8 +347,6 @@ fn gesture_key(queue: &MergeQueue, entered: &Entered) -> Option<GestureKey> {
         repository: queue.forge.repository.clone(),
         number: entered.number,
         gesture: entered.gesture.id?,
-        by: entered.gesture.by.clone(),
-        at: entered.gesture.at,
     })
 }
 
@@ -268,17 +356,27 @@ fn gesture_key(queue: &MergeQueue, entered: &Entered) -> Option<GestureKey> {
 /// the head it reads now, as of `now`, and a dry run takes it as the one a
 /// real run would record. Where the record cannot be read or written, no
 /// head was first seen.
+///
+/// # Errors
+///
+/// [`UNMATCHED`], where the record kept names another maker or time for
+/// the gesture than `entered` does.
 async fn seen<A: Actions>(
     keeping: &Keeping<'_, A>,
     (named, queue): (&str, &MergeQueue),
     entered: &Entered,
     now: Timestamp,
-) -> (Option<Versioned<GestureRecord>>, Option<String>) {
+) -> Result<(Option<Versioned<GestureRecord>>, Option<String>), &'static str> {
     let Some(key) = gesture_key(queue, entered) else {
-        return (None, None);
+        return Ok((None, None));
     };
     let store = &keeping.store;
-    match store.gesture(&key).await {
+    Ok(match store.gesture(&key).await {
+        Ok(Some(kept))
+            if kept.value.by != entered.gesture.by || kept.value.at != entered.gesture.at =>
+        {
+            return Err(UNMATCHED);
+        }
         Ok(Some(kept)) => {
             let seen = kept.value.seen.clone();
             (Some(kept), Some(seen))
@@ -288,10 +386,13 @@ async fn seen<A: Actions>(
         Ok(None) => {
             let record = GestureRecord {
                 key,
+                by: entered.gesture.by.clone(),
+                at: entered.gesture.at,
                 queue: named.to_owned(),
                 seen: entered.head.clone(),
                 seen_at: now,
                 hand_off: None,
+                taken_out: Vec::new(),
             };
             match store.put_gesture(&record, None).await {
                 Ok(Written::Written(version)) => {
@@ -306,7 +407,7 @@ async fn seen<A: Actions>(
             }
         }
         Err(_) => (None, None),
-    }
+    })
 }
 
 /// What `queue`, named `named`, does next with its entries `entries`, on
@@ -323,10 +424,18 @@ async fn judged<A: Actions>(
     let mut judged = Vec::with_capacity(entries.len());
     let mut flying = false;
     for entered in entries {
-        let (kept, seen) = if entered.whole {
+        let read = if entered.whole {
             seen(keeping, (named, queue), &entered, now).await
         } else {
-            (None, None)
+            Ok((None, None))
+        };
+        let (kept, seen) = match read {
+            Ok(read) => read,
+            Err(why) => {
+                let next = Next::Took(Took::Refused(why.to_owned()));
+                judged.push((Judged { entered, next }, None));
+                continue;
+            }
         };
         let heads = Heads {
             then: entered.gesture.head.as_deref(),
@@ -433,9 +542,9 @@ async fn read_queues<S: Store, C: Clock, G: Signer, H: Http>(
             else {
                 continue;
             };
-            let (found, idle) = if let Some(stop) = stopped.get(&source.name) {
+            let (found, idle, cancels) = if let Some(stop) = stopped.get(&source.name) {
                 let why = printed.prints_failures().then(|| unminted(stop));
-                (Found::Unread(why), Vec::new())
+                (Found::Unread(why), Vec::new(), Cancels::Read(Vec::new()))
             } else {
                 let reader = (reading.reader.as_ref(), http as &dyn DynHttp);
                 let queued = (reading.name.as_str(), queue);
@@ -448,6 +557,7 @@ async fn read_queues<S: Store, C: Clock, G: Signer, H: Http>(
                 runs: queue.runs,
                 idle,
                 found,
+                cancels,
             });
         }
     }
@@ -457,33 +567,95 @@ async fn read_queues<S: Store, C: Clock, G: Signer, H: Http>(
 
 /// The queue `queued` read through `reader` as `printed` prints it, and
 /// stepped through `handing` where it is some and the queue takes steps;
-/// with why it takes none.
+/// with why it takes none, and its cancels.
 async fn queue_read<S: Store, C: Clock, G: Signer, H: Http>(
     (flow, handing): (Flow<'_, '_, S, C, G, H>, Option<&Handing<'_, H>>),
     reader: (&dyn MergeReader, &dyn DynHttp),
     queued: (&str, &MergeQueue),
     printed: Printed,
-) -> (Found, Vec<String>) {
+) -> (Found, Vec<String>, Cancels) {
     let ports = flow.2;
     let store = ports.store.actions();
     let asked = (queued, store, handing.is_some());
     let due = match found(reader, asked, printed, ports.clock.now()).await {
-        Reading::Done(found) => return (found, Vec::new()),
+        Reading::Done(found) => return (found, Vec::new(), Cancels::Read(Vec::new())),
         Reading::Due(due) => due,
     };
-    let stepping = handing.zip(store).filter(|_| due.idle.is_empty());
-    let found = if let Some((handing, store)) = stepping {
-        let base = &due.branched;
-        handing::stepped((flow, handing), store, reader, queued, base, due.judged).await
-    } else {
-        Found::Entries(
-            due.judged
+    let Due {
+        judged,
+        branched,
+        idle,
+        cancels,
+    } = due;
+    let stepping = handing.zip(store).filter(|_| idle.is_empty());
+    let Some((handing, store)) = stepping else {
+        let found = judged
+            .into_iter()
+            .map(|(judged, _)| idled(judged, &idle))
+            .collect();
+        let cancels = cancels.map(|cancels| {
+            cancels
                 .into_iter()
-                .map(|(judged, _)| idled(judged, &due.idle))
-                .collect(),
-        )
+                .map(|(cancel, _)| idled_out(cancel, &idle))
+                .collect()
+        });
+        return (Found::Entries(found), idle, read_cancels(cancels, printed));
     };
-    (found, due.idle)
+    let handing_off = judged
+        .iter()
+        .any(|(judged, _)| judged.next == Next::HandOff);
+    let taking_out = cancels.as_ref().is_ok_and(|cancels| {
+        cancels
+            .iter()
+            .any(|(cancel, _)| cancel.next == Undo::TakeOut)
+    });
+    if !(handing_off || taking_out) {
+        let found = judged.into_iter().map(|(judged, _)| judged).collect();
+        let cancels =
+            cancels.map(|cancels| cancels.into_iter().map(|(cancel, _)| cancel).collect());
+        return (Found::Entries(found), idle, read_cancels(cancels, printed));
+    }
+    let prepared = handing::ready(flow, handing, queued.1).await;
+    let made = (ports, &prepared);
+    let found = handing::stepped(made, store, reader, queued, &branched, judged).await;
+    let cancels = match cancels {
+        Ok(cancels) => Ok(taken_out(made, store, reader, queued.1, cancels).await),
+        Err(error) => Err(error),
+    };
+    (found, idle, read_cancels(cancels, printed))
+}
+
+/// Each of `cancels` due taken out of the forge's queue as `prepared`
+/// makes it ready, its record kept in `store`.
+async fn taken_out<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
+    (ports, prepared): (&Ports<'_, S, C, G>, &Result<handing::Ready<H>, String>),
+    store: &A,
+    read: (&dyn MergeReader, &dyn DynHttp),
+    queue: &MergeQueue,
+    cancels: Vec<(Cancel, Kept)>,
+) -> Vec<Cancel> {
+    let mut done = Vec::with_capacity(cancels.len());
+    for (cancel, kept) in cancels {
+        let next = match (&cancel.next, kept, prepared) {
+            (Undo::TakeOut, Some(kept), Ok(ready)) => {
+                let made = (ports, store, ready);
+                taking::taken_out(made, read, queue, (&cancel, kept)).await
+            }
+            (Undo::TakeOut, _, Err(why)) => Undo::Uncarried(why.clone()),
+            (next, ..) => next.clone(),
+        };
+        done.push(Cancel { next, ..cancel });
+    }
+    done
+}
+
+/// `cancels` as the output says them: their read's error said only where
+/// `printed` prints failures.
+fn read_cancels(cancels: Result<Vec<Cancel>, herald_kinds::Unpolled>, printed: Printed) -> Cancels {
+    match cancels {
+        Ok(cancels) => Cancels::Read(cancels),
+        Err(error) => Cancels::Unread(printed.prints_failures().then(|| error.into_reason())),
+    }
 }
 
 /// `judged`, its hand-off held back where the queue takes no step.
@@ -497,12 +669,27 @@ fn idled(judged: Judged, idle: &[String]) -> Judged {
     }
 }
 
+/// `cancel`, its take-out held back where the queue takes no step.
+fn idled_out(cancel: Cancel, idle: &[String]) -> Cancel {
+    match cancel.next {
+        Undo::TakeOut if !idle.is_empty() => Cancel {
+            next: Undo::Idle,
+            ..cancel
+        },
+        _ => cancel,
+    }
+}
+
+/// The record of a gesture, where one is kept.
+type Kept = Option<Versioned<GestureRecord>>;
+
 /// A queue's entries read and judged, each with its gesture's record where
 /// one is kept, with the base and why the queue takes no step.
 struct Due {
-    judged: Vec<(Judged, Option<Versioned<GestureRecord>>)>,
+    judged: Vec<(Judged, Kept)>,
     branched: Branched,
     idle: Vec<String>,
+    cancels: Result<Vec<(Cancel, Kept)>, herald_kinds::Unpolled>,
 }
 
 /// What a queue's read came to: done, or entries a step may be due on.
@@ -542,14 +729,31 @@ async fn found<A: Actions>(
         applies: applies && idle.is_empty(),
     };
     let gestures = (named, queue, &keeping);
-    match judged((reader, http), gestures, (entries, &branched), now).await {
-        Ok(judged) => Reading::Due(Due {
-            judged,
-            branched,
-            idle,
-        }),
-        Err(error) => unread(error),
-    }
+    let judged = match judged((reader, http), gestures, (entries, &branched), now).await {
+        Ok(judged) => judged,
+        Err(error) => return unread(error),
+    };
+    let taken = if queue.runs == Runs::Forge {
+        reader.taken_back(http, &queue.branch, asked(queue)).await
+    } else {
+        Ok(Vec::new())
+    };
+    let cancels = match taken {
+        Ok(taken) => {
+            let mut cancels = Vec::with_capacity(taken.len());
+            for taken in taken {
+                cancels.extend(taking::undone(store, queue, taken).await);
+            }
+            Ok(cancels)
+        }
+        Err(error) => Err(error),
+    };
+    Reading::Due(Due {
+        judged,
+        branched,
+        idle,
+        cancels,
+    })
 }
 
 /// What `queue` asks of the gestures that queue its pull requests.

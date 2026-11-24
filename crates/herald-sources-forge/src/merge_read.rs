@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 
 use herald_core::Permission;
 use herald_core::merging::{Enter, MOST_ENTERED, Vouches};
-use herald_kinds::{Branched, EnterAsked, Entered, Gesture, MergeReader, Proved, Unpolled};
+use herald_kinds::{
+    Branched, EnterAsked, Entered, Gesture, Holds, Marked, MergeReader, Proved, TakenBack, Unpolled,
+};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Request};
 use jiff::{SignedDuration, Timestamp};
 use serde::de::DeserializeOwned;
@@ -118,6 +120,10 @@ type Reviews = (Vec<Review>, bool);
 /// read whole.
 type Stood = (Mark, bool);
 
+/// Every mark on a pull request, whether they were read whole, and
+/// whether they are label marks.
+type Marks = (Vec<Mark>, bool, bool);
+
 /// A comment, as the forge records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Said {
@@ -188,6 +194,15 @@ fn commanded(command: &str, body: &str) -> Option<(bool, Option<String>)> {
 fn standing(mut marks: Vec<Mark>) -> Option<Mark> {
     marks.sort_by_key(|mark| mark.at);
     marks.pop().filter(|mark| mark.into)
+}
+
+/// `mark` as the forge records it.
+fn marked(mark: Mark) -> Marked {
+    Marked {
+        id: mark.id,
+        by: mark.by.login,
+        at: mark.at,
+    }
 }
 
 /// Those whose last review in `reviews` that approves or asks for changes
@@ -359,8 +374,8 @@ impl ForgeMergeReader {
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         actor: &Actor,
-        roles: &mut BTreeMap<String, Option<Permission>>,
-    ) -> Result<Option<Permission>, Unpolled> {
+        roles: &mut BTreeMap<String, Holds>,
+    ) -> Result<Holds, Unpolled> {
         if let Some(role) = roles.get(&actor.login) {
             return Ok(*role);
         }
@@ -373,16 +388,14 @@ impl ForgeMergeReader {
         Ok(role)
     }
 
-    /// The gesture that stands on `pull` under `enter`, made by one who
-    /// holds `least` or above, by who made it and when, with whether its
-    /// record was read whole.
-    async fn gestured(
+    /// Every mark on `pull` under `enter`, whoever made it, with whether
+    /// they were read whole and whether they are label marks.
+    async fn marks(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
         pull: &Opened,
-        (enter, least): (&Enter, Permission),
-        roles: &mut BTreeMap<String, Option<Permission>>,
-    ) -> Result<Option<Stood>, Unpolled> {
+        enter: &Enter,
+    ) -> Result<Marks, Unpolled> {
         let ((marks, whole), labelled) = match enter {
             Enter::Label(label) => {
                 let marks = match self.forge() {
@@ -401,21 +414,134 @@ impl ForgeMergeReader {
                 ((comment_marks(said, command), whole), false)
             }
         };
+        Ok((marks, whole, labelled))
+    }
+
+    /// Those of `marks` on `pull` that count: a gesture made by one who
+    /// holds `least` or above, a label taken off by anyone, a cancel
+    /// comment by the author or one who holds a role.
+    async fn counted(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: &Opened,
+        (marks, labelled, least): (Vec<Mark>, bool, Permission),
+        roles: &mut BTreeMap<String, Holds>,
+    ) -> Result<Vec<Mark>, Unpolled> {
         let mut counted = Vec::new();
         for mark in marks {
             let free = labelled || pull.author.as_deref() == Some(mark.by.login.as_str());
             let counts = if mark.into {
                 self.role(http, &mark.by, roles)
                     .await?
+                    .role()
                     .is_some_and(|role| role >= least)
             } else {
-                free || self.role(http, &mark.by, roles).await?.is_some()
+                free || self.role(http, &mark.by, roles).await?.role().is_some()
             };
             if counts {
                 counted.push(mark);
             }
         }
+        Ok(counted)
+    }
+
+    /// The gesture that stands on `pull` under `enter`, made by one who
+    /// holds `least` or above, by who made it and when, with whether its
+    /// record was read whole.
+    async fn gestured(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: &Opened,
+        (enter, least): (&Enter, Permission),
+        roles: &mut BTreeMap<String, Holds>,
+    ) -> Result<Option<Stood>, Unpolled> {
+        let (marks, whole, labelled) = self.marks(http, pull, enter).await?;
+        let counted = self
+            .counted(http, pull, (marks, labelled, least), roles)
+            .await?;
         Ok(standing(counted).map(|mark| (mark, whole)))
+    }
+
+    /// `pull` under the gesture `asked` names, with every mark on it,
+    /// newest first, and the role of each maker the forge names read into
+    /// `roles`; none where no gesture was made on it.
+    async fn taken_of(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: Opened,
+        asked: EnterAsked<'_>,
+        roles: &mut BTreeMap<String, Holds>,
+    ) -> Result<Option<TakenBack>, Unpolled> {
+        let (mut marks, whole, _) = self.marks(http, &pull, asked.enter).await?;
+        if !marks.iter().any(|mark| mark.into) {
+            return Ok(None);
+        }
+        let mut makers = BTreeMap::new();
+        for mark in &marks {
+            if !mark.by.login.is_empty() {
+                let held = self.role(http, &mark.by, roles).await?;
+                makers.insert(mark.by.login.clone(), held);
+            }
+        }
+        marks.sort_by_key(|mark| mark.at);
+        marks.reverse();
+        let (gestures, cancels): (Vec<Mark>, Vec<Mark>) =
+            marks.into_iter().partition(|mark| mark.into);
+        Ok(Some(TakenBack {
+            number: pull.number,
+            url: pull.url,
+            id: pull.id,
+            gestures: gestures.into_iter().map(marked).collect(),
+            cancels: cancels.into_iter().map(marked).collect(),
+            makers,
+            whole,
+        }))
+    }
+
+    /// The pull request `number`, where it is open into `branch`.
+    async fn opened_one(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        (branch, number): (&str, u64),
+    ) -> Result<Option<Opened>, Unpolled> {
+        match self.forge() {
+            Forge::GitHub => github::one(self, http, (branch, number)).await,
+            Forge::GitLab => gitlab::one(self, http, (branch, number)).await,
+            Forge::Forgejo => forgejo::one(self, http, (branch, number)).await,
+        }
+    }
+
+    /// Each open pull request into `branch` in the forge's queue that may
+    /// be taken out of it, under the gesture `asked` names.
+    async fn taken(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        branch: &str,
+        asked: EnterAsked<'_>,
+    ) -> Result<Vec<TakenBack>, Unpolled> {
+        let mut numbers = match self.forge() {
+            Forge::GitHub => github::in_queue(self, http, branch).await?,
+            Forge::GitLab => gitlab::in_queue(self, http, branch).await?,
+            Forge::Forgejo => Vec::new(),
+        };
+        numbers.sort_unstable();
+        numbers.dedup();
+        if numbers.len() > MOST_ENTERED {
+            return Err(Unpolled::Unreadable(format!(
+                "more than {MOST_ENTERED} pull requests are in the forge's queue on the branch, and herald reads no more"
+            )));
+        }
+        let mut roles = BTreeMap::new();
+        let mut taken = Vec::new();
+        for number in numbers {
+            let Some(pull) = self.opened_one(http, (branch, number)).await? else {
+                continue;
+            };
+            if let Some(back) = self.taken_of(http, pull, asked, &mut roles).await? {
+                taken.push(back);
+            }
+        }
+        Ok(taken)
     }
 
     /// Whether one who holds `least` or above approved `pull`'s head, with
@@ -425,7 +551,7 @@ impl ForgeMergeReader {
         http: &Erased<'_, dyn DynHttp + '_>,
         pull: &Opened,
         (least, skew): (Permission, SignedDuration),
-        roles: &mut BTreeMap<String, Option<Permission>>,
+        roles: &mut BTreeMap<String, Holds>,
     ) -> Result<(bool, bool), Unpolled> {
         let (reviews, whole) = match self.forge() {
             Forge::GitHub => github::reviews(self, http, pull.number).await?,
@@ -436,6 +562,7 @@ impl ForgeMergeReader {
             if self
                 .role(http, &by, roles)
                 .await?
+                .role()
                 .is_some_and(|role| role >= least)
             {
                 return Ok((true, whole));
@@ -464,7 +591,7 @@ impl ForgeMergeReader {
         http: &Erased<'_, dyn DynHttp + '_>,
         pull: Opened,
         asked: EnterAsked<'_>,
-        roles: &mut BTreeMap<String, Option<Permission>>,
+        roles: &mut BTreeMap<String, Holds>,
     ) -> Result<Option<Entered>, Unpolled> {
         let EnterAsked {
             enter,
@@ -478,7 +605,7 @@ impl ForgeMergeReader {
         let Mark {
             id, by, at, named, ..
         } = mark;
-        let role = self.role(http, &by, roles).await?;
+        let role = self.role(http, &by, roles).await?.role();
         let pushes = self.pushes(http, &pull).await?;
         let (approved, reviewed) = if vouches == Vouches::Approved {
             self.approved(http, &pull, (least, skew), roles).await?
@@ -514,11 +641,7 @@ impl ForgeMergeReader {
         (branch, number): (&str, u64),
         asked: EnterAsked<'_>,
     ) -> Result<Option<Entered>, Unpolled> {
-        let pull = match self.forge() {
-            Forge::GitHub => github::one(self, http, (branch, number)).await?,
-            Forge::GitLab => gitlab::one(self, http, (branch, number)).await?,
-            Forge::Forgejo => forgejo::one(self, http, (branch, number)).await?,
-        };
+        let pull = self.opened_one(http, (branch, number)).await?;
         let Some(pull) = pull.filter(|pull| match asked.enter {
             Enter::Label(label) => pull.labels.iter().any(|held| held == label),
             Enter::Comment(_) => true,
@@ -628,6 +751,31 @@ impl MergeReader for ForgeMergeReader {
                 Forge::GitLab => gitlab::queued(self, &http, number).await,
                 Forge::Forgejo => Ok(false),
             }
+        })
+    }
+
+    fn taken_back<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        branch: &'a str,
+        asked: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Vec<TakenBack>, Unpolled>> {
+        Box::pin(async move { self.taken(&Erased(http), branch, asked).await })
+    }
+
+    fn took_back<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        pull: (&'a str, u64),
+        asked: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Option<TakenBack>, Unpolled>> {
+        Box::pin(async move {
+            let http = Erased(http);
+            let Some(opened) = self.opened_one(&http, pull).await? else {
+                return Ok(None);
+            };
+            self.taken_of(&http, opened, asked, &mut BTreeMap::new())
+                .await
         })
     }
 }

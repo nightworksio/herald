@@ -3,7 +3,6 @@ use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Version, Versioned, Written};
 
 use super::{Fault, Faulty, refused};
-use crate::conformance::NOON;
 use crate::conformance::actions::{action, gestured, run};
 
 impl Actions for Faulty {
@@ -54,7 +53,7 @@ impl Actions for Faulty {
     ) -> Result<Option<Versioned<GestureRecord>>, StoreError> {
         self.refuses()?;
         let asked = match self.fault {
-            Fault::SharesGesturesAcrossTimes => gestured(0, NOON),
+            Fault::SharesGesturesAcrossKeys => gestured(0),
             _ => key.clone(),
         };
         self.inner.gesture(&asked).await
@@ -115,8 +114,8 @@ fn a_store_that_breaks_its_promises_on_the_record_of_a_gesture_is_refused() {
             "the record of a gesture was written as new over one that exists",
         ),
         (
-            Fault::SharesGesturesAcrossTimes,
-            "the record of one gesture was read for a later one",
+            Fault::SharesGesturesAcrossKeys,
+            "the record of one gesture was read for another id",
         ),
     ]);
 }
