@@ -735,6 +735,17 @@ impl Checked<'_> {
         .at_most(self.origin.reading.parse);
         authorized(self.origin.forge, request, token)
     }
+
+    /// The request posting `body` as JSON to `path` under the repository,
+    /// carrying `token`.
+    pub(crate) fn posted(&self, path: &str, body: &serde_json::Value, token: &Token) -> Request {
+        let request = crate::graphql::posted(
+            &format!("{}{path}", self.base),
+            body,
+            self.origin.reading.parse,
+        );
+        authorized(self.origin.forge, request, Some(token))
+    }
 }
 
 impl Origin {

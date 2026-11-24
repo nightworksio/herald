@@ -75,8 +75,8 @@ queue.
 | `vouches` | The head it vouches for | What it accepts |
 |-----------|-------------------------|-----------------|
 | `"gesture"` | the head the pull request had at the gesture's time on the forge, by the forge's own record of pushes to its branch (GitHub's repository activity, GitLab's diff versions, Forgejo's timeline), a push stamped up to `skew` before the gesture counted as after it | nothing past that record: where it cannot be read, as for a fork whose activity the read credential does not reach, a label vouches for no head. GitHub's activity, read newest first, may drop old pushes, so there a label places a head only after a push the activity lists, and otherwise vouches for none. A GitLab merge request with 100 diff versions or more, or a Forgejo timeline longer than herald reads, gives no record |
-| `"seen"` | the head herald first reads with the gesture standing, by the store's record of it | the window between the gesture and herald's first read: a push in it is vouched for as if the writer had seen it. Without that record, as in `herald merge-queue`'s read, the pull request leaves as `unrecorded` |
-| `"approved"` | the head herald first reads with the gesture standing, by the store's record of it, once a person holding `least` has approved that exact commit on the forge | the forge's review record. On GitHub and Forgejo each reviewer's last review that approves or asks for changes counts, and approves only where it names that commit; a dismissed one counts against. A GitLab approval names no commit: it counts for the head of the latest diff version only where GitLab's own note of the approval is stamped more than `skew` after that version, and a note that the approval was taken back undoes it. Without the store's record the pull request leaves as `unrecorded` |
+| `"seen"` | the head herald first reads with the gesture standing, by the store's record of it | the window between the gesture and herald's first read: a push in it, by the author, a fork's author too, is vouched for as if the writer had seen it; under `"approved"` only where a writer approved that head. This is why `"gesture"` is the default. `herald merge-queue --apply` writes that record the first time it reads the gesture standing; the dry run only reads it, and where none is kept takes the head it reads now as the one `--apply` would record. Where the record cannot be read or written, the pull request leaves as `unrecorded` |
+| `"approved"` | the head herald first reads with the gesture standing, by the store's record of it, once a person holding `least` has approved that exact commit on the forge | the forge's review record. On GitHub and Forgejo each reviewer's last review that approves or asks for changes counts, and approves only where it names that commit; a dismissed one counts against. A GitLab approval names no commit: it counts for the head of the latest diff version only where GitLab's own note of the approval is stamped more than `skew` after that version, and a note that the approval was taken back undoes it. The record of the first-seen head is kept as for `"seen"` |
 
 A comment command followed by a commit's full id (`/merge 3f2a…`)
 vouches for that commit alone, whatever `vouches` says, so it works
@@ -91,7 +91,37 @@ With `runs = "forge"` herald checks the gesture, that the pull request is
 open and not a draft and that its head is the one vouched for, then hands
 it over: GitHub's `enqueuePullRequest` with the expected head, or
 GitLab's merge train with the head's `sha`. The forge proves and merges
-it. `queue = true` on a view shows where it stands (see [the
+it.
+
+Right before the call, `herald merge-queue --apply` reads the pull
+request again on its own, with nothing kept from the queue's read: that
+it is open into the branch, not a draft, still carries the label where
+the gesture is one, that the gesture standing is the same one (the
+forge's id of the label event or comment, who made it and when), that
+its maker holds `least` now, that its head is the one handed over and
+the one the gesture vouches for, and that every one of those reads was
+whole. Any of them failing, or any read failing, hands nothing over.
+
+| Forge | The call | What the forge checks itself |
+|-------|----------|------------------------------|
+| GitHub, GHE.com, GitHub Enterprise Server | GraphQL `enqueuePullRequest(input: { pullRequestId, expectedHeadOid })` at the GraphQL endpoint beside the source's API (`/graphql`, or `/api/graphql` on a server), the pull request named by its node id | that the credential may write to the repository, that the pull request's head is `expectedHeadOid`, and the branch's protection; the merge queue then proves it on the base. GitHub answers a refusal as a GraphQL error |
+| GitLab.com, Self-Managed, Dedicated (Premium, Ultimate) | `POST /projects/:id/merge_trains/merge_requests/:iid` with `sha` and `auto_merge = true`: 201 when it is added, 202 when it joins once its pipeline succeeds | that the credential holds the Developer role or above, and that `sha` is the source branch's head, or the merge fails |
+
+Both forges take the head herald hands over as the head they must find,
+so a head pushed after herald's read is never merged. GitHub refuses the
+call; herald takes a refusal whose pull request reads back with another
+head as `head-moved`. GitLab documents no status for a `sha` that is not
+the head: it says the merge fails. GitLab does not document what adding
+a merge request does on a project whose merge trains are off, so herald
+hands a merge request over only where GitLab says the project has them
+on. A refusal is shown with the forge's own words, without the
+credential. GitHub documents no permission an App needs for
+`enqueuePullRequest`, and GitLab no error status for adding to a train:
+herald mints `contents: write` and `pull_requests: write`, and takes any
+4xx answer but 408 and 429 as a refusal. An answer that is lost, or
+says neither, is read back (GitHub's `isInMergeQueue`, GitLab's train
+car or the merge request's `merge_when_pipeline_succeeds`) and never
+asked again. `queue = true` on a view shows where it stands (see [the
 queue](queue.md#merge-queue)). Where the forge has no queue on the
 branch, the queue does not start and `herald doctor` says why (the
 forge, its tier or the kind of repository) and that `runs = "herald"`
@@ -146,6 +176,17 @@ herald merge-queue                 # each queue's entries, verdicts and next ste
 herald merge-queue app-main --apply   # take the next steps
 ```
 
+Without `--apply` nothing is written and no write credential is read:
+herald prints what `--apply` would do, reading the store's records as
+`--apply` does, and a step recorded for a gesture with what came of it.
+A queue that does not start, whose steps `herald server` takes
+(`applied_by = "server"`), that herald runs (`runs = "herald"`: `--apply`
+hands pull requests to the forge's queue alone), or whose forge says the
+branch has no merge queue, takes no step, and says why.
+A gesture taken back after `--apply` handed the pull request over (the
+label removed, the comment deleted, or the command followed by `cancel`)
+does not take it out of the forge's queue: take it out on the forge.
+
 Run `--apply` on a schedule or in a CI job of the base repository's own,
 never in a job that runs a pull request's code. `herald merge-queue`
 prints a private repository's entries only where its output is said
@@ -165,11 +206,24 @@ following no redirect. It may be the same App or secret as the source's
 | GitLab | a project access token with the `api` scope and the role the branch's protection lets merge |
 | Forgejo, Gitea | a token with the `write:repository` scope, of a user who may merge into the branch |
 
-Before each step herald writes its record (the queue, pull request,
-head, base, who queued it, the credential's name, the time), so two runs
-racing never both act and a step interrupted is never taken twice; a
-store that keeps no records (`markers`) runs no queue. The forge's audit
-log names the credential; herald's records name who queued.
+herald keeps one record per gesture, keyed by the forge's API, the
+repository, the pull request's number and the forge's own id of the
+label event or comment, with who made it and when: a gesture made again,
+even in the same second, is another record, and a gesture that does not
+count (its maker below `least`) gets none. `--apply` alone writes it: the
+head it first read with the gesture standing, then, before the call and
+with compare-and-set, the hand-off (the head handed over, the base's
+head, the credential's name, the time), and after the call what came of
+it. So two runs racing never both act, and a gesture is handed over at
+most once: a record that says the call was being made, that the forge's
+answer was lost, that the forge refused it or that its head moved is
+never called again; a new gesture is. Only a record whose call
+provably never left herald (the run's request budget ended, the write
+App's token could not be minted, or the request could not be made) is
+handed over again, after a fresh read. A gesture the forge names no id
+for is never handed over. A store that keeps no records (`markers`) runs
+no queue. The forge's audit log names the credential; herald's records
+name who queued.
 
 ## Hosts
 
@@ -180,5 +234,7 @@ whose GraphQL lacks `enqueuePullRequest` takes `runs = "herald"` alone.
 
 ## Not built
 
-Batches and speculative trains (several pull requests proved together on
+Taking a pull request out of the forge's queue when its gesture is taken
+back (`dequeuePullRequest`, or cancelling GitLab's auto-merge); the
+forge's queue keeps it until the forge takes it out. Batches and speculative trains (several pull requests proved together on
 a temporary branch), priorities and jumping the queue.

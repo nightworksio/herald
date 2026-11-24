@@ -1,6 +1,7 @@
 //! The record of each re-run, read and written through an erased store
 //! (ADR-0068).
 
+use herald_core::merging::{GestureKey, GestureRecord};
 use herald_core::{RerunRecord, RunKey};
 
 use super::DynStore;
@@ -21,6 +22,19 @@ pub trait DynActions: Sync {
         action: &'a RerunRecord,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Actions::gesture`].
+    fn gesture_boxed<'a>(
+        &'a self,
+        key: &'a GestureKey,
+    ) -> Boxed<'a, Result<Option<Versioned<GestureRecord>>, StoreError>>;
+
+    /// [`Actions::put_gesture`].
+    fn put_gesture_boxed<'a>(
+        &'a self,
+        gesture: &'a GestureRecord,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
 }
 
 impl<S: Store> DynActions for S {
@@ -38,6 +52,21 @@ impl<S: Store> DynActions for S {
     ) -> Boxed<'a, Result<Written, StoreError>> {
         Box::pin(async move { self.actions().put_action(action, expected).await })
     }
+
+    fn gesture_boxed<'a>(
+        &'a self,
+        key: &'a GestureKey,
+    ) -> Boxed<'a, Result<Option<Versioned<GestureRecord>>, StoreError>> {
+        Box::pin(async move { self.actions().gesture(key).await })
+    }
+
+    fn put_gesture_boxed<'a>(
+        &'a self,
+        gesture: &'a GestureRecord,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.actions().put_gesture(gesture, expected).await })
+    }
 }
 
 impl Actions for Erased<'_, dyn DynStore + '_> {
@@ -51,5 +80,20 @@ impl Actions for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_action_boxed(action, expected).await
+    }
+
+    async fn gesture(
+        &self,
+        key: &GestureKey,
+    ) -> Result<Option<Versioned<GestureRecord>>, StoreError> {
+        self.0.gesture_boxed(key).await
+    }
+
+    async fn put_gesture(
+        &self,
+        gesture: &GestureRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_gesture_boxed(gesture, expected).await
     }
 }

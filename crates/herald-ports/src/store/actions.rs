@@ -1,8 +1,10 @@
-//! The record of each re-run an operator applies, written with
-//! compare-and-set before the call (ADR-0068).
+//! The record of each re-run an operator applies, and of each gesture that
+//! queued a pull request, written with compare-and-set before the call
+//! (ADR-0068, ADR-0087).
 
 use std::future::{Future, ready};
 
+use herald_core::merging::{GestureKey, GestureRecord};
 use herald_core::{RerunRecord, RunKey};
 
 use super::{Held, StoreError, Unkept, Version, Versioned, Written};
@@ -24,6 +26,21 @@ pub trait Actions: Sync {
         action: &RerunRecord,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// The record of the gesture `key` that queued a pull request, where
+    /// one is kept (ADR-0087).
+    fn gesture(
+        &self,
+        key: &GestureKey,
+    ) -> impl Future<Output = Result<Option<Versioned<GestureRecord>>, StoreError>> + Send;
+
+    /// Writes `gesture` if its stored record is at `expected`, or absent
+    /// when `expected` is `None`.
+    fn put_gesture(
+        &self,
+        gesture: &GestureRecord,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
 
 impl Actions for Unkept {
@@ -37,6 +54,21 @@ impl Actions for Unkept {
     fn put_action(
         &self,
         _: &RerunRecord,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Actions.unsupported()))
+    }
+
+    fn gesture(
+        &self,
+        _: &GestureKey,
+    ) -> impl Future<Output = Result<Option<Versioned<GestureRecord>>, StoreError>> + Send {
+        ready(Err(Held::Actions.unsupported()))
+    }
+
+    fn put_gesture(
+        &self,
+        _: &GestureRecord,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         ready(Err(Held::Actions.unsupported()))

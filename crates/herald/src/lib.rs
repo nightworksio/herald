@@ -304,9 +304,14 @@ async fn answered(
             let done = rerunning::rerunning(config, vars, connect, asked, out);
             finished(done.await, err)
         }
-        Reading::MergeQueue { queue, private } => {
+        Reading::MergeQueue {
+            queue,
+            apply,
+            private,
+        } => {
             let printed = Printed::of(private, config.cli.private);
-            let done = merging::merging(config, vars, connect, (queue.as_deref(), printed), out);
+            let asked = ((queue.as_deref(), printed), apply);
+            let done = merging::merging(config, vars, connect, asked, out);
             finished(done.await, err)
         }
         Reading::Queue {

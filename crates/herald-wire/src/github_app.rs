@@ -40,7 +40,7 @@ pub enum Unminted {
 /// for: never used, and revoked with itself by [`Wide::revoked`] outside
 /// any budget. Made only by [`narrowed`].
 #[derive(Debug)]
-pub struct Wide(Secret);
+pub struct Wide(Secret, Permissions);
 
 impl Wide {
     /// The token revoked at `api` through `http` with itself, and dropped.
@@ -55,10 +55,15 @@ impl Wide {
 
 impl fmt::Display for Wide {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (permission, level) = RERUN_PERMISSION;
+        let asked = self
+            .1
+            .iter()
+            .map(|(permission, level)| format!("{permission}: {level}"))
+            .collect::<Vec<_>>()
+            .join(" and ");
         write!(
             f,
-            "the token GitHub minted holds other than {permission}: {level} on the one repository, so herald never uses it"
+            "the token GitHub minted holds other than {asked} on the one repository, so herald never uses it"
         )
     }
 }
@@ -86,10 +91,16 @@ fn read<T: serde::de::DeserializeOwned>(what: &'static str, bytes: &[u8]) -> Res
     crate::read(what, PARSE_LIMIT, bytes).map_err(|error| Unminted::unreadable(&error))
 }
 
+/// The permissions a narrowed token is minted with, each with its level.
+type Permissions = &'static [(&'static str, &'static str)];
+
 /// The one permission a re-run's token is minted with.
-const RERUN_PERMISSION: (&str, &str) = ("actions", "write");
-/// The one permission GitHub adds to every token it mints, which a re-run's
-/// token may hold beside [`RERUN_PERMISSION`].
+const RERUN_PERMISSIONS: Permissions = &[("actions", "write")];
+/// The permissions a token that hands a pull request to the merge queue is
+/// minted with (ADR-0087).
+const HAND_OFF_PERMISSIONS: Permissions = &[("contents", "write"), ("pull_requests", "write")];
+/// The one permission GitHub adds to every token it mints, which a narrowed
+/// token may hold beside those it was minted with.
 const METADATA_PERMISSION: (&str, &str) = ("metadata", "read");
 
 /// An installation, as GitHub's lookup answers it.
@@ -141,11 +152,13 @@ pub struct InstallationToken {
     pub app: Option<u64>,
 }
 
-/// A mint narrowed to re-running jobs of one repository: the body asked
-/// with, and the repository the token must name alone (ADR-0068).
+/// A mint narrowed to one call's permissions on one repository: the body
+/// asked with, the permissions, and the repository the token must name
+/// alone (ADR-0068, ADR-0087).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Narrowed {
     body: String,
+    permissions: Permissions,
     repository: String,
 }
 
@@ -157,16 +170,36 @@ impl Narrowed {
     }
 
     /// Whether a token minted with `permissions` on `repositories` holds
-    /// [`RERUN_PERMISSION`] and at most [`METADATA_PERMISSION`] beside it,
-    /// on this repository alone.
+    /// each permission asked, and at most [`METADATA_PERMISSION`] beside
+    /// them, on this repository alone.
     fn holds(&self, permissions: &BTreeMap<String, String>, repositories: &[Named]) -> bool {
-        let (permission, level) = RERUN_PERMISSION;
         let only = permissions.iter().all(|(named, held)| {
-            [RERUN_PERMISSION, METADATA_PERMISSION].contains(&(named.as_str(), held.as_str()))
+            let held = (named.as_str(), held.as_str());
+            held == METADATA_PERMISSION || self.permissions.contains(&held)
         });
-        let rerunning = permissions.get(permission).map(String::as_str) == Some(level);
+        let every = self.permissions.iter().all(|(permission, level)| {
+            permissions.get(*permission).map(String::as_str) == Some(level)
+        });
         let one = matches!(repositories, [named] if named.name == self.repository);
-        only && rerunning && one
+        only && every && one
+    }
+
+    /// A mint narrowed to `permissions` on the repository named `name`,
+    /// without its owner, alone.
+    fn of(permissions: Permissions, name: &str) -> Self {
+        let asked: serde_json::Map<String, serde_json::Value> = permissions
+            .iter()
+            .map(|(permission, level)| ((*permission).to_owned(), (*level).into()))
+            .collect();
+        Self {
+            body: serde_json::json!({
+                "permissions": asked,
+                "repositories": [name],
+            })
+            .to_string(),
+            permissions,
+            repository: name.to_owned(),
+        }
     }
 }
 
@@ -279,15 +312,15 @@ pub async fn app_of(
 /// (ADR-0068).
 #[must_use]
 pub fn rerunning(name: &str) -> Narrowed {
-    let (permission, level) = RERUN_PERMISSION;
-    Narrowed {
-        body: serde_json::json!({
-            "permissions": { permission: level },
-            "repositories": [name],
-        })
-        .to_string(),
-        repository: name.to_owned(),
-    }
+    Narrowed::of(RERUN_PERMISSIONS, name)
+}
+
+/// A mint narrowed to handing pull requests of the repository named
+/// `name`, without its owner, to its merge queue alone: `contents: write`
+/// and `pull_requests: write` and nothing else (ADR-0087).
+#[must_use]
+pub fn handing_off(name: &str) -> Narrowed {
+    Narrowed::of(HAND_OFF_PERMISSIONS, name)
 }
 
 /// `token`, an installation token minted at `api`, revoked through `http`
@@ -393,7 +426,7 @@ pub async fn minted_narrowed(
     Ok(if narrowed.holds(&permissions, &repositories) {
         Ok(minted)
     } else {
-        Err(Wide(minted.token))
+        Err(Wide(minted.token, narrowed.permissions))
     })
 }
 

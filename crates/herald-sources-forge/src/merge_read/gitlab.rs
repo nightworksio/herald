@@ -38,6 +38,15 @@ const MERGEABLE: &str = "mergeable";
 /// GitLab's system note of an approval.
 const APPROVED: &str = "approved this merge request";
 
+/// What a merge request read on its own is called in an error.
+const MERGE: &str = "the merge request";
+
+/// What a merge request's car on the merge train is called in an error.
+const CAR: &str = "the merge request's car on the merge train";
+
+/// The state of an open merge request.
+const OPENED: &str = "opened";
+
 /// GitLab's system note of an approval taken back.
 const UNAPPROVED: &str = "unapproved this merge request";
 
@@ -67,7 +76,32 @@ struct Merge {
     #[serde(default)]
     labels: Vec<String>,
     source_branch: Option<String>,
+    #[serde(default)]
+    state: String,
+    target_branch: Option<String>,
+    #[serde(default, rename = "merge_when_pipeline_succeeds")]
+    when_pipeline_succeeds: bool,
 }
+
+impl From<Merge> for Opened {
+    fn from(merge: Merge) -> Self {
+        Self {
+            number: merge.iid,
+            url: merge.web_url,
+            id: None,
+            draft: merge.draft,
+            head: merge.sha,
+            author: merge.author.map(|user| user.username),
+            labels: merge.labels,
+            head_repository: None,
+            head_branch: merge.source_branch,
+        }
+    }
+}
+
+/// A merge request's car on the merge train, of which nothing is read.
+#[derive(Deserialize)]
+struct Car {}
 
 #[derive(Deserialize)]
 struct Label {
@@ -76,6 +110,8 @@ struct Label {
 
 #[derive(Deserialize)]
 struct LabelEvent {
+    #[serde(default)]
+    id: Option<u64>,
     user: Option<User>,
     created_at: Timestamp,
     label: Option<Label>,
@@ -84,6 +120,8 @@ struct LabelEvent {
 
 #[derive(Deserialize)]
 struct Note {
+    #[serde(default)]
+    id: Option<u64>,
     author: Option<User>,
     #[serde(default)]
     body: String,
@@ -149,19 +187,46 @@ pub(super) async fn opened(
         ))
     };
     let merges: Vec<Merge> = reader.opened(http, &ask).await?;
-    Ok(merges
-        .into_iter()
-        .map(|merge| Opened {
-            number: merge.iid,
-            url: merge.web_url,
-            draft: merge.draft,
-            head: merge.sha,
-            author: merge.author.map(|user| user.username),
-            labels: merge.labels,
-            head_repository: None,
-            head_branch: merge.source_branch,
-        })
-        .collect())
+    Ok(merges.into_iter().map(Opened::from).collect())
+}
+
+/// The merge request `number`, where it is open into `branch`.
+pub(super) async fn one(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (branch, number): (&str, u64),
+) -> Result<Option<Opened>, Unpolled> {
+    let merge: Option<Merge> = reader
+        .read(
+            http,
+            reader.get(&format!("/merge_requests/{number}"))?,
+            MERGE,
+        )
+        .await?;
+    Ok(merge
+        .filter(|merge| merge.state == OPENED && merge.target_branch.as_deref() == Some(branch))
+        .map(Opened::from))
+}
+
+/// Whether merge request `number` is on the merge train, or set to join
+/// it once its pipeline succeeds.
+pub(super) async fn queued(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    number: u64,
+) -> Result<bool, Unpolled> {
+    let train = reader.get(&format!("/merge_trains/merge_requests/{number}"))?;
+    if reader.read::<Car>(http, train, CAR).await?.is_some() {
+        return Ok(true);
+    }
+    let merge: Merge = reader
+        .needed(
+            http,
+            reader.get(&format!("/merge_requests/{number}"))?,
+            MERGE,
+        )
+        .await?;
+    Ok(merge.when_pipeline_succeeds)
 }
 
 /// The label `label` added to and removed from merge request `number`,
@@ -191,6 +256,7 @@ pub(super) async fn labelled(
                 _ => return None,
             };
             Some(Mark {
+                id: event.id,
                 by: label_actor(event.user.map(Into::into), into)?,
                 at: event.created_at,
                 into,
@@ -221,6 +287,7 @@ pub(super) async fn commented(
         .filter(|note| !note.system)
         .filter_map(|note| {
             Some(Said {
+                id: note.id,
                 by: note.author?.into(),
                 at: note.created_at,
                 body: note.body,

@@ -1,3 +1,4 @@
+use herald_core::merging::{GestureKey, GestureRecord, HandOff, HandedOff};
 use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Written};
 
@@ -71,6 +72,81 @@ pub(super) async fn actions<S: Actions>(store: &S, checks: &mut Checks) -> Resul
     checks.ensure(
         store.action(&other).await?.is_none(),
         "the record of a re-run of one job was read for another",
+    );
+    Ok(())
+}
+
+/// A minute past noon.
+const MINUTE_PAST: jiff::Timestamp = jiff::Timestamp::constant(1_793_448_060, 0);
+
+/// The gesture by `w` on pull request 7 of `o/r` the forge names `id`, made
+/// at `at`.
+pub(super) fn gestured(id: u64, at: jiff::Timestamp) -> GestureKey {
+    GestureKey {
+        api: "https://api.github.com".to_owned(),
+        repository: "o/r".to_owned(),
+        number: 7,
+        gesture: id,
+        by: "w".to_owned(),
+        at,
+    }
+}
+
+/// The record of the gesture `key`, its head first seen and, where
+/// `outcome` names one, its hand-off.
+pub(super) fn gesture(key: GestureKey, outcome: Option<HandedOff>) -> GestureRecord {
+    GestureRecord {
+        key,
+        queue: "main".to_owned(),
+        seen: "abc".to_owned(),
+        seen_at: NOON,
+        hand_off: outcome.map(|outcome| HandOff {
+            head: "abc".to_owned(),
+            base: "def".to_owned(),
+            credential: "HERALD_MERGE".to_owned(),
+            at: NOON,
+            outcome,
+        }),
+    }
+}
+
+/// Whether the record of each gesture that queued a pull request is kept
+/// per gesture, written as new only once, so two runs racing never both
+/// hand it over.
+pub(super) async fn gestures<S: Actions>(store: &S, checks: &mut Checks) -> Result<(), StoreError> {
+    let key = gestured(0, NOON);
+    checks.ensure(
+        store.gesture(&key).await?.is_none(),
+        "a new store holds the record of a gesture",
+    );
+    let calling = gesture(key.clone(), Some(HandedOff::Calling));
+    let version = checks.written(store.put_gesture(&calling, None).await?);
+    checks.ensure(
+        store.put_gesture(&calling, None).await? == Written::Conflict,
+        "the record of a gesture was written as new over one that exists",
+    );
+    let queued = gesture(key.clone(), Some(HandedOff::Queued));
+    let next = checks.written(store.put_gesture(&queued, Some(version)).await?);
+    checks.ensure(
+        store.put_gesture(&calling, Some(version)).await? == Written::Conflict,
+        "the record of a gesture was written over a stale version",
+    );
+    checks.ensure(
+        store
+            .gesture(&key)
+            .await?
+            .map(|read| (read.value, read.version))
+            == Some((queued, next)),
+        "the record of a gesture did not read back as last written",
+    );
+    checks.ensure(
+        store.gesture(&gestured(1, MINUTE_PAST)).await?.is_none(),
+        "the record of one gesture was read for a later one",
+    );
+    let again = GestureKey { gesture: 2, ..key };
+    checks.ensure(
+        store.gesture(&again).await?.is_none(),
+        "the record of one gesture was read for another made at the same time",
     );
     Ok(())
 }

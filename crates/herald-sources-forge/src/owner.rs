@@ -103,12 +103,9 @@ impl Owned {
             file,
             project: options.project(),
             projects: options.projects(),
-            graphql: options.batched(forge).then(|| {
-                options
-                    .graphql
-                    .clone()
-                    .unwrap_or_else(|| graphql_beside(forge, &api_of(forge, options)))
-            }),
+            graphql: options
+                .batched(forge)
+                .then(|| crate::graphql::graphql_of(forge, options)),
             packaging: Packaging::of(forge, options),
         }
     }
@@ -878,15 +875,6 @@ impl Expand for Owned {
                     .map_err(|error| error.to_string())
             },
         )
-    }
-}
-
-/// The GraphQL endpoint beside `api`, the REST API of `forge`.
-fn graphql_beside(forge: Forge, api: &str) -> String {
-    if forge == Forge::GitLab {
-        crate::gitlab::graphql(api)
-    } else {
-        herald_wire::github::graphql(api)
     }
 }
 

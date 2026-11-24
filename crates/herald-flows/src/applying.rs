@@ -24,6 +24,7 @@ mod writing;
 pub use called::{Applied, Done};
 pub use signing::UNFINISHED;
 pub use writing::{SHARED_INSTALLATION, UNSEPARATED};
+pub(crate) use writing::{Writing, held_apart, minted_with};
 
 /// Why an apply is refused where the store keeps no record of a re-run.
 pub const UNKEPT: &str = "the store keeps no record of a re-run, so herald cannot make sure it re-runs a job once; choose a store that keeps records";
@@ -184,7 +185,7 @@ pub async fn rerun_plans<S: Store, C: Clock, G: Signer, H: Http>(
 
 /// The read credential the source `name`, `source`, reads with: the
 /// token it names, read through `secrets`, or its App's minted token.
-async fn read_credential<H>(
+pub(crate) async fn read_credential<H>(
     (source, connected): (&Source, &Connected<H>),
     secrets: &dyn DynSecrets,
     name: &SourceName,

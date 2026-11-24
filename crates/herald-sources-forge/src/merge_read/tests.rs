@@ -47,6 +47,7 @@ pub(super) fn reader(forge: Forge) -> ForgeMergeReader {
     ForgeMergeReader {
         origin: Origin::new(forge, &options, "o/r"),
         token: None,
+        graphql: crate::graphql::graphql_of(forge, &options),
     }
 }
 
@@ -91,6 +92,7 @@ pub(super) fn approved_within(
     let pull = Opened {
         number: 1,
         url: "u1".to_owned(),
+        id: None,
         draft: false,
         head: "h2".to_owned(),
         author: Some("author".to_owned()),
@@ -121,9 +123,11 @@ pub(super) fn entry(head: &str) -> Entered {
     Entered {
         number: 1,
         url: "https://forge.test/o/r/pull/1".to_owned(),
+        id: None,
         draft: false,
         head: head.to_owned(),
         gesture: Gesture {
+            id: Some(70),
             by: "w".to_owned(),
             at: at(10),
             head: Some(head.to_owned()),
@@ -166,6 +170,7 @@ fn actor(login: &str) -> Actor {
 
 fn mark(login: &str, minute: u32, into: bool) -> Mark {
     Mark {
+        id: Some(u64::from(minute)),
         by: actor(login),
         at: at(minute),
         into,
@@ -281,6 +286,7 @@ fn a_push_stamped_within_the_skew_before_a_gesture_counts_as_after_it() {
 #[test]
 fn an_edited_comment_is_no_gesture_but_still_a_cancel() {
     let said = |body: &str, edited| Said {
+        id: Some(1),
         by: actor("w"),
         at: at(1),
         body: body.to_owned(),
@@ -424,4 +430,199 @@ fn as_many_pull_requests_that_may_hold_a_gesture_as_herald_reads_are_read() {
     answers.extend((0..MOST_ENTERED).map(|_| ok(&json!([]))));
     let read = entered(Forge::GitLab, answers, &Enter::Comment("/merge".to_owned()));
     assert_eq!(read.unwrap(), []);
+}
+
+fn one(
+    forge: Forge,
+    answers: Vec<Response>,
+    enter: &Enter,
+) -> (ScriptedHttp, Result<Option<Entered>, Unpolled>) {
+    let http = ScriptedHttp::new(answers);
+    let asked = EnterAsked {
+        enter,
+        least: Permission::Write,
+        vouches: Vouches::Gesture,
+        skew: SKEW,
+    };
+    let entry = pollster::block_on(reader(forge).entry(&http, ("main", 7), asked));
+    (http, entry)
+}
+
+fn github_pull(state: &str, base: &str, labels: &[&str]) -> Value {
+    json!({
+        "number": 7, "html_url": "https://github.com/o/r/pull/7", "node_id": "PR_7",
+        "state": state, "draft": false, "base": { "ref": base },
+        "head": { "sha": "h7" }, "user": { "login": "author" },
+        "labels": labels.iter().map(|name| json!({ "name": name })).collect::<Vec<_>>()
+    })
+}
+
+#[test]
+fn a_pull_request_read_again_on_its_own_stands_only_open_into_the_branch_with_its_label() {
+    let label = Enter::Label(LABEL.to_owned());
+    for (pull, path) in [
+        (github_pull("closed", "main", &[LABEL]), "closed"),
+        (github_pull("open", "dev", &[LABEL]), "into another branch"),
+        (github_pull("open", "main", &[]), "without the label"),
+        (
+            json!({ "number": 7, "html_url": "u", "head": { "sha": "h7" } }),
+            "without a base",
+        ),
+    ] {
+        let (http, entry) = one(Forge::GitHub, vec![ok(&pull)], &label);
+        assert_eq!(entry.unwrap(), None, "{path}");
+        assert_eq!(http.requests().len(), 1, "{path}");
+    }
+    let (_, gone) = one(Forge::GitHub, vec![refused(404)], &label);
+    assert_eq!(gone.unwrap(), None);
+    let (_, failed) = one(Forge::GitHub, vec![refused(403)], &label);
+    assert!(failed.is_err());
+    let events = json!([{ "event": "labeled", "actor": { "login": "w", "id": 2 },
+        "created_at": stamp(10), "label": { "name": LABEL } }]);
+    let permission = json!({ "user": { "permissions": { "push": true } } });
+    let (http, entry) = one(
+        Forge::GitHub,
+        vec![
+            ok(&github_pull("open", "main", &[LABEL])),
+            ok(&events),
+            ok(&permission),
+        ],
+        &label,
+    );
+    let entry = entry.unwrap().unwrap();
+    assert_eq!(
+        (
+            entry.number,
+            entry.id.as_deref(),
+            entry.head.as_str(),
+            entry.gesture.by.as_str(),
+            entry.gesture.role
+        ),
+        (7, Some("PR_7"), "h7", "w", Some(Permission::Write))
+    );
+    assert_eq!(
+        http.asked()
+            .into_iter()
+            .map(|(url, _)| url)
+            .collect::<Vec<_>>(),
+        [
+            "https://api.github.com/repos/o/r/pulls/7",
+            "https://api.github.com/repos/o/r/issues/7/events?per_page=100&page=1",
+            "https://api.github.com/repos/o/r/collaborators/w/permission",
+        ]
+    );
+    let (_, ungestured) = one(
+        Forge::GitHub,
+        vec![ok(&github_pull("open", "main", &[LABEL])), ok(&json!([]))],
+        &label,
+    );
+    assert_eq!(ungestured.unwrap(), None);
+}
+
+#[test]
+fn a_merge_request_and_a_forgejo_pull_request_read_again_stand_only_open_into_the_branch() {
+    let comment = Enter::Comment("/merge".to_owned());
+    let merge = |state: &str, target: &str| json!({ "iid": 7, "web_url": "u", "sha": "h7", "state": state, "target_branch": target });
+    for (body, stands) in [
+        (merge("opened", "main"), true),
+        (merge("merged", "main"), false),
+        (merge("opened", "dev"), false),
+        (
+            json!({ "iid": 7, "web_url": "u", "sha": "h7", "state": "opened" }),
+            false,
+        ),
+    ] {
+        let (http, entry) = one(Forge::GitLab, vec![ok(&body), ok(&json!([]))], &comment);
+        assert_eq!(entry.unwrap(), None);
+        assert_eq!(http.requests().len(), if stands { 2 } else { 1 }, "{body}");
+    }
+    let pull = |state: &str, base: &str| json!({ "number": 7, "html_url": "u", "state": state, "head": { "sha": "h7" }, "base": { "ref": base } });
+    for (body, stands) in [
+        (pull("open", "main"), true),
+        (pull("closed", "main"), false),
+        (pull("open", "dev"), false),
+    ] {
+        let (http, entry) = one(Forge::Forgejo, vec![ok(&body), ok(&json!([]))], &comment);
+        assert_eq!(entry.unwrap(), None);
+        assert_eq!(http.requests().len(), if stands { 2 } else { 1 }, "{body}");
+    }
+}
+
+fn queued(forge: Forge, answers: Vec<Response>) -> (ScriptedHttp, Result<bool, Unpolled>) {
+    let http = ScriptedHttp::new(answers);
+    let queued = pollster::block_on(reader(forge).queued(&http, 7));
+    (http, queued)
+}
+
+#[test]
+fn whether_a_pull_request_is_in_the_forge_s_queue_is_read_back_from_the_forge() {
+    let github = |queued: Value| json!({ "data": { "repository": { "pullRequest": { "isInMergeQueue": queued } } } });
+    let (http, yes) = queued(Forge::GitHub, vec![ok(&github(json!(true)))]);
+    assert!(yes.unwrap());
+    let request = &http.requests()[0];
+    assert_eq!(request.url.expose(), "https://api.github.com/graphql");
+    assert_eq!(
+        http.bodies()[0]["variables"],
+        json!({ "owner": "o", "name": "r", "number": 7 })
+    );
+    assert!(
+        !queued(Forge::GitHub, vec![ok(&github(json!(false)))])
+            .1
+            .unwrap()
+    );
+    for unsaid in [
+        json!({ "data": { "repository": null } }),
+        json!({ "errors": [{ "message": "no" }], "data": { "repository": { "pullRequest": { "isInMergeQueue": true } } } }),
+    ] {
+        assert!(
+            queued(Forge::GitHub, vec![ok(&unsaid)]).1.is_err(),
+            "{unsaid}"
+        );
+    }
+    let (http, carried) = queued(Forge::GitLab, vec![ok(&json!({ "id": 1 }))]);
+    assert!(carried.unwrap());
+    assert_eq!(
+        http.asked()[0].0,
+        "https://gitlab.com/api/v4/projects/o%2Fr/merge_trains/merge_requests/7"
+    );
+    let merge = |set: bool| json!({ "iid": 7, "web_url": "u", "sha": "h7", "merge_when_pipeline_succeeds": set });
+    let (http, set) = queued(Forge::GitLab, vec![refused(404), ok(&merge(true))]);
+    assert!(set.unwrap());
+    assert_eq!(
+        http.asked()[1].0,
+        "https://gitlab.com/api/v4/projects/o%2Fr/merge_requests/7"
+    );
+    assert!(
+        !queued(Forge::GitLab, vec![refused(404), ok(&merge(false))])
+            .1
+            .unwrap()
+    );
+    assert!(
+        queued(Forge::GitLab, vec![refused(404), refused(404)])
+            .1
+            .is_err()
+    );
+    let (http, forgejo) = queued(Forge::Forgejo, Vec::new());
+    assert!(!forgejo.unwrap());
+    assert_eq!(http.requests().len(), 0);
+}
+
+#[test]
+fn a_repository_named_without_its_owner_cannot_be_read_back_from_github_s_merge_queue() {
+    let options = SourceOptions {
+        repository: Some("r".to_owned()),
+        ..SourceOptions::default()
+    };
+    let unowned = ForgeMergeReader {
+        origin: Origin::new(Forge::GitHub, &options, "r"),
+        token: None,
+        graphql: crate::graphql::graphql_of(Forge::GitHub, &options),
+    };
+    let http = ScriptedHttp::new(Vec::new());
+    let queued = pollster::block_on(unowned.queued(&http, 7));
+    assert!(
+        matches!(queued, Err(Unpolled::Unreadable(ref why)) if why == "r names no owner"),
+        "{queued:?}"
+    );
+    assert_eq!(http.requests().len(), 0);
 }

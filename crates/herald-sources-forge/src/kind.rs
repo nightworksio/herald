@@ -419,6 +419,21 @@ impl SourceConfig for ForgeSource {
         Some(Arc::new(crate::merge_read::ForgeMergeReader {
             origin: Origin::new(self.forge, &self.options, &merging.repository),
             token: read.map(Token::of),
+            graphql: crate::graphql::graphql_of(self.forge, &self.options),
+        }))
+    }
+
+    fn merge_writer(
+        &self,
+        with: herald_kinds::WriteWith<'_>,
+    ) -> Option<Arc<dyn herald_kinds::MergeWriter>> {
+        if self.forge == Forge::Forgejo {
+            return None;
+        }
+        Some(Arc::new(crate::merge_write::ForgeMergeWriter {
+            origin: Origin::new(self.forge, &self.options, &with.merging.repository),
+            graphql: crate::graphql::graphql_of(self.forge, &self.options),
+            token: Token::of(with.credential),
         }))
     }
 

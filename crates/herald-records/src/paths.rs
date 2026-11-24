@@ -253,6 +253,13 @@ pub(crate) fn action(key: &herald_core::RunKey) -> String {
     format!("actions/{}.json", segment(&key.to_string()))
 }
 
+/// Where the record of the gesture `key` that queued a pull request is
+/// kept: every gesture in one directory, its key written as one segment
+/// (ADR-0087).
+pub(crate) fn gesture(key: &herald_core::merging::GestureKey) -> String {
+    format!("gestures/{}.json", segment(&key.to_string()))
+}
+
 pub(crate) fn position(destination: &DestinationName) -> String {
     format!("positions/{}.json", segment(destination.as_str()))
 }

@@ -233,7 +233,7 @@ fn a_narrowed_token_holding_more_than_re_running_on_the_one_repository_is_refuse
     ] {
         let (scripted, refused) = mint_narrowed(&narrowed_token(&permissions, &repositories));
         assert!(
-            matches!(refused, Ok(Err(ref wide @ Wide(ref token))) if token.expose() == "ghs_minted" && wide.to_string().contains("holds other than actions: write") && !format!("{wide:?}").contains("ghs_minted")),
+            matches!(refused, Ok(Err(ref wide @ Wide(ref token, _))) if token.expose() == "ghs_minted" && wide.to_string().contains("holds other than actions: write") && !format!("{wide:?}").contains("ghs_minted")),
             "{permissions} {repositories}: {refused:?}"
         );
         assert_eq!(scripted.requests().len(), 1);
@@ -245,7 +245,10 @@ fn a_narrowed_token_holding_more_than_re_running_on_the_one_repository_is_refuse
 #[test]
 fn a_token_is_revoked_with_itself_and_a_failed_revocation_is_said() {
     for (status, revoked_now) in [(204, true), (500, false)] {
-        let wide = Wide(Secret::new("github_apps.rerun", "ghs_minted"));
+        let wide = Wide(
+            Secret::new("github_apps.rerun", "ghs_minted"),
+            RERUN_PERMISSIONS,
+        );
         let scripted = ScriptedHttp::new(vec![answer(status, &json!({}))]);
         let answered = pollster::block_on(wide.revoked(&scripted, API));
         assert_eq!(answered.is_ok(), revoked_now, "{status}: {answered:?}");
@@ -311,4 +314,47 @@ fn an_app_lookup_or_a_revocation_that_reaches_nothing_or_reads_nothing_says_so()
         pollster::block_on(app_of(&erased, (API, 9), &jwt_of())),
         Err(Unminted::Unreadable(_))
     ));
+}
+
+#[test]
+fn a_hand_off_s_token_holds_contents_and_pull_requests_write_on_the_one_repository_alone() {
+    let narrowed = handing_off("r");
+    assert_eq!(
+        serde_json::from_str::<Value>(narrowed.body()).unwrap(),
+        json!({ "permissions": { "contents": "write", "pull_requests": "write" }, "repositories": ["r"] })
+    );
+    let one = json!([{ "name": "r" }]);
+    let both = json!({ "contents": "write", "pull_requests": "write", "metadata": "read" });
+    let held = |permissions: &Value, repositories: &Value| {
+        let scripted = ScriptedHttp::new(vec![answer(
+            201,
+            &narrowed_token(permissions, repositories),
+        )]);
+        pollster::block_on(minted_narrowed(
+            &scripted,
+            (API, Installation::Fixed(9), None),
+            ("herald", &jwt_of()),
+            &narrowed,
+        ))
+    };
+    assert!(matches!(held(&both, &one), Ok(Ok(_))));
+    for (permissions, repositories) in [
+        (json!({ "contents": "write" }), one.clone()),
+        (json!({ "pull_requests": "write" }), one.clone()),
+        (
+            json!({ "contents": "write", "pull_requests": "read" }),
+            one.clone(),
+        ),
+        (
+            json!({ "contents": "write", "pull_requests": "write", "actions": "write" }),
+            one.clone(),
+        ),
+        (both.clone(), json!([{ "name": "s" }])),
+    ] {
+        let refused = held(&permissions, &repositories);
+        assert!(
+            matches!(refused, Ok(Err(ref wide)) if wide.to_string().contains("holds other than contents: write and pull_requests: write")),
+            "{permissions} {repositories}: {refused:?}"
+        );
+    }
 }

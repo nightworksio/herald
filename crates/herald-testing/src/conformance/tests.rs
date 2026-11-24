@@ -158,6 +158,8 @@ enum Fault {
     KeepsTheFirstAction,
     SharesActionsAcrossHeads,
     SharesActionsAcrossJobs,
+    OverwritesAnyGestureVersion,
+    SharesGesturesAcrossTimes,
 }
 
 struct Faulty {

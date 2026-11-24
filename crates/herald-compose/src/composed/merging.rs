@@ -1,11 +1,16 @@
-//! `herald merge-queue`'s dry run through a composed herald: each merge
-//! queue read from its forge with its source's read credential (ADR-0087).
+//! `herald merge-queue` through a composed herald: each merge queue read
+//! from its forge with its source's read credential, and, applied, each
+//! pull request due handed to the forge's queue with the queue's own write
+//! credential (ADR-0087).
+
+use std::sync::Arc;
 
 use herald_core::Printed;
-use herald_flows::{MergeQueueRead, Stop, merge_queues};
-use herald_ports::{Keyring, Store};
+use herald_flows::{Handing, MergeQueueRead, Stop, merge_apply, merge_queues};
+use herald_ports::{Base, Keyring, Store};
 
-use super::{Composed, ServingOn, Through};
+use super::{Composed, ServingOn, TIMEOUT_MS, Through};
+use crate::counted::Counted;
 use crate::host::Host;
 
 /// The merge queue a name names, or every one, as printed.
@@ -22,6 +27,30 @@ impl<H: Host> Through<H> for Queues<'_> {
         merge_queues(
             (serving.config, serving.connected, serving.ports),
             (self.0, self.1),
+        )
+        .await
+    }
+}
+
+/// The merge queue a name names, or every one, applied as printed.
+struct Apply<'a, H: Host> {
+    handing: &'a Handing<'a, Counted<H::Http>>,
+    name: Option<&'a str>,
+    printed: Printed,
+}
+
+impl<H: Host> Through<H> for Apply<'_, H> {
+    type Done = Result<Vec<MergeQueueRead>, Stop>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
+        merge_apply(
+            (serving.config, serving.connected, serving.ports),
+            self.handing,
+            (self.name, self.printed),
         )
         .await
     }
@@ -52,5 +81,36 @@ where
             Queues(name, printed),
         )
         .await
+    }
+
+    /// The merge queue `name`, or every one, read now as
+    /// [`Composed::merge_queues`] reads it, and each pull request due
+    /// handed to the forge's queue with the queue's own write credential,
+    /// read from the host's secrets here alone (ADR-0087).
+    ///
+    /// # Errors
+    ///
+    /// Where no merge queue has the name.
+    pub async fn merge_apply(
+        &self,
+        (name, printed): (Option<&str>, Printed),
+    ) -> Result<Vec<MergeQueueRead>, Stop> {
+        let outbound = self.config.http.clone().timed(self.host.var(TIMEOUT_MS));
+        let connect = |base: Base<'_>| {
+            self.host
+                .connect(base, &outbound)
+                .map(|http| Counted::new(http, Arc::clone(&self.made)))
+        };
+        let handing = Handing {
+            secrets: self.host.secrets(),
+            connect: &connect,
+        };
+        let apply = Apply::<H> {
+            handing: &handing,
+            name,
+            printed,
+        };
+        self.through(herald_flows::Admission::Once, self.started(), apply)
+            .await
     }
 }

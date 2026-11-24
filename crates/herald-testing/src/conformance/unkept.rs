@@ -448,4 +448,14 @@ pub(super) async fn actions(store: &impl Actions, checks: &mut Checks) {
         Held::Actions,
         "put_action",
     );
+    let key = super::actions::gestured(0, NOON);
+    refused(checks, store.gesture(&key).await, Held::Actions, "gesture");
+    refused(
+        checks,
+        store
+            .put_gesture(&super::actions::gesture(key, None), None)
+            .await,
+        Held::Actions,
+        "put_gesture",
+    );
 }

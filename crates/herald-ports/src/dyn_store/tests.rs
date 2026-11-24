@@ -248,6 +248,21 @@ impl crate::Actions for Refusing {
     ) -> Result<Written, StoreError> {
         Err(refused("put_action"))
     }
+
+    async fn gesture(
+        &self,
+        _: &herald_core::merging::GestureKey,
+    ) -> Result<Option<Versioned<herald_core::merging::GestureRecord>>, StoreError> {
+        Err(refused("gesture"))
+    }
+
+    async fn put_gesture(
+        &self,
+        _: &herald_core::merging::GestureRecord,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_gesture"))
+    }
 }
 
 impl crate::Decisions for Refusing {
@@ -926,5 +941,33 @@ fn an_erased_store_hands_the_record_of_each_re_run_to_the_one_it_erases() {
             answered(erased.put_action(&action, None)),
         ],
         [Some(refused("action")), Some(refused("put_action"))]
+    );
+}
+
+#[test]
+fn an_erased_store_hands_the_record_of_each_gesture_to_the_one_it_erases() {
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    let key = herald_core::merging::GestureKey {
+        api: "https://api.github.com".to_owned(),
+        repository: "o/r".to_owned(),
+        number: 7,
+        gesture: 70,
+        by: "w".to_owned(),
+        at: Timestamp::UNIX_EPOCH,
+    };
+    let gesture = herald_core::merging::GestureRecord {
+        key: key.clone(),
+        queue: "main".to_owned(),
+        seen: "abc".to_owned(),
+        seen_at: Timestamp::UNIX_EPOCH,
+        hand_off: None,
+    };
+    assert_eq!(
+        [
+            answered(erased.gesture(&key)),
+            answered(erased.put_gesture(&gesture, None)),
+        ],
+        [Some(refused("gesture")), Some(refused("put_gesture"))]
     );
 }

@@ -10,6 +10,8 @@ use herald_testing::{FakeClock, FakeSigner};
 
 use crate::harness::{NOON, Script, config, healthy, secrets};
 
+mod handed;
+
 const QUEUES: &str = "[sources.other]\nkind = \"github\"\nrepository = \"acme/other\"\ntoken = { secret = \"HERALD_OTHER\" }\n[merge_queues.a]\nsource = \"gate\"\nbranch = \"main\"\n[merge_queues.b]\nsource = \"other\"\nbranch = \"main\"\n[merge_queues.c]\nsource = \"gate\"\nbranch = \"dev\"\n";
 
 /// Each queue read, as its name, repository and whether it is unread with

@@ -1,3 +1,6 @@
+use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::{RerunRecord, RunKey};
+
 use super::*;
 
 const GITHUB: &str = "github";
@@ -633,4 +636,82 @@ pub(crate) fn kept_base() -> herald_core::KeptBase {
         checks: herald_core::Checks::Passed,
     };
     herald_core::KeptBase::of(key, vec![part], Timestamp::UNIX_EPOCH).unwrap()
+}
+
+struct OneGesture(GestureRecord);
+
+impl Actions for OneGesture {
+    fn action(
+        &self,
+        _: &RunKey,
+    ) -> impl Future<Output = Result<Option<Versioned<RerunRecord>>, StoreError>> + Send {
+        ready(Ok(None))
+    }
+
+    fn put_action(
+        &self,
+        _: &RerunRecord,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Ok(Written::Conflict))
+    }
+
+    fn gesture(
+        &self,
+        _: &GestureKey,
+    ) -> impl Future<Output = Result<Option<Versioned<GestureRecord>>, StoreError>> + Send {
+        ready(Ok(Some(Versioned {
+            value: self.0.clone(),
+            version: Version(3),
+        })))
+    }
+
+    fn put_gesture(
+        &self,
+        _: &GestureRecord,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Ok(Written::Written(Version(
+            expected.map_or(1, |at| at.0 + 1),
+        ))))
+    }
+}
+
+#[test]
+fn the_record_of_a_gesture_kept_somewhere_reads_and_writes_as_its_keeper_does() {
+    let key = GestureKey {
+        api: "https://api.github.com".to_owned(),
+        repository: "o/r".to_owned(),
+        number: 7,
+        gesture: 70,
+        by: "w".to_owned(),
+        at: Timestamp::UNIX_EPOCH,
+    };
+    let record = GestureRecord {
+        key: key.clone(),
+        queue: "main".to_owned(),
+        seen: "abc".to_owned(),
+        seen_at: Timestamp::UNIX_EPOCH,
+        hand_off: None,
+    };
+    let keeper = OneGesture(record.clone());
+    let kept = Some(&keeper);
+    assert_eq!(
+        pollster::block_on(kept.gesture(&key)),
+        Ok(Some(Versioned {
+            value: record.clone(),
+            version: Version(3)
+        }))
+    );
+    assert_eq!(
+        pollster::block_on(kept.put_gesture(&record, Some(Version(3)))),
+        Ok(Written::Written(Version(4)))
+    );
+    for unkept in [None, Some(&Unkept)] {
+        assert_eq!(unsupported(unkept.gesture(&key)), naming("re-runs"));
+        assert_eq!(
+            unsupported(unkept.put_gesture(&record, None)),
+            naming("re-runs")
+        );
+    }
 }

@@ -9,9 +9,11 @@ fn judged(next: Next, role: Option<Permission>) -> Judged {
         entered: Entered {
             number: 4,
             url: "https://github.com/o/r/pull/4".to_owned(),
+            id: None,
             draft: false,
             head: "h1".to_owned(),
             gesture: Gesture {
+                id: Some(70),
                 by: "w".to_owned(),
                 at: "2026-01-01T00:10:00Z".parse().unwrap(),
                 head: Some("h1".to_owned()),
@@ -32,6 +34,7 @@ fn read(found: Found) -> MergeQueueRead {
         repository: "o/r".to_owned(),
         branch: "main".to_owned(),
         runs: Runs::Herald,
+        idle: Vec::new(),
         found,
     }
 }
@@ -64,6 +67,21 @@ fn every_next_step_has_its_words() {
         Next::Verdict(Verdict::Merge),
         Next::HandOff,
         Next::Draft,
+        Next::Idle,
+        Next::Handed {
+            outcome: HandedOff::Calling,
+            at: "2026-01-01T00:20:00Z".parse().unwrap(),
+        },
+        Next::Handed {
+            outcome: HandedOff::Unsettled,
+            at: "2026-01-01T00:20:00Z".parse().unwrap(),
+        },
+        Next::Took(Took::Queued),
+        Next::Took(Took::Declined("no".to_owned())),
+        Next::Took(Took::HeadMoved),
+        Next::Took(Took::Unsettled),
+        Next::Took(Took::Refused("why".to_owned())),
+        Next::Took(Took::Unrecorded(HandedOff::Queued)),
     ]
     .iter()
     .map(next)
@@ -75,8 +93,17 @@ fn every_next_step_has_its_words() {
             "next, its branch is brought up to date with the base",
             "in flight, waiting for its checks and the forge",
             "next, it is merged with its head as the expected head",
-            "next, it is handed to the forge's queue",
+            "next, it is handed to the forge's queue with its head as the expected head",
             "waits until it is no draft",
+            "due to be handed to the forge's queue, but the queue takes no step",
+            "herald recorded handing it to the forge's queue at 2026-01-01T00:20:00Z: the call may or may not have reached the forge, so herald never hands it over again for this gesture",
+            "herald recorded handing it to the forge's queue at 2026-01-01T00:20:00Z: the forge's answer was lost and it was not found in the forge's queue, so herald never hands it over again for this gesture",
+            "handed to the forge's queue, which took it",
+            "the forge refused to take it into its queue: no",
+            "not in the forge's queue: its head is no longer the one its gesture vouches for (head-moved)",
+            "the forge's answer was lost and it was not found in the forge's queue, so herald never hands it over again for this gesture",
+            "not handed over: why",
+            "the forge took it into its queue, but herald's record of it could not be updated, so herald never hands it over again for this gesture",
         ]
     );
 }

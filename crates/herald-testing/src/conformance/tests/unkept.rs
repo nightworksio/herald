@@ -112,7 +112,7 @@ fn every_method_of_recalls_a_store_keeps_none_of_is_probed() {
 }
 
 #[test]
-fn every_method_of_the_records_of_re_runs_a_store_keeps_none_of_is_probed() {
+fn every_method_of_the_records_of_re_runs_and_gestures_a_store_keeps_none_of_is_probed() {
     let mut checks = Checks::default();
     pollster::block_on(crate::conformance::unkept::actions(
         &Option::<&FakeStore>::None,
@@ -129,6 +129,8 @@ fn every_method_of_the_records_of_re_runs_a_store_keeps_none_of_is_probed() {
         [
             "action was not refused as unsupported by a store keeping none of its kind",
             "put_action was not refused as unsupported by a store keeping none of its kind",
+            "gesture was not refused as unsupported by a store keeping none of its kind",
+            "put_gesture was not refused as unsupported by a store keeping none of its kind",
         ]
     );
 }

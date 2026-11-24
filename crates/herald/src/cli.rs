@@ -141,11 +141,16 @@ pub(crate) enum Reading {
     },
     /// Print each merge queue's entries read from its forge, what the queue
     /// does next with each and why; nothing is written and no write
-    /// credential is read (ADR-0087).
+    /// credential is read unless --apply is given (ADR-0087).
     MergeQueue {
         /// The queue, as `[merge_queues.<name>]` names it; every queue where
         /// absent.
         queue: Option<String>,
+        /// Take the steps: hand each pull request due to the forge's queue
+        /// with the queue's write credential, after reading it again and
+        /// recording the step first. Without it nothing is written.
+        #[arg(long)]
+        apply: bool,
         /// Say this output is private, so the entries of private and
         /// internal repositories, and why a read failed, are printed;
         /// without it they are withheld, unless `[cli] private` says so. A

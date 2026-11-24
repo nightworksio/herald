@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use crate::{SecretRef, kind_name};
 
+pub use record::{GestureKey, GestureRecord, HandOff, HandedOff};
 pub use verdict::{Check, CheckState, Heads, Left, Read, Verdict, unvouched, verdict, vouched};
 
 /// The label a pull request is queued by where `enter` is absent.
@@ -210,6 +211,7 @@ impl Write {
     }
 }
 
+mod record;
 #[cfg(test)]
 mod tests;
 mod verdict;
