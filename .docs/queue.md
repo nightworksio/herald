@@ -192,6 +192,9 @@ The entry is part of its pull request: a private or internal
 repository's position, state and timing are shown, withheld and counted
 exactly as its row is.
 
+Putting a pull request in a merge queue, or herald's own queue merging
+it, is [merging](merging.md).
+
 ### Areas
 
 A source names the areas of its repositories by path globs (ADR-0071):

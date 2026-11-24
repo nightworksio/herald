@@ -661,6 +661,9 @@ past one of its `stages`, once a stage and spell of waiting. `herald
 queue` prints a view now; [`.docs/queue.md`](.docs/queue.md) covers the
 rest. A view's `decide` asks models only what its rules cannot tell, by
 their own APIs or a host's binding ([`.docs/deciders.md`](.docs/deciders.md)).
+A `[merge_queues.<name>]` table hands the pull requests a writer queues
+to the forge's merge queue, or runs herald's own serial queue on a branch
+([`.docs/merging.md`](.docs/merging.md)).
 
 ### Every package of a namespace
 
