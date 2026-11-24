@@ -24,7 +24,8 @@ write = { app = "merger" }        # or { token = { secret = "NAME" } }
 
 `herald setup merge-queue` asks for each key in turn, with its default
 chosen and what the forge says shown beside it (whether the branch has a
-queue, which methods the repository allows), and writes the table into
+queue, which methods the repository allows), offers `runs = "herald"`
+where the forge has no queue on the branch, and writes the table into
 the config once you confirm it.
 
 | Key | What it is | Default |
@@ -33,8 +34,9 @@ the config once you confirm it.
 | `repository` | the repository, where the source is an owner | the source's own |
 | `branch` | the base branch the queue merges into; one table per branch | required |
 | `runs` | `"forge"`: hand each pull request to the forge's merge queue or merge train; `"herald"`: herald's own serial queue, also where the forge has one | `"forge"` |
-| `enter` | `{ label = "<name>" }`, or `{ comment = "<command>" }`: a comment whose whole body is the command | `{ label = "herald:merge" }` |
+| `enter` | `{ label = "<name>" }`, or `{ comment = "<command>" }`: a comment whose whole body is the command, or the command and a commit's full id | `{ label = "herald:merge" }` |
 | `least` | the least role the person who queues holds: `"write"` (GitHub write, GitLab Developer, Forgejo write, or above), `"maintain"` or `"admin"` | `"write"` |
+| `vouches` | which head a gesture vouches for: `"gesture"`, `"seen"` or `"approved"` (see [which head a gesture vouches for](#which-head-a-gesture-vouches-for)) | `"gesture"` |
 | `method` | `"merge"`, `"squash"`, `"rebase"`, `"fast-forward"`, or `"repository"`: the repository's one allowed method | required: a queue without it does not start |
 | `message` | `"forge"`: the forge's own commit message for the method; `"pull"`: the pull request's title and body, with `"merge"` or `"squash"` | `"forge"` |
 | `may_fail` | checks that may be red or missing on this branch; never one the forge requires; herald's own queue alone, refused with `runs = "forge"` | none |
@@ -53,13 +55,29 @@ A source sets how herald brings a branch up to date:
 
 A writer adds the label, or writes the comment. herald reads who did it,
 and their role on the repository, when it takes the pull request in and
-again right before each step it takes. The gesture vouches for the head
-the pull request had when it was made: a later push takes the pull
+again right before each step it takes. Forgejo and Gitea tell a
+person's role on a repository to its administrators alone, so there the
+source's read token is a repository administrator's. The gesture
+vouches for one head, as `vouches` says: a push past it takes the pull
 request out, and it comes back only by a new gesture. Removing the
 label, deleting the comment, or the comment command followed by
 the word `cancel` from the author, a writer or the person who queued it takes it
 out. Pull requests go first in, first out per branch; nothing jumps the
 queue.
+
+### Which head a gesture vouches for
+
+| `vouches` | The head it vouches for | What it accepts |
+|-----------|-------------------------|-----------------|
+| `"gesture"` | the head the pull request had at the gesture's time on the forge, by the forge's own record of pushes to its branch (GitHub's repository activity, GitLab's diff versions, Forgejo's timeline) | nothing past that record: where it cannot be read, as for a fork whose activity the read credential does not reach, a label vouches for no head |
+| `"seen"` | the head herald first reads with the gesture standing, kept in the store's record | the window between the gesture and herald's first read: a push in it is vouched for as if the writer had seen it |
+| `"approved"` | the head herald first reads with the gesture standing, once a person holding `least` has approved that exact commit on the forge | the forge's review record: GitHub's and Forgejo's reviews name their commit; a GitLab approval counts only where the project removes approvals when a commit is added |
+
+A comment command followed by a commit's full id (`/merge 3f2a…`)
+vouches for that commit alone, whatever `vouches` says, so it works
+where the forge's record of pushes cannot be read. Each read of the
+gestures, pushes or reviews that comes back partial leaves the pull
+request as `unread`.
 
 ## The forge's queue
 
@@ -69,8 +87,12 @@ it over: GitHub's `enqueuePullRequest` with the expected head, or
 GitLab's merge train with the head's `sha`. The forge proves and merges
 it. `queue = true` on a view shows where it stands (see [the
 queue](queue.md#merge-queue)). Where the forge has no queue on the
-branch, the queue does not start and `herald doctor` says why: the
-forge, its tier or the kind of repository.
+branch, the queue does not start and `herald doctor` says why (the
+forge, its tier or the kind of repository) and that `runs = "herald"`
+runs herald's own. On GitHub a branch under
+classic branch protection may have a merge queue the REST API does not
+show; there doctor says the forge would not say, and each pull request
+is handed over all the same.
 
 ## herald's own queue
 
@@ -100,7 +122,10 @@ what decides whether it stands or is green could not be read whole
 (`unread`): a failure, never taken as `removed`. herald reads at most 500
 of a pull request's label events, comments or timeline entries and one
 page of its head's checks, so a pull request with more leaves as
-`unread`.
+`unread`. A queue whose branch has more than 500 open pull requests, or
+more than 50 that may hold a gesture (those carrying the label, or every
+open one where the gesture is a comment), is not read at all: `herald
+merge-queue` says why, and herald takes no step in it.
 A view's row holds the reason in `queue.left`, and a rule with `dequeued
 = true` tells people.
 

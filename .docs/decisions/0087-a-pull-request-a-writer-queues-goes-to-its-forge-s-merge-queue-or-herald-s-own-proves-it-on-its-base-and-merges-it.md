@@ -44,11 +44,13 @@ once.
    whose forge rules let a pull request merge only through the forge's
    queue, herald's own merge is refused by the forge, and doctor says so
    before it is tried. Where `runs = "forge"` and the forge has no queue
-   on the branch, the queue refuses to start and doctor names why: the
-   forge, the tier or the repository kind.
+   on the branch, the queue refuses to start and doctor names why (the
+   forge, the tier or the repository kind) and that `runs = "herald"`
+   runs herald's own.
 3. **A writer's gesture puts a pull request in.** `enter = { label =
    "<name>" }`, `"herald:merge"` where absent, or `enter = { comment =
-   "<command>" }`: a comment whose whole body, trimmed, is the command.
+   "<command>" }`: a comment whose whole body, trimmed, is the command,
+   or the command followed by a commit's full id.
    `least` names the least role the person who made the gesture holds on
    the repository: `"write"` (GitHub write, GitLab Developer, Forgejo
    write, or above; the default), `"maintain"` or `"admin"`. herald reads
@@ -62,9 +64,24 @@ once.
    who made the gesture takes it out with the comment command followed by
    the word `cancel`. A pull request enters again only by a gesture made after it
    left.
-4. **A gesture vouches for one head.** It vouches for the head the pull
-   request had when it was made; a head that changes afterwards by any
-   push herald did not make takes the pull request out (`head-moved`).
+4. **A gesture vouches for one head.** `vouches` says which, and a head
+   that changes past it by any push herald did not make takes the pull
+   request out (`head-moved`). `"gesture"` (the default): the head the
+   pull request had at the gesture's forge time, by the forge's own
+   record of pushes to its branch (GitHub's repository activity, GitLab's
+   merge request diff versions, Forgejo's timeline); where that record
+   cannot be read whole, a label vouches for no head. `"seen"`: the head
+   herald first reads with the gesture standing, kept in the store's
+   record, accepting the window between the gesture and that first read,
+   in which a push is vouched for as if the writer had seen it.
+   `"approved"`: that first-seen head once a person holding `least` has
+   approved that exact commit on the forge (GitHub's review `commit_id`,
+   Forgejo's review `commit_id`, GitLab's approvals only where the
+   project removes approvals when a commit is added), accepting the
+   forge's review record as the vouch. A comment command followed by a
+   commit's full id vouches for that commit alone under every value.
+   Every read of the gestures, pushes or reviews that comes back partial
+   leaves the pull request as `unread`.
 5. **Order.** First in, first out per base branch, by the forge's time
    of each gesture. Nothing jumps the queue.
 6. **The hand-off.** With `runs = "forge"` herald checks the gesture,
@@ -168,11 +185,12 @@ once.
 15. **The setup wizard sets every key.** `herald setup merge-queue`
     asks for each key in turn, with its default chosen and the forge's
     own answers shown (whether the branch has a queue, the methods the
-    repository allows), and writes the `[merge_queues.<name>]` table into
-    the config after showing it.
+    repository allows), offers `runs = "herald"` where the forge has no
+    queue on the branch, and writes the `[merge_queues.<name>]` table
+    into the config once the operator confirms it.
 16. **Doctor names, for each queue,** the forge and whether it has a
     queue on the branch, the method and whether the repository allows
-    it, the update style, whether the write credential is set and held
+    it, which head a gesture vouches for, the update style, whether the write credential is set and held
     apart, whether the store keeps records, and where the steps run.
 17. **Every forge's own host.** Each read and step goes to the source's
     configured API base: github.com, a GHE.com tenant, GitHub Enterprise
@@ -192,7 +210,8 @@ once.
 |-----|------------------|
 | A person who may only label (GitHub's triage role) | Nothing: the label's maker must hold `least`. Removing a label takes a pull request out, the safe direction. |
 | A writer | Queue a pull request at the head they saw. They could merge it by hand. |
-| The author without write, after a writer queued it | A push takes the pull request out (`head-moved`); it re-enters only by a new gesture. |
+| The author without write, after a writer queued it | With `vouches = "gesture"`, a push after the gesture takes the pull request out (`head-moved`); it re-enters only by a new gesture. With `"seen"`, a push before herald's first read of the gesture is vouched for; with `"approved"`, only where a writer approved that commit. |
+| A forge record herald cannot read whole (pushes, gestures, reviews) | Nothing stands on it: the pull request leaves as `unread`, and a label vouches for no head. |
 | A comment from someone without the role | Ignored; an edited comment counts as its author's. |
 | A fork pull request | Its CI and checks are the forge's; herald runs none of its code and checks out nothing. A fork that does not let maintainers edit is never updated. |
 | A forged or replayed webhook to `herald server` | It only wakes the queue: every step reads the gesture, the role, the head, the checks and mergeable from the forge's API first. |
