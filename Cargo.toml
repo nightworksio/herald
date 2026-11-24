@@ -64,7 +64,7 @@ pulldown-cmark = { version = "0.13", default-features = false, features = ["html
 unicode-segmentation = "1"
 url = "2"
 jsonschema = { version = "0.61", default-features = false }
-jiff = { version = "0.2", default-features = false, features = ["std", "serde"] }
+jiff = { version = "1.0", default-features = false, features = ["std", "serde"] }
 pollster = "1"
 ring = "0.17"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
