@@ -237,6 +237,16 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// What reads the repository `merging` gives a merge queue, with `read`
+    /// where the source has one; none where it is no forge (ADR-0087).
+    fn merge_reader(
+        &self,
+        _merging: &crate::Merging,
+        _read: Option<Credential>,
+    ) -> Option<Arc<dyn crate::MergeReader>> {
+        None
+    }
+
     /// How an operator signs in at its forge to apply a re-run, or why none
     /// can (ADR-0068).
     ///

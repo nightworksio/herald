@@ -1,6 +1,7 @@
 //! herald composed on a host made of fakes: every store kind reached
 //! through the host's ports, and requests and rounds served over it.
 
+mod merging;
 mod pages;
 mod reports;
 mod reran;

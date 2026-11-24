@@ -1,5 +1,5 @@
 use herald_core::Permission;
-use herald_core::merging::{AppliedBy, Enter, Message, Method, Runs, Update, WAIT};
+use herald_core::merging::{AppliedBy, Enter, Message, Method, Runs, SKEW, Update, Vouches, WAIT};
 use jiff::SignedDuration;
 
 use super::{BRANCHLESS, UNENTERED, UNMESSAGED, UNNAMED_CHECK, UNRETRIED};
@@ -82,6 +82,9 @@ fn a_queue_names_a_source_and_a_branch_and_takes_every_other_key_s_default() {
     assert_eq!(queue.runs, Runs::Forge);
     assert_eq!(queue.enter, Enter::Label("herald:merge".to_owned()));
     assert_eq!(queue.least, Permission::Write);
+    assert_eq!(queue.vouches, Vouches::Gesture);
+    assert_eq!(queue.skew, SKEW);
+    assert_eq!(SKEW, SignedDuration::from_secs(5));
     assert_eq!(queue.method, None);
     assert_eq!(queue.message, Message::Forge);
     assert_eq!(queue.may_fail, Vec::<String>::new());
@@ -101,6 +104,8 @@ branch = "release"
 runs = "herald"
 enter = {{ comment = "/merge" }}
 least = "maintain"
+vouches = "approved"
+skew = "30s"
 method = "squash"
 message = "pull"
 may_fail = ["flaky"]
@@ -123,6 +128,9 @@ write = {{ app = "merger", installation = 42 }}
     assert_eq!(lab.runs, Runs::Herald);
     assert_eq!(lab.enter, Enter::Comment("/merge".to_owned()));
     assert_eq!(lab.least, Permission::Maintain);
+    assert_eq!(lab.vouches, Vouches::Approved);
+    assert_eq!(config.merge_queues["org"].vouches, Vouches::Gesture);
+    assert_eq!(lab.skew, SignedDuration::from_secs(30));
     assert_eq!(lab.method, Some(Method::Squash));
     assert_eq!(lab.message, Message::Pull);
     assert_eq!(lab.may_fail, ["flaky"]);

@@ -43,6 +43,7 @@ fn a_queue_merges_in_the_source_s_one_repository_or_one_it_names_under_the_owner
             api: "https://api.github.com".to_owned(),
             update: Update::Merge,
             queueless: None,
+            reads: crate::merge_read::scopes(Forge::GitHub),
         }
     );
     assert_eq!(

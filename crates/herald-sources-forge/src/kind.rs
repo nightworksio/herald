@@ -411,6 +411,17 @@ impl SourceConfig for ForgeSource {
         Some(self.options.merging(self.forge, asked))
     }
 
+    fn merge_reader(
+        &self,
+        merging: &herald_kinds::Merging,
+        read: Option<Credential>,
+    ) -> Option<Arc<dyn herald_kinds::MergeReader>> {
+        Some(Arc::new(crate::merge_read::ForgeMergeReader {
+            origin: Origin::new(self.forge, &self.options, &merging.repository),
+            token: read.map(Token::of),
+        }))
+    }
+
     fn rerunner(
         &self,
         read: Option<Credential>,

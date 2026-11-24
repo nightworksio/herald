@@ -29,7 +29,9 @@ pub use feeding::{Fed, Feeding};
 pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said, optional};
 pub use itself::Itself;
 pub use kind::{DestinationKind, Fault, Inherited, Placing};
-pub use merging::{MergeAsked, Merging, Unmerged};
+pub use merging::{
+    Branched, EnterAsked, Entered, Gesture, MergeAsked, MergeReader, Merging, Proved, Unmerged,
+};
 pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening, SqlAt, unopened};
 pub use placement::{Placed, Placement};
 pub use pulling::{Instance, Origin, Peering, PublicKey, Pull, Pulling, Receive, Trust, Unpulled};

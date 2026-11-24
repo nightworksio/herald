@@ -60,6 +60,8 @@ mod mastodon;
 #[cfg(test)]
 mod matrix;
 #[cfg(test)]
+mod merging;
+#[cfg(test)]
 mod orphans;
 #[cfg(test)]
 mod owner;

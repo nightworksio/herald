@@ -9,11 +9,37 @@ use serde::Deserialize;
 
 use crate::{SecretRef, kind_name};
 
+pub use verdict::{Check, CheckState, Heads, Left, Read, Verdict, unvouched, verdict, vouched};
+
 /// The label a pull request is queued by where `enter` is absent.
 pub const ENTER_LABEL: &str = "herald:merge";
 
+/// The most pull requests one queue's read takes in, oldest gesture
+/// first.
+pub const MOST_ENTERED: usize = 50;
+
 /// How long herald waits for a head's checks where `wait` is absent.
 pub const WAIT: SignedDuration = SignedDuration::from_hours(2);
+
+/// How far apart a forge's stamps of a gesture and of a push may be where
+/// `skew` is absent: a push stamped this close before a gesture counts as
+/// after it.
+pub const SKEW: SignedDuration = SignedDuration::from_secs(5);
+
+/// Which head a gesture vouches for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Vouches {
+    /// The head the pull request had at the gesture's time on the forge,
+    /// by the forge's own record of pushes to its branch.
+    #[default]
+    Gesture,
+    /// The head herald first reads with the gesture standing.
+    Seen,
+    /// The head herald first reads with the gesture standing, once one who
+    /// holds the queue's least role approved that commit on the forge.
+    Approved,
+}
 
 /// Who runs a branch's queue.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -186,3 +212,4 @@ impl Write {
 
 #[cfg(test)]
 mod tests;
+mod verdict;

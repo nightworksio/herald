@@ -787,7 +787,9 @@ The merge queues, by name: each a base branch whose pull requests a writer queue
 | `merge_queues.<name>.retries.checks` | array of string | The checks, by name, whose failed job is re-run. |
 | `merge_queues.<name>.retries.times` | integer | The most re-runs on one head. |
 | `merge_queues.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: "forge" hands each pull request to the forge's merge queue or merge train; "herald" runs herald's own serial queue, also where the forge has one. "forge" where absent. |
+| `merge_queues.<name>.skew` | [Duration](#duration) | How far apart the forge's stamps of a gesture and of a push may be, its services' clocks never quite agreeing: a push stamped up to this before a gesture, or before a GitLab approval, counts as after it, so the gesture vouches for no head that push may have brought; "5s" where absent. |
 | `merge_queues.<name>.source` | string | The source whose repository it merges in: one of kind "github", "gitlab" or "forgejo". |
+| `merge_queues.<name>.vouches` | [Vouches](#vouches) | Which head a gesture vouches for: "gesture", the head at the gesture's time on the forge; "seen", the head herald first reads with the gesture; "approved", that head once one who holds `least` approved it on the forge. "gesture" where absent. |
 | `merge_queues.<name>.wait` | [Duration](#duration) | How long it waits for a head's checks before the pull request leaves; "2h" where absent. |
 | `merge_queues.<name>.write` | table | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`, the same as its source's `write` or another. The queue does not start without it. |
 | `merge_queues.<name>.write.app` | string | The GitHub App the writes are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, installed with the permissions its writes need alone. |
@@ -2634,6 +2636,10 @@ Where a view reads its open pull requests (ADR-0061).
 ### Visibility
 
 Who sees a status.
+
+### Vouches
+
+Which head a gesture vouches for.
 
 ### Withdraw
 

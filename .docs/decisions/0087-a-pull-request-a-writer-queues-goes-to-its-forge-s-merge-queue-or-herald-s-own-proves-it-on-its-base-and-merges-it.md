@@ -63,23 +63,40 @@ once.
    pull request out. The pull request's author, a writer or the person
    who made the gesture takes it out with the comment command followed by
    the word `cancel`. A pull request enters again only by a gesture made after it
-   left.
+   left. Of several gestures, the last one counted stands. An edited
+   comment is never a gesture; an edited comment command followed by
+   `cancel` still takes the pull request out. A label removed by an
+   account since deleted still takes it out.
 4. **A gesture vouches for one head.** `vouches` says which, and a head
    that changes past it by any push herald did not make takes the pull
    request out (`head-moved`). `"gesture"` (the default): the head the
    pull request had at the gesture's forge time, by the forge's own
    record of pushes to its branch (GitHub's repository activity, GitLab's
    merge request diff versions, Forgejo's timeline); where that record
-   cannot be read whole, a label vouches for no head. `"seen"`: the head
-   herald first reads with the gesture standing, kept in the store's
-   record, accepting the window between the gesture and that first read,
-   in which a push is vouched for as if the writer had seen it.
-   `"approved"`: that first-seen head once a person holding `least` has
-   approved that exact commit on the forge (GitHub's review `commit_id`,
-   Forgejo's review `commit_id`, GitLab's approvals only where the
-   project removes approvals when a commit is added), accepting the
-   forge's review record as the vouch. A comment command followed by a
-   commit's full id vouches for that commit alone under every value.
+   cannot be read whole, a label vouches for no head; GitHub's activity,
+   read newest first, may drop old pushes, so there a label places a head
+   only after a push it lists; a GitLab merge request with 100 diff
+   versions or more, or a Forgejo timeline longer than herald reads,
+   gives no record. `skew` ("5s" where absent) is how far apart the forge's
+   stamps of a gesture and of a push may be, its services' clocks never
+   quite agreeing: a push stamped up to `skew` before the gesture counts
+   as after it, so the gesture never vouches for a head that push may
+   have brought. `"seen"`: the head herald first reads with the gesture
+   standing, by the store's record of it, accepting the window between
+   the gesture and that first read, in which a push is vouched for as if
+   the writer had seen it. `"approved"`: that first-seen head once a
+   person holding `least` has approved that exact commit on the forge,
+   accepting the forge's review record as the vouch: on GitHub and
+   Forgejo each reviewer's last review that approves or asks for changes,
+   which approves only where its `commit_id` is that commit, a dismissed
+   one counting against; GitLab's approvals name no commit, so one
+   counts for the head of the latest diff version only where GitLab's own
+   note of it is stamped more than `skew` after that version, and a note
+   that it was taken back undoes it. Without the store's record of the
+   first-seen head, `"seen"` and `"approved"` vouch for none and the pull
+   request leaves as `unrecorded`. A comment command followed by a
+   commit's full id vouches for that commit alone under every value: it
+   stands in for the record of the head, never for the approval.
    Every read of the gestures, pushes or reviews that comes back partial
    leaves the pull request as `unread`.
 5. **Order.** First in, first out per base branch, by the forge's time
@@ -115,7 +132,9 @@ once.
    detailed merge status `mergeable`, Forgejo's `mergeable`), which holds
    the reviews and approvals the forge requires. `may_fail` names checks
    that may be red or missing on that branch; a check the forge requires
-   stays required whatever `may_fail` says. A check still running is
+   stays required whatever `may_fail` says. A head on which no check
+   that counts is reported, a check `may_fail` names never counting, is
+   waited for and leaves as `checks-timed-out`, never merged at once. A check still running is
    waited for until `wait` ("2h" where absent) has passed since the head
    was proved up to date. herald never bypasses a protection: no
    `bypass_rules`, no `force_merge`, no admin merge.
@@ -137,8 +156,8 @@ once.
     merge the forge refuses, or whose record herald could not read whole,
     leaves herald's queue at once. Its `Pull.queue.left` holds when and
     why (`checks-failed`, `checks-timed-out`, `conflict`,
-    `cannot-update`, `head-moved`, `removed`, `unmergeable`,
-    `merge-refused`, `unread`), so ADR-0078's `dequeued` rule tells
+    `cannot-update`, `head-moved`, `unrecorded`, `removed`,
+    `unmergeable`, `merge-refused`, `unread`), so ADR-0078's `dequeued` rule tells
     people, every reason but `removed` a failure of the pull request.
     `unread` says that what decides whether a pull request stands or is
     green could not be read whole; it counts as a failure and is never
@@ -190,7 +209,7 @@ once.
     into the config once the operator confirms it.
 16. **Doctor names, for each queue,** the forge and whether it has a
     queue on the branch, the method and whether the repository allows
-    it, which head a gesture vouches for, the update style, whether the write credential is set and held
+    it, which head a gesture vouches for and its `skew`, the update style, whether the write credential is set and held
     apart, whether the store keeps records, and where the steps run.
 17. **Every forge's own host.** Each read and step goes to the source's
     configured API base: github.com, a GHE.com tenant, GitHub Enterprise

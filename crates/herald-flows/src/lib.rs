@@ -37,6 +37,7 @@ mod header;
 mod housekeep;
 mod installations;
 mod kept;
+mod merging;
 mod oidc;
 mod orphans;
 pub mod peering;
@@ -78,6 +79,7 @@ pub use halted::UNSAID_FAILURE;
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
 pub use installations::AHEAD as MINTED_AHEAD;
+pub use merging::{Found, Judged, MergeQueueRead, Next, merge_queues};
 pub use orphans::{Orphaned, orphans, orphans_cleared};
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
 pub use prepare::{

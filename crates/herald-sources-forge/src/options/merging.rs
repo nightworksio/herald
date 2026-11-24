@@ -99,6 +99,7 @@ impl SourceOptions {
             api: api_of(forge, self),
             update: self.updating(forge),
             queueless: (forge == Forge::Forgejo).then_some(FORGEJO_QUEUELESS),
+            reads: crate::merge_read::scopes(forge),
         })
     }
 }

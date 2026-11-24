@@ -26,6 +26,7 @@ mod trains;
 
 pub(crate) use scope::{Scoped, scope_cost};
 
+pub(crate) use base::{PIPELINE_FAILED, PIPELINE_PASSED};
 pub(crate) use gitlab::{PIPELINE, forge_turn};
 
 /// A pull request's milestone, as every forge names it in a pull request.

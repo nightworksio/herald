@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::SourceName;
-use herald_core::merging::{Enter, Message, Runs, WAIT, Write};
+use herald_core::merging::{Enter, Message, Runs, SKEW, WAIT, Write};
 use herald_kinds::{MergeAsked, Source};
 
 use super::{Loader, Value, list};
@@ -200,6 +200,8 @@ impl Loader<'_> {
             runs,
             enter,
             least: file.least.unwrap_or_default(),
+            vouches: file.vouches.unwrap_or_default(),
+            skew: file.skew.map_or(SKEW, |skew| skew.0),
             method: file.method,
             message: file.message.unwrap_or_default(),
             may_fail: file.may_fail,

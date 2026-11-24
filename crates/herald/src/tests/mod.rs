@@ -14,6 +14,7 @@ mod forges;
 mod housekeep;
 mod lambda;
 mod load;
+mod merge_queue;
 mod milestones;
 mod pages;
 mod peers;

@@ -140,6 +140,22 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.write(), None);
     assert_eq!(source.signing(), Err(crate::UNSIGNED));
     assert_eq!(source.rerunner(None).map(|_| ()), Err(crate::UNWRITTEN));
+    let asked = crate::MergeAsked {
+        repository: None,
+        method: None,
+        retries: false,
+        write: None,
+    };
+    assert_eq!(source.merging(&asked), None);
+    let merging = crate::Merging {
+        forge: "github",
+        repository: "o/r".to_owned(),
+        api: "https://api.github.com".to_owned(),
+        update: herald_core::merging::Update::Merge,
+        queueless: None,
+        reads: "a token",
+    };
+    assert!(source.merge_reader(&merging, None).is_none());
 }
 
 #[test]

@@ -32,6 +32,7 @@ mod dry_run;
 mod followers;
 mod health;
 mod lambda;
+mod merging;
 mod orphaning;
 mod output;
 mod pages;
@@ -301,6 +302,11 @@ async fn answered(
             let printed = Printed::of(private, config.cli.private);
             let asked = ((rule.as_deref(), printed), apply, job.as_slice());
             let done = rerunning::rerunning(config, vars, connect, asked, out);
+            finished(done.await, err)
+        }
+        Reading::MergeQueue { queue, private } => {
+            let printed = Printed::of(private, config.cli.private);
+            let done = merging::merging(config, vars, connect, (queue.as_deref(), printed), out);
             finished(done.await, err)
         }
         Reading::Queue {

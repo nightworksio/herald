@@ -58,14 +58,6 @@ const MOST_INSTALLATION_PAGES: usize = 10;
 /// reaches may hold.
 const READ: &str = "read";
 
-/// The least GitLab access level of each permission: Developer,
-/// Maintainer and Owner.
-const GITLAB_LEVELS: [(herald_core::Permission, u64); 3] = [
-    (herald_core::Permission::Write, 30),
-    (herald_core::Permission::Maintain, 40),
-    (herald_core::Permission::Admin, 50),
-];
-
 /// What the operator is told where the code expired.
 pub const EXPIRED: &str = "the code expired before the sign-in finished; run the command again";
 
@@ -178,19 +170,9 @@ struct ReachedApp {
     permissions: BTreeMap<String, String>,
 }
 
-#[derive(Deserialize, Default)]
-struct GithubPermissions {
-    #[serde(default)]
-    admin: bool,
-    #[serde(default)]
-    maintain: bool,
-    #[serde(default)]
-    push: bool,
-}
-
 #[derive(Deserialize)]
 struct GithubRepository {
-    permissions: Option<GithubPermissions>,
+    permissions: Option<crate::roles::GithubPermissions>,
 }
 
 #[derive(Deserialize)]
@@ -747,9 +729,7 @@ impl Rerunner for ForgeRerunner {
                 .map(|access| access.access_level)
                 .max()
                 .unwrap_or_default();
-                let enough = GITLAB_LEVELS
-                    .iter()
-                    .any(|(permission, level)| *permission == least && held >= *level);
+                let enough = crate::roles::gitlab_role(held).is_some_and(|role| role >= least);
                 return Ok(if enough {
                     Granted::Enough
                 } else {
@@ -757,14 +737,7 @@ impl Rerunner for ForgeRerunner {
                 });
             }
             let repository: GithubRepository = succeeded((self.forge, api), request, what).await?;
-            let held = repository.permissions.unwrap_or_default();
-            let named = if held.admin {
-                herald_core::Permission::Admin
-            } else if held.maintain {
-                herald_core::Permission::Maintain
-            } else if held.push {
-                herald_core::Permission::Write
-            } else {
+            let Some(named) = repository.permissions.unwrap_or_default().role() else {
                 return Ok(Granted::Short("read or none".to_owned()));
             };
             Ok(if named >= least {
