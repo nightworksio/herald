@@ -37,9 +37,9 @@ the config once you confirm it.
 | `least` | the least role the person who queues holds: `"write"` (GitHub write, GitLab Developer, Forgejo write, or above), `"maintain"` or `"admin"` | `"write"` |
 | `method` | `"merge"`, `"squash"`, `"rebase"`, `"fast-forward"`, or `"repository"`: the repository's one allowed method | required: a queue without it does not start |
 | `message` | `"forge"`: the forge's own commit message for the method; `"pull"`: the pull request's title and body, with `"merge"` or `"squash"` | `"forge"` |
-| `may_fail` | checks that may be red or missing on this branch; never one the forge requires | none |
-| `wait` | how long herald waits for a head's checks before the pull request leaves | `"2h"` |
-| `retries` | `{ checks = [...], times = N }`: re-run the failed job of a check named, at most N times on one head, before the pull request leaves; not on Forgejo | none |
+| `may_fail` | checks that may be red or missing on this branch; never one the forge requires; herald's own queue alone, refused with `runs = "forge"` | none |
+| `wait` | how long herald waits for a head's checks before the pull request leaves; herald's own queue alone, refused with `runs = "forge"` | `"2h"` |
+| `retries` | `{ checks = [...], times = N }`: re-run the failed job of a check named, at most N times on one head, before the pull request leaves; not on Forgejo; herald's own queue alone, refused with `runs = "forge"` | none |
 | `applied_by` | `"command"`: `herald merge-queue --apply` takes the steps; `"server"`: `herald server` takes them each round and as webhooks arrive, and then reads the write credential | `"command"` |
 | `write` | the credential the steps are made with: `{ token = { secret } }` or `{ app = "<github_apps name>" }` | none: the queue does not start |
 

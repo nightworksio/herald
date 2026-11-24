@@ -126,7 +126,8 @@ once.
     the failed job of a check it names, at most N times on one head,
     through ADR-0068's narrowest call, before the pull request leaves;
     none where absent; Forgejo has no re-run call, so its queues take no
-    `retries`.
+    `retries`. `may_fail`, `wait` and `retries` shape herald's own queue
+    alone, so a queue with `runs = "forge"` that gives one does not load.
 12. **A command of its own holds the write credential.** `herald
     merge-queue [queue]` prints each queue's entries with the verdict and
     the step that comes next, reading no write credential. `--apply`
