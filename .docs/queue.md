@@ -399,12 +399,24 @@ the table. A template reads `view.readiness`:
 
 With a `milestone` selector the board is headed by each open milestone
 the glob matches, in each repository it shows a pull request of the
-release in, and a one-repository source's own (ADR-0082): one request a
-round a repository, at most 20 repositories, and on GitLab one more a
-milestone to count its issues. Each is seen as its repository: a public
-route, and `herald queue` without `--private`, are shown the public
-repositories' alone. A repository whose milestones could not be read is
-named with why. A template reads `view.overviews.header`:
+release in, and a one-repository source's own (ADR-0082). On an owner
+source the glob spans every member the view holds, and with
+`milestones.group = true` on a GitLab owner also the group milestones of
+each group at or under the owner above those members, each group read
+once (ADR-0086). `release.repository = "<owner>/<name>"` holds the
+release to that one repository: its pull requests, milestones and issues
+alone, and no group. One request a round a repository or group, at most
+20, and on GitLab one more a milestone to count its issues. Public
+repositories are read first, then internal, then private, and within
+each those with a pull request of the release first, so the 20 are never
+spent on what a public route may not see. Each is seen as its
+repository: a public route, and `herald queue` without `--private`, are
+shown the public repositories' alone, and learn nothing of a private or
+internal member, not even that it exists, beyond what `withheld` tells.
+A group is seen as the strictest member under it, held by the view or
+not, since its milestones count every project's issues. A repository or
+group past the 20, or whose milestones could not be read, is named with
+why. A template reads `view.overviews.header`:
 
 | Key | What |
 |---|---|
@@ -418,7 +430,8 @@ one more request a round for each milestone matched, one page of the
 source's `page`, at most 50 rows a repository. `header = false` keeps
 the issues and leaves the milestones out. The release's pull requests
 still judge whether it is ready. Each issue is seen as its repository,
-and a confidential GitLab issue as private: a public route, and `herald
+a group milestone's issue as the member holding it, private where none
+does, and a confidential GitLab issue as private: a public route, and `herald
 queue` without `--private`, are shown the public repositories' public
 issues alone. A milestone whose issues fill the page, a repository past
 the 50, and a listing the token may not read are named unread in

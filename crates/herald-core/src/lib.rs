@@ -154,8 +154,8 @@ pub use queue::{
     Bases, Batch, Beside, Blocker, Board, Bots, CAPACITY_REPOSITORIES, CHANGESETS_HEAD, CODEOWNERS,
     Capacity, Changed, Checks, Closed, CodeOwner, Codeowners, CodeownersKey, CodeownersRef,
     Combine, Deciding, Dequeued, Described, Dialect, Failure, Flip, Folded, Folding, Given,
-    GroupBy, Grouped, Head, Header, HeaderRead, Held, HeldBy, Holder, Holding, Judged, Judging,
-    KEPT_BASE, KEPT_CODEOWNERS, KeptBase, KeptCheck, KeptCodeowners, KeptPull, LEAST_TEAM,
+    GroupBy, Grouped, Head, Headed, Header, HeaderRead, Held, HeldBy, Holder, Holding, Judged,
+    Judging, KEPT_BASE, KEPT_CODEOWNERS, KeptBase, KeptCheck, KeptCodeowners, KeptPull, LEAST_TEAM,
     LOAD_WINDOW, LONGEST_LOAD_WINDOW, Left, Lifecycle, Load, Loaded, Loads, MOST_ADVISED_REPORTS,
     MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED, MOST_ADVISORY_REPOSITORIES, MOST_AREA_GLOB,
     MOST_AREA_GLOBS, MOST_AREA_NAME, MOST_AREA_PATH, MOST_AREAS, MOST_AREAS_READ, MOST_BASES,
@@ -168,8 +168,8 @@ pub use queue::{
     QueueState, RECALLED, RELEASE_PLEASE_HEAD, RULES_CACHE, Ran, Read, Readiness, Reason,
     Reconciled, Release, ReleasePull, RepositoryKey, Review, Reviewed, Row, Rows, Rules, Running,
     SHORTEST_LOAD_WINDOW, Showing, Since, Skipped, Surface, Team, TeamMember, Teams, Triage, Turn,
-    Unread, Verdict, View, WITHHELD, Withheld, Zoning, advises, board, grouped, joined,
-    joined_checks, overlaps, rows, teams_reach, teams_reach_each,
+    Unread, Verdict, View, WITHHELD, Withheld, Zoning, advises, board, grouped, header_asked,
+    heading, joined, joined_checks, overlaps, rows, teams_reach, teams_reach_each,
 };
 pub use rate::{Per, Rate};
 pub use readied::{

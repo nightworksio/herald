@@ -1,9 +1,9 @@
 use std::fmt;
 
 use herald_core::{
-    Advising, Advisories, AreaKind, BaseRead, Capacity, Codeowners, CodeownersRef, Glob, Header,
-    HeaderRead, KeptBase, KeptCheck, KeptCodeowners, Listed, Overviews, Owner, Pull, Rerun, Teams,
-    Validators, Visibility,
+    Advising, Advisories, AreaKind, BaseRead, Capacity, Codeowners, CodeownersRef, Glob, Headed,
+    Header, HeaderRead, KeptBase, KeptCheck, KeptCodeowners, Listed, Overviews, Owner, Pull, Rerun,
+    Teams, Validators, Visibility,
 };
 use herald_ports::{Boxed, DynHttp};
 
@@ -314,18 +314,24 @@ pub trait Queue: fmt::Debug + Send + Sync {
     /// (ADR-0077).
     fn teams<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Result<Teamed, Unpolled>>;
 
-    /// The open milestones of the repository at the full path `read.0`
-    /// whose titles `read.1` matches, at most
-    /// [`herald_core::MOST_HEADER_MILESTONES`], seen as `read.2`, asked
+    /// The owner at or under which it reads the own milestones of each
+    /// GitLab group, where it reads an owner's and `milestones.group` asks
+    /// it to (ADR-0086).
+    fn milestone_groups(&self) -> Option<&str>;
+
+    /// The open milestones of the repository, or the GitLab group's own,
+    /// `read.0` names, whose titles `read.1` matches, at most
+    /// [`herald_core::MOST_HEADER_MILESTONES`], seen as `read.0` is, asked
     /// through `http`, read as `asked.0` says: in the header, each overdue
     /// where its due day ended before `asked.1`'s day in UTC; as rows, the
-    /// open issues each carries, at most [`herald_core::MOST_ISSUE_ROWS`];
-    /// the repository named unread with why where the forge would not list
-    /// them, or not all of them (ADR-0082, ADR-0084).
+    /// open issues each carries, at most [`herald_core::MOST_ISSUE_ROWS`],
+    /// a group's each named by the project holding it; what `read.0` names
+    /// named unread with why where the forge would not list them, or not
+    /// all of them (ADR-0082, ADR-0084, ADR-0086).
     fn milestoned<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        read: (&'a str, &'a Glob, Visibility),
+        read: (&'a Headed, &'a Glob),
         asked: (HeaderRead, jiff::Timestamp),
     ) -> Boxed<'a, Result<Header, Unpolled>>;
 

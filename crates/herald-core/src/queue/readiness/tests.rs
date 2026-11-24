@@ -23,6 +23,7 @@ fn release() -> Release {
         withheld: Withheld::Unknown,
         header: true,
         rows: Rows::Pulls,
+        repository: None,
     }
 }
 

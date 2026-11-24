@@ -4857,6 +4857,10 @@
           "description": "Its release pull request: \"release-please\" or \"changesets\", by the\nhead branch each opens it on, or `{ head = \"<glob>\" }` or\n`{ title = \"<glob>\" }`, each ignoring case.",
           "$ref": "#/$defs/ReleasePull"
         },
+        "repository": {
+          "description": "The one repository the release is held to, by full path such as\n\"acme/api\", ignoring case: its pull requests, and the milestones\nand issues its header and rows read, that repository's alone. Absent,\nthe release spans every repository the view holds: on an owner\nsource each member, and with `milestones.group` on a GitLab owner the\nown milestones of each group at or under it, at most 20 read a round\nwith public ones first, each seen as its own repository (ADR-0086).",
+          "type": "string"
+        },
         "rows": {
           "description": "What the board lists as its rows: \"pulls\" where absent, the open\npull requests it picks; or \"issues\", the open issues carrying each\nopen milestone its milestone selector matches, by one more request\na round for each such milestone, at most 50 a repository, each seen\nas its repository or as private where it is confidential. Its pull\nrequests still judge whether it is ready. \"issues\" needs a\nmilestone selector (ADR-0084).",
           "$ref": "#/$defs/ReleaseRows"

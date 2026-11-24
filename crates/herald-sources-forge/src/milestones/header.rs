@@ -1,12 +1,13 @@
 //! A release's header read from a repository: its open milestones whose
 //! titles a release's selector matches, and the open issues they carry
-//! where those are its rows (ADR-0082, ADR-0084).
+//! where those are its rows (ADR-0082, ADR-0084); or a GitLab group's
+//! own (ADR-0086).
 
 use herald_core::{
-    Glob, Header, HeaderRead, MOST_HEADER_MILESTONES, OpenMilestone, Unread, Visibility,
+    Glob, Headed, Header, HeaderRead, MOST_HEADER_MILESTONES, OpenMilestone, Unread,
 };
 use herald_kinds::Unpolled;
-use herald_ports::{DynHttp, Erased, Http as _};
+use herald_ports::{DynHttp, Erased, Http as _, Request};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
@@ -27,9 +28,36 @@ pub const GITLAB_REFUSED: &str = "the token may not read its milestones or issue
 pub const FORGEJO_REFUSED: &str =
     "the token may not read its milestones: it needs read access to the repository's issues";
 
-/// The open milestones of the repository at `origin` whose titles `glob`
-/// matches, at most [`MOST_HEADER_MILESTONES`], read with `token` from one
-/// page of its listing through `http` and seen as `visibility`: where
+/// Where a release's header reads milestones: the repository at `origin`,
+/// or the GitLab group at `group` on its API, read with `token`.
+#[derive(Clone, Copy)]
+pub(super) struct Holder<'a> {
+    /// The repository, or the API a group is read on.
+    pub(super) origin: &'a Origin,
+    /// The token it is read with.
+    pub(super) token: Option<&'a Token>,
+    /// The full path of the GitLab group whose own milestones are read.
+    pub(super) group: Option<&'a str>,
+}
+
+impl Holder<'_> {
+    /// The request for `path` under it.
+    pub(super) fn get(&self, path: &str) -> Result<Request, Unpolled> {
+        match self.group {
+            Some(group) => gitlab::grouped_request(self.origin, self.token, (group, path)),
+            None => self.origin.get(path, self.token),
+        }
+    }
+
+    /// Its full path.
+    pub(super) fn path(&self) -> &str {
+        self.group.unwrap_or_else(|| self.origin.path())
+    }
+}
+
+/// The open milestones of the repository at `origin`, or of the GitLab
+/// group `named` names where it names one, whose titles `glob` matches, at most [`MOST_HEADER_MILESTONES`], read with `token` from one
+/// page of its listing through `http` and seen as `named` is: where
 /// `heading` names them in the header, each overdue where its due day
 /// ended before `now`'s day in UTC, and on GitLab its issues counted by
 /// one more request each; where `heading` makes their issues the rows,
@@ -45,9 +73,15 @@ pub const FORGEJO_REFUSED: &str =
 pub(crate) async fn header(
     http: &Erased<'_, dyn DynHttp + '_>,
     (origin, token): (&Origin, Option<&Token>),
-    (glob, visibility): (&Glob, Visibility),
+    (named, glob): (&Headed, &Glob),
     (heading, now): (HeaderRead, Timestamp),
 ) -> Result<Header, Unpolled> {
+    let holder = Holder {
+        origin,
+        token,
+        group: named.group.then_some(named.path.as_str()),
+    };
+    let visibility = named.visibility;
     let forge = origin.forge();
     let what = LISTED.on(forge);
     let reading = origin.reading();
@@ -58,12 +92,12 @@ pub(crate) async fn header(
         Forge::Forgejo => format!("/milestones?state=open&limit={size}"),
     };
     let unread = |reason: String| Unread {
-        repository: origin.path().to_owned(),
+        repository: holder.path().to_owned(),
         visibility,
         reason,
     };
     let answer = http
-        .send(origin.get(&path, token)?)
+        .send(holder.get(&path)?)
         .await
         .map_err(Unpolled::unreachable)?;
     if let Some(limited) = limited(forge, what, &answer) {
@@ -104,8 +138,7 @@ pub(crate) async fn header(
         matched.truncate(MOST_HEADER_MILESTONES);
     }
     if let Some(issues) = header.issues.as_mut() {
-        let (carried, reasons) =
-            super::rows::rows(http, (origin, token), (&matched, visibility)).await?;
+        let (carried, reasons) = super::rows::rows(http, holder, (&matched, visibility)).await?;
         *issues = carried;
         header.unread.extend(reasons.into_iter().map(unread));
     }
@@ -117,7 +150,7 @@ pub(crate) async fn header(
         let counts = if forge == Forge::GitLab {
             let path = gitlab::statistics_path(&milestone.title);
             let answer = http
-                .send(origin.get(&path, token)?)
+                .send(holder.get(&path)?)
                 .await
                 .map_err(Unpolled::unreachable)?;
             checked(forge, gitlab::STATISTICS, &answer)?;
@@ -127,7 +160,7 @@ pub(crate) async fn header(
         };
         let due = milestone.due_day();
         header.milestones.push(OpenMilestone {
-            repository: origin.path().to_owned(),
+            repository: holder.path().to_owned(),
             visibility,
             overdue: due.is_some_and(|due| due < today),
             due,

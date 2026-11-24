@@ -67,6 +67,7 @@ fn one_milestone_is_a_release_with_every_blocker_and_the_shipped_labels() {
             withheld: Withheld::Unknown,
             header: true,
             rows: herald_core::Rows::Pulls,
+            repository: None,
         }
     );
 }
@@ -89,6 +90,7 @@ fn every_selector_combine_labels_and_blockers_are_read() {
             withheld: Withheld::Unknown,
             header: true,
             rows: herald_core::Rows::Pulls,
+            repository: None,
         }
     );
     let all =
@@ -244,4 +246,27 @@ fn a_release_lists_pull_requests_unless_it_lists_issues_and_issue_rows_need_a_mi
         "{error}"
     );
     assert!(errors("{ milestone = \"v2\", rows = \"people\" }").contains("rows"));
+}
+
+#[test]
+fn a_release_is_held_to_one_repository_the_view_holds_and_spans_them_all_by_default() {
+    assert_eq!(loaded("{ milestone = \"v2\" }").repository, None);
+    let held = loaded("{ milestone = \"v2\", repository = \"nightworksio/herald\" }");
+    assert_eq!(held.repository.as_deref(), Some("nightworksio/herald"));
+    let within = |release: &str| {
+        let text = format!(
+            "{EXAMPLE}\n[views.ship]\nrepositories = [\"nightworksio/*\"]\nrelease = {release}\n"
+        );
+        load("herald.toml", &text, &nothing, &crate::common::kinds()).map(|_| ())
+    };
+    assert!(within("{ milestone = \"v2\", repository = \"NightWorksIO/herald\" }").is_ok());
+    let error = within("{ milestone = \"v2\", repository = \"other/app\" }")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains(
+            "views.ship.release.repository: other/app is not a repository the view holds"
+        ),
+        "{error}"
+    );
 }

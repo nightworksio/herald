@@ -4,12 +4,13 @@
 use herald_core::{MOST_ISSUE_ROWS, OpenIssue, Visibility, unreserved};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _};
-use serde::de::IgnoredAny;
+use serde::Deserialize;
 
 use super::Milestone;
+use super::header::Holder;
+use crate::Forge;
 use crate::limited::{checked, limited};
 use crate::queue::capacity::UNSEEN;
-use crate::{Forge, Origin, Token};
 
 /// Why a GitHub repository's issues could not be listed where it refused.
 pub const GITHUB_ISSUES_REFUSED: &str = "the token may not list its issues: a GitHub App or fine-grained token needs Issues: read, a classic token repo (public_repo for a public repository)";
@@ -34,13 +35,13 @@ pub const FORGEJO_ISSUES_REFUSED: &str =
 /// or it answered what is no listing.
 pub(super) async fn rows(
     http: &Erased<'_, dyn DynHttp + '_>,
-    (origin, token): (&Origin, Option<&Token>),
+    holder: Holder<'_>,
     (matched, visibility): (&[Milestone], Visibility),
 ) -> Result<(Vec<OpenIssue>, Vec<String>), Unpolled> {
     let mut issues = Vec::new();
     let mut reasons: Vec<String> = Vec::new();
     for milestone in matched {
-        let (carried, unread) = carried(http, (origin, token), (milestone, visibility)).await?;
+        let (carried, unread) = carried(http, holder, (milestone, visibility)).await?;
         issues.extend(carried);
         if let Some(reason) = unread.filter(|reason| !reasons.contains(reason)) {
             reasons.push(reason);
@@ -68,9 +69,10 @@ pub(super) async fn rows(
 /// or it answered what is no listing.
 async fn carried(
     http: &Erased<'_, dyn DynHttp + '_>,
-    (origin, token): (&Origin, Option<&Token>),
+    holder: Holder<'_>,
     (milestone, visibility): (&Milestone, Visibility),
 ) -> Result<(Vec<OpenIssue>, Option<String>), Unpolled> {
+    let origin = holder.origin;
     let forge = origin.forge();
     let what = crate::issues::LISTED.on(forge);
     let reading = origin.reading();
@@ -90,7 +92,7 @@ async fn carried(
         ),
     };
     let answer = http
-        .send(origin.get(&path, token)?)
+        .send(holder.get(&path)?)
         .await
         .map_err(Unpolled::unreachable)?;
     if let Some(limited) = limited(forge, what, &answer) {
@@ -107,7 +109,7 @@ async fn carried(
         return Ok((Vec::new(), Some(reason.to_owned())));
     }
     checked(forge, what, &answer)?;
-    let listed: Vec<IgnoredAny> =
+    let listed: Vec<Placed> =
         herald_wire::read(what, reading.parse, &answer.body).map_err(Unpolled::unreadable)?;
     let filled = (listed.len() >= size).then(|| {
         format!(
@@ -115,15 +117,21 @@ async fn carried(
             milestone.title
         )
     });
+    let seen = if holder.group.is_some() {
+        Visibility::Public
+    } else {
+        visibility
+    };
     let issues = crate::issues::listed(forge, reading.parse, &answer.body)
         .map_err(Unpolled::unreadable)?
         .into_iter()
-        .map(|issue| OpenIssue {
-            repository: origin.path().to_owned(),
+        .zip(listed)
+        .map(|(issue, placed)| OpenIssue {
+            repository: placed.repository(holder),
             visibility: if issue.confidential {
                 Visibility::Private
             } else {
-                visibility
+                seen
             },
             number: issue.number,
             title: issue.title,
@@ -132,6 +140,39 @@ async fn carried(
         })
         .collect();
     Ok((issues, filled))
+}
+
+/// Where an issue of a listing is held, as GitLab names it.
+#[derive(Deserialize)]
+struct Placed {
+    /// Its references, where the forge names them.
+    references: Option<References>,
+}
+
+/// GitLab's references of an issue.
+#[derive(Deserialize)]
+struct References {
+    /// Its reference from anywhere, its project's full path, `#` and its
+    /// number.
+    full: String,
+}
+
+impl Placed {
+    /// The full path of the repository holding it, read from `holder`: a
+    /// GitLab group's, the project its reference names, the group where it
+    /// names none; any other's, that repository.
+    fn repository(self, holder: Holder<'_>) -> String {
+        let named = self
+            .references
+            .and_then(|references| {
+                references
+                    .full
+                    .rsplit_once('#')
+                    .map(|(path, _)| path.to_owned())
+            })
+            .filter(|_| holder.group.is_some());
+        named.unwrap_or_else(|| holder.path().to_owned())
+    }
 }
 
 #[cfg(test)]

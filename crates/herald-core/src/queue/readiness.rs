@@ -157,6 +157,10 @@ pub struct Release {
     pub header: bool,
     /// What its board lists as its rows (ADR-0084).
     pub rows: Rows,
+    /// The one repository it is held to, by full path ignoring case: its
+    /// pull requests and its header that repository's alone, every
+    /// repository its view holds where none is named (ADR-0086).
+    pub repository: Option<String>,
 }
 
 /// Why one pull request or base branch holds a release back.
@@ -303,8 +307,17 @@ impl Release {
             .map(|glob| (glob, heading))
     }
 
+    /// Whether it takes the repository at the full path `repository`: the
+    /// one it is held to, or any where it names none (ADR-0086).
+    #[must_use]
+    pub fn takes(&self, repository: &str) -> bool {
+        self.repository
+            .as_ref()
+            .is_none_or(|held| held.eq_ignore_ascii_case(repository))
+    }
+
     /// Whether `pull` is the release's: each selector named picking it, or
-    /// any one where they combine by any.
+    /// any one where they combine by any, in a repository it holds.
     #[must_use]
     pub fn picks(&self, pull: &Pull) -> bool {
         let named = |glob: &Glob, name: Option<&str>| name.is_some_and(|name| glob.matches(name));
@@ -322,6 +335,7 @@ impl Release {
         ];
         let mut told = picked.into_iter().flatten().peekable();
         told.peek().is_some()
+            && self.takes(&pull.repository)
             && match self.combine {
                 Combine::All => told.all(|picks| picks),
                 Combine::Any => told.any(|picks| picks),

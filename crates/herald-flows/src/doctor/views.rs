@@ -287,7 +287,7 @@ fn header_note((named, view): (&str, &str), heading: HeaderRead) -> String {
         HEADER_PERMISSIONS.to_owned()
     };
     format!(
-        "The {named} {what}: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most {MOST_HEADER_REPOSITORIES} repositories, those past it named unread{counted}{listed}. {permissions}"
+        "The {named} {what}: one request a round for each repository it shows a pull request of the release in, for a one-repository source's own repository, for each member of an owner source the view holds, and with milestones.group on a GitLab owner for each group at or under it above them, only release.repository where it names one, at most {MOST_HEADER_REPOSITORIES} repositories and groups, public ones first, those past it named unread{counted}{listed}. {permissions}"
     )
 }
 
