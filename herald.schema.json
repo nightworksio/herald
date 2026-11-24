@@ -4188,7 +4188,7 @@
         },
         "runs": {
           "description": "Who runs it: \"forge\" hands each pull request to the forge's merge\nqueue or merge train; \"herald\" runs herald's own serial queue, also\nwhere the forge has one. \"forge\" where absent.",
-          "$ref": "#/$defs/Runs"
+          "$ref": "#/$defs/MergeRuns"
         },
         "source": {
           "description": "The source whose repository it merges in: one of kind \"github\",\n\"gitlab\" or \"forgejo\".",
@@ -4207,6 +4207,21 @@
       "required": [
         "source",
         "branch"
+      ]
+    },
+    "MergeRuns": {
+      "description": "Who runs a branch's queue.",
+      "oneOf": [
+        {
+          "description": "The forge's own merge queue or merge train.",
+          "type": "string",
+          "const": "forge"
+        },
+        {
+          "description": "herald's own serial queue.",
+          "type": "string",
+          "const": "herald"
+        }
       ]
     },
     "Message": {
@@ -5518,21 +5533,6 @@
       ]
     },
     "Runs": {
-      "description": "Who runs a branch's queue.",
-      "oneOf": [
-        {
-          "description": "The forge's own merge queue or merge train.",
-          "type": "string",
-          "const": "forge"
-        },
-        {
-          "description": "herald's own serial queue.",
-          "type": "string",
-          "const": "herald"
-        }
-      ]
-    },
-    "Runs2": {
       "description": "Which runs a source announces, where its signals take \"run\".",
       "type": "object",
       "properties": {
@@ -6370,7 +6370,7 @@
             },
             "runs": {
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
-              "$ref": "#/$defs/Runs2"
+              "$ref": "#/$defs/Runs"
             },
             "sign_in": {
               "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
@@ -6727,7 +6727,7 @@
             },
             "runs": {
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
-              "$ref": "#/$defs/Runs2"
+              "$ref": "#/$defs/Runs"
             },
             "sign_in": {
               "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
@@ -7084,7 +7084,7 @@
             },
             "runs": {
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
-              "$ref": "#/$defs/Runs2"
+              "$ref": "#/$defs/Runs"
             },
             "sign_in": {
               "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",

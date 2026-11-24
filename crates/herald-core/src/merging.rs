@@ -18,6 +18,7 @@ pub const WAIT: SignedDuration = SignedDuration::from_hours(2);
 /// Who runs a branch's queue.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
+#[schemars(rename = "MergeRuns")]
 pub enum Runs {
     /// The forge's own merge queue or merge train.
     #[default]

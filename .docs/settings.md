@@ -786,7 +786,7 @@ The merge queues, by name: each a base branch whose pull requests a writer queue
 | `merge_queues.<name>.retries` | table | The checks whose failed job is re-run, at most `times` on one head, before the pull request leaves; none where absent, and none on Forgejo. |
 | `merge_queues.<name>.retries.checks` | array of string | The checks, by name, whose failed job is re-run. |
 | `merge_queues.<name>.retries.times` | integer | The most re-runs on one head. |
-| `merge_queues.<name>.runs` | [Runs](#runs) | Who runs it: "forge" hands each pull request to the forge's merge queue or merge train; "herald" runs herald's own serial queue, also where the forge has one. "forge" where absent. |
+| `merge_queues.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: "forge" hands each pull request to the forge's merge queue or merge train; "herald" runs herald's own serial queue, also where the forge has one. "forge" where absent. |
 | `merge_queues.<name>.source` | string | The source whose repository it merges in: one of kind "github", "gitlab" or "forgejo". |
 | `merge_queues.<name>.wait` | [Duration](#duration) | How long it waits for a head's checks before the pull request leaves; "2h" where absent. |
 | `merge_queues.<name>.write` | table | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`, the same as its source's `write` or another. The queue does not start without it. |
@@ -2439,6 +2439,10 @@ How the homeserver carries commands to herald.
 
 Who registers a project webhook on each member of a GitLab owner.
 
+### MergeRuns
+
+Who runs a branch's queue.
+
 ### Message
 
 The commit message a merge is made with.
@@ -2558,10 +2562,6 @@ What a run did that is announced.
 ### RunFrom
 
 What a run is read from.
-
-### Runs
-
-Who runs a branch's queue.
 
 ### Severity
 
