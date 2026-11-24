@@ -31,10 +31,10 @@ pub const GITLAB_REFUSED: &str = "the token may not read its base branch's pipel
 pub const FORGEJO_REFUSED: &str = "the token may not read its base branch's statuses: it needs read access to the repository's code";
 
 /// The GitLab pipeline states that end in failure.
-const PIPELINE_FAILED: [&str; 2] = ["failed", "canceled"];
+pub(crate) const PIPELINE_FAILED: [&str; 2] = ["failed", "canceled"];
 
 /// The GitLab pipeline states that end with nothing failed.
-const PIPELINE_PASSED: [&str; 2] = ["success", "skipped"];
+pub(crate) const PIPELINE_PASSED: [&str; 2] = ["success", "skipped"];
 
 #[derive(Deserialize)]
 struct Pipeline {

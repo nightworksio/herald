@@ -4190,9 +4190,17 @@
           "description": "Who runs it: \"forge\" hands each pull request to the forge's merge\nqueue or merge train; \"herald\" runs herald's own serial queue, also\nwhere the forge has one. \"forge\" where absent.",
           "$ref": "#/$defs/MergeRuns"
         },
+        "skew": {
+          "description": "How far apart the forge's stamps of a gesture and of a push may be,\nits services' clocks never quite agreeing: a push stamped up to this\nbefore a gesture, or before a GitLab approval, counts as after it,\nso the gesture vouches for no head that push may have brought; \"5s\"\nwhere absent.",
+          "$ref": "#/$defs/Duration"
+        },
         "source": {
           "description": "The source whose repository it merges in: one of kind \"github\",\n\"gitlab\" or \"forgejo\".",
           "type": "string"
+        },
+        "vouches": {
+          "description": "Which head a gesture vouches for: \"gesture\", the head at the\ngesture's time on the forge; \"seen\", the head herald first reads\nwith the gesture; \"approved\", that head once one who holds `least`\napproved it on the forge. \"gesture\" where absent.",
+          "$ref": "#/$defs/Vouches"
         },
         "wait": {
           "description": "How long it waits for a head's checks before the pull request\nleaves; \"2h\" where absent.",
@@ -9282,6 +9290,26 @@
           "description": "The account's followers alone.",
           "type": "string",
           "const": "private"
+        }
+      ]
+    },
+    "Vouches": {
+      "description": "Which head a gesture vouches for.",
+      "oneOf": [
+        {
+          "description": "The head the pull request had at the gesture's time on the forge,\nby the forge's own record of pushes to its branch.",
+          "type": "string",
+          "const": "gesture"
+        },
+        {
+          "description": "The head herald first reads with the gesture standing.",
+          "type": "string",
+          "const": "seen"
+        },
+        {
+          "description": "The head herald first reads with the gesture standing, once one who\nholds the queue's least role approved that commit on the forge.",
+          "type": "string",
+          "const": "approved"
         }
       ]
     },

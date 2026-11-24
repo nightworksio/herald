@@ -4,13 +4,12 @@
 
 use herald_core::{MOST_FORGE_TEAMS, MOST_TEAM_MEMBERS, Team, Teams};
 use herald_kinds::{Teamed, Unpolled};
-use herald_ports::{DynHttp, Erased, Http as _};
-use herald_wire::answered;
+use herald_ports::{DynHttp, Erased};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::forge::{OWNER, whole};
-use crate::limited::limited;
+use crate::paging::page;
 use crate::{Forge, Origin, Token};
 
 /// What a forge's listing of teams is called in an error.
@@ -21,20 +20,6 @@ const MEMBERS: &str = "team member listing";
 
 /// What a request names a team by.
 const TEAM: &str = "team";
-
-/// The answers a forge refuses a listing of teams or members with: no
-/// token, a token without the permission, or no such organization or group
-/// as the token sees.
-const REFUSED: [u16; 3] = [401, 403, 404];
-
-/// The most teams or members one page lists on `forge`: Forgejo and Gitea
-/// list at most 50 by default.
-const fn page(forge: Forge) -> usize {
-    match forge {
-        Forge::Forgejo => 50,
-        Forge::GitHub | Forge::GitLab => 100,
-    }
-}
 
 /// The permission a token on `forge` needs to read its teams.
 pub(crate) const fn permission(forge: Forge) -> &'static str {
@@ -125,47 +110,18 @@ struct Member {
 type Reading<'a> = (&'a Origin, Option<&'a Token>);
 
 /// Each item of the listing at `path` under the API of `reading`, its query
-/// begun, at most `most`, a page at a time through `http`, read as `what`;
-/// none where the forge refuses it.
+/// begun, at most `most`, read as `what`; none where the forge refuses it.
+/// The listing is bounded, cut at `most` unsaid, so it is for display and
+/// never feeds a decision.
 async fn paged<T: DeserializeOwned>(
     http: &Erased<'_, dyn DynHttp + '_>,
     (origin, token): Reading<'_>,
     path: &str,
-    (most, what): (usize, &'static str),
+    bound: (usize, &'static str),
 ) -> Result<Option<Vec<T>>, Unpolled> {
-    let forge = origin.forge();
-    let size = page(forge);
-    let sized = match forge {
-        Forge::Forgejo => "limit",
-        Forge::GitHub | Forge::GitLab => "per_page",
-    };
-    let mut read = Vec::new();
-    for number in 1..=most.div_ceil(size) {
-        let request = origin.rooted(&format!("{path}{sized}={size}&page={number}"), token);
-        let answer = http.send(request).await.map_err(|_| {
-            Unpolled::Unreachable(format!("the forge's {what} could not be reached"))
-        })?;
-        if let Some(limited) = limited(forge, what, &answer) {
-            return Err(limited);
-        }
-        if REFUSED.contains(&answer.status) {
-            return Ok(None);
-        }
-        answered(what, &answer).map_err(Unpolled::unreadable)?;
-        let listed: Vec<T> = serde_json::from_slice(&answer.body).map_err(|_| {
-            Unpolled::Unreadable(format!("the forge's {what} is not one herald reads"))
-        })?;
-        let more = match forge {
-            Forge::Forgejo => !listed.is_empty(),
-            Forge::GitHub | Forge::GitLab => listed.len() >= size,
-        };
-        read.extend(listed);
-        if !more {
-            break;
-        }
-    }
-    read.truncate(most);
-    Ok(Some(read))
+    let ask = |query: &str| Ok(origin.rooted(&format!("{path}{query}"), token));
+    let listed = crate::paging::paged(http, origin.forge(), &ask, bound).await?;
+    Ok(listed.map(|(items, _)| items))
 }
 
 /// Each team of `owner` on the forge of `reading`, by its name, with the

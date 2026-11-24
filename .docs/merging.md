@@ -37,6 +37,7 @@ the config once you confirm it.
 | `enter` | `{ label = "<name>" }`, or `{ comment = "<command>" }`: a comment whose whole body is the command, or the command and a commit's full id | `{ label = "herald:merge" }` |
 | `least` | the least role the person who queues holds: `"write"` (GitHub write, GitLab Developer, Forgejo write, or above), `"maintain"` or `"admin"` | `"write"` |
 | `vouches` | which head a gesture vouches for: `"gesture"`, `"seen"` or `"approved"` (see [which head a gesture vouches for](#which-head-a-gesture-vouches-for)) | `"gesture"` |
+| `skew` | how far apart the forge's stamps of a gesture and of a push may be: a push stamped up to this before a gesture, or before a GitLab approval's note, counts as after it, so the gesture never vouches for a head that push may have brought | `"5s"` |
 | `method` | `"merge"`, `"squash"`, `"rebase"`, `"fast-forward"`, or `"repository"`: the repository's one allowed method | required: a queue without it does not start |
 | `message` | `"forge"`: the forge's own commit message for the method; `"pull"`: the pull request's title and body, with `"merge"` or `"squash"` | `"forge"` |
 | `may_fail` | checks that may be red or missing on this branch; never one the forge requires; herald's own queue alone, refused with `runs = "forge"` | none |
@@ -59,8 +60,12 @@ again right before each step it takes. Forgejo and Gitea tell a
 person's role on a repository to its administrators alone, so there the
 source's read token is a repository administrator's. The gesture
 vouches for one head, as `vouches` says: a push past it takes the pull
-request out, and it comes back only by a new gesture. Removing the
-label, deleting the comment, or the comment command followed by
+request out, and it comes back only by a new gesture. Where several
+gestures were made, the last one counted stands, so a new comment
+command after a push vouches again. An edited comment is never a
+gesture; an edited comment command followed by `cancel` still takes the
+pull request out. Removing the label, by anyone and also by an account
+since deleted, deleting the comment, or the comment command followed by
 the word `cancel` from the author, a writer or the person who queued it takes it
 out. Pull requests go first in, first out per branch; nothing jumps the
 queue.
@@ -69,13 +74,14 @@ queue.
 
 | `vouches` | The head it vouches for | What it accepts |
 |-----------|-------------------------|-----------------|
-| `"gesture"` | the head the pull request had at the gesture's time on the forge, by the forge's own record of pushes to its branch (GitHub's repository activity, GitLab's diff versions, Forgejo's timeline) | nothing past that record: where it cannot be read, as for a fork whose activity the read credential does not reach, a label vouches for no head |
-| `"seen"` | the head herald first reads with the gesture standing, kept in the store's record | the window between the gesture and herald's first read: a push in it is vouched for as if the writer had seen it |
-| `"approved"` | the head herald first reads with the gesture standing, once a person holding `least` has approved that exact commit on the forge | the forge's review record: GitHub's and Forgejo's reviews name their commit; a GitLab approval counts only where the project removes approvals when a commit is added |
+| `"gesture"` | the head the pull request had at the gesture's time on the forge, by the forge's own record of pushes to its branch (GitHub's repository activity, GitLab's diff versions, Forgejo's timeline), a push stamped up to `skew` before the gesture counted as after it | nothing past that record: where it cannot be read, as for a fork whose activity the read credential does not reach, a label vouches for no head. GitHub's activity, read newest first, may drop old pushes, so there a label places a head only after a push the activity lists, and otherwise vouches for none. A GitLab merge request with 100 diff versions or more, or a Forgejo timeline longer than herald reads, gives no record |
+| `"seen"` | the head herald first reads with the gesture standing, by the store's record of it | the window between the gesture and herald's first read: a push in it is vouched for as if the writer had seen it. Without that record, as in `herald merge-queue`'s read, the pull request leaves as `unrecorded` |
+| `"approved"` | the head herald first reads with the gesture standing, by the store's record of it, once a person holding `least` has approved that exact commit on the forge | the forge's review record. On GitHub and Forgejo each reviewer's last review that approves or asks for changes counts, and approves only where it names that commit; a dismissed one counts against. A GitLab approval names no commit: it counts for the head of the latest diff version only where GitLab's own note of the approval is stamped more than `skew` after that version, and a note that the approval was taken back undoes it. Without the store's record the pull request leaves as `unrecorded` |
 
 A comment command followed by a commit's full id (`/merge 3f2a…`)
 vouches for that commit alone, whatever `vouches` says, so it works
-where the forge's record of pushes cannot be read. Each read of the
+where the forge's record of pushes cannot be read. It stands in for the
+record of the head and never for the approval `"approved"` asks. Each read of the
 gestures, pushes or reviews that comes back partial leaves the pull
 request as `unread`.
 
@@ -107,7 +113,10 @@ With `runs = "herald"` one pull request per branch is in flight. herald:
 A base that moves before the merge sends it back to step 1. It is green
 only where every check on the head passed, every check the forge
 requires on the base is there and passed, and the forge says it can
-merge, which holds the reviews it requires. herald never bypasses a
+merge, which holds the reviews it requires. A head on which no check
+that counts is reported is waited for, and leaves as `checks-timed-out`
+once `wait` has passed; it is never merged at once. A check `may_fail`
+names never counts for this. herald never bypasses a
 protection. On a GitHub branch whose rules allow merging through the
 merge queue alone, the forge refuses herald's own merge, and `herald
 doctor` says so first.
@@ -116,7 +125,8 @@ A pull request leaves at once, with its reason, when a check fails
 (`checks-failed`), its checks outlast `wait` (`checks-timed-out`), its
 update conflicts (`conflict`) or cannot be made (`cannot-update`, as for
 a fork that does not let maintainers edit), its head moves
-(`head-moved`), its gesture is taken back (`removed`), the forge says it
+(`head-moved`), herald holds no record of the head its gesture vouches
+for (`unrecorded`), its gesture is taken back (`removed`), the forge says it
 cannot merge (`unmergeable`) or refuses the merge (`merge-refused`), or
 what decides whether it stands or is green could not be read whole
 (`unread`): a failure, never taken as `removed`. herald reads at most 500

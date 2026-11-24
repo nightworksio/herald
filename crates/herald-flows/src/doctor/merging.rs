@@ -3,7 +3,8 @@
 //! credential, where its steps are taken, and why one does not start.
 
 use herald_config::{Config, MergeQueue};
-use herald_core::merging::{AppliedBy, Runs};
+use herald_core::Duration;
+use herald_core::merging::{AppliedBy, Runs, Vouches};
 
 use super::{Findings, gap};
 
@@ -48,12 +49,21 @@ fn said(name: &str, queue: &MergeQueue) -> String {
             "its steps taken by `herald server`, which then reads its write credential"
         }
     };
+    let vouches = match queue.vouches {
+        Vouches::Gesture => "the head at the gesture's time on the forge",
+        Vouches::Seen => "the head herald first reads with the gesture",
+        Vouches::Approved => {
+            "the head herald first reads with the gesture, once one holding its least role approved it"
+        }
+    };
     format!(
-        "The merge queue {name} merges into {} of {} on {} {runs}, with {method}, a branch brought up to date by {}, {write}, {applied}.",
+        "The merge queue {name} merges into {} of {} on {} {runs}, with {method}, a gesture vouching for {vouches}, a push stamped up to {} before it counted as after it, a branch brought up to date by {}, {write}, {applied}. It reads with its source's read credential: {}.",
         queue.branch,
         queue.forge.repository,
         queue.forge.forge,
-        queue.forge.update.name()
+        Duration(queue.skew).written(),
+        queue.forge.update.name(),
+        queue.forge.reads
     )
 }
 

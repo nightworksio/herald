@@ -205,6 +205,22 @@ impl PreparedRoute {
     }
 }
 
+/// A merge queue, with what reads its repository.
+#[derive(Debug, Clone)]
+pub(crate) struct MergeReading {
+    /// The queue's name, as `[merge_queues.<name>]` names it.
+    pub(crate) name: String,
+    /// The base branch it merges into.
+    pub(crate) branch: String,
+    /// Who runs it.
+    pub(crate) runs: herald_core::merging::Runs,
+    /// Whether its forge never has a merge queue of its own, which doctor
+    /// says without asking.
+    pub(crate) queueless: bool,
+    /// What reads its repository with the source's read credential.
+    pub(crate) reader: Arc<dyn herald_kinds::MergeReader>,
+}
+
 /// A source ready to poll.
 #[derive(Debug, Clone)]
 pub struct PreparedSource {
@@ -214,6 +230,8 @@ pub struct PreparedSource {
     /// What reads its repository's open pull requests for a view, where it
     /// names one repository on a forge (ADR-0055).
     pub(crate) queue: Option<Arc<dyn Queue>>,
+    /// What reads the repository of each merge queue naming it (ADR-0087).
+    pub(crate) merging: Vec<MergeReading>,
     /// Where each member's webhook points, where some registers one, and
     /// the secret it is signed with, where each round registers one on a
     /// member that has none.
@@ -691,6 +709,29 @@ fn prepared_routes(
     Ok(routes)
 }
 
+/// What reads the repository of each of `config`'s merge queues on the
+/// source `name`, `source`, with its read credential `token`.
+fn merge_readings(
+    config: &Config,
+    (name, source): (&SourceName, &herald_kinds::Source),
+    token: Option<&Credential>,
+) -> Vec<MergeReading> {
+    config
+        .merge_queues
+        .iter()
+        .filter(|(_, queue)| queue.source == *name)
+        .filter_map(|(queue, merging)| {
+            Some(MergeReading {
+                name: queue.clone(),
+                branch: merging.branch.clone(),
+                runs: merging.runs,
+                queueless: merging.forge.queueless.is_some(),
+                reader: source.merge_reader(&merging.forge, token.cloned())?,
+            })
+        })
+        .collect()
+}
+
 /// `config`'s routes with every credential and marker key resolved through
 /// `secrets` and `signer`, with what else a run that `uses` it needs: each
 /// source's token where it polls, and where it serves, each destination's
@@ -741,6 +782,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         sources.push(PreparedSource {
             name: name.clone(),
             queue: source.queue(token.clone()),
+            merging: merge_readings(config, (name, source), token.as_ref()),
             poll: source.poller(token, edits),
             backfill: source.backfill(),
             hook,

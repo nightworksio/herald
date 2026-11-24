@@ -15,20 +15,20 @@ fn a_queue_that_can_start_is_said_and_has_no_gap() {
     let findings = doctored(&config, &layer(&STORES));
     assert_eq!(keys(&findings.gaps), Vec::<&str>::new());
     assert!(
-        findings.notes.contains(&"The merge queue main merges into main of nightworksio/php-mutation-gate on github through the forge's merge queue, with method squash, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald merge-queue --apply`.".to_owned()),
+        findings.notes.contains(&"The merge queue main merges into main of nightworksio/php-mutation-gate on github through the forge's merge queue, with method squash, a gesture vouching for the head at the gesture's time on the forge, a push stamped up to 5s before it counted as after it, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald merge-queue --apply`. It reads with its source's read credential: a GitHub App or fine-grained token with Metadata, Contents, Pull requests, Checks and Commit statuses read on the repository (and on a fork's, for its pushes), on GitHub Enterprise Server and GHE.com too; a classic token needs repo for a private repository.".to_owned()),
         "{:?}",
         findings.notes
     );
     let served = on(
         "git-branch",
         &format!(
-            "{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\nruns = \"herald\"\nmethod = \"fast-forward\"\napplied_by = \"server\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n"
+            "{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\nruns = \"herald\"\nvouches = \"approved\"\nskew = \"1m\"\nmethod = \"fast-forward\"\napplied_by = \"server\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n"
         ),
     );
     let findings = doctored(&served, &layer(&STORES));
     assert_eq!(keys(&findings.gaps), Vec::<&str>::new());
     assert!(
-        findings.notes.contains(&"The merge queue main merges into main of acme/app on forgejo through herald's own queue, with method fast-forward, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald server`, which then reads its write credential.".to_owned()),
+        findings.notes.contains(&"The merge queue main merges into main of acme/app on forgejo through herald's own queue, with method fast-forward, a gesture vouching for the head herald first reads with the gesture, once one holding its least role approved it, a push stamped up to 1m before it counted as after it, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald server`, which then reads its write credential. It reads with its source's read credential: a token with read:repository and read:issue, of a user who administers the repository: Forgejo and Gitea say another person's role to an administrator alone.".to_owned()),
         "{:?}",
         findings.notes
     );
@@ -39,7 +39,9 @@ fn a_queue_without_a_method_a_write_credential_a_store_that_keeps_records_or_a_f
  {
     let config = on(
         "markers",
-        &format!("{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\n"),
+        &format!(
+            "{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\nvouches = \"seen\"\n"
+        ),
     );
     let findings = doctored(&config, &layer(&STORES));
     let queued: Vec<&Gap> = findings
@@ -72,7 +74,7 @@ fn a_queue_without_a_method_a_write_credential_a_store_that_keeps_records_or_a_f
         ]
     );
     assert!(
-        findings.notes.iter().any(|note| note.starts_with("The merge queue main merges into main of acme/app on forgejo through the forge's merge queue, with no method, a branch brought up to date by merge, no write credential,")),
+        findings.notes.iter().any(|note| note.starts_with("The merge queue main merges into main of acme/app on forgejo through the forge's merge queue, with no method, a gesture vouching for the head herald first reads with the gesture, a push stamped up to 5s before it counted as after it, a branch brought up to date by merge, no write credential,")),
         "{:?}",
         findings.notes
     );

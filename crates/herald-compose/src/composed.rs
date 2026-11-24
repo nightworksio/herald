@@ -24,6 +24,7 @@ use crate::host::Host;
 use crate::hosting::Hosting;
 use crate::records::{OpenedRecords, Opener, Served, reached};
 
+mod merging;
 mod rerunning;
 
 /// The variable that bounds a request's whole time, in milliseconds, in

@@ -1,7 +1,7 @@
 //! The merge queues, each a base branch whose queued pull requests the
 //! forge's merge queue or herald's own merges (ADR-0087).
 
-use herald_core::merging::{AppliedBy, Enter, Message, Method, Retries, Runs, Write};
+use herald_core::merging::{AppliedBy, Enter, Message, Method, Retries, Runs, Vouches, Write};
 use herald_core::{Duration, Installation, Permission, SourceName};
 use herald_kinds::{Installed, Merging, WriteCredential};
 use jiff::SignedDuration;
@@ -35,6 +35,17 @@ pub(crate) struct MergeQueueFile {
     /// "write" (GitHub write, GitLab Developer, Forgejo write, or above),
     /// "maintain" or "admin"; "write" where absent.
     pub(crate) least: Option<Permission>,
+    /// Which head a gesture vouches for: "gesture", the head at the
+    /// gesture's time on the forge; "seen", the head herald first reads
+    /// with the gesture; "approved", that head once one who holds `least`
+    /// approved it on the forge. "gesture" where absent.
+    pub(crate) vouches: Option<Vouches>,
+    /// How far apart the forge's stamps of a gesture and of a push may be,
+    /// its services' clocks never quite agreeing: a push stamped up to this
+    /// before a gesture, or before a GitLab approval, counts as after it,
+    /// so the gesture vouches for no head that push may have brought; "5s"
+    /// where absent.
+    pub(crate) skew: Option<Duration>,
     /// How it merges: "merge", "squash", "rebase", "fast-forward", or
     /// "repository", the repository's one allowed method. A queue without
     /// it does not start.
@@ -81,6 +92,10 @@ pub struct MergeQueue {
     pub enter: Enter,
     /// The least role the person who queues holds.
     pub least: Permission,
+    /// Which head a gesture vouches for.
+    pub vouches: Vouches,
+    /// How far apart the forge's stamps of a gesture and of a push may be.
+    pub skew: SignedDuration,
     /// How it merges; it does not start without one.
     pub method: Option<Method>,
     /// The commit message it merges with.

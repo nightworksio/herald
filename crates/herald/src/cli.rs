@@ -139,6 +139,20 @@ pub(crate) enum Reading {
         #[arg(long)]
         private: bool,
     },
+    /// Print each merge queue's entries read from its forge, what the queue
+    /// does next with each and why; nothing is written and no write
+    /// credential is read (ADR-0087).
+    MergeQueue {
+        /// The queue, as `[merge_queues.<name>]` names it; every queue where
+        /// absent.
+        queue: Option<String>,
+        /// Say this output is private, so the entries of private and
+        /// internal repositories, and why a read failed, are printed;
+        /// without it they are withheld, unless `[cli] private` says so. A
+        /// CI job's log may be public.
+        #[arg(long)]
+        private: bool,
+    },
     /// Say what you did by hand about a living post's possibly orphaned
     /// parts, which doctor names (ADR-0067).
     #[command(subcommand)]
