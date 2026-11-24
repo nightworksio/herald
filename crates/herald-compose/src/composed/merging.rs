@@ -6,7 +6,8 @@
 use std::sync::Arc;
 
 use herald_core::Printed;
-use herald_flows::{Handing, MergeQueueRead, Stop, merge_apply, merge_queues};
+use herald_flows::{Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues};
+use herald_kinds::Branched;
 use herald_ports::{Base, Keyring, Store};
 
 use super::{Composed, ServingOn, TIMEOUT_MS, Through};
@@ -25,6 +26,26 @@ impl<H: Host> Through<H> for Queues<'_> {
         _: &str,
     ) -> Self::Done {
         merge_queues(
+            (serving.config, serving.connected, serving.ports),
+            (self.0, self.1),
+        )
+        .await
+    }
+}
+
+/// The base branch of the merge queue a name names, its failure as
+/// printed.
+struct Branch<'q>(&'q str, Printed);
+
+impl<H: Host> Through<H> for Branch<'_> {
+    type Done = Result<Branched, Option<String>>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
+        merge_branch(
             (serving.config, serving.connected, serving.ports),
             (self.0, self.1),
         )
@@ -112,5 +133,25 @@ where
         };
         self.through(herald_flows::Admission::Once, self.started(), apply)
             .await
+    }
+
+    /// The base branch of the merge queue `name`, read now, or why it was
+    /// not, as `printed` prints failures; nothing is written and no write
+    /// credential is read (ADR-0087).
+    ///
+    /// # Errors
+    ///
+    /// Where the branch was not read: why, where `printed` prints
+    /// failures.
+    pub async fn merge_branch(
+        &self,
+        (name, printed): (&str, Printed),
+    ) -> Result<Branched, Option<String>> {
+        self.through(
+            herald_flows::Admission::Once,
+            self.started(),
+            Branch(name, printed),
+        )
+        .await
     }
 }

@@ -35,7 +35,9 @@ pub enum Vouches {
     /// by the forge's own record of pushes to its branch.
     #[default]
     Gesture,
-    /// The head herald first reads with the gesture standing.
+    /// The head herald first reads with the gesture standing: a push
+    /// between the gesture and that read is vouched for as if the writer
+    /// had seen it.
     Seen,
     /// The head herald first reads with the gesture standing, once one who
     /// holds the queue's least role approved that commit on the forge.

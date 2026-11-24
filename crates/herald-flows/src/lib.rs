@@ -81,7 +81,8 @@ pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_a
 pub use installations::AHEAD as MINTED_AHEAD;
 pub use merging::{
     DRAFTED, Found, GONE, Handing, Judged, MergeQueueRead, Next, OWN_QUEUE, RACED, REGESTURED,
-    SERVED, Took, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED, merge_apply, merge_queues,
+    SERVED, Took, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED, merge_apply, merge_branch,
+    merge_queues,
 };
 pub use orphans::{Orphaned, orphans, orphans_cleared};
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};

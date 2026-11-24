@@ -26,7 +26,7 @@ mod log;
 mod written;
 
 /// What an operator answers to pin the keys shown.
-const YES: [&str; 2] = ["y", "yes"];
+pub(crate) const YES: [&str; 2] = ["y", "yes"];
 
 /// What `herald peer add` is asked.
 pub(crate) struct Adding<'a> {

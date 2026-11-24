@@ -158,6 +158,10 @@ pub(crate) enum Reading {
         #[arg(long)]
         private: bool,
     },
+    /// Write a part of the config by answering a question for each of its
+    /// keys.
+    #[command(subcommand)]
+    Setup(SettingUp),
     /// Say what you did by hand about a living post's possibly orphaned
     /// parts, which doctor names (ADR-0067).
     #[command(subcommand)]
@@ -259,6 +263,15 @@ pub(crate) enum Shown {
     Text,
     /// One JSON array.
     Json,
+}
+
+/// The parts of the config a wizard writes.
+#[derive(Debug, Subcommand)]
+pub(crate) enum SettingUp {
+    /// Write a `[merge_queues.<name>]` table, or edit one, by answering a
+    /// question for each key, each with its default chosen; it starts no
+    /// queue (ADR-0087).
+    MergeQueue(Box<crate::queue_setup::Answers>),
 }
 
 /// The commands that set a destination up to take commands.

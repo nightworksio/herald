@@ -18,8 +18,10 @@ use jiff::Timestamp;
 
 use crate::{Connected, Ports, Stop};
 
+mod branch;
 mod handing;
 
+pub use branch::merge_branch;
 pub use handing::{
     DRAFTED, GONE, RACED, REGESTURED, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED,
 };
