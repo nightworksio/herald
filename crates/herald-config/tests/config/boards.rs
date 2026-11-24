@@ -378,7 +378,7 @@ flaky = { rerun = true, runs = 101 }
     for wanted in [
         "rules.apply.flaky.mode: a rule only plans a re-run, so mode is \"plan\"; a re-run is made by an operator signed in through the forge, never by a rule on its own",
         "rules.wide.flaky.runs: a plan reads from 1 to 100 failed runs on a head, such as runs = 5",
-        "rules.idle: a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none",
+        "rules.idle: a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, alerts on its view's release with release = { ready = true, late = 7 }, or any of them; this one does none",
     ] {
         assert!(error.contains(wanted), "{wanted}\n{error}");
     }
@@ -417,6 +417,72 @@ private = true
         "rules.off: a rule nudges at its stages",
         "rules.none: a rule nudges at its stages",
         "rules.odd",
+    ] {
+        assert!(error.contains(wanted), "{wanted}\n{error}");
+    }
+}
+
+#[test]
+fn a_rule_alerts_on_its_view_s_release_turning_ready_or_late() {
+    let views = r#"[views.ship]
+sources = ["gate"]
+release = { milestone = "v2.0", header = true }
+
+[views.plain]
+sources = ["gate"]
+release = { label = "ship" }
+"#;
+    let config = loaded(&with(&format!(
+        r#"{views}
+[rules.ready]
+view = "ship"
+release = {{ ready = true, late = 7 }}
+
+[rules.edge]
+view = "ship"
+release = {{ late = 365 }}
+
+[rules.soon]
+view = "ship"
+release = {{ late = 0 }}
+
+[[routes]]
+id = "alerts"
+sources = ["ready"]
+kinds = ["readiness"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "herald:readiness"
+"#
+    )));
+    let alerting = |ready, late| herald_core::Alerting { ready, late };
+    assert_eq!(config.rules["ready"].release, alerting(true, Some(7)));
+    assert_eq!(config.rules["edge"].release, alerting(false, Some(365)));
+    assert_eq!(config.rules["soon"].release, alerting(false, Some(0)));
+    assert_eq!(config.routes[0].route.filter.kinds, [Kind::READINESS]);
+    let error = errors(&with(&format!(
+        r#"{views}
+[rules.unreleased]
+release = {{ ready = true }}
+
+[rules.undated]
+view = "plain"
+release = {{ late = 3 }}
+
+[rules.far]
+view = "ship"
+release = {{ late = 366 }}
+
+[rules.off]
+view = "ship"
+release = {{ ready = false }}
+"#
+    )));
+    for wanted in [
+        "rules.unreleased.release: a rule's release alerts judge the release of the view it watches, so that view needs one",
+        "rules.undated.release.late: release.late reads the due days of the milestones the release's selector matches, so the view's release needs header = true or rows = \"issues\"",
+        "rules.far.release.late: release.late is from 0 to 365 days, such as late = 7",
+        "rules.off: a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, alerts on its view's release with release = { ready = true, late = 7 }, or any of them; this one does none",
     ] {
         assert!(error.contains(wanted), "{wanted}\n{error}");
     }

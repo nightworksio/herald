@@ -2,7 +2,9 @@
 //! pull requests read, a nudge announced for each that waited past one of
 //! its stages, once a stage and spell of waiting (ADR-0056), a plan to
 //! re-run each flaky check failing on them (ADR-0065), and an alert on
-//! each that left the merge queue for a reason it names (ADR-0078).
+//! each that left the merge queue for a reason it names (ADR-0078), and
+//! alerts on its view's release, each audience of its routes judged as its
+//! board tells it (ADR-0085).
 
 use herald_config::{Config, Rule};
 use herald_core::{SourceName, dequeue_event, dequeues, grouped, nudge_event, nudges};
@@ -18,7 +20,7 @@ use crate::report::{Reads, due, settled, view_pulls};
 /// nudge of each row of its view that reached a stage, the longest
 /// waiting first, up to its `most`, then an alert on each that left the
 /// merge queue for a reason it names, the latest first, up to its `most`,
-/// each seen as its repository is.
+/// each seen as its repository is, then its alerts on its view's release.
 pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (name, rule): (&str, &Rule),
@@ -32,15 +34,12 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
     let view = config.views.get(&rule.watch.view)?;
-    let pulls = match view_pulls(flow, (&rule.watch.view, view, None), reads).await {
-        Ok(read) => read.pulls,
+    let read = match view_pulls(flow, (&rule.watch.view, view, None), reads).await {
+        Ok(read) => read,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
-    let shown = grouped(
-        &view.view,
-        decided_rows(flow, view, &pulls).await,
-        herald_core::Beside::default(),
-    );
+    let decided = decided_rows(flow, view, &read.pulls).await;
+    let shown = grouped(&view.view, decided.clone(), herald_core::Beside::default());
     let source = SourceName::new(name);
     let mut announced = Vec::new();
     let nudged = rule
@@ -65,15 +64,30 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
             held: None,
         });
     }
-    if rule.rerun {
-        match crate::reruns::planned(flow, (name, rule), (view, &shown), run).await {
-            Ok(plans) => announced.extend(plans),
-            Err(stop) => return Some(Sweep::Stopped(stop)),
+    let watched = (view, &read, decided.as_slice());
+    let further = async {
+        if rule.rerun {
+            announced
+                .extend(crate::reruns::planned(flow, (name, rule), (view, &shown), run).await?);
         }
-    }
-    let cursor = settled(ports, (name, identity), record.as_ref(), &announced).await;
+        let (alerts, verdicts) =
+            crate::readying::alerted(flow, (name, rule), watched, (record.as_ref(), run)).await?;
+        announced.extend(alerts);
+        Ok::<_, Stop>(verdicts)
+    };
+    let verdicts = match further.await {
+        Ok(verdicts) => verdicts,
+        Err(stop) => return Some(Sweep::Stopped(stop)),
+    };
+    let cursor = settled(
+        ports,
+        (name, identity),
+        record.as_ref(),
+        (&announced, verdicts),
+    )
+    .await;
     Some(Sweep::Reported {
-        pulls: pulls.len(),
+        pulls: read.pulls.len(),
         announced,
         cursor,
     })

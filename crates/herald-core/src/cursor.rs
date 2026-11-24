@@ -76,6 +76,10 @@ pub struct Cursor {
     /// route of the report is sent anew for it (ADR-0067).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pending: Vec<crate::RouteId>,
+    /// The verdict on its view's release a rule last told each audience of
+    /// its routes, by the visibility the audience may see (ADR-0085).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub verdicts: BTreeMap<crate::Visibility, crate::ReleaseVerdict>,
 }
 
 /// When the proof of the newest envelope a source took of one identity from
@@ -272,6 +276,7 @@ impl Cursor {
             projects,
             advised: self.advised.clone(),
             pending: self.pending.clone(),
+            verdicts: self.verdicts.clone(),
         }
     }
 

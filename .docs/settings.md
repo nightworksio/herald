@@ -1194,6 +1194,9 @@ The rules routes name among their sources, by name: each a view watched once a w
 | `rules.<name>.flaky.rerun` | boolean | Whether it plans a re-run of each flaky check. |
 | `rules.<name>.flaky.runs` | integer | The most failed runs on one head a plan reads for one check, the newest first, from 1 to 100: 5 where absent. A plan takes one request for them and, on GitHub, one more for each. |
 | `rules.<name>.most` | integer | The most pull requests it nudges a window, the longest waiting first, and the most re-runs it plans: 20 where absent; the rest wait for the next window. |
+| `rules.<name>.release` | table | What it alerts on of its view's release, as `{ ready = true, late = 7 }`: once the release turns ready, and once it is still held back `late` days before the due day of the milestone due first, from 0 to 365; each audience of its routes judged and alerted as its board tells it, a public route never told of a private repository. Neither where absent (ADR-0085). |
+| `rules.<name>.release.late` | integer | How many days before the due day of the milestone due first it alerts on the release still held back, once a milestone and due day; it needs the release's header or issue rows to read the milestones. None where absent. |
+| `rules.<name>.release.ready` | boolean | Whether it alerts once the release turns ready; false where absent. |
 | `rules.<name>.stages` | array of [Duration](#duration) | How long an open pull request waits, since anyone last acted on it, before each nudge, such as `["2d", "7d"]`: each fires once a spell of waiting. |
 | `rules.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
 | `rules.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam": "UTC" where absent. |

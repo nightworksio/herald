@@ -573,6 +573,7 @@ and nudges each open pull request that waited past one of its `stages`:
 | `stages` | how long a pull request waits before each nudge, 1 to 16 lengths such as `["2d", "7d"]` | no nudges |
 | `most` | the most pull requests it nudges, and the most re-runs it plans, a window; the rest wait for the next window | `20` |
 | `dequeued` | `true` alerts once on each pull request that left the merge queue for a failure of its own: `checks-failed`, `checks-timed-out`, `conflict`, `invalid` or `protections`; a list such as `["checks-failed", "removed"]` names the reasons, of those and `removed`, `cleared`, `merged` and `unknown` | no alerts |
+| `release` | `{ ready = true }` alerts once the view's release turns ready; `{ late = 7 }` alerts once a milestone and due day on a release still held back 7 days, 0 to 365, before the due day of the milestone due first; both may be named; the view needs a release, and `late` needs its `header = true` or `rows = "issues"` | no alerts |
 | `flaky` | `{ rerun = true }` plans a re-run of each flaky check (below); `mode` is `"plan"`, the only mode a rule takes; `runs` is the most failed runs on a head a plan reads, the newest first, 1 to 100 | no plans; `runs = 5` |
 | `view`, `every`, `at`, `days`, `zone` | as a report's | as a report's |
 
@@ -614,7 +615,33 @@ identity holds when it left, so each departure alerts once. It reaches
 only private routes for a private or internal repository, as a nudge
 does. herald ships `herald:dequeued`.
 
-A rule names `stages`, `flaky`, `dequeued`, or more than one.
+The `readiness` event alerts on the view's release, for each audience of
+the rule's routes apart, as a report parts them: the private routes are
+judged on every pull request, the others on the public repositories'
+alone, beside the rest as `release.withheld` says, so each is alerted as
+its board would tell it. A release turns ready when nothing holds it back
+for that audience after another verdict told it before: the first verdict
+a rule sees is only remembered, in its cursor, and a verdict that is not
+known never fires. A late release is one known held back on or after
+`late` days before the due day of the milestone due first that the
+audience may see; it fires once a milestone title and due day, and once
+the due day passed `days` is below zero. A public route is told nothing of
+a private or internal repository: no title, no milestone, and no verdict
+beyond what `release.withheld` lets it know. The event carries `rule`,
+`view`, `verdict` (`ready` or `late`), `holds`, and for a late release
+`milestone_title`, `due` and `days`, and links the milestone as
+`milestone` where its forge names a page. herald ships
+`herald:readiness`.
+
+```toml
+[rules.release]
+view = "release"
+release = { ready = true, late = 7 }
+every = "1d"
+at = "09:00"
+```
+
+A rule names `stages`, `flaky`, `dequeued`, `release`, or more than one.
 
 ### Check triage and flaky checks
 

@@ -722,3 +722,92 @@ fn a_view_with_no_release_shows_no_verdict() {
     assert_eq!(board.readiness, None);
     assert_eq!(board.total(), 1);
 }
+
+#[test]
+fn a_public_audience_is_alerted_under_each_withheld_mode_as_its_board_tells_it() {
+    use crate::queue::{Header, OpenMilestone, Withheld};
+    use crate::{Alerting, Readied, ReleaseVerdict, Told, readied, readied_event, told_of};
+    let today = now().to_zoned(jiff::tz::TimeZone::UTC).date();
+    let carried = |repository: &str, visibility, labels: Vec<String>| Pull {
+        repository: repository.to_owned(),
+        visibility,
+        milestone: Some("v2.0".to_owned()),
+        labels,
+        ..waited(1, 7)
+    };
+    let milestone = |repository: &str, visibility, title: &str| OpenMilestone {
+        repository: repository.to_owned(),
+        visibility,
+        title: title.to_owned(),
+        url: None,
+        due: Some(today),
+        overdue: false,
+        counts: None,
+    };
+    let mut header = Header {
+        milestones: vec![
+            milestone("secret/repo", Visibility::Private, "secret-v2"),
+            milestone("acme/app", Visibility::Public, "v2.0"),
+        ],
+        ..Header::default()
+    };
+    header.milestones[0].due = today.checked_sub(jiff::Span::new().days(1)).ok();
+    let base = crate::queue::Based {
+        repository: "secret/repo".to_owned(),
+        visibility: Visibility::Private,
+        branch: "secret-main".to_owned(),
+        read: crate::queue::BaseRead::Checked(Checks::Failed(vec!["secret-check".to_owned()])),
+    };
+    let alerting = Alerting {
+        ready: true,
+        late: Some(0),
+    };
+    let told = |withheld| {
+        let mut release = release("v2.0");
+        release.withheld = withheld;
+        release.blocker_labels = vec![Glob::new("blocker").unwrap()];
+        let view = View {
+            release: Some(release),
+            ..View::default()
+        };
+        let public = [carried("acme/app", Visibility::Public, Vec::new())];
+        let private = [carried(
+            "secret/repo",
+            Visibility::Private,
+            vec!["blocker".to_owned()],
+        )];
+        let hidden = rows(&view, &private, now());
+        let shown = (rows(&view, &public, now()), hidden.as_slice());
+        let reads = (std::slice::from_ref(&base), Some(&header));
+        told_of(&view, shown, reads, Visibility::Public).unwrap()
+    };
+    let alerts = |(readiness, seen): &(crate::queue::Readiness, Option<Header>)| {
+        let telling = Told {
+            audience: Visibility::Public,
+            readiness,
+            header: seen.as_ref(),
+        };
+        readied(alerting, telling, Some(ReleaseVerdict::Held), today)
+            .into_iter()
+            .map(|alert| {
+                let event = readied_event(("weekly", "release"), telling, alert, ("window", now()))
+                    .unwrap();
+                assert!(!format!("{event:?}").contains("secret"), "{event:?}");
+                assert_eq!(event.bounded_by(), Some(Visibility::Public));
+                match alert {
+                    Readied::Ready => ("ready".to_owned(), 0),
+                    Readied::Late { milestone, days } => (milestone.title.clone(), days),
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        alerts(&told(Withheld::Unknown)),
+        Vec::<(String, i64)>::new()
+    );
+    assert_eq!(alerts(&told(Withheld::Shown)), [("ready".to_owned(), 0)]);
+    let masked = told(Withheld::Masked);
+    assert_eq!(masked.0.holds.len(), 2);
+    assert_eq!(masked.1.as_ref().unwrap().milestones.len(), 1);
+    assert_eq!(alerts(&masked), [("v2.0".to_owned(), 0)]);
+}

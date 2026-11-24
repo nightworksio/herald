@@ -4914,6 +4914,24 @@
         }
       ]
     },
+    "ReleaseRule": {
+      "description": "What a rule alerts on of its view's release.",
+      "type": "object",
+      "properties": {
+        "late": {
+          "description": "How many days before the due day of the milestone due first it\nalerts on the release still held back, once a milestone and due\nday; it needs the release's header or issue rows to read the\nmilestones. None where absent.",
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 365,
+          "minimum": 0
+        },
+        "ready": {
+          "description": "Whether it alerts once the release turns ready; false where absent.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "ReleaseTitle": {
       "description": "A release pull request by its title, a glob ignoring case.",
       "type": "object",
@@ -5172,6 +5190,10 @@
           "type": "integer",
           "format": "uint",
           "minimum": 1
+        },
+        "release": {
+          "description": "What it alerts on of its view's release, as\n`{ ready = true, late = 7 }`: once the release turns ready, and once\nit is still held back `late` days before the due day of the\nmilestone due first, from 0 to 365; each audience of its routes\njudged and alerted as its board tells it, a public route never told\nof a private repository. Neither where absent (ADR-0085).",
+          "$ref": "#/$defs/ReleaseRule"
         },
         "stages": {
           "description": "How long an open pull request waits, since anyone last acted on\nit, before each nudge, such as `[\"2d\", \"7d\"]`: each fires once a\nspell of waiting.",

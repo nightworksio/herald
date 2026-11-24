@@ -271,6 +271,11 @@ fn cursor_at(seen: &[&str], etag: &str) -> Cursor {
             placed: format!("{{\"channel\":\"{etag}\"}}"),
         }],
         pending: vec![RouteId::new("conformance")],
+        verdicts: [(
+            herald_core::Visibility::Private,
+            herald_core::ReleaseVerdict::Held,
+        )]
+        .into(),
         projects: identities
             .iter()
             .map(|identity| (identity.clone(), "conformance".to_owned()))

@@ -8,13 +8,13 @@ use std::ops::Range;
 
 use herald_core::report::{DAY, SHORTEST};
 use herald_core::{
-    ADVISORY_REPOSITORIES, Advising, AdvisoriesFrom, BLOCKER_LABELS, Blocker, Bots, BumpPattern,
-    CAPACITY_REPOSITORIES, Capacity, Combine, Deciding, Duration, Glob, GroupBy, LEAST_TEAM,
-    LONGEST_LOAD_WINDOW, Load, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
-    MOST_ADVISORY_REPOSITORIES, MOST_BLOCKER_LABELS, MOST_CAPACITY_REPOSITORIES, MOST_LEAST_TEAM,
-    MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES, MOST_TEAMS, Release, ReleasePull,
-    ReportSchedule, Rows, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages, Team, Teams,
-    Triage, View, Withheld, zone,
+    ADVISORY_REPOSITORIES, Advising, AdvisoriesFrom, Alerting, BLOCKER_LABELS, Blocker, Bots,
+    BumpPattern, CAPACITY_REPOSITORIES, Capacity, Combine, Deciding, Duration, Glob, GroupBy,
+    LEAST_TEAM, LONGEST_LOAD_WINDOW, Load, MOST_ADVISORIES, MOST_ADVISORIES_ALLOWED,
+    MOST_ADVISORY_REPOSITORIES, MOST_BLOCKER_LABELS, MOST_CAPACITY_REPOSITORIES, MOST_LATE_DAYS,
+    MOST_LEAST_TEAM, MOST_NUDGES, MOST_RUNS, MOST_RUNS_ALLOWED, MOST_STAGES, MOST_TEAMS, Release,
+    ReleasePull, ReportSchedule, Rows, Rules, SHORTEST_LOAD_WINDOW, Slot, SourceName, Stages, Team,
+    Teams, Triage, View, Withheld, zone,
 };
 use herald_kinds::{Most, Source};
 use jiff::SignedDuration;
@@ -46,7 +46,9 @@ const ADVISORIES_UNSHOWN: &str = "advisories_from, advisory_repositories and mos
 const UNHEADED: &str = "a release's header names the open milestones its milestone selector matches, so header = true needs one, such as release = { milestone = \"v2.0\", header = true }";
 const UNLISTED: &str = "a release's issue rows are the open issues of the open milestones its milestone selector matches, so rows = \"issues\" needs one, such as release = { milestone = \"v2.0\", rows = \"issues\" }";
 const UNPICKED: &str = "a release picks its pull requests by milestone, label, branch or pull, at least one, such as release = { milestone = \"v2.0\" }";
-const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, or any of them; this one does none";
+const IDLE: &str = "a rule nudges at its stages, plans re-runs of flaky checks with flaky = { rerun = true }, alerts on pull requests leaving the merge queue with dequeued = true, alerts on its view's release with release = { ready = true, late = 7 }, or any of them; this one does none";
+const UNRELEASED: &str = "a rule's release alerts judge the release of the view it watches, so that view needs one, such as release = { milestone = \"v2.0\" } in its [views.<name>]";
+const UNDATED: &str = "release.late reads the due days of the milestones the release's selector matches, so the view's release needs header = true or rows = \"issues\"";
 
 /// The names of `sources` that list their repositories' open pull requests.
 fn queued(sources: &BTreeMap<SourceName, Source>) -> Vec<SourceName> {
@@ -804,11 +806,52 @@ impl Loader<'_> {
             .dequeued
             .as_ref()
             .is_some_and(|dequeued| !dequeued.reasons().is_empty());
-        if file.stages.is_none() && !rerun && !dequeues {
+        let alerts = file.release.as_ref().is_some_and(|release| {
+            release.get_ref().ready == Some(true) || release.get_ref().late.is_some()
+        });
+        if file.stages.is_none() && !rerun && !dequeues && !alerts {
             self.error(span, path, IDLE.to_owned());
             return None;
         }
         Some((rerun, runs))
+    }
+
+    /// What the rule `file` writes at `path` alerts on of the release of
+    /// `view`, the view it watches, where it is sound: none where it names
+    /// no `release`; else a view with a release, and where it alerts late,
+    /// at most [`MOST_LATE_DAYS`] days before a due day read from the
+    /// release's header or issue rows (ADR-0085).
+    fn alerting(
+        &mut self,
+        file: &RuleFile,
+        path: &str,
+        view: Option<&ViewConfig>,
+    ) -> Option<Alerting> {
+        let Some(written) = file.release.as_ref() else {
+            return Some(Alerting::default());
+        };
+        let (span, path) = (written.span(), format!("{path}.release"));
+        let Some(release) = view.and_then(|view| view.view.release.as_ref()) else {
+            self.error(&span, &path, UNRELEASED.to_owned());
+            return None;
+        };
+        let late = written.get_ref().late;
+        if late.is_some_and(|late| late > MOST_LATE_DAYS) {
+            self.error(
+                &span,
+                &format!("{path}.late"),
+                format!("release.late is from 0 to {MOST_LATE_DAYS} days, such as late = 7"),
+            );
+            return None;
+        }
+        if late.is_some() && release.heading().is_none() {
+            self.error(&span, &format!("{path}.late"), UNDATED.to_owned());
+            return None;
+        }
+        Some(Alerting {
+            ready: written.get_ref().ready == Some(true),
+            late,
+        })
     }
 
     /// Each rule of `[rules]`, watching one of `views`, its name one no
@@ -844,8 +887,12 @@ impl Loader<'_> {
                 .map(|stages| self.stages(stages, &path));
             let rerun = self.reruns(&file, (&path, &span));
             let watch = self.report(&watch, &path, views);
+            let release = watch
+                .as_ref()
+                .and_then(|watch| self.alerting(&file, &path, views.get(&watch.view)));
             let sound = stages.as_ref().is_none_or(Option::is_some);
-            if let (true, true, Some((rerun, runs)), Some(watch)) = (unshared, sound, rerun, watch)
+            if let (true, true, Some((rerun, runs)), Some(watch), Some(release)) =
+                (unshared, sound, rerun, watch, release)
             {
                 let most = file.most.map_or(MOST_NUDGES, NonZeroUsize::get);
                 rules.insert(
@@ -861,6 +908,7 @@ impl Loader<'_> {
                             .as_ref()
                             .map(DequeuedFile::reasons)
                             .unwrap_or_default(),
+                        release,
                     },
                 );
             }
