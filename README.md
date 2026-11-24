@@ -657,13 +657,10 @@ time in its own time zone, through the routes naming the report, and the
 shipped `herald:queue` template renders it. A `[boards.<name>]` table, or
 a route with `living = true`, keeps one pinned post of a report, edited
 each window. A `[rules.<name>]` table nudges each pull request that waited
-past one of its `stages`, once a stage and spell of waiting. `herald
-queue` prints a view now; [`.docs/queue.md`](.docs/queue.md) covers the
-rest. A view's `decide` asks models only what its rules cannot tell, by
-their own APIs or a host's binding ([`.docs/deciders.md`](.docs/deciders.md)).
-A `[merge_queues.<name>]` table hands the pull requests a writer queues
-to the forge's merge queue, or runs herald's own serial queue on a branch
-([`.docs/merging.md`](.docs/merging.md)).
+past one of its `stages`, once a stage and spell of waiting. `herald queue`
+prints a view now ([`.docs/queue.md`](.docs/queue.md)); a view's `decide` asks
+models only what its rules cannot tell ([`.docs/deciders.md`](.docs/deciders.md));
+a `[merge_queues.<name>]` table merges what a writer queues ([`.docs/merging.md`](.docs/merging.md)).
 
 ### Every package of a namespace
 
