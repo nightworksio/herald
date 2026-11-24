@@ -722,8 +722,25 @@ release = {release}
         headed.contains("Issues: read") && headed.contains("never shown as having no milestone"),
         "{headed}"
     );
+    assert!(!headed.contains("list its open issues"), "{headed}");
     assert_eq!(note("{ milestone = \"v2.*\", header = false }"), None);
     assert_eq!(note("{ label = \"ship\" }"), None);
+    let listed = note("{ milestone = \"v2.*\", header = false, rows = \"issues\" }").unwrap();
+    assert!(
+        listed.starts_with("The report daily lists as the view queue's release rows the open issues of its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most 20 repositories, those past it named unread; one more request for each milestone matched to list its open issues, one page of the source's page, at most 50 rows a repository, those past it named unread."),
+        "{listed}"
+    );
+    assert!(!listed.contains("to count its issues"), "{listed}");
+    assert!(listed.ends_with("is seen as private."), "{listed}");
+    let both = note("{ milestone = \"v2.*\", rows = \"issues\" }").unwrap();
+    assert!(
+        both.starts_with("The report daily heads the view queue's release with its open milestones the milestone selector matches, and lists their open issues as its rows:"),
+        "{both}"
+    );
+    assert!(
+        both.contains("to count its issues") && both.contains("to list its open issues"),
+        "{both}"
+    );
 }
 
 #[test]

@@ -8,6 +8,11 @@ use crate::SourceOptions;
 
 const NOW: &str = "2026-11-23T12:00:00Z";
 
+const HEADED: HeaderRead = HeaderRead {
+    header: true,
+    issues: false,
+};
+
 fn answer(status: u16, body: &Value) -> Response {
     Response {
         status,
@@ -52,7 +57,7 @@ fn read(
         &http,
         (&origin, None),
         (&glob, Visibility::Internal),
-        NOW.parse().unwrap(),
+        (HEADED, NOW.parse().unwrap()),
     ))
 }
 

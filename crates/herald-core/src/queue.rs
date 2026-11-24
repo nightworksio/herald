@@ -45,7 +45,10 @@ pub use codeowners::{
     MOST_CODEOWNERS_READ, MOST_LINE_OWNERS, MOST_RULE_COMPILED, MOST_RULES_COMPILED, Owned,
     RULES_CACHE, Skipped,
 };
-pub use header::{Header, MOST_HEADER_MILESTONES, MOST_HEADER_REPOSITORIES, OpenMilestone};
+pub use header::{
+    Header, HeaderRead, MOST_HEADER_MILESTONES, MOST_HEADER_REPOSITORIES, MOST_ISSUE_ROWS,
+    OpenIssue, OpenMilestone,
+};
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Milestoned, Outcome, PullKey, Ran,
     Read, Reconciled, RepositoryKey, Reviewed, Since, Verdict,
@@ -64,7 +67,7 @@ pub(crate) use readiness::capped;
 pub use readiness::{
     BLOCKER_LABELS, Blocker, CHANGESETS_HEAD, Combine, Held, HeldBy, Holder, Holding, Judged,
     Judging, MOST_BLOCKER_LABELS, MOST_HELD_CHECKS, MOST_HOLDS, RELEASE_PLEASE_HEAD, Readiness,
-    Release, ReleasePull, Withheld,
+    Release, ReleasePull, Rows, Withheld,
 };
 pub use triage::{Failure, Triage};
 pub use view::{

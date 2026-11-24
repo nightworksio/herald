@@ -120,7 +120,7 @@ impl Queue for Served {
         &'a self,
         _: &'a dyn DynHttp,
         _: (&'a str, &'a herald_core::Glob, herald_core::Visibility),
-        _: jiff::Timestamp,
+        _: (herald_core::HeaderRead, jiff::Timestamp),
     ) -> Boxed<'a, Result<herald_core::Header, Unpolled>> {
         unread()
     }

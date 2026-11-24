@@ -62,9 +62,10 @@ fn draft(spec: &KindSpec) -> Draft {
 
 /// The boards every report template is dry-rendered against: one with a
 /// person's pull request waiting on review, a bot's bump and an advisory
-/// as a private route is shown it, and an empty one.
+/// as a private route is shown it, one whose release lists its
+/// milestone's issues as rows, and an empty one.
 #[must_use]
-pub fn sample_boards() -> [Board; 2] {
+pub fn sample_boards() -> [Board; 3] {
     let opened = NOON - jiff::SignedDuration::from_hours(15 * 24);
     let pull = Pull {
         project: "sample-project".to_owned(),
@@ -155,7 +156,39 @@ pub fn sample_boards() -> [Board; 2] {
         more: 1,
         judged: herald_core::Judged::Whole,
     });
-    [full, Board::default()]
+    let issued = issued(&full);
+    [full, issued, Board::default()]
+}
+
+/// `full` with its release's milestone as its header and its issue as its
+/// rows (ADR-0084).
+fn issued(full: &Board) -> Board {
+    let mut issued = full.clone();
+    issued.overviews.header = Some(herald_core::Header {
+        milestones: vec![herald_core::OpenMilestone {
+            repository: "sample-owner/sample-project".to_owned(),
+            visibility: Visibility::Public,
+            title: "v2.0".to_owned(),
+            url: Some("https://github.com/sample-owner/sample-project/milestone/1".to_owned()),
+            due: Some(jiff::civil::date(2026, 12, 1)),
+            overdue: false,
+            counts: Some((1, 2)),
+        }],
+        issues: Some(vec![herald_core::OpenIssue {
+            repository: "sample-owner/sample-project".to_owned(),
+            visibility: Visibility::Public,
+            number: 3,
+            title: "A sample issue".to_owned(),
+            url: "https://github.com/sample-owner/sample-project/issues/3".to_owned(),
+            milestone: "v2.0".to_owned(),
+        }]),
+        unread: vec![herald_core::Unread {
+            repository: "sample-owner/sample-unread".to_owned(),
+            visibility: Visibility::Public,
+            reason: "the forge found no such repository, or the token may not see it".to_owned(),
+        }],
+    });
+    issued
 }
 
 /// Where a sample event from a forge, registry or app that names one comes
@@ -244,8 +277,11 @@ mod tests {
 
     #[test]
     fn a_sample_board_shows_a_person_s_pull_request_waiting_on_review_and_a_bot_s_bump() {
-        let [full, empty] = sample_boards();
+        let [full, issued, empty] = sample_boards();
         assert_eq!(empty, Board::default());
+        let header = issued.overviews.header.unwrap();
+        assert_eq!(header.issues.unwrap()[0].title, "A sample issue");
+        assert_eq!(header.milestones[0].title, "v2.0");
         let row = &full.groups[0].rows[0];
         let advised = full.overviews.advisories.as_ref().unwrap().shown().unwrap();
         assert_eq!(

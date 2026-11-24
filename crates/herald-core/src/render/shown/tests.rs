@@ -47,6 +47,7 @@ fn a_view_shows_its_name_counts_groups_and_batches_alone() {
             "counts",
             "failures",
             "groups",
+            "issues",
             "name",
             "overviews",
             "readiness",
@@ -141,6 +142,7 @@ fn a_view_as_json_holds_the_keys_a_template_reads() {
             "counts",
             "failures",
             "groups",
+            "issues",
             "name",
             "overviews",
             "readiness",
@@ -722,12 +724,14 @@ fn a_release_header_shows_each_milestone_and_each_unread_repository() {
                 counts: None,
             },
         ],
+        issues: None,
         unread: vec![Unread {
             repository: "a/d".to_owned(),
             visibility: crate::Visibility::Public,
             reason: "refused".to_owned(),
         }],
     });
+    assert_eq!(json(&board)["issues"], serde_json::Value::Null);
     assert_eq!(
         json(&board)["overviews"]["header"],
         serde_json::json!({
@@ -741,6 +745,21 @@ fn a_release_header_shows_each_milestone_and_each_unread_repository() {
             }],
             "unread": [{ "repository": "a/d", "reason": "refused" }],
         })
+    );
+    board.overviews.header.as_mut().unwrap().issues = Some(vec![crate::queue::OpenIssue {
+        repository: "a/b".to_owned(),
+        visibility: crate::Visibility::Public,
+        number: 7,
+        title: "Crash".to_owned(),
+        url: "https://example.com/a/b/issues/7".to_owned(),
+        milestone: "v2.0".to_owned(),
+    }]);
+    assert_eq!(
+        json(&board)["issues"],
+        serde_json::json!([{
+            "repository": "a/b", "number": 7, "title": "Crash",
+            "url": "https://example.com/a/b/issues/7", "milestone": "v2.0",
+        }])
     );
 }
 

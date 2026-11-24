@@ -1,7 +1,10 @@
 //! A release's header read from a repository: its open milestones whose
-//! titles a release's selector matches (ADR-0082).
+//! titles a release's selector matches, and the open issues they carry
+//! where those are its rows (ADR-0082, ADR-0084).
 
-use herald_core::{Glob, Header, MOST_HEADER_MILESTONES, OpenMilestone, Unread, Visibility};
+use herald_core::{
+    Glob, Header, HeaderRead, MOST_HEADER_MILESTONES, OpenMilestone, Unread, Visibility,
+};
 use herald_kinds::Unpolled;
 use herald_ports::{DynHttp, Erased, Http as _};
 use jiff::Timestamp;
@@ -26,11 +29,14 @@ pub const FORGEJO_REFUSED: &str =
 
 /// The open milestones of the repository at `origin` whose titles `glob`
 /// matches, at most [`MOST_HEADER_MILESTONES`], read with `token` from one
-/// page of its listing through `http` and seen as `visibility`, each
-/// overdue where its due day ended before `now`'s day in UTC, and on
-/// GitLab its issues counted by one more request each; the repository
-/// named unread with why where the forge would not list them, where the
-/// page held more than it read, and where more matched than it names.
+/// page of its listing through `http` and seen as `visibility`: where
+/// `heading` names them in the header, each overdue where its due day
+/// ended before `now`'s day in UTC, and on GitLab its issues counted by
+/// one more request each; where `heading` makes their issues the rows,
+/// each one's open issues by one more request each, at most
+/// [`herald_core::MOST_ISSUE_ROWS`]; the repository named unread with why
+/// where the forge would not list them, where a page held more than it
+/// read, and where more matched or were carried than it names.
 ///
 /// # Errors
 ///
@@ -40,7 +46,7 @@ pub(crate) async fn header(
     http: &Erased<'_, dyn DynHttp + '_>,
     (origin, token): (&Origin, Option<&Token>),
     (glob, visibility): (&Glob, Visibility),
-    now: Timestamp,
+    (heading, now): (HeaderRead, Timestamp),
 ) -> Result<Header, Unpolled> {
     let forge = origin.forge();
     let what = LISTED.on(forge);
@@ -70,7 +76,10 @@ pub(crate) async fn header(
         (Forge::Forgejo, 401 | 403) => Some(FORGEJO_REFUSED),
         _ => None,
     };
-    let mut header = Header::default();
+    let mut header = Header {
+        issues: heading.issues.then(Vec::new),
+        ..Header::default()
+    };
     if let Some(reason) = refused {
         header.unread.push(unread(reason.to_owned()));
         return Ok(header);
@@ -93,6 +102,15 @@ pub(crate) async fn header(
             matched.len()
         )));
         matched.truncate(MOST_HEADER_MILESTONES);
+    }
+    if let Some(issues) = header.issues.as_mut() {
+        let (carried, reasons) =
+            super::rows::rows(http, (origin, token), (&matched, visibility)).await?;
+        *issues = carried;
+        header.unread.extend(reasons.into_iter().map(unread));
+    }
+    if !heading.header {
+        return Ok(header);
     }
     let today = now.to_zoned(TimeZone::UTC).date();
     for milestone in matched {

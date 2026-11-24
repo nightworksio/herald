@@ -505,11 +505,11 @@ impl herald_kinds::Queue for Queued {
         &'a self,
         http: &'a dyn DynHttp,
         (_, glob, visibility): (&'a str, &'a herald_core::Glob, Visibility),
-        now: jiff::Timestamp,
+        asked: (herald_core::HeaderRead, jiff::Timestamp),
     ) -> herald_ports::Boxed<'a, Result<herald_core::Header, Unpolled>> {
         Box::pin(async move {
             let reading = (&self.origin, self.token.as_ref());
-            crate::milestones::header(&Erased(http), reading, (glob, visibility), now).await
+            crate::milestones::header(&Erased(http), reading, (glob, visibility), asked).await
         })
     }
 

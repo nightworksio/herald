@@ -562,8 +562,8 @@ fn milestones(bytes: &[u8]) {
 /// A repository's open pull requests read for a view by every path: each
 /// pull request is of its repository, none more than the view lists, and
 /// only those past the most read in full read as unknown; and its release
-/// header, each milestone of it, seen as it, matching the glob, none past
-/// the most named.
+/// header, each milestone and issue row of it, seen as it or stricter,
+/// matching the glob, none past the most named.
 fn queued(bytes: &[u8]) {
     let http = Answering(bytes.to_vec());
     let most = herald_kinds::Most { open: 150, pulls: 2 };
@@ -599,7 +599,7 @@ fn queued(bytes: &[u8]) {
             if let Ok(header) = pollster::block_on(queue.milestoned(
                 &http,
                 ("fuzzer/fuzzed", &glob, herald_core::Visibility::Internal),
-                jiff::Timestamp::UNIX_EPOCH,
+                (herald_core::HeaderRead { header: true, issues: true }, jiff::Timestamp::UNIX_EPOCH),
             )) {
                 assert!(header.milestones.len() <= herald_core::MOST_HEADER_MILESTONES, "{header:?}");
                 assert!(
@@ -608,7 +608,15 @@ fn queued(bytes: &[u8]) {
                         && glob.matches(&milestone.title)),
                     "{header:?}"
                 );
-                assert!(header.unread.len() <= 2, "{header:?}");
+                let issues = header.issues.as_deref().unwrap_or_default();
+                assert!(issues.len() <= herald_core::MOST_ISSUE_ROWS, "{header:?}");
+                assert!(
+                    issues.iter().all(|issue| issue.repository == "fuzzer/fuzzed"
+                        && issue.visibility >= herald_core::Visibility::Internal
+                        && glob.matches(&issue.milestone)),
+                    "{header:?}"
+                );
+                assert!(header.unread.len() <= 3 + herald_core::MOST_HEADER_MILESTONES, "{header:?}");
             }
             if let Ok(found) =
                 pollster::block_on(queue.based(&http, ("fuzzer/fuzzed", "release/v2"), None))

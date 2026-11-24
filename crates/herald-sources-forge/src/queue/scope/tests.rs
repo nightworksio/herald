@@ -761,7 +761,13 @@ fn an_owner_s_member_reads_its_own_milestones_seen_as_asked() {
     let header = pollster::block_on(queue.milestoned(
         &http,
         ("o/vault", &glob, Visibility::Private),
-        jiff::Timestamp::UNIX_EPOCH,
+        (
+            herald_core::HeaderRead {
+                header: true,
+                issues: false,
+            },
+            jiff::Timestamp::UNIX_EPOCH,
+        ),
     ))
     .unwrap();
     assert_eq!(

@@ -2208,6 +2208,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
+| `views.<name>.release.rows` | [ReleaseRows](#releaserows) | What the board lists as its rows: "pulls" where absent, the open pull requests it picks; or "issues", the open issues carrying each open milestone its milestone selector matches, by one more request a round for each such milestone, at most 50 a repository, each seen as its repository or as private where it is confidential. Its pull requests still judge whether it is ready. "issues" needs a milestone selector (ADR-0084). |
 | `views.<name>.release.withheld` | [ReleaseWithheld](#releasewithheld) | How a surface some of its pull requests are withheld from, a private or internal repository's, is told the verdict: "unknown" where absent, not known because some pull requests are private; "shown", judged by the pull requests it shows alone; "masked", the whole verdict, each withheld one holding it back said only to be private. |
 | `views.<name>.repositories` | array of string | The repositories it shows, by full path, each a glob ignoring case; every one where empty. |
 | `views.<name>.rules` | table | herald's own rules, each of which it may switch off. |
@@ -2452,6 +2453,10 @@ How many pages of its own posts the destination reads back, 5 by default.
 ### RecordKind
 
 A kind of record a store may keep beside its ledger, cursors, schedules and deliveries, which every store that keeps records keeps.
+
+### ReleaseRows
+
+What a release's board lists as its rows.
 
 ### ReleaseTool
 

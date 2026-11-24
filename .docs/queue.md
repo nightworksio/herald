@@ -365,6 +365,7 @@ release = { milestone = "v2.0" }
 | `release.blocker_labels` | `["blocker", "release-blocker"]`, globs, at most 50 |
 | `release.blocked_by` | every one of `"label"`, `"failed"`, `"draft"`, `"changes"`, `"base"` |
 | `release.header` | `true`: the board is headed by the open milestones `milestone` matches; it needs a milestone selector |
+| `release.rows` | `"pulls"`: the board lists the pull requests it picks; `"issues"`: the open issues of the open milestones `milestone` matches; it needs a milestone selector |
 | `release.withheld` | `"unknown"`: a surface some of its pull requests are withheld from is told the verdict is not known; `"shown"`: judged by those shown; `"masked"`: the whole verdict, a withheld hold named private |
 
 At least one of `milestone`, `label`, `branch` and `pull` is named. The
@@ -409,6 +410,24 @@ named with why. A template reads `view.overviews.header`:
 |---|---|
 | `milestones` | each `{ repository, title, url, due, overdue, open, closed }`, at most 10 a repository; `due` a day, `overdue` whether it ended before today in UTC, `open` and `closed` its issues as the forge counts them, none where it does not |
 | `unread` | each `{ repository, reason }` whose milestones could not be read, or wholly |
+
+With `rows = "issues"` the board lists, in place of its pull requests,
+the open issues carrying each open milestone the `milestone` glob
+matches, read beside the header from the same repositories (ADR-0084):
+one more request a round for each milestone matched, one page of the
+source's `page`, at most 50 rows a repository. `header = false` keeps
+the issues and leaves the milestones out. The release's pull requests
+still judge whether it is ready. Each issue is seen as its repository,
+and a confidential GitLab issue as private: a public route, and `herald
+queue` without `--private`, are shown the public repositories' public
+issues alone. A milestone whose issues fill the page, a repository past
+the 50, and a listing the token may not read are named unread in
+`view.overviews.header.unread`. A template reads `view.issues`, none
+where the board lists pull requests:
+
+| Key | What |
+|---|---|
+| `issues` | each `{ repository, number, title, url, milestone }` |
 
 With `"base"` in `blocked_by`, the head of each base branch the
 release's pull requests merge into is read once a round (ADR-0083): its

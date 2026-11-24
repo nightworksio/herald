@@ -3,7 +3,7 @@
 //! release back (ADR-0081, ADR-0083).
 
 use super::base::{BaseRead, Based};
-use super::{Checks, Pull, Review, Row};
+use super::{Checks, HeaderRead, Pull, Review, Row};
 use crate::glob::Glob;
 
 /// The most blocker labels a view names.
@@ -121,6 +121,17 @@ pub enum Withheld {
     Masked,
 }
 
+/// What a release's board lists as its rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Rows {
+    /// The open pull requests it picks.
+    #[default]
+    Pulls,
+    /// The open issues carrying the open milestones its milestone selector
+    /// matches (ADR-0084).
+    Issues,
+}
+
 /// A view's release: which open pull requests are its, and what holds it
 /// back.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +155,8 @@ pub struct Release {
     /// Whether its header names the open milestones its milestone
     /// selector matches (ADR-0082).
     pub header: bool,
+    /// What its board lists as its rows (ADR-0084).
+    pub rows: Rows,
 }
 
 /// Why one pull request or base branch holds a release back.
@@ -276,11 +289,18 @@ pub(crate) fn capped(mut names: Vec<String>) -> (Vec<String>, usize) {
 }
 
 impl Release {
-    /// The milestone selector its header names the milestones of, where it
-    /// shows a header.
+    /// The milestone selector whose open milestones it reads, and what of
+    /// them, where its header names them or their issues are its rows.
     #[must_use]
-    pub fn headed(&self) -> Option<&Glob> {
-        self.milestone.as_ref().filter(|_| self.header)
+    pub fn heading(&self) -> Option<(&Glob, HeaderRead)> {
+        let heading = HeaderRead {
+            header: self.header,
+            issues: self.rows == Rows::Issues,
+        };
+        self.milestone
+            .as_ref()
+            .filter(|_| heading.header || heading.issues)
+            .map(|glob| (glob, heading))
     }
 
     /// Whether `pull` is the release's: each selector named picking it, or

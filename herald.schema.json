@@ -4857,6 +4857,10 @@
           "description": "Its release pull request: \"release-please\" or \"changesets\", by the\nhead branch each opens it on, or `{ head = \"<glob>\" }` or\n`{ title = \"<glob>\" }`, each ignoring case.",
           "$ref": "#/$defs/ReleasePull"
         },
+        "rows": {
+          "description": "What the board lists as its rows: \"pulls\" where absent, the open\npull requests it picks; or \"issues\", the open issues carrying each\nopen milestone its milestone selector matches, by one more request\na round for each such milestone, at most 50 a repository, each seen\nas its repository or as private where it is confidential. Its pull\nrequests still judge whether it is ready. \"issues\" needs a\nmilestone selector (ADR-0084).",
+          "$ref": "#/$defs/ReleaseRows"
+        },
         "withheld": {
           "description": "How a surface some of its pull requests are withheld from, a\nprivate or internal repository's, is told the verdict: \"unknown\"\nwhere absent, not known because some pull requests are private;\n\"shown\", judged by the pull requests it shows alone; \"masked\", the\nwhole verdict, each withheld one holding it back said only to be\nprivate.",
           "$ref": "#/$defs/ReleaseWithheld"
@@ -4892,6 +4896,21 @@
         {
           "description": "Its title.",
           "$ref": "#/$defs/ReleaseTitle"
+        }
+      ]
+    },
+    "ReleaseRows": {
+      "description": "What a release's board lists as its rows.",
+      "oneOf": [
+        {
+          "description": "The open pull requests it picks.",
+          "type": "string",
+          "const": "pulls"
+        },
+        {
+          "description": "The open issues carrying its open milestones.",
+          "type": "string",
+          "const": "issues"
         }
       ]
     },

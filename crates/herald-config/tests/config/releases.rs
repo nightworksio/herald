@@ -4,7 +4,8 @@
 
 use herald_config::{Config, load};
 use herald_core::{
-    BLOCKER_LABELS, Blocker, Combine, Glob, MOST_BLOCKER_LABELS, Release, ReleasePull, Withheld,
+    BLOCKER_LABELS, Blocker, Combine, Glob, HeaderRead, MOST_BLOCKER_LABELS, Release, ReleasePull,
+    Rows, Withheld,
 };
 
 const EXAMPLE: &str = r#"version = 1
@@ -65,6 +66,7 @@ fn one_milestone_is_a_release_with_every_blocker_and_the_shipped_labels() {
             blocked_by: Blocker::ALL.to_vec(),
             withheld: Withheld::Unknown,
             header: true,
+            rows: herald_core::Rows::Pulls,
         }
     );
 }
@@ -86,6 +88,7 @@ fn every_selector_combine_labels_and_blockers_are_read() {
             blocked_by: vec![Blocker::Draft, Blocker::Failed],
             withheld: Withheld::Unknown,
             header: true,
+            rows: herald_core::Rows::Pulls,
         }
     );
     let all =
@@ -198,19 +201,47 @@ fn how_a_release_is_told_where_pull_requests_are_withheld_is_read() {
 
 #[test]
 fn a_release_is_headed_by_its_milestones_unless_it_says_not_and_a_header_needs_a_milestone() {
+    let glob = Glob::new("v2").unwrap();
+    let heading = |header: bool, issues: bool| Some((&glob, HeaderRead { header, issues }));
     let headed = loaded("{ milestone = \"v2\" }");
     assert!(headed.header);
-    assert_eq!(headed.headed(), Some(&Glob::new("v2").unwrap()));
+    assert_eq!(headed.heading(), heading(true, false));
     let unheaded = loaded("{ milestone = \"v2\", header = false }");
     assert!(!unheaded.header);
-    assert_eq!(unheaded.headed(), None);
+    assert_eq!(unheaded.heading(), None);
     let labelled = loaded("{ label = \"ship\" }");
     assert!(labelled.header);
-    assert_eq!(labelled.headed(), None);
+    assert_eq!(labelled.heading(), None);
     assert!(!loaded("{ label = \"ship\", header = false }").header);
     let error = errors("{ label = \"ship\", header = true }");
     assert!(
         error.contains("views.ship.release.header: a release's header names the open milestones its milestone selector matches"),
         "{error}"
     );
+}
+
+#[test]
+fn a_release_lists_pull_requests_unless_it_lists_issues_and_issue_rows_need_a_milestone() {
+    let glob = Glob::new("v2").unwrap();
+    let heading = |header: bool, issues: bool| Some((&glob, HeaderRead { header, issues }));
+    assert_eq!(loaded("{ milestone = \"v2\" }").rows, Rows::Pulls);
+    assert_eq!(
+        loaded("{ milestone = \"v2\", rows = \"pulls\" }").rows,
+        Rows::Pulls
+    );
+    let listed = loaded("{ milestone = \"v2\", rows = \"issues\" }");
+    assert_eq!(listed.rows, Rows::Issues);
+    assert_eq!(listed.heading(), heading(true, true));
+    let unheaded = loaded("{ milestone = \"v2\", rows = \"issues\", header = false }");
+    assert_eq!(unheaded.heading(), heading(false, true));
+    assert_eq!(
+        loaded("{ label = \"ship\", rows = \"pulls\" }").rows,
+        Rows::Pulls
+    );
+    let error = errors("{ label = \"ship\", rows = \"issues\" }");
+    assert!(
+        error.contains("views.ship.release.rows: a release's issue rows are the open issues of the open milestones its milestone selector matches"),
+        "{error}"
+    );
+    assert!(errors("{ milestone = \"v2\", rows = \"people\" }").contains("rows"));
 }
