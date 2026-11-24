@@ -68,7 +68,7 @@ jiff = { version = "0.2", default-features = false, features = ["std", "serde"] 
 pollster = "1"
 ring = "0.17"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
-rusqlite = { version = "0.41", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 proptest = "1"
 schemars = "1"
