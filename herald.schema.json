@@ -63,6 +63,13 @@
       "description": "The installation's marker key.",
       "$ref": "#/$defs/Markers"
     },
+    "merge_queues": {
+      "description": "The merge queues, by name: each a base branch whose pull requests\na writer queues the forge's merge queue or herald's own merges.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/MergeQueue"
+      }
+    },
     "models": {
       "description": "The models tasks ask, by name: each a decision model or a server\nspeaking OpenAI's chat completions.",
       "type": "object",
@@ -487,6 +494,21 @@
           "required": [
             "peers"
           ]
+        }
+      ]
+    },
+    "AppliedBy": {
+      "description": "Where a queue's steps are taken.",
+      "oneOf": [
+        {
+          "description": "By `herald merge-queue --apply`.",
+          "type": "string",
+          "const": "command"
+        },
+        {
+          "description": "By `herald server`, each round and as webhooks arrive.",
+          "type": "string",
+          "const": "server"
         }
       ]
     },
@@ -2630,6 +2652,37 @@
         }
       ]
     },
+    "Enter": {
+      "description": "The gesture that queues a pull request.",
+      "oneOf": [
+        {
+          "description": "A label of this name added to the pull request.",
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "label"
+          ]
+        },
+        {
+          "description": "A comment on the pull request whose whole body, trimmed, is this\ncommand.",
+          "type": "object",
+          "properties": {
+            "comment": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "comment"
+          ]
+        }
+      ]
+    },
     "Federation": {
       "description": "This herald among other instances: the domain it serves, its keys, and\nwhat its ActivityPub actors take where their destination leaves it out.",
       "type": "object",
@@ -4089,6 +4142,118 @@
       },
       "additionalProperties": false
     },
+    "MergeQueue": {
+      "description": "A `[merge_queues.<name>]` table, as written.",
+      "type": "object",
+      "properties": {
+        "applied_by": {
+          "description": "Where its steps are taken: \"command\", by `herald merge-queue\n--apply`; \"server\", by `herald server`, which then reads the write\ncredential. \"command\" where absent.",
+          "$ref": "#/$defs/AppliedBy"
+        },
+        "branch": {
+          "description": "The base branch it merges into; one table per branch.",
+          "type": "string"
+        },
+        "enter": {
+          "description": "The gesture that queues a pull request: `{ label = \"<name>\" }`, or\n`{ comment = \"<command>\" }`, a comment whose whole body is the\ncommand; `{ label = \"herald:merge\" }` where absent.",
+          "$ref": "#/$defs/Enter"
+        },
+        "least": {
+          "description": "The least role the person who queues holds on the repository:\n\"write\" (GitHub write, GitLab Developer, Forgejo write, or above),\n\"maintain\" or \"admin\"; \"write\" where absent.",
+          "$ref": "#/$defs/Permission"
+        },
+        "may_fail": {
+          "description": "The checks, by name, that may be red or missing on the branch;\nnever one the forge requires.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "message": {
+          "description": "The commit message: \"forge\", the forge's own for the method, or\n\"pull\", the pull request's title and body, with \"merge\" or \"squash\"\nalone; \"forge\" where absent.",
+          "$ref": "#/$defs/Message"
+        },
+        "method": {
+          "description": "How it merges: \"merge\", \"squash\", \"rebase\", \"fast-forward\", or\n\"repository\", the repository's one allowed method. A queue without\nit does not start.",
+          "$ref": "#/$defs/Method"
+        },
+        "repository": {
+          "description": "The repository it merges in, by full path, where the source is an\nowner; the source's own where absent.",
+          "type": "string"
+        },
+        "retries": {
+          "description": "The checks whose failed job is re-run, at most `times` on one head,\nbefore the pull request leaves; none where absent, and none on\nForgejo.",
+          "$ref": "#/$defs/Retries"
+        },
+        "runs": {
+          "description": "Who runs it: \"forge\" hands each pull request to the forge's merge\nqueue or merge train; \"herald\" runs herald's own serial queue, also\nwhere the forge has one. \"forge\" where absent.",
+          "$ref": "#/$defs/Runs"
+        },
+        "source": {
+          "description": "The source whose repository it merges in: one of kind \"github\",\n\"gitlab\" or \"forgejo\".",
+          "type": "string"
+        },
+        "wait": {
+          "description": "How long it waits for a head's checks before the pull request\nleaves; \"2h\" where absent.",
+          "$ref": "#/$defs/Duration"
+        },
+        "write": {
+          "description": "The credential its steps are made with, held apart from every one\nherald reads with: `{ token = { secret = \"NAME\" } }` or `{ app =\n\"<github_apps name>\" }`, the same as its source's `write` or another.\nThe queue does not start without it.",
+          "$ref": "#/$defs/Write"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "branch"
+      ]
+    },
+    "Message": {
+      "description": "The commit message a merge is made with.",
+      "oneOf": [
+        {
+          "description": "The forge's own for the method.",
+          "type": "string",
+          "const": "forge"
+        },
+        {
+          "description": "The pull request's title and body.",
+          "type": "string",
+          "const": "pull"
+        }
+      ]
+    },
+    "Method": {
+      "description": "How a queue merges a pull request.",
+      "oneOf": [
+        {
+          "description": "A merge commit.",
+          "type": "string",
+          "const": "merge"
+        },
+        {
+          "description": "One squashed commit.",
+          "type": "string",
+          "const": "squash"
+        },
+        {
+          "description": "The commits rebased onto the base.",
+          "type": "string",
+          "const": "rebase"
+        },
+        {
+          "description": "The base moved to the head, with no new commit.",
+          "type": "string",
+          "const": "fast-forward"
+        },
+        {
+          "description": "The repository's one allowed method.",
+          "type": "string",
+          "const": "repository"
+        }
+      ]
+    },
     "MilestoneAction": {
       "description": "What a milestone did that is announced.",
       "oneOf": [
@@ -5111,6 +5276,31 @@
         }
       ]
     },
+    "Retries": {
+      "description": "The failed checks a queue re-runs before a pull request leaves.",
+      "type": "object",
+      "properties": {
+        "checks": {
+          "description": "The checks, by name, whose failed job is re-run.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "times": {
+          "description": "The most re-runs on one head.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "checks",
+        "times"
+      ]
+    },
     "Rotation": {
       "description": "Whether a peer's own signed statement may replace the keys pinned for\nit.",
       "oneOf": [
@@ -5328,6 +5518,21 @@
       ]
     },
     "Runs": {
+      "description": "Who runs a branch's queue.",
+      "oneOf": [
+        {
+          "description": "The forge's own merge queue or merge train.",
+          "type": "string",
+          "const": "forge"
+        },
+        {
+          "description": "herald's own serial queue.",
+          "type": "string",
+          "const": "herald"
+        }
+      ]
+    },
+    "Runs2": {
       "description": "Which runs a source announces, where its signals take \"run\".",
       "type": "object",
       "properties": {
@@ -6165,7 +6370,7 @@
             },
             "runs": {
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
-              "$ref": "#/$defs/Runs"
+              "$ref": "#/$defs/Runs2"
             },
             "sign_in": {
               "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
@@ -6224,6 +6429,10 @@
             "transport": {
               "description": "How an owner's members are polled; \"auto\" where absent. GitHub\noffers auto, graphql, rest and events; GitLab auto, graphql and rest;\nForgejo auto, rest and feed.",
               "$ref": "#/$defs/Transport"
+            },
+            "update": {
+              "description": "How a merge queue brings a pull request's branch up to date with\nits base through the forge: \"merge\" merges the base in, keeping the\nauthor's commits and signatures; \"rebase\" rebases the branch. GitLab\noffers a rebase alone; \"rebase\" there and \"merge\" elsewhere where\nabsent (ADR-0087).",
+              "$ref": "#/$defs/Update"
             },
             "visibility": {
               "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
@@ -6518,7 +6727,7 @@
             },
             "runs": {
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
-              "$ref": "#/$defs/Runs"
+              "$ref": "#/$defs/Runs2"
             },
             "sign_in": {
               "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
@@ -6577,6 +6786,10 @@
             "transport": {
               "description": "How an owner's members are polled; \"auto\" where absent. GitHub\noffers auto, graphql, rest and events; GitLab auto, graphql and rest;\nForgejo auto, rest and feed.",
               "$ref": "#/$defs/Transport"
+            },
+            "update": {
+              "description": "How a merge queue brings a pull request's branch up to date with\nits base through the forge: \"merge\" merges the base in, keeping the\nauthor's commits and signatures; \"rebase\" rebases the branch. GitLab\noffers a rebase alone; \"rebase\" there and \"merge\" elsewhere where\nabsent (ADR-0087).",
+              "$ref": "#/$defs/Update"
             },
             "visibility": {
               "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
@@ -6871,7 +7084,7 @@
             },
             "runs": {
               "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
-              "$ref": "#/$defs/Runs"
+              "$ref": "#/$defs/Runs2"
             },
             "sign_in": {
               "description": "How an operator signs in at the forge to apply a re-run, by its\nOAuth device flow; herald reads their permission on the repository\nwith it right before each call (ADR-0068).",
@@ -6930,6 +7143,10 @@
             "transport": {
               "description": "How an owner's members are polled; \"auto\" where absent. GitHub\noffers auto, graphql, rest and events; GitLab auto, graphql and rest;\nForgejo auto, rest and feed.",
               "$ref": "#/$defs/Transport"
+            },
+            "update": {
+              "description": "How a merge queue brings a pull request's branch up to date with\nits base through the forge: \"merge\" merges the base in, keeping the\nauthor's commits and signatures; \"rebase\" rebases the branch. GitLab\noffers a rebase alone; \"rebase\" there and \"merge\" elsewhere where\nabsent (ADR-0087).",
+              "$ref": "#/$defs/Update"
             },
             "visibility": {
               "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
@@ -8779,6 +8996,21 @@
         }
       ]
     },
+    "Update": {
+      "description": "How a pull request's branch is brought up to date with its base.",
+      "oneOf": [
+        {
+          "description": "The base merged into the branch.",
+          "type": "string",
+          "const": "merge"
+        },
+        {
+          "description": "The branch rebased onto the base.",
+          "type": "string",
+          "const": "rebase"
+        }
+      ]
+    },
     "Values": {
       "description": "A property's values: one, or any of several.",
       "anyOf": [
@@ -9111,11 +9343,11 @@
       "additionalProperties": false
     },
     "Write": {
-      "description": "The credential a source re-runs planned runs with, apart from the one\nit reads with (ADR-0068).",
+      "description": "A write credential, apart from the one a source reads with (ADR-0068).",
       "type": "object",
       "properties": {
         "app": {
-          "description": "The GitHub App re-runs are made as, by the name of its\n`[github_apps.<name>]` table, in place of `token`: an App other\nthan the one the source reads as, best installed with `actions:\nwrite` alone on the repositories concerned.",
+          "description": "The GitHub App the writes are made as, by the name of its\n`[github_apps.<name>]` table, in place of `token`: an App other\nthan the one the source reads as, installed with the permissions\nits writes need alone.",
           "type": "string"
         },
         "installation": {
@@ -9125,7 +9357,7 @@
           "minimum": 1
         },
         "token": {
-          "description": "A token that may re-run the repository's workflow runs or retry its\npipelines, other than the one the source reads with.",
+          "description": "A token that may make the writes, other than the one the source\nreads with.",
           "$ref": "#/$defs/SecretRef"
         }
       },

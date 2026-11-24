@@ -1,8 +1,9 @@
-//! The write credential each source re-runs with, refused where it is the
-//! credential the source reads with, by name or through the same GitHub
-//! App's key, where herald reads its secret for anything else, or where it
-//! is sent anywhere but the source's own API; and an operator's sign-in,
-//! refused where it is a write App's own (ADR-0068).
+//! The write credential each source re-runs with and each merge queue
+//! takes its steps with, refused where it is the credential its source
+//! reads with, by name or through the same GitHub App's key, where herald
+//! reads its secret for anything else, or where it is sent anywhere but
+//! the source's own API; and an operator's sign-in, refused where it is a
+//! write App's own (ADR-0068, ADR-0087).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
@@ -14,6 +15,84 @@ use super::Loader;
 use crate::Config;
 use crate::config::GithubApp;
 use crate::error::Errors;
+use crate::merging::MergeQueue;
+
+/// Where each source's table and each merge queue's is written.
+pub(super) type Spans<'s> = (
+    &'s BTreeMap<SourceName, Range<usize>>,
+    &'s BTreeMap<String, Range<usize>>,
+);
+
+/// What a write credential makes: a source's re-runs, or a merge queue's
+/// steps.
+#[derive(Debug, Clone, Copy)]
+enum Writes {
+    /// A source's re-runs (ADR-0068).
+    Reruns,
+    /// A merge queue's steps (ADR-0087).
+    Merges,
+}
+
+impl Writes {
+    /// What is made with it, as a refusal says.
+    const fn made(self) -> &'static str {
+        match self {
+            Self::Reruns => "re-runs are made",
+            Self::Merges => "the queue's steps are made",
+        }
+    }
+
+    /// What its App is best installed with, as a refusal says.
+    const fn alone(self) -> &'static str {
+        match self {
+            Self::Reruns => "installed with actions: write alone",
+            Self::Merges => "installed with the permissions its steps need alone",
+        }
+    }
+}
+
+/// A write credential the config names: where, for which source, and what
+/// it makes.
+struct Writer<'a> {
+    /// The key it is written at.
+    path: String,
+    /// Where its table is written.
+    span: Range<usize>,
+    /// The source it writes to.
+    source: &'a Source,
+    /// The credential.
+    write: WriteCredential<'a>,
+    /// What it makes.
+    writes: Writes,
+}
+
+/// Each write credential of `sources` and of `queues`, the queues' each
+/// with the source it names.
+fn writers<'a>(
+    sources: &'a BTreeMap<SourceName, Source>,
+    queues: &'a BTreeMap<String, MergeQueue>,
+    (source_spans, queue_spans): Spans<'_>,
+) -> Vec<Writer<'a>> {
+    let reruns = sources.iter().filter_map(|(name, source)| {
+        Some(Writer {
+            path: format!("sources.{}.write", name.as_str()),
+            span: source_spans.get(name).cloned().unwrap_or_default(),
+            source,
+            write: source.write()?,
+            writes: Writes::Reruns,
+        })
+    });
+    let merges = queues.iter().filter_map(|(name, queue)| {
+        Some(Writer {
+            path: format!("merge_queues.{name}.write"),
+            span: queue_spans.get(name).cloned().unwrap_or_default(),
+            source: sources.get(&queue.source)?,
+            write: queue.writing()?,
+            writes: Writes::Merges,
+        })
+    });
+    reruns.chain(merges).collect()
+}
 
 /// The origin of `url`, where it is a web address.
 fn origin(url: &str) -> Option<String> {
@@ -54,23 +133,23 @@ fn read_secrets<'a>(source: &'a Source, apps: &'a BTreeMap<String, GithubApp>) -
 }
 
 impl Loader<'_> {
-    /// Each source of `sources` that names a write credential, refused
-    /// where the credential is one it reads with, or an App of `apps` that
-    /// is missing, is the App it reads as under another table, or mints
-    /// at another origin than the source reads.
+    /// Each write credential of `sources` and of `queues`, refused where
+    /// it is one its source reads with, or an App of `apps` that is
+    /// missing, is the App its source reads as under another table, or
+    /// mints at another origin than its source reads; and each source's
+    /// sign-in, refused where it is a write App's.
     pub(super) fn written(
         &mut self,
-        (sources, spans): (
-            &BTreeMap<SourceName, Source>,
-            &BTreeMap<SourceName, Range<usize>>,
-        ),
+        (sources, queues): (&BTreeMap<SourceName, Source>, &BTreeMap<String, MergeQueue>),
+        spans: Spans<'_>,
         apps: &BTreeMap<String, GithubApp>,
     ) {
-        let issuers: BTreeSet<&str> = sources
-            .values()
-            .filter_map(|source| match source.write() {
-                Some(WriteCredential::App(installed)) => apps.get(installed.app),
-                _ => None,
+        let writers = writers(sources, queues, spans);
+        let issuers: BTreeSet<&str> = writers
+            .iter()
+            .filter_map(|writer| match &writer.write {
+                WriteCredential::App(installed) => apps.get(installed.app),
+                WriteCredential::Token { .. } => None,
             })
             .map(|app| app.issuer.as_str())
             .collect();
@@ -78,7 +157,7 @@ impl Loader<'_> {
             if let Ok(signing) = source.signing()
                 && issuers.contains(signing.client_id.as_str())
             {
-                let span = spans.get(name).cloned().unwrap_or_default();
+                let span = spans.0.get(name).cloned().unwrap_or_default();
                 self.error(
                     &span,
                     &format!("sources.{}.sign_in.client_id", name.as_str()),
@@ -89,17 +168,14 @@ impl Loader<'_> {
                 );
             }
         }
-        for (name, source) in sources {
-            let Some(write) = source.write() else {
-                continue;
-            };
-            let span = spans.get(name).cloned().unwrap_or_default();
-            let path = format!("sources.{}.write", name.as_str());
-            let read = read_secrets(source, apps);
-            let reading = source
+        for writer in &writers {
+            let read = read_secrets(writer.source, apps);
+            let reading = writer
+                .source
                 .installed()
                 .and_then(|installed| apps.get(installed.app));
-            let refusal = match write {
+            let made = writer.writes.made();
+            let refusal = match &writer.write {
                 WriteCredential::Token { secret, .. } if read.contains(&secret.secret.as_str()) => {
                     Some(format!(
                         "write.token names the secret {}, which the source reads with; give the write credential a secret of its own",
@@ -114,13 +190,14 @@ impl Loader<'_> {
                         super::list(&apps.keys().map(String::as_str).collect::<Vec<_>>())
                     )),
                     Some(app) if read.contains(&app.private_key.secret.as_str()) => Some(format!(
-                        "the App {} signs with the secret {}, which the source reads with; re-runs are made as another App, with a key of its own",
+                        "the App {} signs with the secret {}, which the source reads with; {made} as another App, with a key of its own",
                         installed.app, app.private_key.secret
                     )),
                     Some(app) if reading.is_some_and(|reading| reading.issuer == app.issuer) => {
                         Some(format!(
-                            "the App {} is the App the source reads as, under another table; re-runs are made as another App, installed with actions: write alone",
-                            installed.app
+                            "the App {} is the App the source reads as, under another table; {made} as another App, {}",
+                            installed.app,
+                            writer.writes.alone()
                         ))
                     }
                     Some(app) if origin(&app.api) != origin(&installed.api) => Some(format!(
@@ -131,14 +208,14 @@ impl Loader<'_> {
                 },
             };
             if let Some(refusal) = refusal {
-                self.error(&span, &path, refusal);
+                self.error(&writer.span, &writer.path, refusal);
             }
         }
     }
 }
 
-/// `config`, once `loader` found each write credential of its sources
-/// held apart from everything else it names.
+/// `config`, once `loader` found each write credential of its sources and
+/// merge queues held apart from everything else it names.
 ///
 /// # Errors
 ///
@@ -146,7 +223,7 @@ impl Loader<'_> {
 pub(super) fn apart(
     config: Config,
     mut loader: Loader<'_>,
-    spans: &BTreeMap<SourceName, Range<usize>>,
+    spans: Spans<'_>,
 ) -> Result<Config, Errors> {
     loader.kept_apart(&config, spans);
     if loader.errors.is_empty() {
@@ -157,16 +234,13 @@ pub(super) fn apart(
 }
 
 impl Loader<'_> {
-    /// Each write credential of `config`'s sources refused where a run of
-    /// any use reads its secret for anything else (a source, a destination,
-    /// an App a source reads as, a webhook, the static log's token, the
-    /// store), another write names it at another API or as another kind of
-    /// credential, or a source reads as its App, under any table.
-    pub(super) fn kept_apart(
-        &mut self,
-        config: &Config,
-        spans: &BTreeMap<SourceName, Range<usize>>,
-    ) {
+    /// Each write credential of `config`'s sources and merge queues
+    /// refused where a run of any use reads its secret for anything else
+    /// (a source, a destination, an App a source reads as, a webhook, the
+    /// static log's token, the store), another write names it at another
+    /// API or as another kind of credential, or a source reads as its App,
+    /// under any table.
+    pub(super) fn kept_apart(&mut self, config: &Config, spans: Spans<'_>) {
         let named = config.secrets_read();
         let read_as: Vec<(&str, &GithubApp)> = config
             .sources
@@ -175,15 +249,13 @@ impl Loader<'_> {
             .filter_map(|installed| config.github_apps.get_key_value(installed.app))
             .map(|(name, app)| (name.as_str(), app))
             .collect();
-        let mut written: BTreeMap<&str, (&SourceName, &str, Option<String>)> = BTreeMap::new();
-        for (name, source) in &config.sources {
-            let Some(write) = source.write() else {
+        let mut written: BTreeMap<&str, (String, &str, Option<String>)> = BTreeMap::new();
+        for writer in writers(&config.sources, &config.merge_queues, spans) {
+            let write = &writer.write;
+            let Some((secret, kind, at)) = write_secret(write, &config.github_apps) else {
                 continue;
             };
-            let Some((secret, kind, at)) = write_secret(&write, &config.github_apps) else {
-                continue;
-            };
-            let read = match &write {
+            let read = match write {
                 WriteCredential::App(installed) => {
                     let app = config.github_apps.get(installed.app);
                     read_as.iter().any(|(reading, read)| {
@@ -195,27 +267,27 @@ impl Loader<'_> {
             };
             let refusal = if read {
                 Some(format!(
-                    "a source reads as the App {}, under this table or another; re-runs are made as an App no source reads as, installed with actions: write alone",
-                    write.name()
+                    "a source reads as the App {}, under this table or another; {} as an App no source reads as, {}",
+                    write.name(),
+                    writer.writes.made(),
+                    writer.writes.alone()
                 ))
             } else if named.contains(secret) {
                 Some(format!(
                     "the write {kind} is held in the secret {secret}, which herald also reads for a source, a destination, an App, a webhook, the static log or the store; give the write credential a secret no other key names"
                 ))
             } else {
-                match written.insert(secret, (name, kind, at.clone())) {
+                match written.insert(secret, (writer.path.clone(), kind, at.clone())) {
                     Some((other, other_kind, other_at)) if other_kind != kind || other_at != at => {
                         Some(format!(
-                            "the write {kind} is held in the secret {secret}, which the source {} writes with at another API or as another credential; a write credential is sent to one API alone",
-                            other.as_str()
+                            "the write {kind} is held in the secret {secret}, which {other} names at another API or as another credential; a write credential is sent to one API alone"
                         ))
                     }
                     _ => None,
                 }
             };
             if let Some(refusal) = refusal {
-                let span = spans.get(name).cloned().unwrap_or_default();
-                self.error(&span, &format!("sources.{}.write", name.as_str()), refusal);
+                self.error(&writer.span, &writer.path, refusal);
             }
         }
     }

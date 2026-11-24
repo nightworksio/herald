@@ -694,4 +694,5 @@ fn a_herald_source_fitted_to_the_store_names_what_was_lowered_with_its_pages() {
     );
 }
 
+mod merging;
 mod oidc;

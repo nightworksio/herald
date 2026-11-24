@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
+use herald_core::merging::Update;
 use herald_core::{
     CodeownersRef, Duration, Glob, Prefer, PrereleaseRule, SecretRef, Signal, Size, Visibility,
     Zoning, path_of_names, web_url,
@@ -16,6 +17,7 @@ pub use discovery::Discovery;
 pub use hooks::MemberHooks;
 pub(crate) use issues::IssueChoice;
 pub use issues::{ISSUE_ACTIONS, IssueAction, Issues};
+pub use merging::{FORGEJO_QUEUELESS, FORGEJO_RETRIES, GITHUB_FAST_FORWARD, GITLAB_UPDATES};
 pub(crate) use milestones::MilestoneChoice;
 pub use milestones::{
     MILESTONE_ACTIONS, MOST_MILESTONES, MOST_MILESTONES_ALLOWED, MilestoneAction, Milestones,
@@ -35,7 +37,7 @@ pub use signals::{EDITS_DEPTH, Signals, TAG_WINDOW};
 pub use teams::TeamsFrom;
 pub use transport::{FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, Transport};
 pub use write::{
-    FORGEJO_UNWRITTEN, GITHUB_SCOPES, GITLAB_SCOPES, SignIn, Write, read_only, unread,
+    FORGEJO_UNWRITTEN, GITHUB_APPS, GITHUB_SCOPES, GITLAB_SCOPES, SignIn, Write, read_only, unread,
 };
 
 /// What an owner source makes of the repositories one glob names.
@@ -370,6 +372,12 @@ pub struct SourceOptions {
     /// OAuth device flow; herald reads their permission on the repository
     /// with it right before each call (ADR-0068).
     pub sign_in: Option<SignIn>,
+    /// How a merge queue brings a pull request's branch up to date with
+    /// its base through the forge: "merge" merges the base in, keeping the
+    /// author's commits and signatures; "rebase" rebases the branch. GitLab
+    /// offers a rebase alone; "rebase" there and "merge" elsewhere where
+    /// absent (ADR-0087).
+    pub update: Option<Update>,
 }
 
 /// Whether an override sets one of its keys.
@@ -482,6 +490,7 @@ impl SourceOptions {
         self.issues_check(forge)?;
         self.milestones_check(forge)?;
         self.write_check(forge)?;
+        self.update_check(forge)?;
         self.codeowners_check()?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
@@ -519,6 +528,7 @@ mod codeowners;
 mod discovery;
 mod hooks;
 mod issues;
+mod merging;
 mod milestones;
 mod overrides;
 mod owner;

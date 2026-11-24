@@ -40,6 +40,8 @@ pub struct Config {
     /// The views of open pull requests, by name, the built-in `queue` among
     /// them (ADR-0055).
     pub views: BTreeMap<String, crate::ViewConfig>,
+    /// The merge queues, by name, each a base branch (ADR-0087).
+    pub merge_queues: BTreeMap<String, crate::MergeQueue>,
     /// The reports routes name among their sources, by name, each board's
     /// among them (ADR-0055, ADR-0056).
     pub reports: BTreeMap<String, crate::Report>,
@@ -168,8 +170,8 @@ impl Config {
     }
 
     /// The name of every secret a run of any use reads, its store's and
-    /// each model's among them, once each; a source's write credential is
-    /// read by an apply alone, so it is not among them.
+    /// each model's among them, once each; a source's or a merge queue's
+    /// write credential is read by an apply alone, so it is not among them.
     #[must_use]
     pub fn secrets_read(&self) -> BTreeSet<&str> {
         self.secrets_beside(

@@ -41,6 +41,7 @@ mod markup;
 mod matching;
 pub mod media;
 mod members;
+pub mod merging;
 mod nudge;
 mod origin;
 mod pattern;

@@ -299,6 +299,7 @@ pub fn load(
     let tasks = loader.tasks(sections.tasks, &models);
     let teams = loader.teams(sections.teams);
     let views = loader.views(sections.views, &sources, &tasks);
+    let (merge_queues, queue_spans) = loader.merge_queues(sections.merge_queues, &sources);
     let (boarded, boards) = loader.boards(sections.boards);
     let named = listed.keys().map(String::as_str).collect();
     let reports = loader.reports(sections.reports, boarded, &views, (&sources, &named));
@@ -307,6 +308,7 @@ pub fn load(
         sections.github_apps,
         store.as_ref(),
         (&sources, &source_spans),
+        (&merge_queues, &queue_spans),
     );
     let routes = loader.every_route(
         sections.routes,
@@ -341,16 +343,14 @@ pub fn load(
             attempts,
             render,
             marker_key,
-            destinations: destinations
-                .into_iter()
-                .map(|(name, (destination, _))| (name, destination))
-                .collect(),
+            destinations: destinations::unspanned(destinations),
             sources,
             routes: routes.into_iter().map(|read| read.config).collect(),
             templates,
             apps,
             github_apps,
             views,
+            merge_queues,
             reports,
             rules,
             models,
@@ -369,7 +369,7 @@ pub fn load(
             secret_keys,
         },
         loader,
-        &source_spans,
+        (&source_spans, &queue_spans),
     )
 }
 
@@ -381,6 +381,7 @@ mod federation;
 mod feeds;
 mod github_apps;
 mod group;
+mod merging;
 mod models;
 mod oidc;
 mod pages;

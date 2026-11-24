@@ -228,6 +228,15 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// What a merge queue asking `asked` of it is given, or why it takes
+    /// none so; none where it is no forge (ADR-0087).
+    fn merging(
+        &self,
+        _asked: &crate::MergeAsked<'_>,
+    ) -> Option<Result<crate::Merging, crate::Unmerged>> {
+        None
+    }
+
     /// How an operator signs in at its forge to apply a re-run, or why none
     /// can (ADR-0068).
     ///

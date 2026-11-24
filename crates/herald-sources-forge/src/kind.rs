@@ -404,6 +404,13 @@ impl SourceConfig for ForgeSource {
         self.options.writing(self.forge)
     }
 
+    fn merging(
+        &self,
+        asked: &herald_kinds::MergeAsked<'_>,
+    ) -> Option<Result<herald_kinds::Merging, herald_kinds::Unmerged>> {
+        Some(self.options.merging(self.forge, asked))
+    }
+
     fn rerunner(
         &self,
         read: Option<Credential>,
