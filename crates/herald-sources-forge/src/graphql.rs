@@ -154,6 +154,19 @@ const GITLAB_PROJECT: &str = "gid://gitlab/Project/";
 /// The most projects one GitLab request lists, as many as a batch holds.
 const GITLAB_MOST: usize = crate::options::GRAPHQL_BATCH_ALLOWED;
 
+/// The GraphQL endpoint `options` name for `forge`, or the one beside its
+/// REST API where they name none.
+pub(crate) fn graphql_of(forge: Forge, options: &crate::SourceOptions) -> String {
+    options.graphql.clone().unwrap_or_else(|| {
+        let api = crate::forge::api_of(forge, options);
+        if forge == Forge::GitLab {
+            crate::gitlab::graphql(&api)
+        } else {
+            herald_wire::github::graphql(&api)
+        }
+    })
+}
+
 /// `body` posted as JSON to `endpoint`, reading at most `parse` bytes.
 pub(crate) fn posted(endpoint: &str, body: &Value, parse: usize) -> Request {
     Request::new(Method::Post, SecretText::plain(endpoint.to_owned()))

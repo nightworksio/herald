@@ -156,6 +156,11 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
         reads: "a token",
     };
     assert!(source.merge_reader(&merging, None).is_none());
+    let with = crate::WriteWith {
+        merging: &merging,
+        credential: Credential::Named(Secret::new("HERALD_MERGE", "write-value")),
+    };
+    assert!(source.merge_writer(with).is_none());
 }
 
 #[test]

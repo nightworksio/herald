@@ -8,8 +8,8 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use super::{
-    APPROVED, Actor, ForgeMergeReader, MOST_MARKS, Mark, Opened, Push, Pushes, Review, Reviews,
-    Said, label_actor,
+    APPROVED, Actor, ForgeMergeReader, MOST_MARKS, Mark, OPEN, Opened, PULL, Push, Pushes, Review,
+    Reviews, Said, label_actor,
 };
 use crate::forge::whole;
 use crate::owner::flagged;
@@ -81,6 +81,8 @@ struct Pull {
     number: u64,
     html_url: String,
     #[serde(default)]
+    state: String,
+    #[serde(default)]
     draft: bool,
     head: Head,
     base: Base,
@@ -89,8 +91,26 @@ struct Pull {
     labels: Vec<Label>,
 }
 
+impl From<Pull> for Opened {
+    fn from(pull: Pull) -> Self {
+        Self {
+            number: pull.number,
+            url: pull.html_url,
+            id: None,
+            draft: pull.draft,
+            head: pull.head.sha,
+            author: pull.user.map(|user| user.login),
+            labels: pull.labels.into_iter().map(|label| label.name).collect(),
+            head_repository: pull.head.repo.map(|repo| repo.full_name),
+            head_branch: pull.head.branch,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct Entry {
+    #[serde(default)]
+    id: Option<u64>,
     #[serde(rename = "type")]
     kind: String,
     user: Option<User>,
@@ -165,17 +185,22 @@ pub(super) async fn opened(
     Ok(pulls
         .into_iter()
         .filter(|pull| pull.base.branch == branch)
-        .map(|pull| Opened {
-            number: pull.number,
-            url: pull.html_url,
-            draft: pull.draft,
-            head: pull.head.sha,
-            author: pull.user.map(|user| user.login),
-            labels: pull.labels.into_iter().map(|label| label.name).collect(),
-            head_repository: pull.head.repo.map(|repo| repo.full_name),
-            head_branch: pull.head.branch,
-        })
+        .map(Opened::from)
         .collect())
+}
+
+/// The pull request `number`, where it is open into `branch`.
+pub(super) async fn one(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (branch, number): (&str, u64),
+) -> Result<Option<Opened>, Unpolled> {
+    let pull: Option<Pull> = reader
+        .read(http, reader.get(&format!("/pulls/{number}"))?, PULL)
+        .await?;
+    Ok(pull
+        .filter(|pull| pull.state == OPEN && pull.base.branch == branch)
+        .map(Opened::from))
 }
 
 /// The timeline of pull request `number`, and whether it is whole.
@@ -206,6 +231,7 @@ pub(super) async fn labelled(
         .filter_map(|entry| {
             let into = entry.body == ADDED;
             Some(Mark {
+                id: entry.id,
                 into,
                 by: label_actor(entry.user.map(Into::into), into)?,
                 at: entry.created_at,
@@ -229,6 +255,7 @@ pub(super) async fn commented(
         .filter(|entry| entry.kind == COMMENT)
         .filter_map(|entry| {
             Some(Said {
+                id: entry.id,
                 edited: entry
                     .updated_at
                     .is_some_and(|updated| updated != entry.created_at),

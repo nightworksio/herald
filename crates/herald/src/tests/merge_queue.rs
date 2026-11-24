@@ -18,6 +18,7 @@ fn pull(number: u64, head: &str) -> Value {
 
 fn labeled(minute: u32) -> Value {
     json!([{
+        "id": minute,
         "event": "labeled",
         "actor": {"login": "writer", "id": 2},
         "created_at": format!("2026-01-01T00:{minute:02}:00Z"),
@@ -101,6 +102,9 @@ fn a_dry_run_reads_each_entry_from_the_forge_and_says_what_comes_next() {
             DONE,
             vec![
                 "app: cli/cli into main, run by herald",
+                "  takes no step: a merge queue without a method does not start; give method = \"merge\", \"squash\", \"rebase\", \"fast-forward\" or \"repository\"",
+                "  takes no step: a merge queue without a write credential does not start; give write = { token = { secret = \"NAME\" } }, or on GitHub write = { app = \"<github_apps name>\" }",
+                "  takes no step: runs = \"herald\": herald merge-queue --apply hands pull requests to the forge's queue, and takes no step in herald's own",
                 "  #1 https://github.com/cli/cli/pull/1 queued by writer (write) at 2026-01-01T00:10:00Z, head h1: next, it is merged with its head as the expected head",
                 "  #2 https://github.com/cli/cli/pull/2 queued by writer (write) at 2026-01-01T00:20:00Z, head h2: waits its turn",
             ],
@@ -193,5 +197,73 @@ fn a_queue_whose_source_s_installation_token_is_not_minted_is_not_read() {
             .starts_with("app:\n  not read: its source's installation token could not be minted: "),
         "{}",
         said.out
+    );
+}
+
+#[test]
+fn an_apply_in_a_queue_that_does_not_start_takes_no_step_and_says_why() {
+    let setup = setup(&format!("{CONFIG}{QUEUE}"));
+    let world = World::default();
+    answered(&world, false);
+    let applied = herald(&setup, &world, &["merge-queue", "app", "--apply"]);
+    assert_eq!(applied.code, DONE, "{}", applied.err);
+    assert!(
+        applied
+            .out
+            .contains("  takes no step: a merge queue without a write credential does not start"),
+        "{}",
+        applied.out
+    );
+    assert!(
+        applied.out.contains("#1 https://github.com/cli/cli/pull/1"),
+        "{}",
+        applied.out
+    );
+}
+
+#[test]
+fn an_apply_hands_each_pull_request_due_to_the_forge_s_merge_queue() {
+    let queue = "[merge_queues.app]\nsource = \"cli\"\nbranch = \"main\"\nmethod = \"squash\"\nwrite = { token = { secret = \"HERALD_MERGE\" } }\n";
+    let mut setup = setup(&format!("{CONFIG}{queue}"));
+    setup
+        .vars
+        .insert("HERALD_MERGE".to_owned(), "write-value".to_owned());
+    let world = World::default();
+    answered(&world, false);
+    let fresh = |number: u64, head: &str| {
+        let mut fresh = pull(number, head);
+        fresh["state"] = json!("open");
+        fresh["base"] = json!({ "ref": "main" });
+        fresh["node_id"] = json!(format!("PR_{number}"));
+        fresh
+    };
+    let answers = [
+        (
+            "/repos/cli/cli/rules/branches/main?per_page=100&page=1",
+            json!([{ "type": "merge_queue" }]),
+        ),
+        ("/repos/cli/cli/pulls/1", fresh(1, "h1")),
+        ("/repos/cli/cli/pulls/2", fresh(2, "h2")),
+        (
+            "/graphql",
+            json!({ "data": { "enqueuePullRequest": { "mergeQueueEntry": { "id": "MQE" } } } }),
+        ),
+    ];
+    {
+        let forge = &mut world.state.lock().unwrap().forge;
+        for (path, body) in answers {
+            forge.insert(path.to_owned(), (200, body.to_string()));
+        }
+    }
+    let applied = herald(&setup, &world, &["merge-queue", "app", "--apply"]);
+    assert_eq!(applied.code, DONE, "{}", applied.err);
+    assert_eq!(
+        applied
+            .out
+            .matches("handed to the forge's queue, which took it")
+            .count(),
+        2,
+        "{}",
+        applied.out
     );
 }

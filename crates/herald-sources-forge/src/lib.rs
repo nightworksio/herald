@@ -23,6 +23,7 @@ mod limited;
 mod listing;
 mod members;
 mod merge_read;
+mod merge_write;
 mod milestones;
 mod moved;
 mod options;

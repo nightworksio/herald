@@ -3,16 +3,18 @@ use std::sync::Mutex;
 use herald_core::merging::{
     AppliedBy, Check, CheckState, Enter, Message, SKEW, Update, Vouches, WAIT,
 };
+use herald_core::merging::{GestureRecord, HandOff, HandedOff};
 use herald_core::{Permission, SourceName, Visibility};
 use herald_kinds::{Gesture, Merging, Proved, Unpolled};
 use herald_ports::Boxed;
-use herald_testing::ScriptedHttp;
+use herald_testing::{FakeStore, ScriptedHttp};
 use jiff::SignedDuration;
 
 use super::*;
 
 #[derive(Debug, Default)]
-struct Fixed {
+pub(super) struct Fixed {
+    pub(super) fresh: Option<Entered>,
     proved: Vec<(u64, Proved)>,
     branched: Option<Branched>,
     entries: Option<Vec<Entered>>,
@@ -22,6 +24,7 @@ struct Fixed {
 impl Fixed {
     fn proving(proved: Vec<(u64, Proved)>) -> Self {
         Self {
+            fresh: None,
             proved,
             ..Self::default()
         }
@@ -29,6 +32,7 @@ impl Fixed {
 
     fn listing(branched: Option<Branched>, entries: Option<Vec<Entered>>) -> Self {
         Self {
+            fresh: None,
             proved: Vec::new(),
             branched,
             entries,
@@ -81,19 +85,35 @@ impl MergeReader for Fixed {
             .ok_or_else(|| Unpolled::Unreadable(format!("#{} proved", entered.number)));
         Box::pin(async move { found })
     }
+
+    fn entry<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: (&'a str, u64),
+        _: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Option<Entered>, Unpolled>> {
+        let fresh = self.fresh.clone();
+        Box::pin(async move { fresh.map(Some).ok_or_else(|| unasked("the pull request")) })
+    }
+
+    fn queued<'a>(&'a self, _: &'a dyn DynHttp, _: u64) -> Boxed<'a, Result<bool, Unpolled>> {
+        Box::pin(async move { Err(unasked("the merge queue")) })
+    }
 }
 
 fn now() -> Timestamp {
     "2026-01-01T01:00:00Z".parse().unwrap()
 }
 
-fn entry(number: u64, (gestured, head): (&str, &str), whole: bool) -> Entered {
+pub(super) fn entry(number: u64, (gestured, head): (&str, &str), whole: bool) -> Entered {
     Entered {
         number,
         url: format!("u{number}"),
+        id: Some(format!("PR_{number}")),
         draft: false,
         head: head.to_owned(),
         gesture: Gesture {
+            id: Some(70),
             by: "w".to_owned(),
             at: now() - SignedDuration::from_mins(30),
             head: Some(gestured.to_owned()),
@@ -119,7 +139,7 @@ fn green(state: CheckState, whole: bool) -> Proved {
     }
 }
 
-fn queue(runs: Runs) -> MergeQueue {
+pub(super) fn queue(runs: Runs) -> MergeQueue {
     MergeQueue {
         source: SourceName::new("app"),
         forge: Merging {
@@ -156,18 +176,33 @@ fn base() -> Branched {
     }
 }
 
-fn nexts(reader: &Fixed, runs: Runs, entries: Vec<Entered>) -> Vec<Next> {
+/// What `queue`'s `entries` come to, each gesture's record kept in
+/// `store`, written where `applies`; with each record after.
+fn judging(
+    reader: &Fixed,
+    queue: &MergeQueue,
+    entries: Vec<Entered>,
+    (store, applies): (Option<&FakeStore>, bool),
+) -> Vec<(Next, Option<GestureRecord>)> {
     let http = ScriptedHttp::new(Vec::new());
+    let keeping = Keeping { store, applies };
     pollster::block_on(judged(
         (reader, &http),
-        &queue(runs),
+        ("app-main", queue, &keeping),
         (entries, &base()),
         now(),
     ))
     .unwrap()
     .into_iter()
-    .map(|judged| judged.next)
+    .map(|(judged, kept)| (judged.next, kept.map(|kept| kept.value)))
     .collect()
+}
+
+fn nexts(reader: &Fixed, runs: Runs, entries: Vec<Entered>) -> Vec<Next> {
+    judging(reader, &queue(runs), entries, (None, false))
+        .into_iter()
+        .map(|(next, _)| next)
+        .collect()
 }
 
 #[test]
@@ -252,9 +287,19 @@ fn a_queue_s_wait_runs_from_its_gesture_or_its_head_s_arrival_whichever_is_later
     );
 }
 
-fn found_by(reader: &Fixed, runs: Runs, printed: Printed) -> Found {
+fn found_in(reader: &Fixed, queue: &MergeQueue, printed: Printed) -> Found {
     let http = ScriptedHttp::new(Vec::new());
-    pollster::block_on(found((reader, &http), &queue(runs), printed, now()))
+    let asked = (("app-main", queue), None::<&FakeStore>, false);
+    match pollster::block_on(found((reader, &http), asked, printed, now())) {
+        Reading::Done(found) => found,
+        Reading::Due(due) => {
+            Found::Entries(due.judged.into_iter().map(|(judged, _)| judged).collect())
+        }
+    }
+}
+
+fn found_by(reader: &Fixed, runs: Runs, printed: Printed) -> Found {
+    found_in(reader, &queue(runs), printed)
 }
 
 #[test]
@@ -307,39 +352,35 @@ fn a_queue_any_of_whose_reads_fails_is_unread_saying_why_only_where_printed() {
 }
 
 #[test]
-fn a_dry_run_keeps_no_first_seen_head_so_those_settings_vouch_for_none() {
+fn without_a_store_s_record_of_the_first_seen_head_those_settings_vouch_for_none() {
     let reader = Fixed::proving(vec![(1, green(CheckState::Passed, true))]);
-    let http = ScriptedHttp::new(Vec::new());
     for vouches in [Vouches::Seen, Vouches::Approved] {
         let mut asked = queue(Runs::Herald);
         asked.vouches = vouches;
         let mut approved = entry(1, ("h1", "h1"), true);
         approved.approved = true;
-        let judged = pollster::block_on(judged(
-            (&reader, &http),
-            &asked,
-            (vec![approved], &base()),
-            now(),
-        ))
-        .unwrap();
-        assert_eq!(
-            judged[0].next,
-            Next::Verdict(Verdict::Leaves(Left::Unrecorded))
-        );
+        for applies in [false, true] {
+            let judged = judging(&reader, &asked, vec![approved.clone()], (None, applies));
+            assert_eq!(
+                judged,
+                [(Next::Verdict(Verdict::Leaves(Left::Unrecorded)), None)]
+            );
+        }
     }
 }
 
 #[test]
 fn a_queue_s_read_asks_for_its_gesture_role_vouching_and_skew() {
     let reader = Fixed::listing(Some(base()), Some(Vec::new()));
-    let http = ScriptedHttp::new(Vec::new());
     let mut asked = queue(Runs::Herald);
     asked.enter = Enter::Comment("/merge".to_owned());
     asked.least = Permission::Maintain;
     asked.vouches = Vouches::Seen;
     asked.skew = SignedDuration::from_secs(30);
-    let found = pollster::block_on(found((&reader, &http), &asked, Printed::Asked, now()));
-    assert_eq!(found, Found::Entries(Vec::new()));
+    assert_eq!(
+        found_in(&reader, &asked, Printed::Asked),
+        Found::Entries(Vec::new())
+    );
     assert_eq!(
         *reader.asked.lock().unwrap(),
         [(
@@ -365,4 +406,331 @@ fn a_queue_whose_installation_token_was_not_minted_says_why_where_it_can() {
         unminted(&Stop::Store("sealed".to_owned())),
         "its source's installation token could not be minted"
     );
+}
+
+fn record(seen: &str, outcome: Option<HandedOff>) -> GestureRecord {
+    GestureRecord {
+        key: gesture_key(&queue(Runs::Forge), &entry(1, ("h1", "h1"), true)).unwrap(),
+        queue: "app-main".to_owned(),
+        seen: seen.to_owned(),
+        seen_at: now(),
+        hand_off: outcome.map(|outcome| HandOff {
+            head: "h1".to_owned(),
+            base: "b1".to_owned(),
+            credential: "HERALD_MERGE".to_owned(),
+            at: now(),
+            outcome,
+        }),
+    }
+}
+
+#[test]
+fn an_apply_records_the_head_it_first_reads_with_a_gesture_and_a_dry_run_only_reads_it() {
+    let reader = Fixed::proving(Vec::new());
+    let mut seen = queue(Runs::Forge);
+    seen.vouches = Vouches::Seen;
+    let store = FakeStore::default();
+    let entries = vec![entry(1, ("h1", "h1"), true)];
+    assert_eq!(
+        judging(&reader, &seen, entries.clone(), (Some(&store), false)),
+        [(Next::HandOff, None)]
+    );
+    let key = gesture_key(&seen, &entries[0]).unwrap();
+    assert_eq!(pollster::block_on(store.gesture(&key)).unwrap(), None);
+    let applied = judging(&reader, &seen, entries.clone(), (Some(&store), true));
+    assert_eq!(applied, [(Next::HandOff, Some(record("h1", None)))]);
+    let mut moved = entries[0].clone();
+    moved.head = "h2".to_owned();
+    assert_eq!(
+        judging(&reader, &seen, vec![moved], (Some(&store), true)),
+        [(
+            Next::Verdict(Verdict::Leaves(Left::HeadMoved)),
+            Some(record("h1", None))
+        )]
+    );
+    let gesture = queue(Runs::Forge);
+    let fresh = FakeStore::default();
+    assert_eq!(
+        judging(&reader, &gesture, entries.clone(), (Some(&fresh), true)),
+        [(Next::HandOff, None)]
+    );
+    assert_eq!(pollster::block_on(fresh.gesture(&key)).unwrap(), None);
+}
+
+#[test]
+fn a_hand_off_recorded_for_a_gesture_is_shown_and_never_due_again_unless_never_sent() {
+    let reader = Fixed::proving(Vec::new());
+    let forge = queue(Runs::Forge);
+    for (outcome, next) in [
+        (
+            HandedOff::Queued,
+            Next::Handed {
+                outcome: HandedOff::Queued,
+                at: now(),
+            },
+        ),
+        (
+            HandedOff::Calling,
+            Next::Handed {
+                outcome: HandedOff::Calling,
+                at: now(),
+            },
+        ),
+        (HandedOff::Unsent, Next::HandOff),
+    ] {
+        let store = FakeStore::default();
+        pollster::block_on(store.put_gesture(&record("h1", Some(outcome)), None)).unwrap();
+        let judged = judging(
+            &reader,
+            &forge,
+            vec![entry(1, ("h1", "h1"), true)],
+            (Some(&store), false),
+        );
+        assert_eq!(judged[0].0, next, "{outcome:?}");
+    }
+}
+
+#[derive(Debug)]
+struct Unkept(bool);
+
+impl Actions for Unkept {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn action(
+        &self,
+        _: &herald_core::RunKey,
+    ) -> Result<Option<Versioned<herald_core::RerunRecord>>, herald_ports::StoreError> {
+        unreachable!("a queue reads no re-run")
+    }
+
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn put_action(
+        &self,
+        _: &herald_core::RerunRecord,
+        _: Option<Version>,
+    ) -> Result<Written, herald_ports::StoreError> {
+        unreachable!("a queue writes no re-run")
+    }
+
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn gesture(
+        &self,
+        _: &GestureKey,
+    ) -> Result<Option<Versioned<GestureRecord>>, herald_ports::StoreError> {
+        if self.0 {
+            Ok(None)
+        } else {
+            Err(herald_ports::StoreError::Unavailable {
+                reason: "down".to_owned(),
+            })
+        }
+    }
+
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn put_gesture(
+        &self,
+        _: &GestureRecord,
+        _: Option<Version>,
+    ) -> Result<Written, herald_ports::StoreError> {
+        Ok(Written::Conflict)
+    }
+}
+
+#[test]
+fn a_first_seen_head_that_cannot_be_read_or_recorded_vouches_for_none() {
+    let mut seen = queue(Runs::Forge);
+    seen.vouches = Vouches::Seen;
+    let entered = entry(1, ("h1", "h1"), true);
+    for (unkept, applies) in [
+        (Unkept(false), false),
+        (Unkept(false), true),
+        (Unkept(true), true),
+    ] {
+        let keeping = Keeping {
+            store: Some(&unkept),
+            applies,
+        };
+        let found = pollster::block_on(super::seen(&keeping, ("app-main", &seen), &entered, now()));
+        assert_eq!(found, (None, None), "{unkept:?} {applies}");
+    }
+}
+
+#[test]
+fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
+    let mut started = queue(Runs::Forge);
+    started.method = Some(herald_core::merging::Method::Squash);
+    started.write = Some(herald_core::merging::Write {
+        token: Some(herald_core::SecretRef {
+            secret: "HERALD_MERGE".to_owned(),
+        }),
+        app: None,
+        installation: None,
+    });
+    let queued = Branched {
+        queue: Some(true),
+        ..base()
+    };
+    let store = FakeStore::default();
+    assert_eq!(idle(&started, &queued, Some(&store)), Vec::<String>::new());
+    let unsaid = Branched {
+        queue: None,
+        ..base()
+    };
+    assert_eq!(idle(&started, &unsaid, Some(&store)), Vec::<String>::new());
+    let mut gitlab = started.clone();
+    gitlab.forge.forge = "gitlab";
+    assert_eq!(idle(&gitlab, &unsaid, Some(&store)), [TRAINS_UNSAID]);
+    assert_eq!(idle(&gitlab, &queued, Some(&store)), Vec::<String>::new());
+    gitlab.runs = Runs::Herald;
+    assert_eq!(idle(&gitlab, &unsaid, Some(&store)), [OWN_QUEUE]);
+    assert_eq!(idle(&started, &base(), Some(&store)), [NO_FORGE_QUEUE]);
+    assert_eq!(idle(&started, &queued, None::<&FakeStore>), [UNRECORDED]);
+    let mut served = started.clone();
+    served.applied_by = AppliedBy::Server;
+    assert_eq!(idle(&served, &queued, Some(&store)), [SERVED]);
+    let mut own = started.clone();
+    own.runs = Runs::Herald;
+    assert_eq!(idle(&own, &base(), Some(&store)), [OWN_QUEUE]);
+    let bare = queue(Runs::Forge);
+    assert_eq!(
+        idle(&bare, &queued, Some(&store)),
+        [METHODLESS.to_owned(), UNWRITTEN.to_owned()]
+    );
+    let mut forgejo = started;
+    forgejo.forge.queueless = Some("Forgejo has none");
+    assert_eq!(
+        unstarted(&forgejo, false),
+        [(
+            "runs",
+            "Forgejo has none, so with runs = \"forge\" the queue does not start; give runs = \"herald\" to run herald's own".to_owned()
+        )]
+    );
+    forgejo.runs = Runs::Herald;
+    assert_eq!(unstarted(&forgejo, false), []);
+    let handed = Judged {
+        entered: entry(1, ("h1", "h1"), true),
+        next: Next::HandOff,
+    };
+    assert_eq!(idled(handed.clone(), &[]).next, Next::HandOff);
+    assert_eq!(idled(handed, &["why".to_owned()]).next, Next::Idle);
+    let draft = Judged {
+        entered: entry(1, ("h1", "h1"), true),
+        next: Next::Draft,
+    };
+    assert_eq!(idled(draft, &["why".to_owned()]).next, Next::Draft);
+}
+
+#[test]
+fn a_gesture_the_forge_named_no_id_for_keeps_no_record() {
+    let reader = Fixed::proving(Vec::new());
+    let mut seen = queue(Runs::Forge);
+    seen.vouches = Vouches::Seen;
+    let mut unnamed = entry(1, ("h1", "h1"), true);
+    unnamed.gesture.id = None;
+    let store = FakeStore::default();
+    assert_eq!(
+        judging(&reader, &seen, vec![unnamed], (Some(&store), true)),
+        [(Next::Verdict(Verdict::Leaves(Left::Unrecorded)), None)]
+    );
+}
+
+#[derive(Debug)]
+struct ReadOnly;
+
+impl Actions for ReadOnly {
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn action(
+        &self,
+        _: &herald_core::RunKey,
+    ) -> Result<Option<Versioned<herald_core::RerunRecord>>, herald_ports::StoreError> {
+        unreachable!("a queue reads no re-run")
+    }
+
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn put_action(
+        &self,
+        _: &herald_core::RerunRecord,
+        _: Option<Version>,
+    ) -> Result<Written, herald_ports::StoreError> {
+        unreachable!("a queue writes no re-run")
+    }
+
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn gesture(
+        &self,
+        _: &GestureKey,
+    ) -> Result<Option<Versioned<GestureRecord>>, herald_ports::StoreError> {
+        Ok(None)
+    }
+
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "a fake answers at once, and is written as the async trait it fakes"
+    )]
+    async fn put_gesture(
+        &self,
+        _: &GestureRecord,
+        _: Option<Version>,
+    ) -> Result<Written, herald_ports::StoreError> {
+        panic!("a dry run writes no record")
+    }
+}
+
+#[test]
+fn a_dry_run_never_writes_a_record_whatever_its_queue_vouches_for() {
+    let reader = Fixed::proving(Vec::new());
+    for vouches in [Vouches::Gesture, Vouches::Seen, Vouches::Approved] {
+        let mut asked = queue(Runs::Forge);
+        asked.vouches = vouches;
+        let mut entered = entry(1, ("h1", "h1"), true);
+        entered.approved = true;
+        let keeping = Keeping {
+            store: Some(&ReadOnly),
+            applies: false,
+        };
+        let http = ScriptedHttp::new(Vec::new());
+        let judged = pollster::block_on(judged(
+            (&reader, &http),
+            ("app-main", &asked, &keeping),
+            (vec![entered], &base()),
+            now(),
+        ))
+        .unwrap();
+        assert_eq!(judged[0].0.next, Next::HandOff, "{vouches:?}");
+    }
+}
+
+#[test]
+fn an_entry_read_in_part_records_no_first_seen_head() {
+    let reader = Fixed::proving(Vec::new());
+    let mut seen = queue(Runs::Forge);
+    seen.vouches = Vouches::Seen;
+    let store = FakeStore::default();
+    let partial = entry(1, ("h1", "h1"), false);
+    assert_eq!(
+        judging(&reader, &seen, vec![partial.clone()], (Some(&store), true)),
+        [(Next::Verdict(Verdict::Leaves(Left::Unread)), None)]
+    );
+    let key = gesture_key(&seen, &partial).unwrap();
+    assert_eq!(pollster::block_on(store.gesture(&key)).unwrap(), None);
 }

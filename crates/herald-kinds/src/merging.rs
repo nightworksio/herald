@@ -6,6 +6,8 @@ use std::fmt;
 use herald_core::merging::{Check, Enter, Method, Update, Vouches, Write};
 use herald_core::{Permission, Visibility};
 use herald_ports::{Boxed, DynHttp};
+
+use crate::Credential;
 use jiff::{SignedDuration, Timestamp};
 
 use crate::Unpolled;
@@ -85,6 +87,9 @@ pub struct Branched {
 /// A gesture that queued a pull request, as the forge records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gesture {
+    /// The forge's id of the label event or comment it is, where the forge
+    /// names one: no two gestures share it.
+    pub id: Option<u64>,
     /// Who made it, as the forge records its actor.
     pub by: String,
     /// When the forge recorded it.
@@ -106,6 +111,9 @@ pub struct Entered {
     pub number: u64,
     /// Its page.
     pub url: String,
+    /// The id the forge's write calls name it by where that is not its
+    /// number: GitHub's node id.
+    pub id: Option<String>,
     /// Whether it is a draft.
     pub draft: bool,
     /// Its head commit.
@@ -170,4 +178,63 @@ pub trait MergeReader: fmt::Debug + Send + Sync {
         entered: &'a Entered,
         branched: &'a Branched,
     ) -> Boxed<'a, Result<Proved, Unpolled>>;
+
+    /// The pull request `pull` names by its base branch and number, read
+    /// again on its own as [`MergeReader::entered`] reads each one, with
+    /// nothing kept from an earlier read; none where it is not open into
+    /// that branch or no gesture `asked` names stands on it. Asked through
+    /// `http`.
+    fn entry<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        pull: (&'a str, u64),
+        asked: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Option<Entered>, Unpolled>>;
+
+    /// Whether the pull request `number` is in the forge's merge queue or
+    /// merge train, or set to join it, asked through `http`.
+    fn queued<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        number: u64,
+    ) -> Boxed<'a, Result<bool, Unpolled>>;
+}
+
+/// What the forge answered a hand-off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Handed {
+    /// It took the pull request into its queue, or set it to join.
+    Queued,
+    /// It refused, saying this, with no credential in it.
+    Refused(String),
+    /// Its answer says neither, or was lost.
+    Lost,
+}
+
+/// What hands a pull request to its forge's merge queue or merge train
+/// with a queue's write credential, sent to the forge's API alone
+/// (ADR-0087). Made only with that credential, which only the queue's own
+/// apply reads.
+pub trait MergeWriter: fmt::Debug + Send + Sync {
+    /// The base URL the write credential is sent to: the forge's API.
+    fn api(&self) -> &str;
+
+    /// `entered` handed to the forge's queue with its head as the head the
+    /// forge must find, sent through `write`, reaching the API alone; what
+    /// the forge answered, or why nothing was sent.
+    fn hand_off<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        entered: &'a Entered,
+    ) -> Boxed<'a, Result<Handed, Unpolled>>;
+}
+
+/// The credential a merge queue's step is made with, read by its apply
+/// alone, and the forge it is sent to.
+#[derive(Debug, Clone)]
+pub struct WriteWith<'a> {
+    /// What the source gives the queue: the forge, repository and API.
+    pub merging: &'a Merging,
+    /// The credential.
+    pub credential: Credential,
 }

@@ -36,6 +36,12 @@ const MOST_MARKS: usize = 500;
 /// The most open pull requests into a branch one read lists.
 const MOST_OPENED: usize = 500;
 
+/// What a pull request read on its own is called in an error.
+const PULL: &str = "the pull request";
+
+/// The state of an open pull request on GitHub and Forgejo.
+const OPEN: &str = "open";
+
 /// What a listing of open pull requests is called in an error.
 const OPENED: &str = "open pull requests";
 
@@ -46,6 +52,8 @@ pub(crate) struct ForgeMergeReader {
     pub(crate) origin: Origin,
     /// The source's read credential, where it has one.
     pub(crate) token: Option<Token>,
+    /// The forge's GraphQL endpoint, beside its API.
+    pub(crate) graphql: String,
 }
 
 /// Who did something, as the forge records its actor.
@@ -72,6 +80,7 @@ fn label_actor(by: Option<Actor>, into: bool) -> Option<Actor> {
 struct Opened {
     number: u64,
     url: String,
+    id: Option<String>,
     draft: bool,
     head: String,
     author: Option<String>,
@@ -84,6 +93,7 @@ struct Opened {
 /// it out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Mark {
+    id: Option<u64>,
     by: Actor,
     at: Timestamp,
     into: bool,
@@ -104,13 +114,14 @@ struct Review {
 /// whether it listed every one.
 type Reviews = (Vec<Review>, bool);
 
-/// The gesture that stands on a pull request: who made it, when, the
-/// commit its comment named, and whether its record was read whole.
-type Stood = (Actor, Timestamp, Option<String>, bool);
+/// The gesture that stands on a pull request, and whether its record was
+/// read whole.
+type Stood = (Mark, bool);
 
 /// A comment, as the forge records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Said {
+    id: Option<u64>,
     by: Actor,
     at: Timestamp,
     body: String,
@@ -232,6 +243,7 @@ fn comment_marks(said: Vec<Said>, command: &str) -> Vec<Mark> {
             commanded(command, &said.body)
                 .filter(|(into, _)| !(said.edited && *into))
                 .map(|(into, named)| Mark {
+                    id: said.id,
                     by: said.by,
                     at: said.at,
                     into,
@@ -403,7 +415,7 @@ impl ForgeMergeReader {
                 counted.push(mark);
             }
         }
-        Ok(standing(counted).map(|mark| (mark.by, mark.at, mark.named, whole)))
+        Ok(standing(counted).map(|mark| (mark, whole)))
     }
 
     /// Whether one who holds `least` or above approved `pull`'s head, with
@@ -445,6 +457,77 @@ impl ForgeMergeReader {
         }
     }
 
+    /// `pull` as an entry, where a gesture `asked` names stands on it, each
+    /// role read once into `roles`.
+    async fn entry_of(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: Opened,
+        asked: EnterAsked<'_>,
+        roles: &mut BTreeMap<String, Option<Permission>>,
+    ) -> Result<Option<Entered>, Unpolled> {
+        let EnterAsked {
+            enter,
+            least,
+            vouches,
+            skew,
+        } = asked;
+        let Some((mark, whole)) = self.gestured(http, &pull, (enter, least), roles).await? else {
+            return Ok(None);
+        };
+        let Mark {
+            id, by, at, named, ..
+        } = mark;
+        let role = self.role(http, &by, roles).await?;
+        let pushes = self.pushes(http, &pull).await?;
+        let (approved, reviewed) = if vouches == Vouches::Approved {
+            self.approved(http, &pull, (least, skew), roles).await?
+        } else {
+            (false, true)
+        };
+        Ok(Some(Entered {
+            gesture: Gesture {
+                id,
+                head: head_then(&pushes, (at, skew), &pull.head),
+                named,
+                by: by.login,
+                at,
+                role,
+            },
+            arrived: arrived(&pushes.0),
+            approved,
+            whole: whole && reviewed,
+            number: pull.number,
+            url: pull.url,
+            id: pull.id,
+            draft: pull.draft,
+            head: pull.head,
+        }))
+    }
+
+    /// The pull request `number`, read again on its own with a role read
+    /// afresh for each person, where it is open into `branch`, holds the
+    /// label `asked` names where it names one, and a gesture stands on it.
+    async fn one(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        (branch, number): (&str, u64),
+        asked: EnterAsked<'_>,
+    ) -> Result<Option<Entered>, Unpolled> {
+        let pull = match self.forge() {
+            Forge::GitHub => github::one(self, http, (branch, number)).await?,
+            Forge::GitLab => gitlab::one(self, http, (branch, number)).await?,
+            Forge::Forgejo => forgejo::one(self, http, (branch, number)).await?,
+        };
+        let Some(pull) = pull.filter(|pull| match asked.enter {
+            Enter::Label(label) => pull.labels.iter().any(|held| held == label),
+            Enter::Comment(_) => true,
+        }) else {
+            return Ok(None);
+        };
+        self.entry_of(http, pull, asked, &mut BTreeMap::new()).await
+    }
+
     /// Each open pull request into `branch` a gesture `asked` names stands
     /// on, oldest gesture first.
     async fn entries(
@@ -453,13 +536,7 @@ impl ForgeMergeReader {
         branch: &str,
         asked: EnterAsked<'_>,
     ) -> Result<Vec<Entered>, Unpolled> {
-        let EnterAsked {
-            enter,
-            least,
-            vouches,
-            skew,
-        } = asked;
-        let label = match enter {
+        let label = match asked.enter {
             Enter::Label(label) => Some(label.as_str()),
             Enter::Comment(_) => None,
         };
@@ -480,36 +557,9 @@ impl ForgeMergeReader {
         let mut roles = BTreeMap::new();
         let mut entries = Vec::new();
         for pull in candidates {
-            let Some((by, at, named, whole)) = self
-                .gestured(http, &pull, (enter, least), &mut roles)
-                .await?
-            else {
-                continue;
-            };
-            let role = self.role(http, &by, &mut roles).await?;
-            let pushes = self.pushes(http, &pull).await?;
-            let (approved, reviewed) = if vouches == Vouches::Approved {
-                self.approved(http, &pull, (least, skew), &mut roles)
-                    .await?
-            } else {
-                (false, true)
-            };
-            entries.push(Entered {
-                gesture: Gesture {
-                    head: head_then(&pushes, (at, skew), &pull.head),
-                    named,
-                    by: by.login,
-                    at,
-                    role,
-                },
-                arrived: arrived(&pushes.0),
-                approved,
-                whole: whole && reviewed,
-                number: pull.number,
-                url: pull.url,
-                draft: pull.draft,
-                head: pull.head,
-            });
+            if let Some(entry) = self.entry_of(http, pull, asked, &mut roles).await? {
+                entries.push(entry);
+            }
         }
         entries.sort_by_key(|entry| (entry.gesture.at, entry.number));
         Ok(entries)
@@ -553,6 +603,30 @@ impl MergeReader for ForgeMergeReader {
                 Forge::GitHub => github::proved(self, &http, entered, branched).await,
                 Forge::GitLab => gitlab::proved(self, &http, entered, branched).await,
                 Forge::Forgejo => forgejo::proved(self, &http, entered, branched).await,
+            }
+        })
+    }
+
+    fn entry<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        (branch, number): (&'a str, u64),
+        asked: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Option<Entered>, Unpolled>> {
+        Box::pin(async move { self.one(&Erased(http), (branch, number), asked).await })
+    }
+
+    fn queued<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        number: u64,
+    ) -> Boxed<'a, Result<bool, Unpolled>> {
+        Box::pin(async move {
+            let http = Erased(http);
+            match self.forge() {
+                Forge::GitHub => github::queued(self, &http, number).await,
+                Forge::GitLab => gitlab::queued(self, &http, number).await,
+                Forge::Forgejo => Ok(false),
             }
         })
     }

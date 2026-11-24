@@ -2,15 +2,16 @@
 //! apart from the one it reads with, a connection to its API alone for the
 //! call, and the operator signed in at its forge, their token revoked when
 //! the apply ends whatever came of it; a write App's token is minted only
-//! for a call, narrowed to that call (ADR-0068).
+//! for a call, narrowed to that call (ADR-0068). A merge queue's write
+//! credential is held apart and minted the same way (ADR-0087).
 
 use std::sync::Arc;
 
 use herald_config::Config;
 use herald_core::{Permission, SourceName, same};
 use herald_kinds::{Credential, Rerunner, SignIn, Source, UNWRITTEN, WriteCredential};
-use herald_ports::{Base, Clock, Http, OperatorToken, Secret, Signer, Store, Timer};
-use herald_wire::github_app::{Unminted, Wide};
+use herald_ports::{Base, Clock, DynSecrets, Http, OperatorToken, Secret, Signer, Store, Timer};
+use herald_wire::github_app::{Narrowed, Unminted, Wide};
 
 use super::signing::{said, signed_in};
 use super::{Applying, read_credential};
@@ -25,12 +26,12 @@ pub const UNSEPARATED: &str = "the write credential holds the same secret the so
 
 /// Why a job is not re-run where the write App's token was minted for an
 /// installation a source reads through, or by an App a source reads as.
-pub const SHARED_INSTALLATION: &str = "the write App's token was minted for an installation a source reads through, or by an App a source reads as, so the write App is an App herald reads as; re-runs are made as another App, installed with actions: write alone";
+pub const SHARED_INSTALLATION: &str = "the write App's token was minted for an installation a source reads through, or by an App a source reads as, so the write App is an App herald reads as; writes are made as another App, installed with the permissions they need alone";
 
-/// What a source re-runs with: a token the config names, or a GitHub App
-/// whose token is minted for each call, with the installation and the App
-/// of every minting a source reads through.
-pub(super) enum Writing {
+/// What a source re-runs, or a merge queue steps, with: a token the
+/// config names, or a GitHub App whose token is minted for each call, with
+/// the installation and the App of every minting a source reads through.
+pub(crate) enum Writing {
     Token(Credential),
     App {
         minting: Box<Minting>,
@@ -67,16 +68,16 @@ pub(super) struct Signed<'a, H> {
 }
 
 /// The source `name`'s write credential, as its config names it, read
-/// through `applying` with no request made: a token's secret, or its App's
+/// through `secrets` with no request made: a token's secret, or its App's
 /// minting and key.
-async fn write_credential<H, T>(
+async fn write_credential(
     config: &Config,
-    applying: &Applying<'_, H, T>,
+    secrets: &dyn DynSecrets,
     (name, write): (&SourceName, WriteCredential<'_>),
 ) -> Result<(Writing, Secret), String> {
     match write {
         WriteCredential::Token { secret, .. } => {
-            let read = applying.secrets.secret_boxed(&secret.secret).await;
+            let read = secrets.secret_boxed(&secret.secret).await;
             let secret =
                 read.map_err(|error| format!("the write credential could not be read: {error}"))?;
             Ok((Writing::Token(Credential::Named(secret.clone())), secret))
@@ -84,7 +85,7 @@ async fn write_credential<H, T>(
         WriteCredential::App(installed) => {
             let mut mintings = Mintings::default();
             mintings
-                .of((&config.github_apps, applying.secrets), name, installed)
+                .of((&config.github_apps, secrets), name, installed)
                 .await
                 .map_err(|error| format!("the write App's key could not be read: {error}"))?;
             let minting = mintings.0.pop().ok_or(UNWRITTEN)?;
@@ -101,12 +102,12 @@ async fn write_credential<H, T>(
 }
 
 /// Why `wide`, minted by `minting` holding more than it was asked for,
-/// was not used, once it is revoked with itself through `signed`'s
+/// was not used, once it is revoked with itself through `written`, the
 /// connection to the source's API, outside the budget as the operator's
 /// token is; and whether its revocation failed.
-async fn revoked<H: Http>(signed: &Signed<'_, H>, minting: &Minting, wide: Wide) -> String {
+async fn revoked<H: Http>(written: &H, minting: &Minting, wide: Wide) -> String {
     let said = wide.to_string();
-    match wide.revoked(&signed.written, &minting.api).await {
+    match wide.revoked(written, &minting.api).await {
         Ok(()) => format!("{said}; it was revoked"),
         Err(failed) => format!("{said}, and its revocation failed: {failed}"),
     }
@@ -127,22 +128,46 @@ pub(super) async fn credential<S: Store, C: Clock, G: Signer, H: Http>(
     ports: &Ports<'_, S, C, G>,
     repository: &str,
 ) -> Result<Credential, String> {
-    let (minting, reads) = match &signed.write {
+    let narrowing = herald_wire::github_app::rerunning;
+    minted_with(
+        (&signed.write, &signed.written),
+        ports,
+        (repository, narrowing),
+    )
+    .await
+}
+
+/// The token `writing` calls with on `repository`, minted through
+/// `written`, its connection to the source's API, where it is an App's: the
+/// token the config names, or its App's minted now for that repository
+/// alone with the permissions `narrowing` asks alone, refused where its
+/// installation or its App is one a source reads through.
+///
+/// # Errors
+///
+/// Where the App's token cannot be minted or its App found, or it is one a
+/// source reads through, saying why.
+pub(crate) async fn minted_with<S: Store, C: Clock, G: Signer, H: Http>(
+    (writing, written_to): (&Writing, &H),
+    ports: &Ports<'_, S, C, G>,
+    (repository, narrowing): (&str, fn(&str) -> Narrowed),
+) -> Result<Credential, String> {
+    let (minting, reads) = match writing {
         Writing::Token(credential) => return Ok(credential.clone()),
         Writing::App { minting, reads } => (minting, reads),
     };
     let name = repository
         .rsplit_once('/')
         .map_or(repository, |(_, name)| name);
-    let narrowed = minting.narrowed(herald_wire::github_app::rerunning(name));
-    let written = Budgeted::new(&signed.written, ports.budget, ports.clock);
+    let narrowed = minting.narrowed(narrowing(name));
+    let written = Budgeted::new(written_to, ports.budget, ports.clock);
     let unminted = |reason: String| format!("the write App's token could not be minted: {reason}");
     let minted = match narrowed
         .minted((ports.signer, &written), ports.clock.now())
         .await
     {
         Ok(Ok(minted)) => minted,
-        Ok(Err(wide)) => return Err(unminted(revoked(signed, minting, wide).await)),
+        Ok(Err(wide)) => return Err(unminted(revoked(written_to, minting, wide).await)),
         Err(Unminted::Unreachable(reason) | Unminted::Unreadable(reason)) => {
             return Err(unminted(reason));
         }
@@ -166,22 +191,42 @@ pub(super) async fn credential<S: Store, C: Clock, G: Signer, H: Http>(
 /// through where it writes as an App. No request carries the write
 /// credential.
 async fn prepared<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
-    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     applying: &Applying<'_, H, T>,
     (name, source): (&SourceName, &Source),
 ) -> Result<(Writing, Arc<dyn Rerunner>, SignIn), String> {
     let write = source.write().ok_or(UNWRITTEN)?;
-    let read = read_credential((source, connected), applying.secrets, name)
+    let (writing, read) = held_apart(flow, applying.secrets, (name, source, write)).await?;
+    let (rerunner, signing): (Arc<dyn Rerunner>, SignIn) = source
+        .rerunner(read)
+        .and_then(|rerunner| Ok((rerunner.clone(), rerunner.signing()?.clone())))?;
+    Ok((writing, rerunner, signing))
+}
+
+/// The write credential `write` of the source `name`, `source`, read
+/// through `secrets` and held apart from the one it reads with, which is
+/// given beside it, with the installation and App of every minting a
+/// source reads through where it writes as an App. No request carries the
+/// write credential.
+///
+/// # Errors
+///
+/// Where a credential cannot be read, the write credential holds the read
+/// one's secret, or an installation a source reads through cannot be found,
+/// saying why.
+pub(crate) async fn held_apart<S: Store, C: Clock, G: Signer, H: Http>(
+    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    secrets: &dyn DynSecrets,
+    (name, source, write): (&SourceName, &Source, WriteCredential<'_>),
+) -> Result<(Writing, Option<Credential>), String> {
+    let read = read_credential((source, connected), secrets, name)
         .await
         .map_err(|error| format!("the source's read credential could not be read: {error}"))?;
-    let (mut writing, secret) = write_credential(config, applying, (name, write)).await?;
+    let (mut writing, secret) = write_credential(config, secrets, (name, write)).await?;
     let held = read.as_ref().and_then(|(_, held)| held.as_ref());
     if held.is_some_and(|held| same(held.expose().as_bytes(), secret.expose().as_bytes())) {
         return Err(UNSEPARATED.to_owned());
     }
-    let (rerunner, signing): (Arc<dyn Rerunner>, SignIn) = source
-        .rerunner(read.map(|(read, _)| read))
-        .and_then(|rerunner| Ok((rerunner.clone(), rerunner.signing()?.clone())))?;
     if let Writing::App { reads, .. } = &mut writing {
         for (minting, http) in &connected.mintings {
             let budgeted = Budgeted::new(http, ports.budget, ports.clock);
@@ -193,7 +238,7 @@ async fn prepared<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
             })?);
         }
     }
-    Ok((writing, rerunner, signing))
+    Ok((writing, read.map(|(read, _)| read)))
 }
 
 /// The source `name`, `source`, read through `api`, made ready to re-run as

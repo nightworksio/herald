@@ -8,12 +8,18 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use super::{
-    APPROVED, Actor, ForgeMergeReader, MOST_MARKS, Mark, Opened, Push, Pushes, Review, Reviews,
-    Said, label_actor,
+    APPROVED, Actor, ForgeMergeReader, MOST_MARKS, Mark, OPEN, Opened, PULL, Push, Pushes, Review,
+    Reviews, Said, label_actor,
 };
 use crate::forge::{named, whole};
 use crate::owner::{flagged, named as visibility_named};
 use crate::roles::GithubPermissions;
+
+/// What a pull request's place in the merge queue is called in an error.
+const QUEUE_ENTRY: &str = "the pull request's place in the merge queue";
+
+/// The query asking whether a pull request is in the merge queue.
+const QUEUED: &str = "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { isInMergeQueue } } }";
 
 /// The most check runs, and statuses, one head's read takes.
 const MOST_CHECKS: usize = 100;
@@ -82,6 +88,10 @@ struct Head {
 struct Pull {
     number: u64,
     html_url: String,
+    node_id: Option<String>,
+    #[serde(default)]
+    state: String,
+    base: Option<PullBase>,
     #[serde(default)]
     draft: bool,
     head: Head,
@@ -91,7 +101,57 @@ struct Pull {
 }
 
 #[derive(Deserialize)]
+struct PullBase {
+    #[serde(rename = "ref")]
+    branch: String,
+}
+
+impl From<Pull> for Opened {
+    fn from(pull: Pull) -> Self {
+        Self {
+            number: pull.number,
+            url: pull.html_url,
+            id: pull.node_id,
+            draft: pull.draft,
+            head: pull.head.sha,
+            author: pull.user.map(|user| user.login),
+            labels: pull.labels.into_iter().map(|label| label.name).collect(),
+            head_repository: pull.head.repo.map(|repo| repo.full_name),
+            head_branch: pull.head.branch,
+        }
+    }
+}
+
+/// What GitHub's GraphQL API answers about a pull request in its merge
+/// queue.
+#[derive(Deserialize)]
+struct Answered<T> {
+    data: Option<T>,
+    #[serde(default)]
+    errors: Vec<serde::de::IgnoredAny>,
+}
+
+#[derive(Deserialize)]
+struct QueuedData {
+    repository: Option<QueuedRepository>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueuedRepository {
+    pull_request: Option<QueuedPull>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueuedPull {
+    is_in_merge_queue: bool,
+}
+
+#[derive(Deserialize)]
 struct Event {
+    #[serde(default)]
+    id: Option<u64>,
     #[serde(rename = "event")]
     kind: String,
     actor: Option<User>,
@@ -101,6 +161,8 @@ struct Event {
 
 #[derive(Deserialize)]
 struct Comment {
+    #[serde(default)]
+    id: Option<u64>,
     user: Option<User>,
     #[serde(default)]
     body: String,
@@ -226,19 +288,52 @@ pub(super) async fn opened(
     let base = herald_core::unreserved(branch);
     let ask = |query: &str| reader.get(&format!("/pulls?state=open&base={base}&{query}"));
     let pulls: Vec<Pull> = reader.opened(http, &ask).await?;
-    Ok(pulls
-        .into_iter()
-        .map(|pull| Opened {
-            number: pull.number,
-            url: pull.html_url,
-            draft: pull.draft,
-            head: pull.head.sha,
-            author: pull.user.map(|user| user.login),
-            labels: pull.labels.into_iter().map(|label| label.name).collect(),
-            head_repository: pull.head.repo.map(|repo| repo.full_name),
-            head_branch: pull.head.branch,
+    Ok(pulls.into_iter().map(Opened::from).collect())
+}
+
+/// The pull request `number`, where it is open into `branch`.
+pub(super) async fn one(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (branch, number): (&str, u64),
+) -> Result<Option<Opened>, Unpolled> {
+    let pull: Option<Pull> = reader
+        .read(http, reader.get(&format!("/pulls/{number}"))?, PULL)
+        .await?;
+    Ok(pull
+        .filter(|pull| {
+            pull.state == OPEN && pull.base.as_ref().is_some_and(|base| base.branch == branch)
         })
-        .collect())
+        .map(Opened::from))
+}
+
+/// Whether pull request `number` is in the merge queue, by GitHub's
+/// GraphQL API.
+pub(super) async fn queued(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    number: u64,
+) -> Result<bool, Unpolled> {
+    let (owner, name) =
+        reader.origin.path().split_once('/').ok_or_else(|| {
+            Unpolled::Unreadable(format!("{} names no owner", reader.origin.path()))
+        })?;
+    let body = serde_json::json!({
+        "query": QUEUED,
+        "variables": { "owner": owner, "name": name, "number": number },
+    });
+    let request = crate::forge::authorized(
+        crate::Forge::GitHub,
+        crate::graphql::posted(&reader.graphql, &body, reader.origin.reading().parse),
+        reader.token.as_ref(),
+    );
+    let answered: Answered<QueuedData> = reader.needed(http, request, QUEUE_ENTRY).await?;
+    match answered.data.and_then(|data| data.repository?.pull_request) {
+        Some(pull) if answered.errors.is_empty() => Ok(pull.is_in_merge_queue),
+        _ => Err(Unpolled::Unreadable(format!(
+            "GitHub did not say whether pull request {number} is in the merge queue"
+        ))),
+    }
 }
 
 /// The label `label` added to and removed from pull request `number`, each
@@ -268,6 +363,7 @@ fn label_marks(events: Vec<Event>, label: &str) -> Vec<Mark> {
                 _ => return None,
             };
             Some(Mark {
+                id: event.id,
                 by: label_actor(event.actor.map(Into::into), into)?,
                 at: event.created_at,
                 into,
@@ -292,6 +388,7 @@ pub(super) async fn commented(
         .into_iter()
         .filter_map(|comment| {
             Some(Said {
+                id: comment.id,
                 by: comment.user?.into(),
                 at: comment.created_at,
                 body: comment.body,

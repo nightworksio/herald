@@ -92,9 +92,11 @@ once.
    one counting against; GitLab's approvals name no commit, so one
    counts for the head of the latest diff version only where GitLab's own
    note of it is stamped more than `skew` after that version, and a note
-   that it was taken back undoes it. Without the store's record of the
-   first-seen head, `"seen"` and `"approved"` vouch for none and the pull
-   request leaves as `unrecorded`. A comment command followed by a
+   that it was taken back undoes it. The store's record of the
+   first-seen head is written by `herald merge-queue --apply` alone, the
+   first time it reads the gesture standing; without it, `"seen"` and
+   `"approved"` vouch for none and the pull request leaves as
+   `unrecorded`. A comment command followed by a
    commit's full id vouches for that commit alone under every value: it
    stands in for the record of the head, never for the approval.
    Every read of the gestures, pushes or reviews that comes back partial
@@ -103,9 +105,11 @@ once.
    of each gesture. Nothing jumps the queue.
 6. **The hand-off.** With `runs = "forge"` herald checks the gesture,
    that the pull request is open and not a draft, and that its head is
-   the head vouched for; then it calls GitHub's `enqueuePullRequest` with
-   `expectedHeadOid`, or adds the merge request to GitLab's train with
-   `sha` and `auto_merge = true`. The forge's queue decides the rest; its
+   the head vouched for, each read again on its own right before the
+   call with nothing kept from the queue's read; then it calls GitHub's
+   `enqueuePullRequest` with `expectedHeadOid`, or adds the merge request
+   to GitLab's train with `sha` and `auto_merge = true`, so the forge
+   itself refuses a head that moved after that read. The forge's queue decides the rest; its
    entries and reasons for leaving are read as ADR-0078 reads them. A
    gesture taken back takes the pull request out of the forge's queue
    (`dequeuePullRequest`; on GitLab, the train's auto-merge is
@@ -193,14 +197,21 @@ once.
     a Forgejo token one with the `write:repository` scope of a user who
     may merge into the branch.
 14. **The record comes before each step.** The `Actions` store port keeps
-    one record per queue, pull request, head and step (the gesture's
-    person, the credential's name, the base's head, time, outcome),
-    written as new with compare-and-set before the call, as ADR-0068's
-    re-run record is: of two runs racing only the first calls, and a
-    crash after the record leaves a step no run takes again. A lost
-    answer is never asked again: herald reads the pull request back and
-    records what came of it. The markers store keeps no records, so a
-    queue on it does not start.
+    one record per gesture, keyed by the forge's API, the repository,
+    the pull request's number and the forge's id of the label event or
+    comment, with who made it and when; a gesture fixes the head it
+    vouches for, so this is one record per pull request, head and
+    gesture. It holds the head first read with the gesture standing and
+    each step (the head, the credential's name, the base's head, time,
+    outcome), written with compare-and-set before the call, as
+    ADR-0068's re-run record is: of two runs racing only the first
+    calls, and a crash after the record leaves a step no run takes
+    again. Only a step whose request provably never left herald is taken
+    again, after a fresh read. A lost answer is never asked again:
+    herald reads the pull request back and records what came of it. Only
+    `herald merge-queue --apply` (or the server, with `applied_by =
+    "server"`) writes it; the dry run reads it. The markers store keeps
+    no records, so a queue on it does not start.
 15. **The setup wizard sets every key.** `herald setup merge-queue`
     asks for each key in turn, with its default chosen and the forge's
     own answers shown (whether the branch has a queue, the methods the

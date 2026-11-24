@@ -216,3 +216,35 @@ fn a_branch_is_merged_up_to_date_except_on_gitlab_which_rebases_alone() {
     };
     assert_eq!(merged.check(Forge::GitLab), Err(GITLAB_UPDATES.to_owned()));
 }
+
+#[test]
+fn a_forge_with_a_merge_queue_gives_a_writer_and_forgejo_none() {
+    let merging = herald_kinds::Merging {
+        forge: "github",
+        repository: "o/r".to_owned(),
+        api: "https://api.github.com".to_owned(),
+        update: herald_core::merging::Update::Merge,
+        queueless: None,
+        reads: "a token",
+    };
+    for (forge, writes) in [
+        (Forge::GitHub, true),
+        (Forge::GitLab, true),
+        (Forge::Forgejo, false),
+    ] {
+        let source = crate::ForgeSource {
+            forge,
+            options: one("o/r"),
+            names: None,
+        };
+        let with = herald_kinds::WriteWith {
+            merging: &merging,
+            credential: herald_kinds::Credential::Named(herald_ports::Secret::new(
+                "HERALD_MERGE",
+                "write-value",
+            )),
+        };
+        let writer = herald_kinds::SourceConfig::merge_writer(&source, with);
+        assert_eq!(writer.is_some(), writes, "{forge:?}");
+    }
+}
