@@ -108,7 +108,7 @@ fn when(text: &str) -> Option<Timestamp> {
     let civil = || {
         text.parse::<DateTime>()
             .ok()
-            .and_then(|civil| civil.to_zoned(TimeZone::UTC).ok())
+            .and_then(|civil| civil.to_zoned_datetime(TimeZone::UTC).ok())
             .map(|zoned| zoned.timestamp())
     };
     text.parse::<Timestamp>()

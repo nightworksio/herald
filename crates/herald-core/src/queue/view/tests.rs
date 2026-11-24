@@ -728,7 +728,7 @@ fn a_view_with_no_release_shows_no_verdict() {
 fn a_public_audience_is_alerted_under_each_withheld_mode_as_its_board_tells_it() {
     use crate::queue::{Header, OpenMilestone, Withheld};
     use crate::{Alerting, Readied, ReleaseVerdict, Told, readied, readied_event, told_of};
-    let today = now().to_zoned(jiff::tz::TimeZone::UTC).date();
+    let today = now().to_zoned_datetime(jiff::tz::TimeZone::UTC).date();
     let carried = |repository: &str, visibility, labels: Vec<String>| Pull {
         repository: repository.to_owned(),
         visibility,

@@ -145,7 +145,7 @@ pub(crate) async fn header(
     if !heading.header {
         return Ok(header);
     }
-    let today = now.to_zoned(TimeZone::UTC).date();
+    let today = now.to_zoned_datetime(TimeZone::UTC).date();
     for milestone in matched {
         let counts = if forge == Forge::GitLab {
             let path = gitlab::statistics_path(&milestone.title);

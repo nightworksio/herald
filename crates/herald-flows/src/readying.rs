@@ -48,7 +48,7 @@ pub(crate) async fn alerted<S: Store, C: Clock, G: Signer, H: Http>(
         .and_then(|record| record.value.seen.first())
         .map_or("", |identity| identity.as_str());
     let now = ports.clock.now();
-    let today = now.to_zoned(TimeZone::UTC).date();
+    let today = now.to_zoned_datetime(TimeZone::UTC).date();
     let source = SourceName::new(name);
     let judged = audiences((config, name), decided, (strictest, private), &[])
         .into_iter()

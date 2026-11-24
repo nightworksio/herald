@@ -37,7 +37,7 @@ disallowed-methods = [
   { path = "std::thread::sleep", reason = "waiting belongs to the I/O layers" },
   { path = "std::thread::spawn", reason = "threads belong to the I/O layers" },
   { path = "jiff::Timestamp::now", reason = "time is read through Clock" },
-  { path = "jiff::Zoned::now", reason = "time is read through Clock" },
+  { path = "jiff::ZonedDateTime::now", reason = "time is read through Clock" },
   { path = "std::time::Instant::now", reason = "time is read through Clock" },
   { path = "std::time::SystemTime::now", reason = "time is read through Clock" },
 ]

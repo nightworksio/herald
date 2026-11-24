@@ -131,13 +131,17 @@ fn a_named_zone_reads_the_wall_clock_there_through_a_change_of_offset() {
         window(&amsterdam, "2026-07-18T10:00:00Z").as_deref(),
         Some("2026-07-18T07:00:00Z")
     );
-    let skipped = ReportSchedule {
+    let half_past_two = ReportSchedule {
         at: Time::constant(2, 30, 0, 0),
         ..amsterdam
     };
     assert_eq!(
-        window(&skipped, "2026-03-29T12:00:00Z").as_deref(),
+        window(&half_past_two, "2026-03-29T12:00:00Z").as_deref(),
         Some("2026-03-29T01:30:00Z")
+    );
+    assert_eq!(
+        window(&half_past_two, "2026-10-25T12:00:00Z").as_deref(),
+        Some("2026-10-25T00:30:00Z")
     );
 }
 
