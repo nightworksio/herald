@@ -596,10 +596,35 @@ fn queued(bytes: &[u8]) {
                 );
             }
             let glob = herald_core::Glob::new("v*").unwrap();
+            let read = herald_core::HeaderRead { header: true, issues: true };
+            let group = herald_core::Headed {
+                source: 0,
+                path: "fuzzer".to_owned(),
+                visibility: herald_core::Visibility::Internal,
+                picked: false,
+                group: true,
+            };
             if let Ok(header) = pollster::block_on(queue.milestoned(
                 &http,
-                ("fuzzer/fuzzed", &glob, herald_core::Visibility::Internal),
-                (herald_core::HeaderRead { header: true, issues: true }, jiff::Timestamp::UNIX_EPOCH),
+                (&group, &glob),
+                (read, jiff::Timestamp::UNIX_EPOCH),
+            )) {
+                assert!(
+                    header.milestones.iter().all(|milestone| milestone.repository == "fuzzer"
+                        && milestone.visibility == herald_core::Visibility::Internal),
+                    "{header:?}"
+                );
+                assert!(header.unread.iter().all(|unread| unread.repository == "fuzzer"), "{header:?}");
+            }
+            let repository = herald_core::Headed {
+                path: "fuzzer/fuzzed".to_owned(),
+                group: false,
+                ..group
+            };
+            if let Ok(header) = pollster::block_on(queue.milestoned(
+                &http,
+                (&repository, &glob),
+                (read, jiff::Timestamp::UNIX_EPOCH),
             )) {
                 assert!(header.milestones.len() <= herald_core::MOST_HEADER_MILESTONES, "{header:?}");
                 assert!(

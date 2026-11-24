@@ -166,8 +166,9 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
         capacity: view.capacity.map(|_| Vec::new()),
         ..Overviews::default()
     };
-    let (mut headed, mut checked) = (0, 0);
-    for &(name, queue, http) in reached.iter() {
+    let mut checked = 0;
+    let mut heads = Vec::new();
+    for (index, &(name, queue, http)) in reached.iter().enumerate() {
         let members = scoped_members(ports, (name, queue.as_ref())).await?;
         let source = config.sources.get(name);
         let zoned =
@@ -221,18 +222,29 @@ pub(crate) async fn read_pulls<S: Store, C: Clock, G: Signer, H: Http>(
                 capacity::capacity_of((view, capacity), reached, asking, &read, ports).await;
             overviews.merge(counted.within(&view.view, |path: &str| queue.holds(path)));
         }
-        let at = (read.as_slice(), ports.clock.now());
-        if let Some(header) =
-            crate::header::header(&view.view, (queue.as_ref(), http), at, &mut headed).await
-        {
-            overviews.header.get_or_insert_default().merge(header);
-        }
+        let span = members
+            .as_ref()
+            .map_or(&[][..], |(_, members)| members.as_slice());
+        let asking = (read.as_slice(), queue.repository(), span);
+        let grouping = (index, queue.milestone_groups());
+        heads.extend(herald_core::header_asked(&view.view, grouping, asking));
         let reached = (name, queue.as_ref(), http);
         let keeping = (ports.store.pulls(), ports.clock.now());
         let bases = crate::based::bases(&view.view, reached, (&read, keeping), &mut checked).await;
         overviews.bases.extend(bases);
         pulls.extend(read);
     }
+    let budgeted: Vec<_> = reached
+        .iter()
+        .map(|&(_, _, http)| Budgeted::new(http, ports.budget, ports.clock))
+        .collect();
+    let heading: Vec<_> = reached
+        .iter()
+        .zip(&budgeted)
+        .map(|(&(_, queue, _), http)| (queue.as_ref(), http))
+        .collect();
+    let asked = (heads, ports.clock.now());
+    overviews.header = crate::header::header(&view.view, &heading, asked).await;
     let forge = if teams && view.load.is_some() {
         forge_teams((config, reached, ports)).await?
     } else {

@@ -758,9 +758,16 @@ fn an_owner_s_member_reads_its_own_milestones_seen_as_asked() {
     }]);
     let http = ScriptedHttp::new(vec![answer(200, &milestone)]);
     let glob = herald_core::Glob::new("v2.*").unwrap();
+    let vault = herald_core::Headed {
+        source: 0,
+        path: "o/vault".to_owned(),
+        visibility: Visibility::Private,
+        picked: false,
+        group: false,
+    };
     let header = pollster::block_on(queue.milestoned(
         &http,
-        ("o/vault", &glob, Visibility::Private),
+        (&vault, &glob),
         (
             herald_core::HeaderRead {
                 header: true,
@@ -777,6 +784,46 @@ fn an_owner_s_member_reads_its_own_milestones_seen_as_asked() {
     assert_eq!(header.milestones.len(), 1);
     assert_eq!(header.milestones[0].repository, "o/vault");
     assert_eq!(header.milestones[0].visibility, Visibility::Private);
+}
+
+#[test]
+fn a_gitlab_owner_reads_its_groups_milestones_where_milestones_group_asks_and_on_its_api() {
+    let options = SourceOptions {
+        owner: Some("o".to_owned()),
+        milestones: Some(crate::Milestones {
+            group: Some(true),
+            ..crate::Milestones::default()
+        }),
+        ..SourceOptions::default()
+    };
+    let owned = Owned::new(Forge::GitLab, ("o", None), &options, (None, 0));
+    let queue = Scoped::new((Forge::GitLab, "o"), &options, None, (String::new(), owned));
+    assert_eq!(queue.milestone_groups(), Some("o"));
+    assert_eq!(scoped(Forge::GitLab, false).milestone_groups(), None);
+    let http = ScriptedHttp::new(vec![answer(200, &json!([]))]);
+    let glob = herald_core::Glob::new("v2.*").unwrap();
+    let group = herald_core::Headed {
+        source: 0,
+        path: "o/sub".to_owned(),
+        visibility: Visibility::Internal,
+        picked: false,
+        group: true,
+    };
+    let heading = herald_core::HeaderRead {
+        header: true,
+        issues: false,
+    };
+    let header = pollster::block_on(queue.milestoned(
+        &http,
+        (&group, &glob),
+        (heading, jiff::Timestamp::UNIX_EPOCH),
+    ))
+    .unwrap();
+    assert_eq!(
+        http.asked()[0].0,
+        "https://gitlab.com/api/v4/groups/o%2Fsub/milestones?state=active&per_page=30"
+    );
+    assert_eq!(header, herald_core::Header::default());
 }
 
 #[test]

@@ -5,7 +5,7 @@ use herald_testing::ScriptedHttp;
 use serde_json::{Value, json};
 
 use super::*;
-use crate::SourceOptions;
+use crate::{Origin, SourceOptions};
 
 fn answer(status: u16, body: &Value) -> Response {
     Response {
@@ -67,6 +67,17 @@ fn read(
     http: &ScriptedHttp,
     (header, page): (bool, Option<usize>),
 ) -> Result<Header, Unpolled> {
+    read_as(forge, http, (header, page), None)
+}
+
+/// What a header reading issue rows finds through `http`, of the GitLab
+/// group `group` where it names one, of the repository o/r where none.
+fn read_as(
+    forge: Forge,
+    http: &ScriptedHttp,
+    (header, page): (bool, Option<usize>),
+    group: Option<&str>,
+) -> Result<Header, Unpolled> {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
         page: page.and_then(std::num::NonZeroUsize::new),
@@ -82,7 +93,16 @@ fn read(
     pollster::block_on(super::super::header(
         &http,
         (&origin, None),
-        (&glob, Visibility::Internal),
+        (
+            &herald_core::Headed {
+                source: 0,
+                path: group.unwrap_or("o/r").to_owned(),
+                visibility: Visibility::Internal,
+                picked: false,
+                group: group.is_some(),
+            },
+            &glob,
+        ),
         (heading, "2026-11-23T12:00:00Z".parse().unwrap()),
     ))
 }
@@ -328,4 +348,81 @@ fn a_repository_names_at_most_the_most_issue_rows_and_says_how_many_carry_its_mi
         );
         assert_eq!(named.contains(&reason.as_str()), over, "{named:?}");
     }
+}
+
+#[test]
+fn a_gitlab_group_s_rows_are_each_named_by_the_project_holding_it_and_seen_as_the_group() {
+    let placed = |full: &str| json!({ "references": { "full": full } });
+    let http = ScriptedHttp::new(vec![
+        answer(200, &json!([milestone(Forge::GitLab, 1, "v2.0")])),
+        answer(
+            200,
+            &json!([
+                issue(Forge::GitLab, 4, &placed("o/sub/api#4")),
+                issue(
+                    Forge::GitLab,
+                    4,
+                    &json!({ "references": { "full": "o/sub/web#4" }, "confidential": true })
+                ),
+                issue(Forge::GitLab, 6, &json!({})),
+            ]),
+        ),
+        answer(
+            200,
+            &json!({ "statistics": { "counts": { "closed": 1, "opened": 3 } } }),
+        ),
+    ]);
+    let header = read_as(Forge::GitLab, &http, (true, None), Some("o/sub")).unwrap();
+    assert_eq!(
+        urls(&http),
+        [
+            "https://gitlab.com/api/v4/groups/o%2Fsub/milestones?state=active&per_page=30",
+            "https://gitlab.com/api/v4/groups/o%2Fsub/issues?milestone=v2.0&state=opened&per_page=30",
+            "https://gitlab.com/api/v4/groups/o%2Fsub/issues_statistics?milestone=v2.0",
+        ]
+    );
+    let seen: Vec<(&str, u64, Visibility)> = header
+        .issues
+        .iter()
+        .flatten()
+        .map(|issue| (issue.repository.as_str(), issue.number, issue.visibility))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("o/sub/api", 4, Visibility::Internal),
+            ("o/sub/web", 4, Visibility::Private),
+            ("o/sub", 6, Visibility::Internal),
+        ]
+    );
+    let milestone = &header.milestones[0];
+    assert_eq!(
+        (
+            milestone.repository.as_str(),
+            milestone.visibility,
+            milestone.counts
+        ),
+        ("o/sub", Visibility::Internal, Some((3, 1)))
+    );
+}
+
+#[test]
+fn a_repository_s_rows_are_its_own_whatever_project_an_issue_s_reference_names() {
+    let http = ScriptedHttp::new(vec![
+        answer(200, &json!([milestone(Forge::GitLab, 1, "v2.0")])),
+        answer(
+            200,
+            &json!([issue(
+                Forge::GitLab,
+                4,
+                &json!({ "references": { "full": "o/x#4" } })
+            )]),
+        ),
+    ]);
+    let header = read(Forge::GitLab, &http, (false, None)).unwrap();
+    let issue = &header.issues.unwrap()[0];
+    assert_eq!(
+        (issue.repository.as_str(), issue.visibility),
+        ("o/r", Visibility::Internal)
+    );
 }

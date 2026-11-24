@@ -608,6 +608,7 @@ fn release(milestone: &str) -> crate::queue::Release {
         withheld: crate::queue::Withheld::Unknown,
         header: true,
         rows: crate::queue::Rows::Pulls,
+        repository: None,
     }
 }
 

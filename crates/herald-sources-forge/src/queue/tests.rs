@@ -335,6 +335,7 @@ fn a_queued_repository_reads_its_pulls_through_its_own_path_at_its_most() {
     let asked: Vec<String> = http.asked().into_iter().map(|(url, _)| url).collect();
     assert_eq!(asked, ["https://ghe.example/api/graphql"]);
     assert!(!herald_kinds::Queue::scoped(&queued));
+    assert_eq!(herald_kinds::Queue::milestone_groups(&queued), None);
 }
 
 /// The visibility each row of a live listing of `forge` read with or

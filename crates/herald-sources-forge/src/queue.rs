@@ -501,15 +501,19 @@ impl herald_kinds::Queue for Queued {
         })
     }
 
+    fn milestone_groups(&self) -> Option<&str> {
+        None
+    }
+
     fn milestoned<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        (_, glob, visibility): (&'a str, &'a herald_core::Glob, Visibility),
+        read: (&'a herald_core::Headed, &'a herald_core::Glob),
         asked: (herald_core::HeaderRead, jiff::Timestamp),
     ) -> herald_ports::Boxed<'a, Result<herald_core::Header, Unpolled>> {
         Box::pin(async move {
             let reading = (&self.origin, self.token.as_ref());
-            crate::milestones::header(&Erased(http), reading, (glob, visibility), asked).await
+            crate::milestones::header(&Erased(http), reading, read, asked).await
         })
     }
 

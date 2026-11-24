@@ -1,63 +1,50 @@
 //! A release's header read for a view: the open milestones its selector
-//! matches in each repository it shows a pull request of the release in,
+//! matches in each repository it reads, and the GitLab groups above them,
 //! and the open issues they carry where those are its rows, read once a
-//! round (ADR-0082, ADR-0084).
+//! round (ADR-0082, ADR-0084, ADR-0086).
 
-use herald_core::{Header, MOST_HEADER_REPOSITORIES, Pull, Unread, View, Visibility};
+use herald_core::{Headed, Header, Unread, View};
 use herald_kinds::Queue;
 use herald_ports::{Clock, Http};
 use jiff::Timestamp;
 
 use crate::budget::Budgeted;
 
+/// What one source reads a release's header through: its queue and its
+/// budgeted HTTP.
+pub(crate) type Reaching<'r, H, C> = (&'r dyn Queue, &'r Budgeted<'r, H, C>);
+
 /// The header of `view`'s release, where it shows one or its rows are
-/// issues, read through
-/// `queue` and `http` at `now`: each repository of `pulls` the release
-/// picks, and the one repository `queue` reads, seen as its rows are or
-/// as private where it has none; each named unread with why where it could
-/// not be read, and where `asked`, the repositories the view's header has
-/// read this round, reached [`MOST_HEADER_REPOSITORIES`].
+/// issues: each of `asked` [`herald_core::heading`] reads, read at `now`
+/// through the source of `reached` it names, in that order, a GitLab
+/// group's issues kept where the view holds their projects; each named unread
+/// with why where it could not be read or lay past the bound.
 pub(crate) async fn header<H: Http, C: Clock>(
     view: &View,
-    (queue, http): (&dyn Queue, &Budgeted<'_, H, C>),
-    (pulls, now): (&[Pull], Timestamp),
-    asked: &mut usize,
+    reached: &[Reaching<'_, H, C>],
+    (asked, now): (Vec<Headed>, Timestamp),
 ) -> Option<Header> {
     let release = view.release.as_ref()?;
     let (glob, heading) = release.heading()?;
-    let mut repositories: Vec<(String, &str, Visibility)> = pulls
-        .iter()
-        .filter(|pull| release.picks(pull))
-        .map(|pull| (pull.repository.as_str(), pull.visibility))
-        .chain(queue.repository().map(|path| (path, Visibility::Private)))
-        .filter(|(path, _)| view.holds(path))
-        .map(|(path, visibility)| (path.to_ascii_lowercase(), path, visibility))
-        .collect();
-    repositories.sort_unstable_by(|left, right| (&left.0, left.2).cmp(&(&right.0, right.2)));
-    repositories.dedup_by(|later, first| later.0 == first.0);
+    let (read, unread) = herald_core::heading(view, asked);
     let mut header = Header {
         issues: heading.issues.then(Vec::new),
+        unread,
         ..Header::default()
     };
-    for (_, path, visibility) in repositories {
-        let unread = |reason: String| Unread {
-            repository: path.to_owned(),
-            visibility,
-            reason,
-        };
-        if *asked >= MOST_HEADER_REPOSITORIES {
-            header.unread.push(unread(format!(
-                "a release's header reads the milestones of at most {MOST_HEADER_REPOSITORIES} repositories"
-            )));
-            continue;
-        }
-        *asked += 1;
-        match queue
-            .milestoned(http, (path, glob, visibility), (heading, now))
-            .await
-        {
-            Ok(read) => header.merge(read),
-            Err(unpolled) => header.unread.push(unread(http.unread_milestones(unpolled))),
+    let sourced = read.iter().filter_map(|headed| {
+        reached
+            .get(headed.source)
+            .map(|reaching| (headed, reaching))
+    });
+    for (headed, &(queue, http)) in sourced {
+        match queue.milestoned(http, (headed, glob), (heading, now)).await {
+            Ok(found) => header.merge(found.read_as(view, headed)),
+            Err(unpolled) => header.unread.push(Unread {
+                repository: headed.path.clone(),
+                visibility: headed.visibility,
+                reason: http.unread_milestones(unpolled),
+            }),
         }
     }
     Some(header)

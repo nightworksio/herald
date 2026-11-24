@@ -40,10 +40,29 @@ fn gitlab(id: u64, title: &str) -> Value {
     })
 }
 
+fn headed(group: Option<&str>) -> Headed {
+    Headed {
+        source: 0,
+        path: group.unwrap_or("o/r").to_owned(),
+        visibility: Visibility::Internal,
+        picked: false,
+        group: group.is_some(),
+    }
+}
+
 fn read(
     forge: Forge,
     http: &ScriptedHttp,
     (glob, page): (&str, Option<usize>),
+) -> Result<Header, Unpolled> {
+    read_as(forge, http, (glob, page), &headed(None))
+}
+
+fn read_as(
+    forge: Forge,
+    http: &ScriptedHttp,
+    (glob, page): (&str, Option<usize>),
+    headed: &Headed,
 ) -> Result<Header, Unpolled> {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
@@ -56,7 +75,7 @@ fn read(
     pollster::block_on(header(
         &http,
         (&origin, None),
-        (&glob, Visibility::Internal),
+        (headed, &glob),
         (HEADED, NOW.parse().unwrap()),
     ))
 }
@@ -231,4 +250,26 @@ fn past_the_most_milestones_a_repository_s_header_names_it_counts_none_more() {
         format!("11 open milestones match; only the first {MOST_HEADER_MILESTONES} are named")
     );
     assert_eq!(header.milestones[9].title, "v10");
+}
+
+#[test]
+fn a_gitlab_group_that_refuses_is_named_unread_as_the_group() {
+    let http = ScriptedHttp::new(vec![answer(403, &json!({}))]);
+    let header = read_as(Forge::GitLab, &http, ("v2.*", None), &headed(Some("o/sub"))).unwrap();
+    assert_eq!(
+        urls(&http),
+        ["https://gitlab.com/api/v4/groups/o%2Fsub/milestones?state=active&per_page=30"]
+    );
+    let unread: Vec<(&str, Visibility, &str)> = header
+        .unread
+        .iter()
+        .map(|unread| {
+            (
+                unread.repository.as_str(),
+                unread.visibility,
+                unread.reason.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(unread, [("o/sub", Visibility::Internal, GITLAB_REFUSED)]);
 }

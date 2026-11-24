@@ -163,6 +163,21 @@ pub(super) fn group_request(
         .rsplit_once('/')
         .map(|(group, _)| group)
         .unwrap_or_default();
+    grouped_request(origin, token, (group, path))
+}
+
+/// The request for `path` under the GitLab group at the full path `group`
+/// on `origin`'s API, carrying `token`, the group's path through the one
+/// segment encoder.
+///
+/// # Errors
+///
+/// Where a part of the group's path is empty, `.` or `..`.
+pub(super) fn grouped_request(
+    origin: &Origin,
+    token: Option<&Token>,
+    (group, path): (&str, &str),
+) -> Result<Request, Unpolled> {
     let group = crate::forge::named(group, GROUP)?;
     Ok(origin.rooted(&format!("/groups/{}{path}", unreserved(&group)), token))
 }

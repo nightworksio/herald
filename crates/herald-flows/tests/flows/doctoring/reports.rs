@@ -715,7 +715,7 @@ release = {release}
     };
     let headed = note("{ milestone = \"v2.*\" }").unwrap();
     assert!(
-        headed.starts_with("The report daily heads the view queue's release with its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most 20 repositories, those past it named unread; on GitLab one more request for each milestone matched to count its issues, at most 10 a repository."),
+        headed.starts_with("The report daily heads the view queue's release with its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, for a one-repository source's own repository, for each member of an owner source the view holds, and with milestones.group on a GitLab owner for each group at or under it above them, only release.repository where it names one, at most 20 repositories and groups, public ones first, those past it named unread; on GitLab one more request for each milestone matched to count its issues, at most 10 a repository."),
         "{headed}"
     );
     assert!(
@@ -727,7 +727,7 @@ release = {release}
     assert_eq!(note("{ label = \"ship\" }"), None);
     let listed = note("{ milestone = \"v2.*\", header = false, rows = \"issues\" }").unwrap();
     assert!(
-        listed.starts_with("The report daily lists as the view queue's release rows the open issues of its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, and for a one-repository source's own repository, at most 20 repositories, those past it named unread; one more request for each milestone matched to list its open issues, one page of the source's page, at most 50 rows a repository, those past it named unread."),
+        listed.starts_with("The report daily lists as the view queue's release rows the open issues of its open milestones the milestone selector matches: one request a round for each repository it shows a pull request of the release in, for a one-repository source's own repository, for each member of an owner source the view holds, and with milestones.group on a GitLab owner for each group at or under it above them, only release.repository where it names one, at most 20 repositories and groups, public ones first, those past it named unread; one more request for each milestone matched to list its open issues, one page of the source's page, at most 50 rows a repository, those past it named unread."),
         "{listed}"
     );
     assert!(!listed.contains("to count its issues"), "{listed}");

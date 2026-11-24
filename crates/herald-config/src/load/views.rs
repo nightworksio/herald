@@ -206,6 +206,7 @@ impl Loader<'_> {
                 Some(RowsFile::Issues) => Rows::Issues,
                 Some(RowsFile::Pulls) | None => Rows::Pulls,
             },
+            repository: written.repository.clone(),
         })
     }
 
@@ -397,6 +398,17 @@ impl Loader<'_> {
             },
             release,
         };
+        let held = view
+            .release
+            .as_ref()
+            .and_then(|release| release.repository.as_ref());
+        if let Some(held) = held.filter(|held| !view.holds(held)) {
+            self.error(
+                span,
+                &format!("{path}.release.repository"),
+                format!("{held} is not a repository the view holds; name one its repositories match, or remove repository"),
+            );
+        }
         let shipped = Most::default();
         let read = self.view_sources(file.sources, path, sources);
         self.known_areas(&view.areas, (path, span), (&read, sources));

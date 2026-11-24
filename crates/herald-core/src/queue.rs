@@ -46,8 +46,8 @@ pub use codeowners::{
     RULES_CACHE, Skipped,
 };
 pub use header::{
-    Header, HeaderRead, MOST_HEADER_MILESTONES, MOST_HEADER_REPOSITORIES, MOST_ISSUE_ROWS,
-    OpenIssue, OpenMilestone,
+    Headed, Header, HeaderRead, MOST_HEADER_MILESTONES, MOST_HEADER_REPOSITORIES, MOST_ISSUE_ROWS,
+    OpenIssue, OpenMilestone, header_asked, heading,
 };
 pub use kept::{
     Closed, Described, Folded, Folding, KeptPull, Lifecycle, Milestoned, Outcome, PullKey, Ran,

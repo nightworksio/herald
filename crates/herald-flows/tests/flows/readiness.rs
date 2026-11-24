@@ -103,9 +103,9 @@ fn told_beside(withheld: &str, draft: bool, open: bool) -> Vec<String> {
     let store = healthy();
     let script = Script::answering(&[
         (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
-        CLOSED_MILESTONES,
         (GRAPHQL, 200, &page("o/open", "PUBLIC", open)),
         OPEN_MILESTONES,
+        CLOSED_MILESTONES,
         TEAM,
         POSTED,
     ]);
@@ -191,9 +191,9 @@ fn queued(draft: bool, open: bool) -> herald_core::Board {
     let store = healthy();
     let script = Script::answering(&[
         (GRAPHQL, 200, &page("o/closed", "PRIVATE", draft)),
-        CLOSED_MILESTONES,
         (GRAPHQL, 200, &page("o/open", "PUBLIC", open)),
         OPEN_MILESTONES,
+        CLOSED_MILESTONES,
     ]);
     let secrets = FakeSecrets::default()
         .with("HERALD_DISCORD_TOKEN", "hunter2")

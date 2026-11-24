@@ -484,6 +484,15 @@ pub(crate) struct ReleaseFile {
     /// requests still judge whether it is ready. "issues" needs a
     /// milestone selector (ADR-0084).
     pub(crate) rows: Option<RowsFile>,
+    /// The one repository the release is held to, by full path such as
+    /// "acme/api", ignoring case: its pull requests, and the milestones
+    /// and issues its header and rows read, that repository's alone. Absent,
+    /// the release spans every repository the view holds: on an owner
+    /// source each member, and with `milestones.group` on a GitLab owner the
+    /// own milestones of each group at or under it, seen as private, at most
+    /// 20 read a round with public ones first, each repository seen as its
+    /// own (ADR-0086).
+    pub(crate) repository: Option<String>,
 }
 
 /// What a release's board lists as its rows.

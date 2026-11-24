@@ -116,10 +116,13 @@ impl Queue for Served {
     fn repository(&self) -> Option<&str> {
         None
     }
+    fn milestone_groups(&self) -> Option<&str> {
+        None
+    }
     fn milestoned<'a>(
         &'a self,
         _: &'a dyn DynHttp,
-        _: (&'a str, &'a herald_core::Glob, herald_core::Visibility),
+        _: (&'a herald_core::Headed, &'a herald_core::Glob),
         _: (herald_core::HeaderRead, jiff::Timestamp),
     ) -> Boxed<'a, Result<herald_core::Header, Unpolled>> {
         unread()
