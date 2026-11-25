@@ -28,6 +28,9 @@ const UNRETRIED: &str =
 /// Why `message = "pull"` beside another method is refused.
 const UNMESSAGED: &str = "message = \"pull\" sets the commit message of a merge or a squash alone; give method = \"merge\" or \"squash\", or remove message";
 
+/// Why `role_lost` beside `runs = "herald"` is refused.
+const UNFORGED_ROLE_LOST: &str = "role_lost says what herald does with a pull request it handed to the forge's queue, and with runs = \"herald\" herald hands none over; give runs = \"forge\", or remove role_lost";
+
 /// The keys that shape herald's own queue alone, unread where the forge
 /// runs it.
 const HERALD_ONLY: [&str; 3] = ["may_fail", "wait", "retries"];
@@ -159,6 +162,9 @@ impl Loader<'_> {
                 format!("{key} shapes herald's own queue, and with runs = \"forge\" the forge proves each pull request; give runs = \"herald\", or remove {key}"),
             );
         }
+        if runs == Runs::Herald && file.role_lost.is_some() {
+            self.error(span, &at("role_lost"), UNFORGED_ROLE_LOST);
+        }
         if let Some(Err(why)) = file.write.as_ref().map(Write::check) {
             self.error(span, &at("write"), why);
         }
@@ -208,6 +214,7 @@ impl Loader<'_> {
             wait: file.wait.map_or(WAIT, |wait| wait.0),
             retries: file.retries,
             applied_by: file.applied_by.unwrap_or_default(),
+            role_lost: file.role_lost.unwrap_or_default(),
             write: file.write,
         })
     }

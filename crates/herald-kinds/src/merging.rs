@@ -1,6 +1,7 @@
 //! What a forge source gives a merge queue on one of its repositories, or
 //! why it takes none as asked (ADR-0087).
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_core::merging::{Check, Enter, Method, Update, Vouches, Write};
@@ -198,13 +199,105 @@ pub trait MergeReader: fmt::Debug + Send + Sync {
         http: &'a dyn DynHttp,
         number: u64,
     ) -> Boxed<'a, Result<bool, Unpolled>>;
+
+    /// The open pull requests into `branch` in the forge's merge queue or
+    /// merge train, or set to join it, on which a gesture `asked` names was
+    /// made, with every mark on each as [`TakenBack`] says, at most
+    /// [`herald_core::merging::MOST_ENTERED`], asked through `http`.
+    fn taken_back<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        branch: &'a str,
+        asked: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Vec<TakenBack>, Unpolled>>;
+
+    /// The pull request `pull` names by its base branch and number, read
+    /// again on its own as [`MergeReader::taken_back`] reads each one, with
+    /// nothing kept from an earlier read; none where it is not open into
+    /// that branch or no gesture was made on it. Asked
+    /// through `http`.
+    fn took_back<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        pull: (&'a str, u64),
+        asked: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Option<TakenBack>, Unpolled>>;
 }
 
-/// What the forge answered a hand-off.
+/// A mark the forge records on a pull request: the id of the label event
+/// or comment it is, where the forge names one, who made it, and when.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Handed {
-    /// It took the pull request into its queue, or set it to join.
-    Queued,
+pub struct Marked {
+    /// The forge's id of the label event or comment.
+    pub id: Option<u64>,
+    /// Who made it, as the forge records its actor; empty where the forge
+    /// names none, as for a deleted account.
+    pub by: String,
+    /// When the forge recorded it.
+    pub at: Timestamp,
+}
+
+/// The role a person holds on the repository now, as the forge says it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Holds {
+    /// This role, write or above.
+    Role(Permission),
+    /// None at write or above, as the forge says, or the account is gone.
+    Nothing,
+    /// The forge would not say.
+    Unsaid,
+}
+
+impl Holds {
+    /// The role held; none below write or where the forge would not say.
+    #[must_use]
+    pub const fn role(self) -> Option<Permission> {
+        match self {
+            Self::Role(role) => Some(role),
+            Self::Nothing | Self::Unsaid => None,
+        }
+    }
+}
+
+/// An open pull request into a queue's branch, in the forge's merge queue
+/// or merge train, on which a gesture was made: every mark on it, whoever
+/// made it, for the queue to judge against the gesture herald handed over.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TakenBack {
+    /// Its number.
+    pub number: u64,
+    /// Its page.
+    pub url: String,
+    /// The id the forge's write calls name it by where that is not its
+    /// number: GitHub's node id.
+    pub id: Option<String>,
+    /// Every gesture made on it, whoever made it, newest first.
+    pub gestures: Vec<Marked>,
+    /// Every cancel made on it, whoever made it, newest first.
+    pub cancels: Vec<Marked>,
+    /// The role each maker of `gestures` and `cancels` the forge names
+    /// holds on the repository now, by who made it.
+    pub makers: BTreeMap<String, Holds>,
+    /// Whether its marks were read whole: a pull request judged from part
+    /// of them is never taken out.
+    pub whole: bool,
+}
+
+impl TakenBack {
+    /// The role `by` holds on the repository now, as read with it; none
+    /// below write, where the forge would not say, or names no one.
+    #[must_use]
+    pub fn role_of(&self, by: &str) -> Option<Permission> {
+        self.makers.get(by).copied().and_then(Holds::role)
+    }
+}
+
+/// What the forge answered a write call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Answered {
+    /// It did what it was asked: took the pull request into its queue, or
+    /// set it to join, or took it out.
+    Done,
     /// It refused, saying this, with no credential in it.
     Refused(String),
     /// Its answer says neither, or was lost.
@@ -226,7 +319,16 @@ pub trait MergeWriter: fmt::Debug + Send + Sync {
         &'a self,
         write: &'a dyn DynHttp,
         entered: &'a Entered,
-    ) -> Boxed<'a, Result<Handed, Unpolled>>;
+    ) -> Boxed<'a, Result<Answered, Unpolled>>;
+
+    /// `taken` taken out of the forge's queue, sent through `write`,
+    /// reaching the API alone; what the forge answered, or why nothing was
+    /// sent.
+    fn take_out<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        taken: &'a TakenBack,
+    ) -> Boxed<'a, Result<Answered, Unpolled>>;
 }
 
 /// The credential a merge queue's step is made with, read by its apply
@@ -238,3 +340,6 @@ pub struct WriteWith<'a> {
     /// The credential.
     pub credential: Credential,
 }
+
+#[cfg(test)]
+mod tests;

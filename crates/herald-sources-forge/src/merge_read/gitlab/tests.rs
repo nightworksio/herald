@@ -293,7 +293,7 @@ fn one_gitlab_names_no_id_for_holds_no_role() {
         &Erased(&http),
         &nameless,
     ));
-    assert_eq!(role.unwrap(), None);
+    assert_eq!(role.unwrap(), herald_kinds::Holds::Unsaid);
 }
 
 #[test]

@@ -218,6 +218,24 @@ mod merge_queues {
         fn queued<'a>(&'a self, _: &'a dyn DynHttp, _: u64) -> Boxed<'a, Result<bool, Unpolled>> {
             Box::pin(async { Err(Unpolled::Unreadable("unasked".to_owned())) })
         }
+
+        fn taken_back<'a>(
+            &'a self,
+            _: &'a dyn DynHttp,
+            _: &'a str,
+            _: herald_kinds::EnterAsked<'a>,
+        ) -> Boxed<'a, Result<Vec<herald_kinds::TakenBack>, Unpolled>> {
+            Box::pin(async { Err(Unpolled::Unreadable("unasked".to_owned())) })
+        }
+
+        fn took_back<'a>(
+            &'a self,
+            _: &'a dyn DynHttp,
+            _: (&'a str, u64),
+            _: herald_kinds::EnterAsked<'a>,
+        ) -> Boxed<'a, Result<Option<herald_kinds::TakenBack>, Unpolled>> {
+            Box::pin(async { Err(Unpolled::Unreadable("unasked".to_owned())) })
+        }
     }
 
     fn reading(name: &str, runs: Runs, queueless: bool, said: Said) -> MergeReading {

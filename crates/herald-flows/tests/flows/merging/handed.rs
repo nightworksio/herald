@@ -9,8 +9,8 @@ use herald_config::Uses;
 use herald_core::Printed;
 use herald_core::merging::{GestureKey, GestureRecord, HandOff, HandedOff};
 use herald_flows::{
-    Budget, Connected, Found, GONE, Handing, Next, Ports, RACED, SERVED, Took, UNNAMED,
-    UNSEPARATED, merge_apply, merge_queues, prepare,
+    Budget, Cancels, Connected, Found, GONE, Handing, MergeQueueRead, Next, Ports, RACED, SERVED,
+    Took, UNNAMED, UNSEPARATED, merge_apply, merge_queues, prepare,
 };
 use herald_ports::{Actions as _, Base, Http, HttpError, Request, Response};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
@@ -30,6 +30,8 @@ write = { token = { secret = "HERALD_MERGE" } }
 "#;
 
 const GRAPHQL: &str = "POST https://api.github.com/graphql";
+const IN_QUEUE: &str = "POST https://api.github.com/graphql mergeQueue";
+const QUEUED: &str = "POST https://api.github.com/graphql isInMergeQueue";
 const PULL: &str = "GET https://api.github.com/repos/o/r/pulls/7";
 const EVENTS: &str = "GET https://api.github.com/repos/o/r/issues/7/events?per_page=100&page=1";
 const PERMISSION: &str = "GET https://api.github.com/repos/o/r/collaborators/w/permission";
@@ -97,13 +99,24 @@ impl Forge {
 
 impl Http for Forge {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
-        let line = format!("{} {}", request.method.as_str(), request.url.expose());
+        let mut line = format!("{} {}", request.method.as_str(), request.url.expose());
+        let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
+        if body["query"]
+            .as_str()
+            .is_some_and(|query| query.contains("mergeQueue(branch"))
+        {
+            line = IN_QUEUE.to_owned();
+        } else if body["query"]
+            .as_str()
+            .is_some_and(|query| query.contains("isInMergeQueue"))
+        {
+            line = QUEUED.to_owned();
+        }
         let headers = request
             .headers
             .iter()
             .map(|(_, value)| value.expose())
             .collect();
-        let body = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
         self.sent
             .lock()
             .unwrap()
@@ -147,6 +160,13 @@ fn writer(push: bool) -> Response {
 
 const ENQUEUED: &str = r#"{"data":{"enqueuePullRequest":{"mergeQueueEntry":{"id":"MQE_1"}}}}"#;
 
+fn queued(is: bool) -> Response {
+    answer(
+        200,
+        &json!({ "data": { "repository": { "pullRequest": { "isInMergeQueue": is } } } }),
+    )
+}
+
 fn enqueued() -> Response {
     Response {
         status: 200,
@@ -179,6 +199,7 @@ fn scripted() -> Forge {
             "GET https://api.github.com/repos/fork/r/activity?ref=refs%2Fheads%2Ftopic&direction=desc&per_page=100",
             &[answer(200, &json!([{ "before": "h6", "timestamp": "2026-11-01T10:00:00Z", "activity_type": "push" }]))],
         )
+        .answering(QUEUED, &[queued(false)])
         .answering(GRAPHQL, &[enqueued()])
 }
 
@@ -188,9 +209,12 @@ fn key() -> GestureKey {
         repository: "o/r".to_owned(),
         number: 7,
         gesture: 501,
-        by: "w".to_owned(),
-        at: "2026-11-01T11:00:00Z".parse().unwrap(),
     }
+}
+
+/// When the forge recorded the gesture [`key`] names.
+fn gestured_at() -> jiff::Timestamp {
+    "2026-11-01T11:00:00Z".parse().unwrap()
 }
 
 fn the_secrets() -> FakeSecrets {
@@ -228,6 +252,25 @@ fn run_config(
     (store, forge, held): (&Failing, &Forge, &FakeSecrets),
     (apply, budget): (bool, Budget<'_>),
 ) -> Vec<Next> {
+    let read = run_read(queued, (store, forge, held), (apply, budget));
+    let Found::Entries(entries) = &read.found else {
+        panic!("{read:?}");
+    };
+    let mut nexts: Vec<Next> = read
+        .idle
+        .iter()
+        .map(|why| Next::Took(Took::Refused(why.clone())))
+        .collect();
+    nexts.extend(entries.iter().map(|judged| judged.next.clone()));
+    nexts
+}
+
+/// The read of the queue `queued` configures, as [`run_within`] makes it.
+fn run_read(
+    queued: &str,
+    (store, forge, held): (&Failing, &Forge, &FakeSecrets),
+    (apply, budget): (bool, Budget<'_>),
+) -> MergeQueueRead {
     let config = config(queued);
     let prepared = pollster::block_on(prepare(&config, held, &FakeSigner, Uses::Polls)).unwrap();
     let connected: Connected<Forge> = prepared.connect(|_| Ok::<_, ()>(forge.clone())).unwrap();
@@ -257,9 +300,6 @@ fn run_config(
         pollster::block_on(merge_queues(flow, asked))
     }
     .unwrap();
-    let Found::Entries(entries) = &read[0].found else {
-        panic!("{:?}", read[0]);
-    };
     let bases = bases.into_inner().unwrap();
     assert!(
         bases.iter().all(|base| base == "https://api.github.com"),
@@ -268,13 +308,7 @@ fn run_config(
     if !apply {
         assert_eq!(bases, Vec::<String>::new());
     }
-    let mut nexts: Vec<Next> = read[0]
-        .idle
-        .iter()
-        .map(|why| Next::Took(Took::Refused(why.clone())))
-        .collect();
-    nexts.extend(entries.iter().map(|judged| judged.next.clone()));
-    nexts
+    read.into_iter().next().unwrap()
 }
 
 fn record(store: &Failing) -> Option<GestureRecord> {
@@ -302,8 +336,12 @@ fn a_pull_request_due_is_handed_over_once_with_the_write_credential_alone() {
         forge
             .carrying("read-value")
             .iter()
-            .all(|line| line.starts_with("GET "))
+            .all(|line| line.starts_with("GET ") || line == IN_QUEUE || line == QUEUED)
     );
+    let sent = forge.lines();
+    let asked = sent.iter().position(|line| line == QUEUED).unwrap();
+    let called = sent.iter().position(|line| line == GRAPHQL).unwrap();
+    assert!(asked < called, "{sent:?}");
     assert_eq!(
         forge.bodies(GRAPHQL)[0]["variables"],
         json!({ "id": "PR_7", "head": "h7" })
@@ -447,14 +485,13 @@ fn a_forge_refusal_is_recorded_as_head_moved_where_the_head_read_back_moved() {
 
 #[test]
 fn a_lost_answer_is_read_back_and_never_asked_again() {
-    let queued = json!({ "data": { "repository": { "pullRequest": { "isInMergeQueue": true } } } });
-    let unqueued =
-        json!({ "data": { "repository": { "pullRequest": { "isInMergeQueue": false } } } });
     for (back, outcome, took) in [
-        (queued, HandedOff::Queued, Took::Queued),
-        (unqueued, HandedOff::Unsettled, Took::Unsettled),
+        (true, HandedOff::Queued, Took::Queued),
+        (false, HandedOff::Unsettled, Took::Unsettled),
     ] {
-        let lost = scripted().answering(GRAPHQL, &[answer(502, &json!({})), answer(200, &back)]);
+        let lost = scripted()
+            .answering(GRAPHQL, &[answer(502, &json!({}))])
+            .answering(QUEUED, &[queued(false), queued(back)]);
         let store = healthy();
         assert_eq!(
             run("", (&store, &lost, &the_secrets()), true),
@@ -462,13 +499,57 @@ fn a_lost_answer_is_read_back_and_never_asked_again() {
         );
         assert_eq!(record(&store).unwrap().hand_off.unwrap().outcome, outcome);
         assert_eq!(lost.carrying("write-value"), [GRAPHQL]);
-        assert_eq!(lost.carrying("read-value").last().unwrap(), GRAPHQL);
+        assert_eq!(lost.carrying("read-value").last().unwrap(), QUEUED);
     }
+}
+
+#[test]
+fn a_queue_read_that_fails_right_before_the_step_hands_nothing_over_and_writes_nothing() {
+    let unsaid = json!({ "data": { "repository": null } });
+    for back in [answer(502, &json!({})), answer(200, &unsaid)] {
+        let forge = scripted().answering(QUEUED, &[back]);
+        let store = healthy();
+        let ran = run("", (&store, &forge, &the_secrets()), true);
+        assert!(
+            matches!(&ran[..], [Next::Took(Took::Refused(why))]
+                if why.starts_with("whether it is already in the forge's queue could not be read")),
+            "{ran:?}"
+        );
+        assert_eq!(record(&store), None);
+        assert!(!forge.lines().contains(&GRAPHQL.to_owned()));
+        assert_eq!(forge.carrying("write-value"), Vec::<String>::new());
+    }
+}
+
+#[test]
+fn a_queue_whose_branch_cannot_be_read_steps_nothing_and_says_why() {
+    let forge = scripted().answering(
+        "GET https://api.github.com/repos/o/r/branches/main",
+        &[answer(502, &json!({}))],
+    );
+    let store = healthy();
+    let read = run_read(
+        QUEUE,
+        (&store, &forge, &the_secrets()),
+        (true, Budget::UNBOUNDED),
+    );
+    assert!(
+        matches!(&read.found, Found::Unread(Some(why)) if !why.is_empty()),
+        "{read:?}"
+    );
+    assert!(read.idle.is_empty(), "{read:?}");
+    assert!(matches!(&read.cancels, Cancels::Read(cancels) if cancels.is_empty()));
+    assert_eq!(record(&store), None);
+    assert!(!forge.lines().contains(&GRAPHQL.to_owned()));
+    assert!(!forge.lines().contains(&PULL.to_owned()));
+    assert_eq!(forge.carrying("write-value"), Vec::<String>::new());
 }
 
 fn kept(store: &Failing, outcome: HandedOff) {
     let record = GestureRecord {
         key: key(),
+        by: "w".to_owned(),
+        at: gestured_at(),
         queue: "app".to_owned(),
         seen: "h7".to_owned(),
         seen_at: NOON,
@@ -479,6 +560,7 @@ fn kept(store: &Failing, outcome: HandedOff) {
             at: NOON,
             outcome,
         }),
+        taken_out: Vec::new(),
     };
     pollster::block_on(store.inner.put_gesture(&record, None)).unwrap();
 }
@@ -624,10 +706,13 @@ fn a_seen_head_that_cannot_be_read_or_recorded_vouches_for_nothing() {
 fn kept_seen(store: &Failing, seen: &str) {
     let record = GestureRecord {
         key: key(),
+        by: "w".to_owned(),
+        at: gestured_at(),
         queue: "app".to_owned(),
         seen: seen.to_owned(),
         seen_at: NOON,
         hand_off: None,
+        taken_out: Vec::new(),
     };
     pollster::block_on(store.inner.put_gesture(&record, None)).unwrap();
 }
@@ -653,7 +738,6 @@ fn a_gesture_made_again_after_one_was_refused_is_another_record_and_is_handed_ov
     );
     let made_again = GestureKey {
         gesture: 503,
-        at: "2026-11-01T11:20:00Z".parse().unwrap(),
         ..key()
     };
     let kept_again = pollster::block_on(store.inner.gesture(&made_again))
@@ -807,3 +891,5 @@ fn an_entry_not_due_passes_by_the_hand_off_untouched() {
         [Next::Took(Took::Queued), Next::Draft]
     );
 }
+
+mod taken;

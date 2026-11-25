@@ -76,19 +76,13 @@ pub(super) async fn actions<S: Actions>(store: &S, checks: &mut Checks) -> Resul
     Ok(())
 }
 
-/// A minute past noon.
-const MINUTE_PAST: jiff::Timestamp = jiff::Timestamp::constant(1_793_448_060, 0);
-
-/// The gesture by `w` on pull request 7 of `o/r` the forge names `id`, made
-/// at `at`.
-pub(super) fn gestured(id: u64, at: jiff::Timestamp) -> GestureKey {
+/// The gesture on pull request 7 of `o/r` the forge names by the id `id`.
+pub(super) fn gestured(id: u64) -> GestureKey {
     GestureKey {
         api: "https://api.github.com".to_owned(),
         repository: "o/r".to_owned(),
         number: 7,
         gesture: id,
-        by: "w".to_owned(),
-        at,
     }
 }
 
@@ -97,6 +91,8 @@ pub(super) fn gestured(id: u64, at: jiff::Timestamp) -> GestureKey {
 pub(super) fn gesture(key: GestureKey, outcome: Option<HandedOff>) -> GestureRecord {
     GestureRecord {
         key,
+        by: "w".to_owned(),
+        at: NOON,
         queue: "main".to_owned(),
         seen: "abc".to_owned(),
         seen_at: NOON,
@@ -107,6 +103,7 @@ pub(super) fn gesture(key: GestureKey, outcome: Option<HandedOff>) -> GestureRec
             at: NOON,
             outcome,
         }),
+        taken_out: Vec::new(),
     }
 }
 
@@ -114,7 +111,7 @@ pub(super) fn gesture(key: GestureKey, outcome: Option<HandedOff>) -> GestureRec
 /// per gesture, written as new only once, so two runs racing never both
 /// hand it over.
 pub(super) async fn gestures<S: Actions>(store: &S, checks: &mut Checks) -> Result<(), StoreError> {
-    let key = gestured(0, NOON);
+    let key = gestured(0);
     checks.ensure(
         store.gesture(&key).await?.is_none(),
         "a new store holds the record of a gesture",
@@ -140,13 +137,16 @@ pub(super) async fn gestures<S: Actions>(store: &S, checks: &mut Checks) -> Resu
         "the record of a gesture did not read back as last written",
     );
     checks.ensure(
-        store.gesture(&gestured(1, MINUTE_PAST)).await?.is_none(),
-        "the record of one gesture was read for a later one",
+        store.gesture(&gestured(1)).await?.is_none(),
+        "the record of one gesture was read for another id",
     );
-    let again = GestureKey { gesture: 2, ..key };
+    let again = GestureKey {
+        repository: "o/s".to_owned(),
+        ..key
+    };
     checks.ensure(
         store.gesture(&again).await?.is_none(),
-        "the record of one gesture was read for another made at the same time",
+        "the record of one gesture was read for one in another repository with its id",
     );
     Ok(())
 }

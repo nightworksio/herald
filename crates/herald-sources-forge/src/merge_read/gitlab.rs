@@ -1,15 +1,14 @@
 //! A merge queue's reads on GitLab.com, GitLab Self-Managed and Dedicated.
 
-use herald_core::Permission;
 use herald_core::merging::{Check, CheckState};
-use herald_kinds::{Branched, Entered, Proved, Unpolled};
+use herald_kinds::{Branched, Entered, Holds, Proved, Unpolled};
 use herald_ports::{DynHttp, Erased};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
 
 use super::{
-    Actor, ForgeMergeReader, MOST_MARKS, Mark, Opened, Push, Pushes, Review, Reviews, Said,
-    label_actor,
+    Actor, ForgeMergeReader, MOST_MARKS, MOST_OPENED, Mark, Opened, Push, Pushes, Review, Reviews,
+    Said, label_actor,
 };
 use crate::owner::named as visibility_named;
 use crate::queue::{PIPELINE, PIPELINE_FAILED, PIPELINE_PASSED};
@@ -46,6 +45,9 @@ const CAR: &str = "the merge request's car on the merge train";
 
 /// The state of an open merge request.
 const OPENED: &str = "opened";
+
+/// What the listing of a branch's merge train is called in an error.
+const TRAIN: &str = "the branch's merge train";
 
 /// GitLab's system note of an approval taken back.
 const UNAPPROVED: &str = "unapproved this merge request";
@@ -102,6 +104,17 @@ impl From<Merge> for Opened {
 /// A merge request's car on the merge train, of which nothing is read.
 #[derive(Deserialize)]
 struct Car {}
+
+/// A car on a merge train as GitLab lists it: the merge request it holds.
+#[derive(Deserialize)]
+struct Listed {
+    merge_request: Option<Iid>,
+}
+
+#[derive(Deserialize)]
+struct Iid {
+    iid: u64,
+}
 
 #[derive(Deserialize)]
 struct Label {
@@ -229,6 +242,40 @@ pub(super) async fn queued(
     Ok(merge.when_pipeline_succeeds)
 }
 
+/// The open merge requests into `branch` on its merge train, or set to
+/// join it once their pipeline succeeds: those the train lists as to be
+/// merged, and those GitLab says are set to auto-merge.
+pub(super) async fn in_queue(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    branch: &str,
+) -> Result<Vec<u64>, Unpolled> {
+    let target = herald_core::unreserved(branch);
+    let ask = |query: &str| reader.get(&format!("/merge_trains/{target}?scope=active&{query}"));
+    let (cars, whole): (Vec<Listed>, bool) = reader.paged(http, &ask, (MOST_OPENED, TRAIN)).await?;
+    if !whole {
+        return Err(Unpolled::Unreadable(format!(
+            "more than {MOST_OPENED} merge requests are on the branch's merge train, and herald reads no more"
+        )));
+    }
+    let ask = |query: &str| {
+        reader.get(&format!(
+            "/merge_requests?state=opened&target_branch={target}&{query}"
+        ))
+    };
+    let merges: Vec<Merge> = reader.opened(http, &ask).await?;
+    Ok(cars
+        .into_iter()
+        .filter_map(|car| car.merge_request.map(|merge| merge.iid))
+        .chain(
+            merges
+                .into_iter()
+                .filter(|merge| merge.when_pipeline_succeeds)
+                .map(|merge| merge.iid),
+        )
+        .collect())
+}
+
 /// The label `label` added to and removed from merge request `number`,
 /// each by the user GitLab records, with whether its events were read
 /// whole.
@@ -304,13 +351,15 @@ pub(super) async fn role(
     reader: &ForgeMergeReader,
     http: &Erased<'_, dyn DynHttp + '_>,
     actor: &Actor,
-) -> Result<Option<Permission>, Unpolled> {
+) -> Result<Holds, Unpolled> {
     let Some(id) = actor.id else {
-        return Ok(None);
+        return Ok(Holds::Unsaid);
     };
     let request = reader.get(&format!("/members/all/{id}"))?;
     let member: Option<Member> = reader.read(http, request, "a person's role").await?;
-    Ok(member.and_then(|member| gitlab_role(member.access_level)))
+    Ok(member
+        .and_then(|member| gitlab_role(member.access_level))
+        .map_or(Holds::Nothing, Holds::Role))
 }
 
 /// The pushes GitLab's diff versions of merge request `number` record,

@@ -1,8 +1,10 @@
 use herald_core::Permission;
-use herald_core::merging::{AppliedBy, Enter, Message, Method, Runs, SKEW, Update, Vouches, WAIT};
+use herald_core::merging::{
+    AppliedBy, Enter, Message, Method, RoleLost, Runs, SKEW, Update, Vouches, WAIT,
+};
 use jiff::SignedDuration;
 
-use super::{BRANCHLESS, UNENTERED, UNMESSAGED, UNNAMED_CHECK, UNRETRIED};
+use super::{BRANCHLESS, UNENTERED, UNFORGED_ROLE_LOST, UNMESSAGED, UNNAMED_CHECK, UNRETRIED};
 use crate::{Config, Kinds, load};
 
 const HEAD: &str = r#"version = 1
@@ -284,6 +286,20 @@ fn a_key_of_herald_s_own_queue_is_refused_where_the_forge_runs_it() {
         );
         assert!(loaded(&format!("{QUEUE}runs = \"herald\"\n{key} = {value}\n")).is_ok());
     }
+}
+
+#[test]
+fn a_lost_role_takes_out_by_default_may_stay_and_is_refused_where_herald_runs_the_queue() {
+    let queue =
+        |rest: &str| loaded(&format!("{QUEUE}{rest}")).unwrap().merge_queues["main"].role_lost;
+    assert_eq!(queue(""), RoleLost::TakeOut);
+    assert_eq!(queue("role_lost = \"take-out\"\n"), RoleLost::TakeOut);
+    assert_eq!(queue("role_lost = \"stay\"\n"), RoleLost::Stay);
+    refused(
+        &format!("{QUEUE}runs = \"herald\"\nrole_lost = \"stay\"\n"),
+        &format!("merge_queues.main.role_lost: {UNFORGED_ROLE_LOST}"),
+    );
+    assert!(loaded(&format!("{QUEUE}runs = \"herald\"\n")).is_ok());
 }
 
 const CI: &str = "[sources.ci]\nkind = \"github\"\nrepository = \"acme/ci\"\n";

@@ -684,15 +684,16 @@ fn the_record_of_a_gesture_kept_somewhere_reads_and_writes_as_its_keeper_does() 
         repository: "o/r".to_owned(),
         number: 7,
         gesture: 70,
-        by: "w".to_owned(),
-        at: Timestamp::UNIX_EPOCH,
     };
     let record = GestureRecord {
         key: key.clone(),
+        by: "w".to_owned(),
+        at: Timestamp::UNIX_EPOCH,
         queue: "main".to_owned(),
         seen: "abc".to_owned(),
         seen_at: Timestamp::UNIX_EPOCH,
         hand_off: None,
+        taken_out: Vec::new(),
     };
     let keeper = OneGesture(record.clone());
     let kept = Some(&keeper);

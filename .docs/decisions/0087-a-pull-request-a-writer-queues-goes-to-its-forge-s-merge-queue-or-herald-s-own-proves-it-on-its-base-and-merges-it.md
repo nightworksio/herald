@@ -109,11 +109,37 @@ once.
    call with nothing kept from the queue's read; then it calls GitHub's
    `enqueuePullRequest` with `expectedHeadOid`, or adds the merge request
    to GitLab's train with `sha` and `auto_merge = true`, so the forge
-   itself refuses a head that moved after that read. The forge's queue decides the rest; its
+   itself refuses a head that moved after that read. Right before the
+   call herald also reads whether the pull request is already in the
+   forge's queue: where it is, no call is made and the hand-off is
+   recorded as found already queued, which a cancel or a lost role takes
+   out as one herald handed over; where that read fails, nothing is
+   handed over or written. The forge's queue decides the rest; its
    entries and reasons for leaving are read as ADR-0078 reads them. A
-   gesture taken back takes the pull request out of the forge's queue
-   (`dequeuePullRequest`; on GitLab, the train's auto-merge is
-   cancelled).
+   pull request herald handed over is taken out of the forge's queue
+   again, with GitHub's `dequeuePullRequest`, or GitLab's `POST
+   /projects/:id/merge_requests/:iid/cancel_merge_when_pipeline_succeeds`
+   on every GitLab version, which takes it off the train or stops it
+   joining. The take-out is anchored on herald's record of what it
+   handed over, never on which marks count now: the anchor is the newest
+   gesture on the pull request with a reached hand-off record (queued,
+   calling, unsettled or found already queued); a pull request queued on
+   the forge by hand has none and stays. Against the anchor: a gesture
+   made after it, and after any cancel that counts, by one who holds
+   `least` now stands, and nothing is taken out; else the newest cancel
+   made after it by one who holds `least` now, that the forge names an
+   id for, takes it out; else, where the anchor's maker no longer holds
+   `least` (a lower role, none, or an account since deleted), it is
+   taken out with `role_lost = "take-out"`, the default, or left with
+   `role_lost = "stay"`, said either way. Marks made before the anchor,
+   and marks by makers below `least`, never count for or against; such
+   a cancel after the anchor is shown as one herald could not carry out
+   where the anchor's maker holds `least`. A cancel stamped up to `skew`
+   before a gesture counts as made after it. A role the forge would not
+   say is not a lost one: nothing is taken out, and herald says why.
+   Right before the call the pull request is read again on its own and
+   judged the same way; only the same cancel, or the same lost role,
+   takes it out.
 7. **herald's own queue is serial.** With `runs = "herald"` one pull
    request per base branch is in flight. herald brings it up to date with
    the base, waits for its checks on the new head, and merges it with the
@@ -199,7 +225,11 @@ once.
 14. **The record comes before each step.** The `Actions` store port keeps
     one record per gesture, keyed by the forge's API, the repository,
     the pull request's number and the forge's id of the label event or
-    comment, with who made it and when; a gesture fixes the head it
+    comment. It also holds who made the gesture and when, compared on
+    every read: where the forge names another maker or time for the id,
+    it is not the same gesture and nothing is written for it (taking
+    out compares the time alone, so a deleted account's gesture still
+    counts as the role lost). A gesture fixes the head it
     vouches for, so this is one record per pull request, head and
     gesture. It holds the head first read with the gesture standing and
     each step (the head, the credential's name, the base's head, time,
@@ -208,7 +238,11 @@ once.
     calls, and a crash after the record leaves a step no run takes
     again. Only a step whose request provably never left herald is taken
     again, after a fresh read. A lost answer is never asked again:
-    herald reads the pull request back and records what came of it. Only
+    herald reads the pull request back and records what came of it. The
+    record also holds each take-out of point 6, keyed by the cancel's id,
+    who made it and when (none for the role lost), written the same way
+    on the anchor's record: one take-out per cancel, and a new cancel
+    after a new gesture is another. Only
     `herald merge-queue --apply` (or the server, with `applied_by =
     "server"`) writes it; the dry run reads it. The markers store keeps
     no records, so a queue on it does not start.

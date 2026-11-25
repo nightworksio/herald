@@ -48,6 +48,7 @@ token, and starts no queue: `herald merge-queue` reads it next.
 | `may_fail` | checks that may be red or missing on this branch; never one the forge requires; herald's own queue alone, refused with `runs = "forge"` | none |
 | `wait` | how long herald waits for a head's checks before the pull request leaves; herald's own queue alone, refused with `runs = "forge"` | `"2h"` |
 | `retries` | `{ checks = [...], times = N }`: re-run the failed job of a check named, at most N times on one head, before the pull request leaves; not on Forgejo; herald's own queue alone, refused with `runs = "forge"` | none |
+| `role_lost` | what `--apply` does with a pull request herald handed to the forge's queue whose gesture's maker no longer holds `least`: `"take-out"` takes it out, `"stay"` leaves it there and says so; `runs = "forge"` alone | `"take-out"` |
 | `applied_by` | `"command"`: `herald merge-queue --apply` takes the steps; `"server"`: `herald server` takes them each round and as webhooks arrive, and then reads the write credential | `"command"` |
 | `write` | the credential the steps are made with: `{ token = { secret } }` or `{ app = "<github_apps name>" }` | none: the queue does not start |
 
@@ -188,9 +189,63 @@ A queue that does not start, whose steps `herald server` takes
 (`applied_by = "server"`), that herald runs (`runs = "herald"`: `--apply`
 hands pull requests to the forge's queue alone), or whose forge says the
 branch has no merge queue, takes no step, and says why.
-A gesture taken back after `--apply` handed the pull request over (the
-label removed, the comment deleted, or the command followed by `cancel`)
-does not take it out of the forge's queue: take it out on the forge.
+
+### Taking a pull request back out
+
+With `runs = "forge"`, `herald merge-queue` also reads the forge's queue
+on the branch: on GitHub the merge queue's entries, on GitLab the merge
+requests on the active merge train and the open ones set to join it once
+their pipeline succeeds. Past 50 pull requests it reads none and says
+why.
+
+A take-out is judged against herald's record of what it handed over,
+never against which marks happen to count now. Its anchor is the newest
+gesture on the pull request whose hand-off herald recorded as reached:
+queued, being called, unsettled, or found already in the forge's queue.
+A pull request with no such gesture, as one queued on the forge by hand,
+stays and is not listed. Against the anchor, in this order:
+
+1. A gesture made after the anchor, and after any cancel of rule 2, by
+   one who holds `least` now stands: nothing is taken out. It is a new
+   gesture; the next run records it, found already queued.
+2. The newest cancel made after the anchor (the label removed, the
+   comment deleted, or the command followed by `cancel`) by one who
+   holds `least` now takes it out, where the forge names an id for it.
+   It is carried out whatever `role_lost` says.
+3. Where the anchor's maker no longer holds `least` (a lower role, none,
+   or an account since deleted, which the forge names as someone else
+   and herald reads as holding no role), `role_lost = "take-out"`, the
+   default, takes it out, said as the role lost; `role_lost = "stay"`
+   leaves it there and says so. A role the forge would not say is not a
+   lost one: nothing is taken out, and herald says why.
+
+Marks made before the anchor, and marks by makers below `least`, never
+count for or against. Where the anchor's maker holds `least` and no
+cancel of rule 2 stands, the newest cancel after the anchor (by one
+below `least`, or one the forge named no id for) is shown as one herald
+could not carry out, and the pull request stays; one who holds `least`
+may take it back again. A cancel stamped up to `skew` before a gesture
+counts as made after it. Each pull request taken out, or shown, is
+listed with the cancel judged, who made it, their role now, and what
+`--apply` does with it. Marks read in part take nothing out. Right
+before the call herald reads the pull request again on its own, finds
+the gesture it handed over by its id and time, judges it the same way,
+and calls only where the same cancel, or the same lost role, takes it
+out.
+
+| Forge | The call |
+|-------|----------|
+| GitHub, GHE.com, GitHub Enterprise Server | GraphQL `dequeuePullRequest(input: { id })`, the pull request named by its node id |
+| GitLab.com, Self-Managed, Dedicated | `POST /projects/:id/merge_requests/:iid/cancel_merge_when_pipeline_succeeds`, on every GitLab version: it takes the merge request off the merge train, or stops it joining once its pipeline succeeds |
+
+The take-out is kept in the gesture's record as the hand-off is: written
+with compare-and-set before the call, keyed by the cancel's id, who made
+it and when, and after the call what came of it. A lost answer, or a
+refusal, is read back (GitHub's `isInMergeQueue`, GitLab's train car or
+`merge_when_pipeline_succeeds`); a pull request found out counts as
+taken out. A take-out recorded as being made, refused or lost is never
+asked again for that cancel; one that provably never left herald is.
+A queue that takes no step holds its take-outs back too.
 
 Run `--apply` on a schedule or in a CI job of the base repository's own,
 never in a job that runs a pull request's code. `herald merge-queue`
@@ -213,14 +268,25 @@ following no redirect. It may be the same App or secret as the source's
 
 herald keeps one record per gesture, keyed by the forge's API, the
 repository, the pull request's number and the forge's own id of the
-label event or comment, with who made it and when: a gesture made again,
-even in the same second, is another record, and a gesture that does not
-count (its maker below `least`) gets none. `--apply` alone writes it: the
-head it first read with the gesture standing, then, before the call and
-with compare-and-set, the hand-off (the head handed over, the base's
-head, the credential's name, the time), and after the call what came of
-it. So two runs racing never both act, and a gesture is handed over at
-most once: a record that says the call was being made, that the forge's
+label event or comment. The record also names who made the gesture and
+when, and both are compared on every read: where the forge names
+another maker or time for that id, it is not the same gesture, and
+herald writes nothing for it and says so; taking out compares the time
+alone, so an account since deleted still has its pull request taken out
+for the role lost. A gesture made again, even in the same second, is
+another record, and a gesture that does not count (its maker below
+`least`) gets none. `--apply` alone writes it: the head it first read
+with the gesture standing, then, before the call and with
+compare-and-set, the hand-off (the head handed over, the base's head,
+the credential's name, the time), and after the call what came of it.
+Right before writing the hand-off, herald reads on its own whether the
+pull request is already in the forge's queue. Where it is, herald makes
+no call and records the hand-off, with compare-and-set, as found
+already queued: no later run hands it over for that gesture, and a
+cancel or a lost role takes it out as if herald had handed it over.
+Where that read fails or is not whole, nothing is handed over and
+nothing written. So two runs racing never both act, and a gesture is
+handed over at most once: a record that says the call was being made, that the forge's
 answer was lost, that the forge refused it or that its head moved is
 never called again; a new gesture is. Only a record whose call
 provably never left herald (the run's request budget ended, the write
@@ -239,7 +305,5 @@ whose GraphQL lacks `enqueuePullRequest` takes `runs = "herald"` alone.
 
 ## Not built
 
-Taking a pull request out of the forge's queue when its gesture is taken
-back (`dequeuePullRequest`, or cancelling GitLab's auto-merge); the
-forge's queue keeps it until the forge takes it out. Batches and speculative trains (several pull requests proved together on
+Batches and speculative trains (several pull requests proved together on
 a temporary branch), priorities and jumping the queue.

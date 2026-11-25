@@ -953,15 +953,16 @@ fn an_erased_store_hands_the_record_of_each_gesture_to_the_one_it_erases() {
         repository: "o/r".to_owned(),
         number: 7,
         gesture: 70,
-        by: "w".to_owned(),
-        at: Timestamp::UNIX_EPOCH,
     };
     let gesture = herald_core::merging::GestureRecord {
         key: key.clone(),
+        by: "w".to_owned(),
+        at: Timestamp::UNIX_EPOCH,
         queue: "main".to_owned(),
         seen: "abc".to_owned(),
         seen_at: Timestamp::UNIX_EPOCH,
         hand_off: None,
+        taken_out: Vec::new(),
     };
     assert_eq!(
         [

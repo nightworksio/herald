@@ -15,7 +15,17 @@ fn a_queue_that_can_start_is_said_and_has_no_gap() {
     let findings = doctored(&config, &layer(&STORES));
     assert_eq!(keys(&findings.gaps), Vec::<&str>::new());
     assert!(
-        findings.notes.contains(&"The merge queue main merges into main of nightworksio/php-mutation-gate on github through the forge's merge queue, with method squash, a gesture vouching for the head at the gesture's time on the forge, a push stamped up to 5s before it counted as after it, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald merge-queue --apply`. It reads with its source's read credential: a GitHub App or fine-grained token with Metadata, Contents, Pull requests, Checks and Commit statuses read on the repository (and on a fork's, for its pushes), on GitHub Enterprise Server and GHE.com too; a classic token needs repo for a private repository.".to_owned()),
+        findings.notes.contains(&"The merge queue main merges into main of nightworksio/php-mutation-gate on github through the forge's merge queue, with method squash, a gesture vouching for the head at the gesture's time on the forge, a push stamped up to 5s before it counted as after it, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald merge-queue --apply`, a pull request it handed over taken out of the forge's queue once its gesture's maker no longer holds its least role. It reads with its source's read credential: a GitHub App or fine-grained token with Metadata, Contents, Pull requests, Checks and Commit statuses read on the repository (and on a fork's, for its pushes), on GitHub Enterprise Server and GHE.com too; a classic token needs repo for a private repository.".to_owned()),
+        "{:?}",
+        findings.notes
+    );
+    let staying = on(
+        "git-branch",
+        "[merge_queues.main]\nsource = \"gate\"\nbranch = \"main\"\nmethod = \"squash\"\nrole_lost = \"stay\"\nwrite = { token = { secret = \"HERALD_MERGE\" } }\n",
+    );
+    let findings = doctored(&staying, &layer(&STORES));
+    assert!(
+        findings.notes.iter().any(|note| note.contains(", a pull request it handed over left in the forge's queue once its gesture's maker no longer holds its least role. It reads")),
         "{:?}",
         findings.notes
     );

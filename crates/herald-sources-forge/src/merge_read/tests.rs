@@ -626,3 +626,5 @@ fn a_repository_named_without_its_owner_cannot_be_read_back_from_github_s_merge_
     );
     assert_eq!(http.requests().len(), 0);
 }
+
+mod taken;

@@ -4186,6 +4186,10 @@
           "description": "The checks whose failed job is re-run, at most `times` on one head,\nbefore the pull request leaves; none where absent, and none on\nForgejo.",
           "$ref": "#/$defs/Retries"
         },
+        "role_lost": {
+          "description": "What becomes of a pull request herald handed to the forge's queue,\nor found already there, once the person whose gesture it is no\nlonger holds `least` (a lower role, none, or an account since\ndeleted), whether or not a cancel herald does not carry out stands:\n\"take-out\", taken out on herald's next applying run, which says\nwhy; \"stay\", left in the forge's queue and said so. Refused with\n`runs = \"herald\"`. \"take-out\" where absent.",
+          "$ref": "#/$defs/RoleLost"
+        },
         "runs": {
           "description": "Who runs it: \"forge\" hands each pull request to the forge's merge\nqueue or merge train; \"herald\" runs herald's own serial queue, also\nwhere the forge has one. \"forge\" where absent.",
           "$ref": "#/$defs/MergeRuns"
@@ -5322,6 +5326,21 @@
       "required": [
         "checks",
         "times"
+      ]
+    },
+    "RoleLost": {
+      "description": "What becomes of a pull request herald handed to the forge's queue once\nthe person whose gesture it is no longer holds the queue's least role,\nwith no cancel herald carries out standing.",
+      "oneOf": [
+        {
+          "description": "herald takes it out of the forge's queue on its next run.",
+          "type": "string",
+          "const": "take-out"
+        },
+        {
+          "description": "It stays in the forge's queue.",
+          "type": "string",
+          "const": "stay"
+        }
       ]
     },
     "Rotation": {

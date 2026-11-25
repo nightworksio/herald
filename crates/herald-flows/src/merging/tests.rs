@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use herald_core::merging::{
-    AppliedBy, Check, CheckState, Enter, Message, SKEW, Update, Vouches, WAIT,
+    AppliedBy, Check, CheckState, Enter, Message, RoleLost, SKEW, Update, Vouches, WAIT,
 };
 use herald_core::merging::{GestureRecord, HandOff, HandedOff};
 use herald_core::{Permission, SourceName, Visibility};
@@ -18,6 +18,7 @@ pub(super) struct Fixed {
     proved: Vec<(u64, Proved)>,
     branched: Option<Branched>,
     entries: Option<Vec<Entered>>,
+    taken: Option<Vec<TakenBack>>,
     asked: Mutex<Vec<(Enter, Permission, Vouches, SignedDuration)>>,
 }
 
@@ -36,6 +37,7 @@ impl Fixed {
             proved: Vec::new(),
             branched,
             entries,
+            taken: Some(Vec::new()),
             asked: Mutex::default(),
         }
     }
@@ -99,9 +101,28 @@ impl MergeReader for Fixed {
     fn queued<'a>(&'a self, _: &'a dyn DynHttp, _: u64) -> Boxed<'a, Result<bool, Unpolled>> {
         Box::pin(async move { Err(unasked("the merge queue")) })
     }
+
+    fn taken_back<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: &'a str,
+        _: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Vec<TakenBack>, Unpolled>> {
+        let found = self.taken.clone().ok_or_else(|| unasked("the cancels"));
+        Box::pin(async move { found })
+    }
+
+    fn took_back<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: (&'a str, u64),
+        _: EnterAsked<'a>,
+    ) -> Boxed<'a, Result<Option<TakenBack>, Unpolled>> {
+        Box::pin(async move { Err(unasked("the pull request")) })
+    }
 }
 
-fn now() -> Timestamp {
+pub(super) fn now() -> Timestamp {
     "2026-01-01T01:00:00Z".parse().unwrap()
 }
 
@@ -162,6 +183,7 @@ pub(super) fn queue(runs: Runs) -> MergeQueue {
         wait: WAIT,
         retries: None,
         applied_by: AppliedBy::Command,
+        role_lost: RoleLost::TakeOut,
         write: None,
     }
 }
@@ -411,6 +433,8 @@ fn a_queue_whose_installation_token_was_not_minted_says_why_where_it_can() {
 fn record(seen: &str, outcome: Option<HandedOff>) -> GestureRecord {
     GestureRecord {
         key: gesture_key(&queue(Runs::Forge), &entry(1, ("h1", "h1"), true)).unwrap(),
+        by: "w".to_owned(),
+        at: now() - SignedDuration::from_mins(30),
         queue: "app-main".to_owned(),
         seen: seen.to_owned(),
         seen_at: now(),
@@ -421,6 +445,7 @@ fn record(seen: &str, outcome: Option<HandedOff>) -> GestureRecord {
             at: now(),
             outcome,
         }),
+        taken_out: Vec::new(),
     }
 }
 
@@ -562,7 +587,7 @@ fn a_first_seen_head_that_cannot_be_read_or_recorded_vouches_for_none() {
             applies,
         };
         let found = pollster::block_on(super::seen(&keeping, ("app-main", &seen), &entered, now()));
-        assert_eq!(found, (None, None), "{unkept:?} {applies}");
+        assert_eq!(found, Ok((None, None)), "{unkept:?} {applies}");
     }
 }
 
@@ -733,4 +758,117 @@ fn an_entry_read_in_part_records_no_first_seen_head() {
     );
     let key = gesture_key(&seen, &partial).unwrap();
     assert_eq!(pollster::block_on(store.gesture(&key)).unwrap(), None);
+}
+
+pub(super) fn taken_back(role: Option<Permission>) -> TakenBack {
+    let canceller = role.map_or(herald_kinds::Holds::Nothing, herald_kinds::Holds::Role);
+    TakenBack {
+        number: 1,
+        url: "u1".to_owned(),
+        id: None,
+        gestures: vec![herald_kinds::Marked {
+            id: Some(10),
+            by: "w".to_owned(),
+            at: now() - SignedDuration::from_mins(1),
+        }],
+        cancels: vec![herald_kinds::Marked {
+            id: Some(12),
+            by: "x".to_owned(),
+            at: now(),
+        }],
+        makers: std::collections::BTreeMap::from([
+            ("w".to_owned(), herald_kinds::Holds::Role(Permission::Write)),
+            ("x".to_owned(), canceller),
+        ]),
+        whole: true,
+    }
+}
+
+#[test]
+fn a_take_out_is_held_back_where_the_queue_takes_no_step() {
+    let mut gitlab = queue(Runs::Forge);
+    gitlab.forge.forge = "gitlab";
+    gitlab.method = Some(herald_core::merging::Method::Squash);
+    gitlab.write = Some(herald_core::merging::Write {
+        token: Some(herald_core::SecretRef {
+            secret: "HERALD_MERGE".to_owned(),
+        }),
+        app: None,
+        installation: None,
+    });
+    let unsaid = Branched {
+        queue: None,
+        ..base()
+    };
+    let why = idle(&gitlab, &unsaid, Some(&FakeStore::default()));
+    assert_eq!(why, [TRAINS_UNSAID]);
+    let cancel = |next: Undo| Cancel {
+        taken: taken_back(Some(Permission::Write)),
+        cancel: None,
+        next,
+        renamed: None,
+    };
+    assert_eq!(idled_out(cancel(Undo::TakeOut), &why).next, Undo::Idle);
+    assert_eq!(idled_out(cancel(Undo::TakeOut), &[]).next, Undo::TakeOut);
+    assert_eq!(idled_out(cancel(Undo::Stays), &why).next, Undo::Stays);
+}
+
+#[test]
+fn only_a_queue_the_forge_runs_reads_the_forge_s_queue_for_cancels() {
+    let mut reader = Fixed::listing(Some(base()), Some(Vec::new()));
+    let mut partial = taken_back(Some(Permission::Write));
+    partial.whole = false;
+    reader.taken = Some(vec![partial]);
+    let http = ScriptedHttp::new(Vec::new());
+    let cancels = |runs: Runs| {
+        let asked = (("app-main", &queue(runs)), None::<&FakeStore>, false);
+        match pollster::block_on(found((&reader, &http), asked, Printed::Asked, now())) {
+            Reading::Due(due) => due.cancels.unwrap().len(),
+            Reading::Done(found) => panic!("{found:?}"),
+        }
+    };
+    assert_eq!(cancels(Runs::Forge), 1);
+    assert_eq!(cancels(Runs::Herald), 0);
+}
+
+#[test]
+fn a_record_naming_another_maker_or_time_for_the_gesture_s_id_writes_nothing() {
+    let reader = Fixed::proving(Vec::new());
+    let entries = vec![entry(1, ("h1", "h1"), true)];
+    for (by, minutes) in [("v", 30), ("w", 31)] {
+        let store = FakeStore::default();
+        let mut other = record("h1", None);
+        other.by = by.to_owned();
+        other.at = now() - SignedDuration::from_mins(minutes);
+        pollster::block_on(store.put_gesture(&other, None)).unwrap();
+        assert_eq!(
+            judging(
+                &reader,
+                &queue(Runs::Forge),
+                entries.clone(),
+                (Some(&store), true)
+            ),
+            [(Next::Took(Took::Refused(UNMATCHED.to_owned())), None)]
+        );
+        let kept = pollster::block_on(store.gesture(&other.key))
+            .unwrap()
+            .unwrap();
+        assert_eq!(kept.value, other);
+    }
+}
+
+#[test]
+fn a_failed_read_of_the_forge_s_queue_leaves_the_entries_judged() {
+    let mut reader = Fixed::listing(Some(base()), Some(vec![entry(1, ("h1", "h1"), true)]));
+    reader.taken = None;
+    let http = ScriptedHttp::new(Vec::new());
+    let queue = queue(Runs::Forge);
+    let asked = (("app-main", &queue), None::<&FakeStore>, false);
+    let Reading::Due(due) =
+        pollster::block_on(found((&reader, &http), asked, Printed::Asked, now()))
+    else {
+        panic!("the entries were not read");
+    };
+    assert_eq!(due.judged.len(), 1);
+    assert!(due.cancels.is_err());
 }
