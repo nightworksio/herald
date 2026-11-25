@@ -169,7 +169,13 @@ pub(crate) fn graphql_of(forge: Forge, options: &crate::SourceOptions) -> String
 
 /// `body` posted as JSON to `endpoint`, reading at most `parse` bytes.
 pub(crate) fn posted(endpoint: &str, body: &Value, parse: usize) -> Request {
-    Request::new(Method::Post, SecretText::plain(endpoint.to_owned()))
+    sent(Method::Post, endpoint, body, parse)
+}
+
+/// `body` sent as JSON to `endpoint` with `method`, reading at most `parse`
+/// bytes.
+pub(crate) fn sent(method: Method, endpoint: &str, body: &Value, parse: usize) -> Request {
+    Request::new(method, SecretText::plain(endpoint.to_owned()))
         .header("Content-Type", SecretText::plain(herald_core::media::JSON))
         .body(body.to_string())
         .at_most(parse)

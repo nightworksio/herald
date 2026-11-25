@@ -43,6 +43,9 @@ token, and starts no queue: `herald merge-queue` reads it next.
 | `least` | the least role the person who queues holds: `"write"` (GitHub write, GitLab Developer, Forgejo write, or above), `"maintain"` or `"admin"` | `"write"` |
 | `vouches` | which head a gesture vouches for: `"gesture"`, `"seen"` or `"approved"` (see [which head a gesture vouches for](#which-head-a-gesture-vouches-for)) | `"gesture"` |
 | `skew` | how far apart the forge's stamps of a gesture and of a push may be: a push stamped up to this before a gesture, or before a GitLab approval's note, counts as after it, so the gesture never vouches for a head that push may have brought | `"5s"` |
+| `updated` | whether a gesture vouches for the head herald's own update makes from the head it vouched for (see [herald's own queue](#heralds-own-queue)): `"signed"`, `"never"` or `"approved"`; herald's own queue alone, refused with `runs = "forge"` | `"signed"` |
+| `signer` | the committer a GitHub Enterprise Server or GHE.com instance's web flow signs the commits it makes for, which you vouch is the instance's own identity and no user's: with `updated = "signed"` it lets a gesture vouch for the head herald's own update made there; GitHub alone, herald's own queue alone | `noreply@github.com` on github.com, none elsewhere |
+| `update_wait` | how long herald pauses in all, at most, for the head of a pull request its own update brought up to date to move, where the forge answered before it moved: herald reads the head right after the call, and again every 2 s while it has not moved and the pauses stay within this; `"0s"` reads it once; at most `"1m"`; herald's own queue alone, refused with `runs = "forge"` | `"10s"` |
 | `method` | `"merge"`, `"squash"`, `"rebase"`, `"fast-forward"`, or `"repository"`: the repository's one allowed method | required: a queue without it does not start |
 | `message` | `"forge"`: the forge's own commit message for the method; `"pull"`: the pull request's title and body, with `"merge"` or `"squash"` | `"forge"` |
 | `may_fail` | checks that may be red or missing on this branch; never one the forge requires; herald's own queue alone, refused with `runs = "forge"` | none |
@@ -146,8 +149,85 @@ With `runs = "herald"` one pull request per branch is in flight. herald:
 3. merges it, giving the head it proved as the expected head, so a head
    that moved is never merged.
 
-A base that moves before the merge sends it back to step 1. It is green
-only where every check on the head passed, every check the forge
+A base that moves before the merge sends it back to step 1. Right
+before each step herald reads the pull request, its base, its checks and
+whether the forge can merge it again, on their own and with nothing kept
+from the queue's read, and takes the step only where every one was read
+whole and it is still due for that very step at that head: the same
+gesture standing, its maker holding `least` now, open into the branch and
+not a draft, the head the gesture vouches for. Where the gesture no
+longer stands, herald reads every mark on it whoever made it and judges
+against the gesture it judged due: a newer gesture, or a cancel made
+after it, by one who holds `least` now takes no step, and marks by makers
+below `least` count for nothing. Else a maker below `least` now, or with
+no role (as for an account since deleted), takes the pull request out
+(`removed`), recorded; a role the forge would not say is not a lost one:
+no step is taken, and herald says why. GitHub takes the head an update
+must find (`expected_head_sha`); GitLab's rebase and Forgejo's update take
+none, so there herald reads the head again right before the call: a head
+moved by then sends nothing and the next run reads it afresh, and a push
+in the moment between that read and the forge's update is merged in with
+it. Every merge names the head it proved (`sha`, `head_commit_id`),
+so a head that moved is never merged. The method is taken only where the
+repository allows it, by the forge's own settings read right before the
+merge; `"repository"` takes its one allowed method.
+
+A check that failed on the proved head, where `retries` names it and
+every other check that failed, has its failed job re-run instead of the
+pull request leaving. Right before the call herald reads the head's
+failed runs (GitHub Actions' runs, GitLab's pipelines), records the
+re-run with the check's name, and re-runs that one job alone
+(`POST …/actions/jobs/{id}/rerun`, `POST …/jobs/{id}/retry`), on GitHub
+with a token minted for `actions: write` alone. Each re-run sent counts
+toward `times` on that head; one never sent does not. A check no failed
+run on the forge ran, a re-run the forge refuses, or a check re-run
+`times` already leaves as `checks-failed`. A re-run whose answer was
+lost is read back from the head's failed runs: found re-run it counts as
+taken, and otherwise it holds every further step, as any unsettled step
+does.
+
+The head herald's own update makes is not the head the gesture vouched
+for. `updated` says whether the gesture vouches for it:
+
+| `updated` | The gesture vouches for the updated head where |
+|-----------|-------------------------------------------------|
+| `"signed"` | herald's record of its update, written before the call, names the head it was taken on and the base's head and says the forge found, right before it, that the head merges into that base without a conflict; the update was made, or read back as made; the first moved head herald read with its read credential after the call, within `update_wait`, and recorded in the same record, is the pull request's head now (not a later commit on it); that head has as its parents exactly those two, in that order; and the forge itself made and signed it: GitHub's verified signature for `noreply@github.com` on github.com, or for the committer `signer` names on GitHub Enterprise Server and GHE.com, where none is vouched for without it. Its parents and signature are read when herald records the head and again right before each later step. GitLab's rebase rewrites the commits, and Forgejo's API cannot tell the instance's signature from an author's, so there it vouches for none, and `herald doctor` says so |
+| `"approved"` | herald's record names its update, and a person holding `least` approved the new head on the forge |
+| `"never"` | never: the pull request leaves as `head-moved`, and a new gesture queues it |
+
+A merge commit with those two parents and the forge's signature is not
+proof alone: GitHub's web conflict editor makes one too, holding whatever
+its author typed. Where the two heads merge without a conflict, though,
+their merge has one content alone, whoever pressed the button, so the
+only code it adds is the base's. herald therefore brings a branch up to
+date only where the forge says it merges without a conflict (one that
+conflicts leaves as `conflict`; one the forge is still working out waits,
+and leaves as `checks-timed-out` once `wait` has passed), and the record
+of the step says so.
+
+No forge's answer to an update names the head it made: GitHub's
+update-branch answers `202 Accepted` with a message and a URL, GitLab's
+rebase says `rebase_in_progress`, and Forgejo's update answers nothing.
+herald therefore reads the head right after the call, and where it has
+not moved yet, again every 2 s while those pauses come to no more than
+`update_wait`, each read within the run's budget. It proves the first
+head it reads moved, and reads no other. A signature names who made a
+commit, not what it holds: GitHub also signs a commit a GitHub App's
+token, an Actions token among them, creates through its API with no
+author or committer given, and that API takes any tree and any parents.
+Between herald's update call and its read of a moved head, one holding
+such a token with write access to the branch could place a commit with
+the two parents and another tree, and herald would record it. That
+window runs from herald's update call until herald reads a moved head:
+at most `update_wait` of pauses and its reads' round trips. A commit
+pushed after that read is never vouched for; where no read within
+`update_wait` finds the head moved, nothing is recorded, and the pull
+request leaves as `head-moved` once the head moves, as with `"never"`. Where no GitHub App or Actions
+token but herald's own can write to the queue's pull request branches,
+`"signed"` vouches for herald's update alone; where one may, set
+`"never"` or `"approved"`.
+
+It is green only where every check on the head passed, every check the forge
 requires on the base is there and passed, and the forge says it can
 merge, which holds the reviews it requires. A head on which no check
 that counts is reported is waited for, and leaves as `checks-timed-out`
@@ -186,9 +266,8 @@ Without `--apply` nothing is written and no write credential is read:
 herald prints what `--apply` would do, reading the store's records as
 `--apply` does, and a step recorded for a gesture with what came of it.
 A queue that does not start, whose steps `herald server` takes
-(`applied_by = "server"`), that herald runs (`runs = "herald"`: `--apply`
-hands pull requests to the forge's queue alone), or whose forge says the
-branch has no merge queue, takes no step, and says why.
+(`applied_by = "server"`), or whose forge says the branch has no merge
+queue where the forge runs it, takes no step, and says why.
 
 ### Taking a pull request back out
 

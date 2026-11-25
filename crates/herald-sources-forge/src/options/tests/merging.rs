@@ -218,7 +218,7 @@ fn a_branch_is_merged_up_to_date_except_on_gitlab_which_rebases_alone() {
 }
 
 #[test]
-fn a_forge_with_a_merge_queue_gives_a_writer_and_forgejo_none() {
+fn every_forge_gives_a_writer_for_herald_s_own_queue() {
     let merging = herald_kinds::Merging {
         forge: "github",
         repository: "o/r".to_owned(),
@@ -227,11 +227,7 @@ fn a_forge_with_a_merge_queue_gives_a_writer_and_forgejo_none() {
         queueless: None,
         reads: "a token",
     };
-    for (forge, writes) in [
-        (Forge::GitHub, true),
-        (Forge::GitLab, true),
-        (Forge::Forgejo, false),
-    ] {
+    for forge in [Forge::GitHub, Forge::GitLab, Forge::Forgejo] {
         let source = crate::ForgeSource {
             forge,
             options: one("o/r"),
@@ -245,6 +241,6 @@ fn a_forge_with_a_merge_queue_gives_a_writer_and_forgejo_none() {
             )),
         };
         let writer = herald_kinds::SourceConfig::merge_writer(&source, with);
-        assert_eq!(writer.is_some(), writes, "{forge:?}");
+        assert!(writer.is_some(), "{forge:?}");
     }
 }

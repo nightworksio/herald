@@ -14,6 +14,7 @@ use crate::kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 use crate::markers::{MarkedThread, Markers, MarkersError};
 use crate::secret::{Secret, SecretError, Secrets};
 use crate::sql::{Changed, Sql, SqlError, Statement};
+use crate::timer::Timer;
 
 /// A future boxed, as a trait object's methods return one.
 pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -27,6 +28,18 @@ pub trait DynHttp: Sync {
 impl<H: Http> DynHttp for H {
     fn send_boxed(&self, request: Request) -> Boxed<'_, Result<Response, HttpError>> {
         Box::pin(self.send(request))
+    }
+}
+
+/// [`Timer`] as a trait object: every `Timer` is one.
+pub trait DynTimer: Sync {
+    /// Completes once `duration` has passed.
+    fn sleep_boxed(&self, duration: std::time::Duration) -> Boxed<'_, ()>;
+}
+
+impl<T: Timer> DynTimer for T {
+    fn sleep_boxed(&self, duration: std::time::Duration) -> Boxed<'_, ()> {
+        Box::pin(self.sleep(duration))
     }
 }
 
@@ -627,6 +640,27 @@ mod tests {
         purpose: "purpose",
         bound: b"bound",
     };
+
+    /// A timer that keeps each wait asked of it.
+    #[derive(Default)]
+    struct Waits(std::sync::Mutex<Vec<std::time::Duration>>);
+
+    impl Timer for Waits {
+        async fn sleep(&self, duration: std::time::Duration) {
+            self.0.lock().unwrap().push(duration);
+        }
+    }
+
+    #[test]
+    fn an_erased_timer_waits_as_the_timer_it_erases() {
+        let waits = Waits::default();
+        let timer: &dyn DynTimer = &waits;
+        pollster::block_on(timer.sleep_boxed(std::time::Duration::from_secs(2)));
+        assert_eq!(
+            *waits.0.lock().unwrap(),
+            [std::time::Duration::from_secs(2)]
+        );
+    }
 
     #[test]
     fn an_erased_port_answers_as_the_port_it_erases() {

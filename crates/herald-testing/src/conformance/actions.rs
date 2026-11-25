@@ -104,6 +104,7 @@ pub(super) fn gesture(key: GestureKey, outcome: Option<HandedOff>) -> GestureRec
             outcome,
         }),
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     }
 }
 

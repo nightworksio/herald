@@ -20,6 +20,21 @@ mod listing;
 pub(crate) mod merging;
 mod reconcile;
 mod rerun;
+
+pub(crate) use rerun::planned;
+
+/// The body of the answer from `origin`'s forge to `request`, read as
+/// `what`.
+async fn asked(
+    origin: &Origin,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    request: Request,
+    what: &'static str,
+) -> Result<Vec<u8>, Unpolled> {
+    let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
+    checked(origin.forge(), what, &answer)?;
+    Ok(answer.body)
+}
 mod scope;
 pub(crate) mod teams;
 mod trains;
@@ -202,9 +217,7 @@ impl Opened<'_> {
         request: Request,
         what: &'static str,
     ) -> Result<Vec<u8>, Unpolled> {
-        let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
-        checked(self.origin.forge(), what, &answer)?;
-        Ok(answer.body)
+        asked(self.origin, http, request, what).await
     }
 
     /// `pull` with its reviews and its head's checks read.

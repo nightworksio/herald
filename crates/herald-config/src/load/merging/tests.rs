@@ -1,10 +1,13 @@
 use herald_core::Permission;
 use herald_core::merging::{
-    AppliedBy, Enter, Message, Method, RoleLost, Runs, SKEW, Update, Vouches, WAIT,
+    AppliedBy, Enter, Message, Method, RoleLost, Runs, SKEW, UPDATE_PAUSE, UPDATE_WAIT,
+    UPDATE_WAIT_MOST, Update, Updated, Vouches, WAIT,
 };
 use jiff::SignedDuration;
 
-use super::{BRANCHLESS, UNENTERED, UNFORGED_ROLE_LOST, UNMESSAGED, UNNAMED_CHECK, UNRETRIED};
+use super::{
+    BRANCHLESS, UNENTERED, UNFORGED_ROLE_LOST, UNMESSAGED, UNNAMED_CHECK, UNRETRIED, UNSIGNING,
+};
 use crate::{Config, Kinds, load};
 
 const HEAD: &str = r#"version = 1
@@ -91,6 +94,9 @@ fn a_queue_names_a_source_and_a_branch_and_takes_every_other_key_s_default() {
     assert_eq!(queue.message, Message::Forge);
     assert_eq!(queue.may_fail, Vec::<String>::new());
     assert_eq!(queue.wait, WAIT);
+    assert_eq!(queue.update_wait, UPDATE_WAIT);
+    assert_eq!(UPDATE_WAIT, SignedDuration::from_secs(10));
+    assert_eq!(UPDATE_PAUSE, SignedDuration::from_secs(2));
     assert_eq!(queue.retries, None);
     assert_eq!(queue.applied_by, AppliedBy::Command);
     assert_eq!(queue.write, None);
@@ -135,6 +141,8 @@ write = {{ app = "merger", installation = 42 }}
     assert_eq!(lab.skew, SignedDuration::from_secs(30));
     assert_eq!(lab.method, Some(Method::Squash));
     assert_eq!(lab.message, Message::Pull);
+    assert_eq!(lab.updated, Updated::Signed);
+    assert_eq!(lab.signer, None);
     assert_eq!(lab.may_fail, ["flaky"]);
     assert_eq!(lab.wait, SignedDuration::from_mins(30));
     assert_eq!(
@@ -240,6 +248,16 @@ fn every_key_that_cannot_hold_is_refused_saying_why() {
             UNMESSAGED,
         ),
         (
+            "[merge_queues.main]\nsource = \"lab\"\nbranch = \"main\"\nruns = \"herald\"\nsigner = \"noreply@gitlab.example\"\n".to_owned(),
+            "signer",
+            UNSIGNING,
+        ),
+        (
+            format!("{QUEUE}runs = \"herald\"\nsigner = \" \"\n"),
+            "signer",
+            UNSIGNING,
+        ),
+        (
             format!("{QUEUE}method = \"fast-forward\"\n"),
             "method",
             "GitHub has no fast-forward merge",
@@ -277,6 +295,7 @@ fn a_key_of_herald_s_own_queue_is_refused_where_the_forge_runs_it() {
         ("may_fail", "[\"flaky\"]"),
         ("wait", "\"1h\""),
         ("retries", "{ checks = [\"test\"], times = 1 }"),
+        ("update_wait", "\"5s\""),
     ] {
         refused(
             &format!("{QUEUE}{key} = {value}\n"),
@@ -373,4 +392,50 @@ fn a_queue_s_write_credential_may_be_its_source_s_and_is_else_held_apart_as_a_re
     ] {
         refused(&rest, said);
     }
+}
+
+#[test]
+fn a_queue_says_whether_a_gesture_vouches_for_herald_s_own_update_and_who_signs_it() {
+    let config = loaded(&format!(
+        "{QUEUE}runs = \"herald\"\nupdated = \"approved\"\nsigner = \"noreply@ghe.example\"\n"
+    ))
+    .unwrap();
+    let main = &config.merge_queues["main"];
+    assert_eq!(main.updated, Updated::Approved);
+    assert_eq!(main.signer.as_deref(), Some("noreply@ghe.example"));
+    for (value, updated) in [("never", Updated::Never), ("signed", Updated::Signed)] {
+        let given = format!("{QUEUE}runs = \"herald\"\nupdated = \"{value}\"\n");
+        assert_eq!(
+            loaded(&given).unwrap().merge_queues["main"].updated,
+            updated
+        );
+    }
+    for key in ["updated = \"never\"", "signer = \"noreply@ghe.example\""] {
+        refused(&format!("{QUEUE}{key}\n"), "with runs = \"forge\"");
+    }
+}
+
+#[test]
+fn a_queue_waits_for_its_updated_head_none_at_all_or_up_to_a_minute() {
+    for (written, waits) in [
+        ("0s", SignedDuration::ZERO),
+        ("30s", SignedDuration::from_secs(30)),
+        ("1m", UPDATE_WAIT_MOST),
+    ] {
+        let given = format!("{QUEUE}runs = \"herald\"\nupdate_wait = \"{written}\"\n");
+        assert_eq!(
+            loaded(&given).unwrap().merge_queues["main"].update_wait,
+            waits,
+            "{written}"
+        );
+    }
+    assert_eq!(UPDATE_WAIT_MOST, SignedDuration::from_mins(1));
+    refused(
+        &format!("{QUEUE}runs = \"herald\"\nupdate_wait = \"61s\"\n"),
+        "merge_queues.main.update_wait: update_wait is at most \"1m\"; shorten it",
+    );
+    refused(
+        &format!("{QUEUE}runs = \"herald\"\nupdate_wait = \"-1s\"\n"),
+        "update_wait",
+    );
 }

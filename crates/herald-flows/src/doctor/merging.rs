@@ -6,7 +6,7 @@
 
 use herald_config::{Config, MergeQueue};
 use herald_core::Duration;
-use herald_core::merging::{AppliedBy, RoleLost, Runs, Vouches};
+use herald_core::merging::{AppliedBy, RoleLost, Runs, Updated, Vouches};
 
 use super::{Findings, gap};
 
@@ -57,6 +57,26 @@ fn said(name: &str, queue: &MergeQueue) -> String {
     )
 }
 
+/// Why `updated = "signed"` on herald's own queue `queue` can never let a
+/// gesture vouch for the head herald's own update made, where it cannot:
+/// no forge but GitHub signs a commit it makes, and off github.com only a
+/// `signer` names whose signature counts.
+fn unsigned(queue: &MergeQueue) -> Option<&'static str> {
+    if queue.runs != Runs::Herald || queue.updated != Updated::Signed {
+        return None;
+    }
+    if queue.forge.forge != "github" {
+        return Some(UNSIGNED_FORGE);
+    }
+    (queue.signer.is_none() && queue.forge.api != herald_wire::github::API).then_some(UNSIGNED_HOST)
+}
+
+/// Why `updated = "signed"` never carries on GitLab or Forgejo.
+const UNSIGNED_FORGE: &str = "updated = \"signed\" never lets a gesture vouch for the head herald's own update made here: GitLab's rebase rewrites the commits, and Forgejo's API cannot tell the instance's signature from an author's, so every update needs a new gesture; give updated = \"approved\" to let an approval of the updated head vouch for it, or updated = \"never\" to say so";
+
+/// Why `updated = "signed"` never carries off github.com without a signer.
+const UNSIGNED_HOST: &str = "updated = \"signed\" never lets a gesture vouch for the head herald's own update made here: off github.com herald knows no committer the instance signs its own commits for; give signer = the committer its web flow signs for, which you vouch is the instance's own and no user's, or updated = \"approved\" or \"never\"";
+
 /// Each merge queue of `config` said, and a gap for each reason one does
 /// not start.
 pub(super) fn queued(config: &Config, findings: &mut Findings) {
@@ -73,6 +93,12 @@ pub(super) fn queued(config: &Config, findings: &mut Findings) {
             findings
                 .gaps
                 .push(gap(&format!("the merge queue \"{name}\""), key, why));
+        }
+        if let Some(why) = unsigned(queue) {
+            let feature = format!("the merge queue \"{name}\"");
+            findings
+                .gaps
+                .push(gap(&feature, at("updated"), why.to_owned()));
         }
     }
 }

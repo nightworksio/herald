@@ -30,7 +30,8 @@ pub use credential::Credential;
 pub use crypto::{CryptoError, Sealing, Signer, Verifier};
 pub use dyn_store::{DynActions, DynPulls, DynRecalls, DynStore};
 pub use erased::{
-    Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, DynVerifier, Erased, Owned,
+    Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, DynTimer, DynVerifier,
+    Erased, Owned,
 };
 pub use herald_core::Algorithm;
 pub use http::{Base, Http, HttpError, Method, Request, Response, USER_AGENT, WithBody};

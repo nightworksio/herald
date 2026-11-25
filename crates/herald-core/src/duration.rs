@@ -83,26 +83,76 @@ fn digits(text: &str) -> Option<i64> {
     text.parse().ok()
 }
 
-struct DurationVisitor;
+/// What reads a length of time from a config's text: how it parses one,
+/// and the lengths it takes, as an error says them.
+struct Written<T>(fn(&str) -> Option<T>, &'static str);
 
-impl serde::de::Visitor<'_> for DurationVisitor {
-    type Value = Duration;
+impl<T> serde::de::Visitor<'_> for Written<T> {
+    type Value = T;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(
-            "a length of time such as \"250ms\", \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\"",
-        )
+        formatter.write_str(self.1)
     }
 
-    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Duration, E> {
-        Duration::parse(text)
-            .ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
+    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<T, E> {
+        (self.0)(text).ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
     }
 }
 
 impl<'de> Deserialize<'de> for Duration {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_str(DurationVisitor)
+        deserializer.deserialize_str(Written(
+            Self::parse,
+            "a length of time such as \"250ms\", \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\"",
+        ))
+    }
+}
+
+/// A length of time in a config that may be none at all, as `0s`, or as
+/// a [`Duration`] writes one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Lasting(pub SignedDuration);
+
+impl Lasting {
+    /// The pattern the schema holds a length of time that may be none to:
+    /// a number and its unit.
+    pub(crate) const PATTERN: &str = "^[0-9]+(ms|[smhdw])$";
+
+    /// The length of time `text` writes, such as "10s" or "0s", where it
+    /// is one.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let none = text
+            .strip_suffix("ms")
+            .or_else(|| text.strip_suffix(['s', 'm', 'h', 'd', 'w']))
+            .is_some_and(|number| !number.is_empty() && number.bytes().all(|byte| byte == b'0'));
+        if none {
+            return Some(Self(SignedDuration::ZERO));
+        }
+        Duration::parse(text).map(|duration| Self(duration.0))
+    }
+}
+
+impl JsonSchema for Lasting {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Lasting".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A length of time, none at all among them: a number and ms, s, m, h, d or w, as \"10s\" or \"0s\".",
+            "type": "string",
+            "pattern": Self::PATTERN
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Lasting {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_str(Written(
+            Self::parse,
+            "a length of time such as \"0s\", \"250ms\", \"10s\" or \"1m\"",
+        ))
     }
 }
 
@@ -182,6 +232,39 @@ mod tests {
         assert_eq!(
             schema.get("type").and_then(|kind| kind.as_str()),
             Some("string")
+        );
+    }
+
+    #[test]
+    fn a_lasting_is_none_at_all_or_a_duration() {
+        for text in ["0s", "0ms", "00m", "0h", "0d", "0w"] {
+            assert_eq!(
+                Lasting::parse(text),
+                Some(Lasting(SignedDuration::ZERO)),
+                "{text}"
+            );
+        }
+        assert_eq!(
+            Lasting::parse("10s"),
+            Some(Lasting(SignedDuration::from_secs(10)))
+        );
+        for text in ["", "s", "ms", "0", "0y", "-0s", "+0s", "0.0s", "1.5s", "10"] {
+            assert_eq!(Lasting::parse(text), None, "{text}");
+        }
+        assert_eq!(
+            serde_json::from_str::<Lasting>(r#""0s""#).unwrap(),
+            Lasting(SignedDuration::ZERO)
+        );
+        assert_eq!(
+            serde_json::from_str::<Lasting>(r#""-1s""#)
+                .unwrap_err()
+                .to_string(),
+            "invalid value: string \"-1s\", expected a length of time such as \"0s\", \"250ms\", \"10s\" or \"1m\" at line 1 column 5"
+        );
+        let schema = schemars::schema_for!(Lasting);
+        assert_eq!(
+            schema.get("pattern").and_then(|pattern| pattern.as_str()),
+            Some("^[0-9]+(ms|[smhdw])$")
         );
     }
 }

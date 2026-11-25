@@ -15,15 +15,17 @@ use super::*;
 #[derive(Debug, Default)]
 pub(super) struct Fixed {
     pub(super) fresh: Option<Entered>,
-    proved: Vec<(u64, Proved)>,
-    branched: Option<Branched>,
-    entries: Option<Vec<Entered>>,
-    taken: Option<Vec<TakenBack>>,
-    asked: Mutex<Vec<(Enter, Permission, Vouches, SignedDuration)>>,
+    pub(super) made: Option<Vec<String>>,
+    pub(super) proved: Vec<(u64, Proved)>,
+    pub(super) branched: Option<Branched>,
+    pub(super) entries: Option<Vec<Entered>>,
+    pub(super) taken: Option<Vec<TakenBack>>,
+    pub(super) took: Option<Vec<TakenBack>>,
+    pub(super) asked: Mutex<Vec<(Enter, Permission, Vouches, SignedDuration)>>,
 }
 
 impl Fixed {
-    fn proving(proved: Vec<(u64, Proved)>) -> Self {
+    pub(super) fn proving(proved: Vec<(u64, Proved)>) -> Self {
         Self {
             fresh: None,
             proved,
@@ -34,10 +36,12 @@ impl Fixed {
     fn listing(branched: Option<Branched>, entries: Option<Vec<Entered>>) -> Self {
         Self {
             fresh: None,
+            made: None,
             proved: Vec::new(),
             branched,
             entries,
             taken: Some(Vec::new()),
+            took: None,
             asked: Mutex::default(),
         }
     }
@@ -118,7 +122,40 @@ impl MergeReader for Fixed {
         _: (&'a str, u64),
         _: EnterAsked<'a>,
     ) -> Boxed<'a, Result<Option<TakenBack>, Unpolled>> {
-        Box::pin(async move { Err(unasked("the pull request")) })
+        let took = self
+            .took
+            .as_ref()
+            .map(|took| took.first().cloned())
+            .ok_or_else(|| unasked("the marks"));
+        Box::pin(async move { took })
+    }
+
+    fn merged<'a>(&'a self, _: &'a dyn DynHttp, _: u64) -> Boxed<'a, Result<bool, Unpolled>> {
+        Box::pin(async { Ok(false) })
+    }
+
+    fn forge_made<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: (&'a str, Option<&'a str>),
+    ) -> Boxed<'a, Result<Option<Vec<String>>, Unpolled>> {
+        let made = self.made.clone();
+        Box::pin(async move { Ok(made) })
+    }
+
+    fn methods<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+    ) -> Boxed<'a, Result<herald_kinds::Methods, Unpolled>> {
+        Box::pin(async { Err(Unpolled::Unreadable("the methods unread".to_owned())) })
+    }
+
+    fn failed<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: (&'a str, &'a str),
+    ) -> Boxed<'a, Result<herald_kinds::Plan, Unpolled>> {
+        Box::pin(async { Err(Unpolled::Unreadable("the runs unread".to_owned())) })
     }
 }
 
@@ -129,6 +166,8 @@ pub(super) fn now() -> Timestamp {
 pub(super) fn entry(number: u64, (gestured, head): (&str, &str), whole: bool) -> Entered {
     Entered {
         number,
+        title: String::new(),
+        body: String::new(),
         url: format!("u{number}"),
         id: Some(format!("PR_{number}")),
         draft: false,
@@ -147,9 +186,10 @@ pub(super) fn entry(number: u64, (gestured, head): (&str, &str), whole: bool) ->
     }
 }
 
-fn green(state: CheckState, whole: bool) -> Proved {
+pub(super) fn green(state: CheckState, whole: bool) -> Proved {
     Proved {
         up_to_date: true,
+        clean: Some(true),
         checks: vec![Check {
             name: "test".to_owned(),
             state,
@@ -177,6 +217,9 @@ pub(super) fn queue(runs: Runs) -> MergeQueue {
         least: Permission::Write,
         vouches: Vouches::Gesture,
         skew: SKEW,
+        updated: herald_core::merging::Updated::Signed,
+        signer: None,
+        update_wait: herald_core::merging::UPDATE_WAIT,
         method: None,
         message: Message::Forge,
         may_fail: Vec::new(),
@@ -188,7 +231,7 @@ pub(super) fn queue(runs: Runs) -> MergeQueue {
     }
 }
 
-fn base() -> Branched {
+pub(super) fn base() -> Branched {
     Branched {
         visibility: Visibility::Public,
         head: "b1".to_owned(),
@@ -430,7 +473,7 @@ fn a_queue_whose_installation_token_was_not_minted_says_why_where_it_can() {
     );
 }
 
-fn record(seen: &str, outcome: Option<HandedOff>) -> GestureRecord {
+pub(super) fn record(seen: &str, outcome: Option<HandedOff>) -> GestureRecord {
     GestureRecord {
         key: gesture_key(&queue(Runs::Forge), &entry(1, ("h1", "h1"), true)).unwrap(),
         by: "w".to_owned(),
@@ -446,6 +489,7 @@ fn record(seen: &str, outcome: Option<HandedOff>) -> GestureRecord {
             outcome,
         }),
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     }
 }
 
@@ -618,7 +662,7 @@ fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
     assert_eq!(idle(&gitlab, &unsaid, Some(&store)), [TRAINS_UNSAID]);
     assert_eq!(idle(&gitlab, &queued, Some(&store)), Vec::<String>::new());
     gitlab.runs = Runs::Herald;
-    assert_eq!(idle(&gitlab, &unsaid, Some(&store)), [OWN_QUEUE]);
+    assert_eq!(idle(&gitlab, &unsaid, Some(&store)), Vec::<String>::new());
     assert_eq!(idle(&started, &base(), Some(&store)), [NO_FORGE_QUEUE]);
     assert_eq!(idle(&started, &queued, None::<&FakeStore>), [UNRECORDED]);
     let mut served = started.clone();
@@ -626,7 +670,7 @@ fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
     assert_eq!(idle(&served, &queued, Some(&store)), [SERVED]);
     let mut own = started.clone();
     own.runs = Runs::Herald;
-    assert_eq!(idle(&own, &base(), Some(&store)), [OWN_QUEUE]);
+    assert_eq!(idle(&own, &base(), Some(&store)), Vec::<String>::new());
     let bare = queue(Runs::Forge);
     assert_eq!(
         idle(&bare, &queued, Some(&store)),

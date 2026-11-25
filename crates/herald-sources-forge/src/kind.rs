@@ -427,9 +427,6 @@ impl SourceConfig for ForgeSource {
         &self,
         with: herald_kinds::WriteWith<'_>,
     ) -> Option<Arc<dyn herald_kinds::MergeWriter>> {
-        if self.forge == Forge::Forgejo {
-            return None;
-        }
         Some(Arc::new(crate::merge_write::ForgeMergeWriter {
             origin: Origin::new(self.forge, &self.options, &with.merging.repository),
             graphql: crate::graphql::graphql_of(self.forge, &self.options),

@@ -301,6 +301,20 @@ fn seconds(named: Option<i64>, default: SignedDuration) -> SignedDuration {
         .map_or(default, SignedDuration::from_secs)
 }
 
+/// The path, below a repository's API, of the call re-running the job of
+/// `rerun` alone on `forge`.
+///
+/// # Errors
+///
+/// Where the job's id is no number.
+pub(crate) fn rerun_path(forge: Forge, rerun: &Rerun) -> Result<String, Unpolled> {
+    let job = ForgeRerunner::numbered(&rerun.job)?;
+    Ok(match forge {
+        Forge::GitLab => format!("/jobs/{job}/retry"),
+        Forge::GitHub | Forge::Forgejo => format!("/actions/jobs/{job}/rerun"),
+    })
+}
+
 impl ForgeRerunner {
     /// The sign-in, where an operator can sign in.
     fn sign_in(&self) -> Result<&SignIn, Unpolled> {
@@ -830,12 +844,11 @@ impl Rerunner for ForgeRerunner {
         (repository, rerun): (&'a str, &'a Rerun),
     ) -> Boxed<'a, Result<Result<Response, HttpError>, Unpolled>> {
         Box::pin(async move {
-            let base = self.base(repository)?;
-            let job = Self::numbered(&rerun.job)?;
-            let url = match self.forge {
-                Forge::GitLab => format!("{base}/jobs/{job}/retry"),
-                Forge::GitHub | Forge::Forgejo => format!("{base}/actions/jobs/{job}/rerun"),
-            };
+            let url = format!(
+                "{}{}",
+                self.base(repository)?,
+                rerun_path(self.forge, rerun)?
+            );
             let credential = Token::of(credential);
             Ok(Erased(write)
                 .send(self.request(Method::Post, url, Some(&credential)))

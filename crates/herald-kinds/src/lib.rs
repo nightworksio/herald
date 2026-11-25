@@ -30,8 +30,8 @@ pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said,
 pub use itself::Itself;
 pub use kind::{DestinationKind, Fault, Inherited, Placing};
 pub use merging::{
-    Answered, Branched, EnterAsked, Entered, Gesture, Holds, Marked, MergeAsked, MergeReader,
-    MergeWriter, Merging, Proved, TakenBack, Unmerged, WriteWith,
+    Answered, Branched, Done, EnterAsked, Entered, Gesture, Holds, Marked, Merge, MergeAsked,
+    MergeReader, MergeWriter, Merging, Methods, Proved, TakenBack, Unmerged, WriteWith,
 };
 pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening, SqlAt, unopened};
 pub use placement::{Placed, Placement};

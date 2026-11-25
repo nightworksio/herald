@@ -963,6 +963,7 @@ fn an_erased_store_hands_the_record_of_each_gesture_to_the_one_it_erases() {
         seen_at: Timestamp::UNIX_EPOCH,
         hand_off: None,
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     };
     assert_eq!(
         [

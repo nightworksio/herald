@@ -70,6 +70,10 @@ impl From<User> for Actor {
 #[derive(Deserialize)]
 struct Merge {
     iid: u64,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    description: Option<String>,
     web_url: String,
     #[serde(default)]
     draft: bool,
@@ -89,6 +93,8 @@ impl From<Merge> for Opened {
     fn from(merge: Merge) -> Self {
         Self {
             number: merge.iid,
+            title: merge.title,
+            body: merge.description.unwrap_or_default(),
             url: merge.web_url,
             id: None,
             draft: merge.draft,
@@ -184,6 +190,7 @@ struct Detailed {
     #[serde(rename = "detailed_merge_status")]
     status: Option<String>,
     diverged_commits_count: Option<u64>,
+    has_conflicts: Option<bool>,
     head_pipeline: Option<Pipeline>,
 }
 
@@ -459,6 +466,7 @@ pub(super) async fn proved(
             .into_iter()
             .collect(),
         required: branched.required.clone(),
+        clean: detailed.has_conflicts.map(|conflicts| !conflicts),
         mergeable: mergeable(detailed.status.as_deref()),
     })
 }

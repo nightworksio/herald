@@ -116,7 +116,16 @@ fn a_pull_request_is_proved_from_its_merge_base_and_head_statuses() {
     )
     .unwrap();
     assert!(read.up_to_date && read.whole);
-    assert_eq!(read.mergeable, Some(true));
+    assert_eq!((read.mergeable, read.clean), (Some(true), Some(true)));
+    let mut conflicting = answers(3);
+    conflicting[0] = ok(&json!({"merge_base": "b1", "mergeable": false}));
+    let read_conflicting = proved(
+        Forge::Forgejo,
+        conflicting,
+        (&entry("h1"), &base(&[], true)),
+    )
+    .unwrap();
+    assert_eq!(read_conflicting.clean, Some(false));
     assert_eq!(read.required, ["ci/lint", "ci/test", "docs"]);
     let named = |name: &str, state| Check {
         name: name.to_owned(),

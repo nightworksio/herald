@@ -788,8 +788,11 @@ The merge queues, by name: each a base branch whose pull requests a writer queue
 | `merge_queues.<name>.retries.times` | integer | The most re-runs on one head. |
 | `merge_queues.<name>.role_lost` | [RoleLost](#rolelost) | What becomes of a pull request herald handed to the forge's queue, or found already there, once the person whose gesture it is no longer holds `least` (a lower role, none, or an account since deleted), whether or not a cancel herald does not carry out stands: "take-out", taken out on herald's next applying run, which says why; "stay", left in the forge's queue and said so. Refused with `runs = "herald"`. "take-out" where absent. |
 | `merge_queues.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: "forge" hands each pull request to the forge's merge queue or merge train; "herald" runs herald's own serial queue, also where the forge has one. "forge" where absent. |
+| `merge_queues.<name>.signer` | string | The committer a GitHub Enterprise Server or GHE.com instance's web flow signs the commits it makes for, as its signature names it: the operator vouches that it is the instance's own identity, never a user's. With `updated = "signed"` it lets a gesture vouch for the head herald's own update made there; github.com's own, `noreply@github.com`, where absent there; herald's own queue on GitHub alone. |
 | `merge_queues.<name>.skew` | [Duration](#duration) | How far apart the forge's stamps of a gesture and of a push may be, its services' clocks never quite agreeing: a push stamped up to this before a gesture, or before a GitLab approval, counts as after it, so the gesture vouches for no head that push may have brought; "5s" where absent. |
 | `merge_queues.<name>.source` | string | The source whose repository it merges in: one of kind "github", "gitlab" or "forgejo". |
+| `merge_queues.<name>.update_wait` | [Lasting](#lasting) | How long herald pauses in all, at most, for the head of a pull request it brought up to date to move, where the forge answered before it moved: herald reads the head right after its update, and again every 2s while the head has not moved and the pauses stay within this; "0s" reads it once. "10s" where absent, at most "1m"; herald's own queue alone. |
+| `merge_queues.<name>.updated` | [MergeUpdated](#mergeupdated) | Whether a gesture vouches for the head herald's own update made from the head it vouched for: "signed", where the new head's parents are exactly that head and the base's head herald recorded, and the forge itself signed it; "never", the pull request leaves and a new gesture queues it; "approved", once one who holds `least` approved the new head. "signed" where absent; herald's own queue alone. |
 | `merge_queues.<name>.vouches` | [Vouches](#vouches) | Which head a gesture vouches for: "gesture", the head at the gesture's time on the forge; "seen", the head herald first reads with the gesture; "approved", that head once one who holds `least` approved it on the forge. "gesture" where absent. |
 | `merge_queues.<name>.wait` | [Duration](#duration) | How long it waits for a head's checks before the pull request leaves; "2h" where absent. |
 | `merge_queues.<name>.write` | table | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`, the same as its source's `write` or another. The queue does not start without it. |
@@ -2422,6 +2425,10 @@ Where `herald server` keeps the keys inbound activities are checked with.
 
 What kind of thing an event announces: release, package-version, feed-entry, message, run, alert, or a kind the config declares.
 
+### Lasting
+
+A length of time, none at all among them: a number and ms, s, m, h, d or w, as "10s" or "0s".
+
 ### LateRelease
 
 What a route does with a Release whose tag it already announced.
@@ -2445,6 +2452,10 @@ Who registers a project webhook on each member of a GitLab owner.
 ### MergeRuns
 
 Who runs a branch's queue.
+
+### MergeUpdated
+
+Whether a gesture vouches for the head herald's own update of the branch made from the head it vouched for.
 
 ### Message
 

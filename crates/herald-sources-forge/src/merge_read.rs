@@ -5,10 +5,11 @@
 
 use std::collections::BTreeMap;
 
-use herald_core::Permission;
-use herald_core::merging::{Enter, MOST_ENTERED, Vouches};
+use herald_core::merging::{Enter, MOST_ENTERED, Updated, Vouches};
+use herald_core::{MOST_RUNS, Permission};
 use herald_kinds::{
-    Branched, EnterAsked, Entered, Gesture, Holds, Marked, MergeReader, Proved, TakenBack, Unpolled,
+    Branched, EnterAsked, Entered, Gesture, Holds, Marked, MergeReader, Methods, Plan, Proved,
+    TakenBack, Unpolled,
 };
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Request};
 use jiff::{SignedDuration, Timestamp};
@@ -20,6 +21,7 @@ use crate::{Forge, Origin, Token};
 mod forgejo;
 mod github;
 mod gitlab;
+mod owning;
 
 /// The word that, after a queue's comment command, takes a pull request
 /// out.
@@ -81,6 +83,8 @@ fn label_actor(by: Option<Actor>, into: bool) -> Option<Actor> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Opened {
     number: u64,
+    title: String,
+    body: String,
     url: String,
     id: Option<String>,
     draft: bool,
@@ -598,6 +602,7 @@ impl ForgeMergeReader {
             least,
             vouches,
             skew,
+            updated,
         } = asked;
         let Some((mark, whole)) = self.gestured(http, &pull, (enter, least), roles).await? else {
             return Ok(None);
@@ -607,7 +612,7 @@ impl ForgeMergeReader {
         } = mark;
         let role = self.role(http, &by, roles).await?.role();
         let pushes = self.pushes(http, &pull).await?;
-        let (approved, reviewed) = if vouches == Vouches::Approved {
+        let (approved, reviewed) = if vouches == Vouches::Approved || updated == Updated::Approved {
             self.approved(http, &pull, (least, skew), roles).await?
         } else {
             (false, true)
@@ -625,6 +630,8 @@ impl ForgeMergeReader {
             approved,
             whole: whole && reviewed,
             number: pull.number,
+            title: pull.title,
+            body: pull.body,
             url: pull.url,
             id: pull.id,
             draft: pull.draft,
@@ -776,6 +783,37 @@ impl MergeReader for ForgeMergeReader {
             };
             self.taken_of(&http, opened, asked, &mut BTreeMap::new())
                 .await
+        })
+    }
+
+    fn merged<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        number: u64,
+    ) -> Boxed<'a, Result<bool, Unpolled>> {
+        Box::pin(async move { owning::merged(self, &Erased(http), number).await })
+    }
+
+    fn forge_made<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        made: (&'a str, Option<&'a str>),
+    ) -> Boxed<'a, Result<Option<Vec<String>>, Unpolled>> {
+        Box::pin(async move { owning::forge_made(self, &Erased(http), made).await })
+    }
+
+    fn methods<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Result<Methods, Unpolled>> {
+        Box::pin(async move { owning::methods(self, &Erased(http)).await })
+    }
+
+    fn failed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        failed: (&'a str, &'a str),
+    ) -> Boxed<'a, Result<Plan, Unpolled>> {
+        Box::pin(async move {
+            let read = (&self.origin, self.token.as_ref());
+            crate::queue::planned(read, &Erased(http), failed, MOST_RUNS).await
         })
     }
 }

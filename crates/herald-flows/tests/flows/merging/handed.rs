@@ -3,6 +3,7 @@
 //! it again right before the call and recording the step first.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use herald_config::Uses;
@@ -12,11 +13,14 @@ use herald_flows::{
     Budget, Cancels, Connected, Found, GONE, Handing, MergeQueueRead, Next, Ports, RACED, SERVED,
     Took, UNNAMED, UNSEPARATED, merge_apply, merge_queues, prepare,
 };
-use herald_ports::{Actions as _, Base, Http, HttpError, Request, Response};
+use herald_ports::{Actions as _, Base, Http, HttpError, Request, Response, Timer};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use serde_json::{Value, json};
 
 use crate::harness::{Failing, Fault, NOON, config, healthy, secrets};
+
+mod elsewhere;
+mod owned;
 
 const QUEUE: &str = r#"[sources.app]
 kind = "github"
@@ -29,6 +33,7 @@ method = "squash"
 write = { token = { secret = "HERALD_MERGE" } }
 "#;
 
+const GITHUB_API: &str = "https://api.github.com";
 const GRAPHQL: &str = "POST https://api.github.com/graphql";
 const IN_QUEUE: &str = "POST https://api.github.com/graphql mergeQueue";
 const QUEUED: &str = "POST https://api.github.com/graphql isInMergeQueue";
@@ -45,6 +50,7 @@ type Sent = (String, Vec<String>, Value);
 struct Forge {
     answers: Arc<Mutex<BTreeMap<String, VecDeque<Response>>>>,
     sent: Arc<Mutex<Vec<Sent>>>,
+    made: Arc<AtomicUsize>,
 }
 
 fn answer(status: u16, body: &Value) -> Response {
@@ -97,6 +103,21 @@ impl Forge {
     }
 }
 
+/// The line a pause of `duration` is kept as among the requests sent.
+fn paused(duration: std::time::Duration) -> String {
+    format!("PAUSE {}ms", duration.as_millis())
+}
+
+impl Timer for Forge {
+    async fn sleep(&self, duration: std::time::Duration) {
+        let line = paused(duration);
+        self.sent
+            .lock()
+            .unwrap()
+            .push((line, Vec::new(), Value::Null));
+    }
+}
+
 impl Http for Forge {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
         let mut line = format!("{} {}", request.method.as_str(), request.url.expose());
@@ -117,6 +138,7 @@ impl Http for Forge {
             .iter()
             .map(|(_, value)| value.expose())
             .collect();
+        self.made.fetch_add(1, Ordering::Relaxed);
         self.sent
             .lock()
             .unwrap()
@@ -205,7 +227,7 @@ fn scripted() -> Forge {
 
 fn key() -> GestureKey {
     GestureKey {
-        api: "https://api.github.com".to_owned(),
+        api: GITHUB_API.to_owned(),
         repository: "o/r".to_owned(),
         number: 7,
         gesture: 501,
@@ -252,9 +274,19 @@ fn run_config(
     (store, forge, held): (&Failing, &Forge, &FakeSecrets),
     (apply, budget): (bool, Budget<'_>),
 ) -> Vec<Next> {
-    let read = run_read(queued, (store, forge, held), (apply, budget));
+    run_on(queued, (store, forge, held), (apply, budget), GITHUB_API)
+}
+
+/// What [`run_config`] comes to on the forge whose API is `api`.
+fn run_on(
+    queued: &str,
+    (store, forge, held): (&Failing, &Forge, &FakeSecrets),
+    (apply, budget): (bool, Budget<'_>),
+    api: &str,
+) -> Vec<Next> {
+    let read = run_read_on(queued, (store, forge, held), (apply, budget), api);
     let Found::Entries(entries) = &read.found else {
-        panic!("{read:?}");
+        panic!("{read:?} {:?}", forge.lines());
     };
     let mut nexts: Vec<Next> = read
         .idle
@@ -270,6 +302,16 @@ fn run_read(
     queued: &str,
     (store, forge, held): (&Failing, &Forge, &FakeSecrets),
     (apply, budget): (bool, Budget<'_>),
+) -> MergeQueueRead {
+    run_read_on(queued, (store, forge, held), (apply, budget), GITHUB_API)
+}
+
+/// What [`run_read`] reads on the forge whose API is `api`.
+fn run_read_on(
+    queued: &str,
+    (store, forge, held): (&Failing, &Forge, &FakeSecrets),
+    (apply, budget): (bool, Budget<'_>),
+    api: &str,
 ) -> MergeQueueRead {
     let config = config(queued);
     let prepared = pollster::block_on(prepare(&config, held, &FakeSigner, Uses::Polls)).unwrap();
@@ -293,6 +335,7 @@ fn run_read(
     let handing = Handing {
         secrets: held,
         connect: &connect,
+        timer: forge,
     };
     let read = if apply {
         pollster::block_on(merge_apply(flow, &handing, asked))
@@ -301,10 +344,7 @@ fn run_read(
     }
     .unwrap();
     let bases = bases.into_inner().unwrap();
-    assert!(
-        bases.iter().all(|base| base == "https://api.github.com"),
-        "{bases:?}"
-    );
+    assert!(bases.iter().all(|base| base == api), "{bases:?}");
     if !apply {
         assert_eq!(bases, Vec::<String>::new());
     }
@@ -561,6 +601,7 @@ fn kept(store: &Failing, outcome: HandedOff) {
             outcome,
         }),
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     };
     pollster::block_on(store.inner.put_gesture(&record, None)).unwrap();
 }
@@ -713,6 +754,7 @@ fn kept_seen(store: &Failing, seen: &str) {
         seen_at: NOON,
         hand_off: None,
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     };
     pollster::block_on(store.inner.put_gesture(&record, None)).unwrap();
 }

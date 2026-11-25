@@ -23,8 +23,11 @@ fn each_merge_queue_is_read_and_applied_through_the_composed_herald() {
             .collect::<Vec<_>>(),
         [("app", "cli/cli")]
     );
-    let applied =
-        pollster::block_on(composed.merge_apply((None, herald_core::Printed::Configured))).unwrap();
+    let applied = pollster::block_on(composed.merge_apply(
+        (None, herald_core::Printed::Configured),
+        &herald_testing::FakeTimer::default(),
+    ))
+    .unwrap();
     assert_eq!(
         applied
             .iter()

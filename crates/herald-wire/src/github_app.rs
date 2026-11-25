@@ -99,6 +99,9 @@ const RERUN_PERMISSIONS: Permissions = &[("actions", "write")];
 /// The permissions a token that hands a pull request to the merge queue is
 /// minted with (ADR-0087).
 const HAND_OFF_PERMISSIONS: Permissions = &[("contents", "write"), ("pull_requests", "write")];
+
+/// What a merge queue's merge asks of a write App: its contents alone.
+const MERGE_PERMISSIONS: Permissions = &[("contents", "write")];
 /// The one permission GitHub adds to every token it mints, which a narrowed
 /// token may hold beside those it was minted with.
 const METADATA_PERMISSION: (&str, &str) = ("metadata", "read");
@@ -321,6 +324,21 @@ pub fn rerunning(name: &str) -> Narrowed {
 #[must_use]
 pub fn handing_off(name: &str) -> Narrowed {
     Narrowed::of(HAND_OFF_PERMISSIONS, name)
+}
+
+/// A token for a merge queue's update of a pull request's branch in
+/// `name`, without its owner: `contents: write` and `pull_requests: write`
+/// and nothing else (ADR-0087).
+#[must_use]
+pub fn updating(name: &str) -> Narrowed {
+    Narrowed::of(HAND_OFF_PERMISSIONS, name)
+}
+
+/// A token for a merge queue's merge of a pull request in `name`, without
+/// its owner: `contents: write` and nothing else (ADR-0087).
+#[must_use]
+pub fn merging(name: &str) -> Narrowed {
+    Narrowed::of(MERGE_PERMISSIONS, name)
 }
 
 /// `token`, an installation token minted at `api`, revoked through `http`

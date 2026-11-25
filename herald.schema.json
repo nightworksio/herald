@@ -3526,6 +3526,11 @@
         "state"
       ]
     },
+    "Lasting": {
+      "description": "A length of time, none at all among them: a number and ms, s, m, h, d or w, as \"10s\" or \"0s\".",
+      "type": "string",
+      "pattern": "^[0-9]+(ms|[smhdw])$"
+    },
     "LateRelease": {
       "description": "What a route does with a Release whose tag it already announced.",
       "oneOf": [
@@ -4194,6 +4199,10 @@
           "description": "Who runs it: \"forge\" hands each pull request to the forge's merge\nqueue or merge train; \"herald\" runs herald's own serial queue, also\nwhere the forge has one. \"forge\" where absent.",
           "$ref": "#/$defs/MergeRuns"
         },
+        "signer": {
+          "description": "The committer a GitHub Enterprise Server or GHE.com instance's web\nflow signs the commits it makes for, as its signature names it: the\noperator vouches that it is the instance's own identity, never a\nuser's. With `updated = \"signed\"` it lets a gesture vouch for the\nhead herald's own update made there; github.com's own,\n`noreply@github.com`, where absent there; herald's own queue on GitHub\nalone.",
+          "type": "string"
+        },
         "skew": {
           "description": "How far apart the forge's stamps of a gesture and of a push may be,\nits services' clocks never quite agreeing: a push stamped up to this\nbefore a gesture, or before a GitLab approval, counts as after it,\nso the gesture vouches for no head that push may have brought; \"5s\"\nwhere absent.",
           "$ref": "#/$defs/Duration"
@@ -4201,6 +4210,14 @@
         "source": {
           "description": "The source whose repository it merges in: one of kind \"github\",\n\"gitlab\" or \"forgejo\".",
           "type": "string"
+        },
+        "update_wait": {
+          "description": "How long herald pauses in all, at most, for the head of a pull\nrequest it brought up to date to move, where the forge answered\nbefore it moved: herald reads the head right after its update, and\nagain every 2s while the head has not moved and the pauses stay\nwithin this; \"0s\" reads it once. \"10s\" where absent, at most \"1m\";\nherald's own queue alone.",
+          "$ref": "#/$defs/Lasting"
+        },
+        "updated": {
+          "description": "Whether a gesture vouches for the head herald's own update made from\nthe head it vouched for: \"signed\", where the new head's parents are\nexactly that head and the base's head herald recorded, and the forge\nitself signed it; \"never\", the pull request leaves and a new gesture\nqueues it; \"approved\", once one who holds `least` approved the new\nhead. \"signed\" where absent; herald's own queue alone.",
+          "$ref": "#/$defs/MergeUpdated"
         },
         "vouches": {
           "description": "Which head a gesture vouches for: \"gesture\", the head at the\ngesture's time on the forge; \"seen\", the head herald first reads\nwith the gesture; \"approved\", that head once one who holds `least`\napproved it on the forge. \"gesture\" where absent.",
@@ -4233,6 +4250,26 @@
           "description": "herald's own serial queue.",
           "type": "string",
           "const": "herald"
+        }
+      ]
+    },
+    "MergeUpdated": {
+      "description": "Whether a gesture vouches for the head herald's own update of the\nbranch made from the head it vouched for.",
+      "oneOf": [
+        {
+          "description": "It does where the new head's parents are exactly the head the step\nwas taken on and the base's head herald recorded with it, and the\nforge itself signed it; never after a rebase.",
+          "type": "string",
+          "const": "signed"
+        },
+        {
+          "description": "It never does: the pull request leaves, and a new gesture queues it.",
+          "type": "string",
+          "const": "never"
+        },
+        {
+          "description": "It does once one who holds the queue's least role approved the new\nhead on the forge.",
+          "type": "string",
+          "const": "approved"
         }
       ]
     },

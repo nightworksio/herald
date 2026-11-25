@@ -8,6 +8,8 @@ use std::fmt;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
+use super::Own;
+
 /// The gesture a record is of: its forge's API, its repository's full path,
 /// the pull request's number and the forge's id of the label event or
 /// comment it is, which the forge alone chooses.
@@ -201,6 +203,9 @@ pub struct GestureRecord {
     /// lost.
     #[serde(default)]
     pub taken_out: Vec<TakeOut>,
+    /// What herald's own queue recorded for it.
+    #[serde(default, skip_serializing_if = "Own::is_empty")]
+    pub own: Own,
 }
 
 impl GestureRecord {
@@ -265,6 +270,7 @@ mod tests {
                 outcome,
             }),
             taken_out: Vec::new(),
+            own: Own::default(),
         }
     }
 

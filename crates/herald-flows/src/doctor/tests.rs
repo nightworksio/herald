@@ -236,6 +236,33 @@ mod merge_queues {
         ) -> Boxed<'a, Result<Option<herald_kinds::TakenBack>, Unpolled>> {
             Box::pin(async { Err(Unpolled::Unreadable("unasked".to_owned())) })
         }
+
+        fn merged<'a>(&'a self, _: &'a dyn DynHttp, _: u64) -> Boxed<'a, Result<bool, Unpolled>> {
+            Box::pin(async { Ok(false) })
+        }
+
+        fn forge_made<'a>(
+            &'a self,
+            _: &'a dyn DynHttp,
+            _: (&'a str, Option<&'a str>),
+        ) -> Boxed<'a, Result<Option<Vec<String>>, Unpolled>> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn methods<'a>(
+            &'a self,
+            _: &'a dyn DynHttp,
+        ) -> Boxed<'a, Result<herald_kinds::Methods, Unpolled>> {
+            Box::pin(async { Err(Unpolled::Unreadable("the methods unread".to_owned())) })
+        }
+
+        fn failed<'a>(
+            &'a self,
+            _: &'a dyn DynHttp,
+            _: (&'a str, &'a str),
+        ) -> Boxed<'a, Result<herald_kinds::Plan, Unpolled>> {
+            Box::pin(async { Err(Unpolled::Unreadable("the runs unread".to_owned())) })
+        }
     }
 
     fn reading(name: &str, runs: Runs, queueless: bool, said: Said) -> MergeReading {

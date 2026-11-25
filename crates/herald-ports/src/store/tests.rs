@@ -694,6 +694,7 @@ fn the_record_of_a_gesture_kept_somewhere_reads_and_writes_as_its_keeper_does() 
         seen_at: Timestamp::UNIX_EPOCH,
         hand_off: None,
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     };
     let keeper = OneGesture(record.clone());
     let kept = Some(&keeper);

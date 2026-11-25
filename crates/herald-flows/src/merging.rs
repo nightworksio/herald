@@ -7,12 +7,13 @@
 use herald_config::{Config, MergeQueue};
 use herald_core::Printed;
 use herald_core::merging::{
-    AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Read, Runs, TakenOut, Verdict,
-    Vouches, unvouched, verdict,
+    AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Runs, Step, TakenOut, Verdict,
+    Vouches, unvouched,
 };
-use herald_kinds::{Branched, EnterAsked, Entered, Marked, MergeReader, TakenBack};
+use herald_kinds::{Branched, EnterAsked, Entered, Marked, MergeReader, TakenBack, Unpolled};
 use herald_ports::{
-    Actions, Base, Clock, DynHttp, DynSecrets, Http, Signer, Store, Version, Versioned, Written,
+    Actions, Base, Boxed, Clock, DynHttp, DynSecrets, DynTimer, Http, Signer, Store, Version,
+    Versioned, Written,
 };
 use jiff::Timestamp;
 
@@ -20,12 +21,14 @@ use crate::{Connected, Ports, Stop};
 
 mod branch;
 mod handing;
+mod owning;
 mod taking;
 
 pub use branch::merge_branch;
 pub use handing::{
     DRAFTED, GONE, RACED, REGESTURED, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED,
 };
+pub use owning::{Acted, METHODS_UNREAD, OWN_DRAFTED, OWN_REGESTURED, OWN_UNSAID, UNDUE, allowed};
 pub use taking::{
     RACED_OUT, RECANCELLED, UNHANDED, UNMATCHED_OUT, UNNAMED_CANCEL, UNREAD_CANCEL, UNROLED_CANCEL,
     UNSAID_ROLE, UNTAKEN,
@@ -43,9 +46,6 @@ pub(crate) const UNRECORDED: &str = "the markers store keeps no record to write 
 /// Why `herald merge-queue --apply` takes no step in a queue the server
 /// runs.
 pub const SERVED: &str = "applied_by = \"server\": herald server takes its steps, and herald merge-queue --apply takes none";
-
-/// Why `herald merge-queue --apply` takes no step in a queue herald runs.
-pub const OWN_QUEUE: &str = "runs = \"herald\": herald merge-queue --apply hands pull requests to the forge's queue, and takes no step in herald's own";
 
 /// Why a queue run by GitLab takes no step where GitLab does not say the
 /// project has merge trains on.
@@ -88,6 +88,11 @@ pub enum Next {
     },
     /// The forge's queue: what this apply did with it.
     Took(Took),
+    /// herald's own queue: a step recorded for this gesture holds it, as
+    /// the forge may or may not have taken it, or is still taking it.
+    Held(Step),
+    /// herald's own queue: what this apply did with it.
+    Acted(Acted),
 }
 
 /// What an apply did with a pull request due to be handed over.
@@ -236,13 +241,16 @@ pub struct MergeQueueRead {
 type Flow<'f, 'p, S, C, G, H> = (&'f Config, &'f Connected<H>, &'f Ports<'p, S, C, G>);
 
 /// What an apply reaches beside a run's own connections: the host's
-/// secrets, for each queue's write credential alone, and a connection made
-/// for each base.
+/// secrets, for each queue's write credential alone, a connection made
+/// for each base, and what waits between reads of a head herald's own
+/// update has not moved yet.
 pub struct Handing<'a, H> {
     /// The host's secrets.
     pub secrets: &'a dyn DynSecrets,
     /// A connection reaching only `base`.
     pub connect: &'a (dyn Fn(Base<'_>) -> Result<H, String> + Sync),
+    /// What waits between reads of a head.
+    pub timer: &'a dyn DynTimer,
 }
 
 /// The records a queue's read keeps of each gesture, and whether it writes
@@ -296,9 +304,6 @@ fn idle<A>(queue: &MergeQueue, branched: &Branched, store: Option<&A>) -> Vec<St
     }
     if queue.runs == Runs::Forge && queue.forge.forge == GITLAB && branched.queue.is_none() {
         idle.push(TRAINS_UNSAID.to_owned());
-    }
-    if queue.runs == Runs::Herald {
-        idle.push(OWN_QUEUE.to_owned());
     }
     if queue.applied_by == AppliedBy::Server {
         idle.push(SERVED.to_owned());
@@ -384,16 +389,7 @@ async fn seen<A: Actions>(
         Ok(None) if queue.vouches == Vouches::Gesture => (None, None),
         Ok(None) if !keeping.applies => (None, Some(entered.head.clone())),
         Ok(None) => {
-            let record = GestureRecord {
-                key,
-                by: entered.gesture.by.clone(),
-                at: entered.gesture.at,
-                queue: named.to_owned(),
-                seen: entered.head.clone(),
-                seen_at: now,
-                hand_off: None,
-                taken_out: Vec::new(),
-            };
+            let record = first_record(key, named, entered, now);
             match store.put_gesture(&record, None).await {
                 Ok(Written::Written(version)) => {
                     let seen = record.seen.clone();
@@ -449,41 +445,21 @@ async fn judged<A: Actions>(
             .and_then(|kept| kept.value.hand_off.as_ref());
         let next = if !entered.whole {
             Next::Verdict(Verdict::Leaves(Left::Unread))
+        } else if queue.runs == Runs::Herald {
+            let gestured = (&entered, seen.as_deref(), kept.as_ref());
+            let at = (now, &mut flying);
+            owning::next((reader, http), queue, gestured, branched, at).await?
         } else if let Some(left) = unvouched(queue.vouches, &heads, &entered.head) {
             Next::Verdict(Verdict::Leaves(left))
-        } else if queue.runs == Runs::Forge {
-            if entered.draft {
-                Next::Draft
-            } else if let Some(handed) = handed {
-                Next::Handed {
-                    outcome: handed.outcome,
-                    at: handed.at,
-                }
-            } else {
-                Next::HandOff
+        } else if entered.draft {
+            Next::Draft
+        } else if let Some(handed) = handed {
+            Next::Handed {
+                outcome: handed.outcome,
+                at: handed.at,
             }
-        } else if flying {
-            Next::Behind
         } else {
-            let proved = reader.proved(http, &entered, branched).await?;
-            let since = entered.arrived.map_or(entered.gesture.at, |arrived| {
-                arrived.max(entered.gesture.at)
-            });
-            let read = Read {
-                entered: true,
-                vouches: queue.vouches,
-                heads,
-                head: &entered.head,
-                up_to_date: proved.up_to_date,
-                checks: &proved.checks,
-                required: &proved.required,
-                mergeable: proved.mergeable,
-                waited: now.duration_since(since),
-                whole: proved.whole,
-            };
-            let verdict = verdict(&read, &queue.may_fail, queue.wait);
-            flying = !matches!(verdict, Verdict::Leaves(_));
-            Next::Verdict(verdict)
+            Next::HandOff
         };
         judged.push((Judged { entered, next }, kept));
     }
@@ -601,6 +577,10 @@ async fn queue_read<S: Store, C: Clock, G: Signer, H: Http>(
         });
         return (Found::Entries(found), idle, read_cancels(cancels, printed));
     };
+    if queued.1.runs == Runs::Herald {
+        let found = owning::stepped((flow, handing), store, reader, queued, judged).await;
+        return (found, idle, Cancels::Read(Vec::new()));
+    }
     let handing_off = judged
         .iter()
         .any(|(judged, _)| judged.next == Next::HandOff);
@@ -756,6 +736,22 @@ async fn found<A: Actions>(
     })
 }
 
+/// The first record of `entered`'s gesture, keyed `key`, in the queue
+/// `named`, its head first seen `now`.
+fn first_record(key: GestureKey, named: &str, entered: &Entered, now: Timestamp) -> GestureRecord {
+    GestureRecord {
+        key,
+        by: entered.gesture.by.clone(),
+        at: entered.gesture.at,
+        queue: named.to_owned(),
+        seen: entered.head.clone(),
+        seen_at: now,
+        hand_off: None,
+        taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
+    }
+}
+
 /// What `queue` asks of the gestures that queue its pull requests.
 const fn asked(queue: &MergeQueue) -> EnterAsked<'_> {
     EnterAsked {
@@ -763,7 +759,18 @@ const fn asked(queue: &MergeQueue) -> EnterAsked<'_> {
         least: queue.least,
         vouches: queue.vouches,
         skew: queue.skew,
+        updated: queue.updated,
     }
+}
+
+/// The pull request `number` read again through `read` into `queue`'s
+/// branch, as `queue` asks of the gestures that queue it.
+fn again<'a>(
+    (reader, http): (&'a dyn MergeReader, &'a dyn DynHttp),
+    queue: &'a MergeQueue,
+    number: u64,
+) -> Boxed<'a, Result<Option<Entered>, Unpolled>> {
+    reader.entry(http, (&queue.branch, number), asked(queue))
 }
 
 /// The version `kept` is at, where a record is kept.

@@ -79,6 +79,10 @@ struct Base {
 #[derive(Deserialize)]
 struct Pull {
     number: u64,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: Option<String>,
     html_url: String,
     #[serde(default)]
     state: String,
@@ -95,6 +99,8 @@ impl From<Pull> for Opened {
     fn from(pull: Pull) -> Self {
         Self {
             number: pull.number,
+            title: pull.title,
+            body: pull.body.unwrap_or_default(),
             url: pull.html_url,
             id: None,
             draft: pull.draft,
@@ -386,6 +392,7 @@ pub(super) async fn proved(
         up_to_date: merging.merge_base.as_deref() == Some(branched.head.as_str()),
         required: required(&branched.required, &checks),
         checks,
+        clean: merging.mergeable,
         mergeable: merging.mergeable,
     })
 }

@@ -104,7 +104,6 @@ fn a_dry_run_reads_each_entry_from_the_forge_and_says_what_comes_next() {
                 "app: cli/cli into main, run by herald",
                 "  takes no step: a merge queue without a method does not start; give method = \"merge\", \"squash\", \"rebase\", \"fast-forward\" or \"repository\"",
                 "  takes no step: a merge queue without a write credential does not start; give write = { token = { secret = \"NAME\" } }, or on GitHub write = { app = \"<github_apps name>\" }",
-                "  takes no step: runs = \"herald\": herald merge-queue --apply hands pull requests to the forge's queue, and takes no step in herald's own",
                 "  #1 https://github.com/cli/cli/pull/1 queued by writer (write) at 2026-01-01T00:10:00Z, head h1: next, it is merged with its head as the expected head",
                 "  #2 https://github.com/cli/cli/pull/2 queued by writer (write) at 2026-01-01T00:20:00Z, head h2: waits its turn",
             ],

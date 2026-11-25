@@ -248,8 +248,8 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     }
 
     /// What hands a pull request of the repository `with` names to its
-    /// forge's queue with `with`'s write credential; none where it is no
-    /// forge or the forge has no queue (ADR-0087).
+    /// forge's queue, or takes herald's own queue's steps on it, with
+    /// `with`'s write credential; none where it is no forge (ADR-0087).
     fn merge_writer(&self, _with: crate::WriteWith<'_>) -> Option<Arc<dyn crate::MergeWriter>> {
         None
     }
