@@ -32,7 +32,7 @@ fn a_queue_that_can_start_is_said_and_has_no_gap() {
     let served = on(
         "git-branch",
         &format!(
-            "{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\nruns = \"herald\"\nvouches = \"approved\"\nskew = \"1m\"\nmethod = \"fast-forward\"\napplied_by = \"server\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n"
+            "{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\nruns = \"herald\"\nupdated = \"never\"\nvouches = \"approved\"\nskew = \"1m\"\nmethod = \"fast-forward\"\napplied_by = \"server\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n"
         ),
     );
     let findings = doctored(&served, &layer(&STORES));
@@ -88,4 +88,43 @@ fn a_queue_without_a_method_a_write_credential_a_store_that_keeps_records_or_a_f
         "{:?}",
         findings.notes
     );
+}
+
+#[test]
+fn a_queue_whose_host_signs_no_update_herald_makes_says_so_unless_told_who_signs() {
+    let server = "[sources.server]\nkind = \"github\"\nrepository = \"acme/app\"\napi = \"https://ghe.example/api/v3\"\n[sources.lab]\nkind = \"gitlab\"\nrepository = \"group/app\"\n";
+    let queue = |source: &str, rest: &str| {
+        format!(
+            "{FORGEJO}{server}[merge_queues.main]\nsource = \"{source}\"\nbranch = \"main\"\nruns = \"herald\"\nmethod = \"merge\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n{rest}"
+        )
+    };
+    for (source, rest, gapped) in [
+        ("gate", "", false),
+        ("server", "", true),
+        ("server", "signer = \"noreply@ghe.example\"\n", false),
+        ("server", "updated = \"approved\"\n", false),
+        ("lab", "", true),
+        ("lab", "updated = \"never\"\n", false),
+        ("codeberg", "", true),
+        ("codeberg", "updated = \"approved\"\n", false),
+    ] {
+        let config = on("git-branch", &queue(source, rest));
+        let findings = doctored(&config, &layer(&STORES));
+        let expected: &[&str] = if gapped {
+            &["merge_queues.main.updated"]
+        } else {
+            &[]
+        };
+        assert_eq!(keys(&findings.gaps), expected, "{source} {rest}");
+        let said = findings
+            .gaps
+            .iter()
+            .map(|gap| gap.why.clone())
+            .collect::<String>();
+        assert_eq!(
+            said.contains("give signer"),
+            gapped && source == "server",
+            "{said}"
+        );
+    }
 }

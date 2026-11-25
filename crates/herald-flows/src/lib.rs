@@ -80,10 +80,11 @@ pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
 pub use installations::AHEAD as MINTED_AHEAD;
 pub use merging::{
-    Cancel, Cancels, DRAFTED, Found, GONE, Handing, Judged, MergeQueueRead, Next, OWN_QUEUE, RACED,
-    RACED_OUT, RECANCELLED, REGESTURED, SERVED, Took, TookOut, UNHANDED, UNMATCHED, UNMATCHED_OUT,
-    UNNAMED, UNNAMED_CANCEL, UNREAD_AGAIN, UNREAD_CANCEL, UNRECORDED_HEAD, UNROLED, UNROLED_CANCEL,
-    UNSAID_ROLE, UNTAKEN, Undo, merge_apply, merge_branch, merge_queues,
+    Acted, Cancel, Cancels, DRAFTED, Found, GONE, Handing, Judged, METHODS_UNREAD, MergeQueueRead,
+    Next, OWN_DRAFTED, OWN_REGESTURED, OWN_UNSAID, RACED, RACED_OUT, RECANCELLED, REGESTURED,
+    SERVED, Took, TookOut, UNDUE, UNHANDED, UNMATCHED, UNMATCHED_OUT, UNNAMED, UNNAMED_CANCEL,
+    UNREAD_AGAIN, UNREAD_CANCEL, UNRECORDED_HEAD, UNROLED, UNROLED_CANCEL, UNSAID_ROLE, UNTAKEN,
+    Undo, allowed, merge_apply, merge_branch, merge_queues,
 };
 pub use orphans::{Orphaned, orphans, orphans_cleared};
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};

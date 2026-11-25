@@ -1,5 +1,5 @@
 use herald_core::Permission;
-use herald_core::merging::Runs;
+use herald_core::merging::{Runs, Step, StepKind, Stepped};
 use herald_kinds::{Entered, Gesture, Holds, Marked, TakenBack};
 
 use super::*;
@@ -8,6 +8,8 @@ fn judged(next: Next, role: Option<Permission>) -> Judged {
     Judged {
         entered: Entered {
             number: 4,
+            title: String::new(),
+            body: String::new(),
             url: "https://github.com/o/r/pull/4".to_owned(),
             id: None,
             draft: false,
@@ -66,6 +68,7 @@ fn every_next_step_has_its_words() {
         Next::Verdict(Verdict::Update),
         Next::Verdict(Verdict::Wait),
         Next::Verdict(Verdict::Merge),
+        Next::Verdict(Verdict::Rerun),
         Next::HandOff,
         Next::Draft,
         Next::Idle,
@@ -99,6 +102,7 @@ fn every_next_step_has_its_words() {
             "next, its branch is brought up to date with the base",
             "in flight, waiting for its checks and the forge",
             "next, it is merged with its head as the expected head",
+            "next, the failed job of a check its queue's retries name is re-run",
             "next, it is handed to the forge's queue with its head as the expected head",
             "waits until it is no draft",
             "due to be handed to the forge's queue, but the queue takes no step",
@@ -112,6 +116,49 @@ fn every_next_step_has_its_words() {
             "the forge's answer was lost and it was not found in the forge's queue, so herald never hands it over again for this gesture",
             "not handed over: why",
             "the forge took it into its queue, but herald's record of it could not be updated, so herald never hands it over again for this gesture",
+        ]
+    );
+}
+
+#[test]
+fn every_step_of_herald_s_own_queue_has_its_words() {
+    let step = Step {
+        kind: StepKind::Update,
+        head: "h1".to_owned(),
+        base: "b1".to_owned(),
+        clean: true,
+        made: None,
+        check: None,
+        credential: "HERALD_MERGE".to_owned(),
+        at: "2026-01-01T00:20:00Z".parse().unwrap(),
+        outcome: Stepped::Calling,
+    };
+    let said: Vec<String> = [
+        Next::Held(step),
+        Next::Acted(Acted::Stepped(StepKind::Merge, Stepped::Took)),
+        Next::Acted(Acted::Stepped(StepKind::Update, Stepped::Conflict)),
+        Next::Acted(Acted::Stepped(StepKind::Merge, Stepped::Refused)),
+        Next::Acted(Acted::Stepped(StepKind::Rerun, Stepped::Refused)),
+        Next::Acted(Acted::Left(Left::HeadMoved)),
+        Next::Acted(Acted::Refused("why".to_owned())),
+        Next::Acted(Acted::Unsent(StepKind::Merge, "why".to_owned())),
+        Next::Acted(Acted::Unrecorded(StepKind::Update, Stepped::Took)),
+    ]
+    .iter()
+    .map(next)
+    .collect();
+    assert_eq!(
+        said,
+        [
+            "herald recorded bringing it up to date on head h1 at 2026-01-01T00:20:00Z: the call may or may not have reached the forge, so herald never takes a step again for this gesture; it waits",
+            "merging it: the forge took it",
+            "bringing it up to date: the branch conflicts with the base, so it leaves the queue: conflict",
+            "merging it: the forge refused it, so it leaves the queue: merge-refused",
+            "re-running a failed check: the forge refused it, so it leaves the queue: checks-failed",
+            "read again right before the step, it leaves the queue: head-moved",
+            "no step taken: why",
+            "merging it: the call was not sent: why",
+            "bringing it up to date: the forge took it, but herald's record of it could not be updated, so herald takes no step again for this gesture",
         ]
     );
 }

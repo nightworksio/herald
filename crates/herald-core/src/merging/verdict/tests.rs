@@ -19,6 +19,7 @@ fn green<'a>(checks: &'a [Check], required: &'a [String]) -> Read<'a> {
         },
         head: HEAD,
         up_to_date: true,
+        clean: Some(true),
         checks,
         required,
         mergeable: Some(true),
@@ -172,6 +173,34 @@ fn a_branch_behind_its_base_is_brought_up_to_date_before_its_checks_count() {
         ..green(&checks, &[])
     };
     assert_eq!(verdict(&behind, &[], WAIT), Verdict::Update);
+    let conflicting = Read {
+        clean: Some(false),
+        ..behind
+    };
+    assert_eq!(
+        verdict(&conflicting, &[], WAIT),
+        Verdict::Leaves(Left::Conflict)
+    );
+    let unknown = Read {
+        clean: None,
+        ..behind
+    };
+    assert_eq!(verdict(&unknown, &[], WAIT), Verdict::Wait);
+    let outlasted = Read {
+        waited: WAIT,
+        ..unknown
+    };
+    assert_eq!(
+        verdict(&outlasted, &[], WAIT),
+        Verdict::Leaves(Left::ChecksTimedOut)
+    );
+    let passed = [check("test", CheckState::Passed)];
+    let up_to_date = Read {
+        up_to_date: true,
+        clean: None,
+        ..green(&passed, &[])
+    };
+    assert_eq!(verdict(&up_to_date, &[], WAIT), Verdict::Merge);
 }
 
 #[test]
@@ -190,6 +219,9 @@ fn a_failed_check_leaves_unless_may_fail_names_it_and_the_forge_does_not_require
         verdict(&green(&checks, &flaky), &flaky, WAIT),
         Verdict::Leaves(Left::ChecksFailed)
     );
+    assert_eq!(failing(&green(&checks, &[]), &[]), ["flaky"]);
+    assert_eq!(failing(&green(&checks, &[]), &flaky), Vec::<&str>::new());
+    assert_eq!(failing(&green(&checks, &flaky), &flaky), ["flaky"]);
 }
 
 #[test]

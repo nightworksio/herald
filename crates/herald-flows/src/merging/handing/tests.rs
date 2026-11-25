@@ -135,11 +135,15 @@ fn a_refusal_read_back_with_another_head_is_a_moved_head() {
     let fresh = entry(1, ("h1", "h1"), true);
     let http = herald_testing::ScriptedHttp::new(Vec::new());
     let back = |reader: &Fixed| pollster::block_on(refused_back((reader, &http), &queued, &fresh));
-    let mut moved = Fixed::default();
-    moved.fresh = Some(entry(1, ("h1", "h2"), true));
+    let moved = Fixed {
+        fresh: Some(entry(1, ("h1", "h2"), true)),
+        ..Fixed::default()
+    };
     assert_eq!(back(&moved), HandedOff::HeadMoved);
-    let mut same = Fixed::default();
-    same.fresh = Some(fresh.clone());
+    let same = Fixed {
+        fresh: Some(fresh.clone()),
+        ..Fixed::default()
+    };
     assert_eq!(back(&same), HandedOff::Refused);
     assert_eq!(back(&Fixed::default()), HandedOff::Refused);
 }

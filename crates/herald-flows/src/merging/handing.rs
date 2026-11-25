@@ -15,7 +15,9 @@ use herald_ports::{
 };
 use herald_wire::github_app::handing_off;
 
-use super::{Flow, Found, Handing, Judged, Next, Took, UNWRITTEN, asked, gesture_key, version};
+use super::{
+    Flow, Found, Handing, Judged, Next, Took, UNWRITTEN, again, first_record, gesture_key, version,
+};
 use crate::Ports;
 use crate::applying::{Writing, held_apart, minted_with};
 use crate::budget::Budgeted;
@@ -91,6 +93,54 @@ pub(super) async fn ready<S: Store, C: Clock, G: Signer, H: Http>(
     })
 }
 
+/// Why no step may be taken on `fresh`, the pull request read again right
+/// before the step, as `entered`, read with the queue, was judged: it was
+/// not read whole, another gesture stands, its maker no longer holds the
+/// queue's least role, or it is a draft.
+pub(super) fn ungestured(queue: &MergeQueue, entered: &Entered, fresh: &Entered) -> Option<Unfit> {
+    if !fresh.whole {
+        return Some(Unfit::Unread);
+    }
+    if fresh.gesture.id != entered.gesture.id
+        || fresh.gesture.by != entered.gesture.by
+        || fresh.gesture.at != entered.gesture.at
+    {
+        return Some(Unfit::Regestured);
+    }
+    if fresh.gesture.role.is_none_or(|role| role < queue.least) {
+        return Some(Unfit::Unroled);
+    }
+    if fresh.draft {
+        return Some(Unfit::Drafted);
+    }
+    None
+}
+
+/// Why a pull request read again right before a step takes none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Unfit {
+    /// What decides whether it stands was not read whole.
+    Unread,
+    /// Another gesture stands on it.
+    Regestured,
+    /// The person who queued it no longer holds the queue's least role.
+    Unroled,
+    /// It is a draft.
+    Drafted,
+}
+
+impl Unfit {
+    /// Why nothing was handed over.
+    const fn handing(self) -> &'static str {
+        match self {
+            Self::Unread => UNREAD_AGAIN,
+            Self::Regestured => REGESTURED,
+            Self::Unroled => UNROLED,
+            Self::Drafted => DRAFTED,
+        }
+    }
+}
+
 /// Why `fresh`, the pull request read again right before the step, may not
 /// be handed over as `entered`, read with the queue, was judged due, with
 /// `seen` the head herald first read with its gesture: each input the
@@ -101,20 +151,8 @@ fn unauthorised(
     seen: Option<&str>,
 ) -> Option<Took> {
     let refused = |why: &str| Some(Took::Refused(why.to_owned()));
-    if !fresh.whole {
-        return refused(UNREAD_AGAIN);
-    }
-    if fresh.gesture.id != entered.gesture.id
-        || fresh.gesture.by != entered.gesture.by
-        || fresh.gesture.at != entered.gesture.at
-    {
-        return refused(REGESTURED);
-    }
-    if fresh.gesture.role.is_none_or(|role| role < queue.least) {
-        return refused(UNROLED);
-    }
-    if fresh.draft {
-        return refused(DRAFTED);
+    if let Some(unfit) = ungestured(queue, entered, fresh) {
+        return refused(unfit.handing());
     }
     if fresh.head != entered.head {
         return Some(Took::HeadMoved);
@@ -166,14 +204,11 @@ async fn settled<A: Actions>(
 /// What reading `fresh` back after the forge refused it says: its head
 /// moved, or the refusal stands.
 async fn refused_back(
-    (reader, http): (&dyn MergeReader, &dyn DynHttp),
+    read: (&dyn MergeReader, &dyn DynHttp),
     queue: &MergeQueue,
     fresh: &Entered,
 ) -> HandedOff {
-    match reader
-        .entry(http, (&queue.branch, fresh.number), asked(queue))
-        .await
-    {
+    match again(read, queue, fresh.number).await {
         Ok(Some(back)) if back.head != fresh.head => HandedOff::HeadMoved,
         _ => HandedOff::Refused,
     }
@@ -193,10 +228,7 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
     (entered, kept): (&Entered, Option<Versioned<GestureRecord>>),
 ) -> Took {
     let (reader, http) = read;
-    let fresh = match reader
-        .entry(http, (&queue.branch, entered.number), asked(queue))
-        .await
-    {
+    let fresh = match again(read, queue, entered.number).await {
         Ok(Some(fresh)) => fresh,
         Ok(None) => return Took::Refused(GONE.to_owned()),
         Err(error) => {
@@ -215,16 +247,7 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
         return Took::Refused(UNNAMED.to_owned());
     };
     let mut record = kept.as_ref().map_or_else(
-        || GestureRecord {
-            key,
-            by: fresh.gesture.by.clone(),
-            at: fresh.gesture.at,
-            queue: named.to_owned(),
-            seen: fresh.head.clone(),
-            seen_at: now,
-            hand_off: None,
-            taken_out: Vec::new(),
-        },
+        || first_record(key, named, &fresh, now),
         |kept| kept.value.clone(),
     );
     let outcome = match reader.queued(http, fresh.number).await {

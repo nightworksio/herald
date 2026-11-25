@@ -86,13 +86,13 @@ impl Carried {
 
 /// Whether `cancel` counts as made after `gesture`: stamped no more than
 /// `skew` before it.
-fn after(cancel: &Marked, gesture: &Marked, skew: SignedDuration) -> bool {
+pub(super) fn after(cancel: &Marked, gesture: &Marked, skew: SignedDuration) -> bool {
     gesture.at.duration_since(cancel.at) <= skew
 }
 
 /// Whether the person who made `mark` holds `queue`'s least role now, as
 /// `taken` reads it.
-fn holding(queue: &MergeQueue, taken: &TakenBack, mark: &Marked) -> bool {
+pub(super) fn holding(queue: &MergeQueue, taken: &TakenBack, mark: &Marked) -> bool {
     taken
         .role_of(&mark.by)
         .is_some_and(|role| role >= queue.least)
@@ -181,7 +181,7 @@ fn made<'t>(taken: &'t TakenBack, record: &GestureRecord) -> Option<Anchor<'t>> 
 /// The role the person who made `gesture` holds now, as `taken` reads it:
 /// none where the forge names no one for it, as for an account gone; not
 /// known where the forge would not say.
-fn holds(taken: &TakenBack, gesture: &Marked) -> Option<Holds> {
+pub(super) fn holds(taken: &TakenBack, gesture: &Marked) -> Option<Holds> {
     if gesture.by.is_empty() {
         return Some(Holds::Nothing);
     }

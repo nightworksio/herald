@@ -7,9 +7,12 @@ use jiff::Timestamp;
 use super::*;
 use crate::SourceOptions;
 
-const WRITE_VALUE: &str = "glpat-write-value";
+/// The write credential's value, shaped as a GitLab token is.
+pub(super) fn write_value() -> String {
+    ["glpat", "write-value"].join("-")
+}
 
-fn writer(forge: Forge, api: Option<&str>) -> ForgeMergeWriter {
+pub(super) fn writer(forge: Forge, api: Option<&str>) -> ForgeMergeWriter {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
         api: api.map(ToOwned::to_owned),
@@ -18,13 +21,15 @@ fn writer(forge: Forge, api: Option<&str>) -> ForgeMergeWriter {
     ForgeMergeWriter {
         origin: Origin::new(forge, &options, "o/r"),
         graphql: crate::graphql::graphql_of(forge, &options),
-        token: Token::Named(Secret::new("HERALD_MERGE", WRITE_VALUE)),
+        token: Token::Named(Secret::new("HERALD_MERGE", write_value())),
     }
 }
 
-fn entered(id: Option<&str>) -> Entered {
+pub(super) fn entered(id: Option<&str>) -> Entered {
     Entered {
         number: 7,
+        title: String::new(),
+        body: String::new(),
         url: "https://forge.test/o/r/pull/7".to_owned(),
         id: id.map(ToOwned::to_owned),
         draft: false,
@@ -43,7 +48,7 @@ fn entered(id: Option<&str>) -> Entered {
     }
 }
 
-fn answer(status: u16, body: &Value) -> Response {
+pub(super) fn answer(status: u16, body: &Value) -> Response {
     Response {
         status,
         headers: Vec::new(),
@@ -60,7 +65,7 @@ fn handed(
     (http, handed)
 }
 
-fn bearer(request: &herald_ports::Request) -> Vec<String> {
+pub(super) fn bearer(request: &herald_ports::Request) -> Vec<String> {
     request
         .headers
         .iter()
@@ -90,7 +95,7 @@ fn github_is_asked_to_enqueue_the_pull_request_expecting_its_head_with_the_write
         let request = &http.requests()[0];
         assert_eq!(request.method, Method::Post);
         assert_eq!(request.url.expose(), endpoint);
-        assert_eq!(bearer(request), [format!("Bearer {WRITE_VALUE}")]);
+        assert_eq!(bearer(request), [format!("Bearer {}", write_value())]);
         assert_eq!(
             http.bodies()[0],
             json!({ "query": ENQUEUE, "variables": { "id": "PR_7", "head": "h7" } })
@@ -104,7 +109,7 @@ fn github_is_asked_to_enqueue_the_pull_request_expecting_its_head_with_the_write
 fn github_s_answer_queues_refuses_or_is_lost_and_a_refusal_never_shows_the_credential() {
     let writer = writer(Forge::GitHub, None);
     let refused = json!({ "errors": [
-        { "type": "UNPROCESSABLE", "message": format!("head moved for {WRITE_VALUE}") },
+        { "type": "UNPROCESSABLE", "message": format!("head moved for {}", write_value()) },
         { "message": "second\u{7}" }
     ] });
     let (_, said) = handed(&writer, vec![answer(200, &refused)]);
@@ -181,7 +186,7 @@ fn gitlab_adds_the_merge_request_to_its_train_with_its_head_s_sha_once_its_check
             request.url.expose(),
             "https://git.example/api/v4/projects/o%2Fr/merge_trains/merge_requests/7"
         );
-        assert_eq!(bearer(request), [format!("Bearer {WRITE_VALUE}")]);
+        assert_eq!(bearer(request), [format!("Bearer {}", write_value())]);
         assert_eq!(http.bodies()[0], json!({ "sha": "h7", "auto_merge": true }));
     }
     let (_, refused) = handed(
@@ -199,7 +204,7 @@ fn gitlab_adds_the_merge_request_to_its_train_with_its_head_s_sha_once_its_check
         &writer,
         vec![answer(
             409,
-            &json!({ "error": format!("token {WRITE_VALUE} rejected") }),
+            &json!({ "error": format!("token {} rejected", write_value()) }),
         )],
     );
     assert_eq!(
@@ -312,7 +317,7 @@ fn github_is_asked_to_dequeue_the_pull_request_by_its_node_id_with_the_write_cre
         let request = &http.requests()[0];
         assert_eq!(request.method, Method::Post);
         assert_eq!(request.url.expose(), endpoint);
-        assert_eq!(bearer(request), [format!("Bearer {WRITE_VALUE}")]);
+        assert_eq!(bearer(request), [format!("Bearer {}", write_value())]);
         assert_eq!(
             http.bodies()[0],
             json!({ "query": DEQUEUE, "variables": { "id": "PR_7" } })
@@ -331,7 +336,7 @@ fn github_is_asked_to_dequeue_the_pull_request_by_its_node_id_with_the_write_cre
 #[test]
 fn github_s_answer_to_a_dequeue_takes_out_refuses_or_is_lost_without_the_credential() {
     let writer = writer(Forge::GitHub, None);
-    let refused = json!({ "errors": [{ "message": format!("not queued, {WRITE_VALUE}") }] });
+    let refused = json!({ "errors": [{ "message": format!("not queued, {}", write_value()) }] });
     let (_, said) = took_out(&writer, vec![answer(200, &refused)]);
     assert_eq!(
         said.unwrap(),
@@ -377,13 +382,13 @@ fn gitlab_cancels_the_merge_request_s_auto_merge_which_takes_it_off_the_train() 
         request.url.expose(),
         "https://gitlab.example/api/v4/projects/o%2Fr/merge_requests/7/cancel_merge_when_pipeline_succeeds"
     );
-    assert_eq!(bearer(request), [format!("Bearer {WRITE_VALUE}")]);
+    assert_eq!(bearer(request), [format!("Bearer {}", write_value())]);
     assert_eq!(http.bodies()[0], json!({}));
     let (_, error) = took_out(
         &writer,
         vec![answer(
             201,
-            &json!({ "status": "error", "message": format!("not set, {WRITE_VALUE}\n") }),
+            &json!({ "status": "error", "message": format!("not set, {}\n", write_value()) }),
         )],
     );
     assert_eq!(

@@ -36,6 +36,9 @@ const PASSING: [&str; 3] = ["success", "neutral", "skipped"];
 /// The state of a commit status still running.
 const PENDING: &str = "pending";
 
+/// GitHub's merge state of a pull request that conflicts with its base.
+const DIRTY: &str = "dirty";
+
 /// The state of a commit status that passed.
 const SUCCESS: &str = "success";
 
@@ -93,6 +96,10 @@ struct Head {
 #[derive(Deserialize)]
 struct Pull {
     number: u64,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: Option<String>,
     html_url: String,
     node_id: Option<String>,
     #[serde(default)]
@@ -116,6 +123,8 @@ impl From<Pull> for Opened {
     fn from(pull: Pull) -> Self {
         Self {
             number: pull.number,
+            title: pull.title,
+            body: pull.body.unwrap_or_default(),
             url: pull.html_url,
             id: pull.node_id,
             draft: pull.draft,
@@ -289,6 +298,7 @@ struct Compared {
 
 #[derive(Deserialize)]
 struct Merged {
+    mergeable: Option<bool>,
     mergeable_state: Option<String>,
 }
 
@@ -665,6 +675,7 @@ pub(super) async fn proved(
         up_to_date: compared.behind_by == 0,
         checks: checks(runs, combined),
         required: branched.required.clone(),
+        clean: clean(&merged),
         mergeable: mergeable(merged.mergeable_state.as_deref()),
     })
 }
@@ -696,13 +707,23 @@ fn checks(runs: Runs, combined: Combined) -> Vec<Check> {
     ran.chain(stated).collect()
 }
 
+/// Whether GitHub says the pull request `merged` merges into its base
+/// without a conflict: never where its merge state is dirty; none while
+/// GitHub works it out.
+fn clean(merged: &Merged) -> Option<bool> {
+    if merged.mergeable_state.as_deref() == Some(DIRTY) {
+        return Some(false);
+    }
+    merged.mergeable
+}
+
 /// Whether GitHub's merge state `state` says the pull request can merge:
 /// clean, or held only by checks the queue weighs itself; none while
 /// GitHub works it out, or where it is behind, which the queue mends.
 fn mergeable(state: Option<&str>) -> Option<bool> {
     match state? {
         "clean" | "has_hooks" | "unstable" => Some(true),
-        "dirty" | "blocked" | "draft" => Some(false),
+        DIRTY | "blocked" | "draft" => Some(false),
         _ => None,
     }
 }

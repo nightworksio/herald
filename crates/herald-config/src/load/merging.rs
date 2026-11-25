@@ -5,8 +5,10 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::SourceName;
-use herald_core::merging::{Enter, Message, Runs, SKEW, WAIT, Write};
+use herald_core::merging::{
+    Enter, Message, Runs, SKEW, UPDATE_WAIT, UPDATE_WAIT_MOST, WAIT, Write,
+};
+use herald_core::{Duration, SourceName};
 use herald_kinds::{MergeAsked, Source};
 
 use super::{Loader, Value, list};
@@ -30,10 +32,22 @@ const UNMESSAGED: &str = "message = \"pull\" sets the commit message of a merge 
 
 /// Why `role_lost` beside `runs = "herald"` is refused.
 const UNFORGED_ROLE_LOST: &str = "role_lost says what herald does with a pull request it handed to the forge's queue, and with runs = \"herald\" herald hands none over; give runs = \"forge\", or remove role_lost";
+/// Why `signer` is refused where the forge is not GitHub, or it is blank.
+const UNSIGNING: &str = "signer names the committer a GitHub Enterprise Server or GHE.com instance signs the commits it makes for, such as signer = \"noreply@ghe.example\"; GitLab and Forgejo give no such signature, so remove signer there";
+
+/// The kind of a GitHub source, as a merge queue's forge names it.
+const GITHUB: &str = "github";
 
 /// The keys that shape herald's own queue alone, unread where the forge
 /// runs it.
-const HERALD_ONLY: [&str; 3] = ["may_fail", "wait", "retries"];
+const HERALD_ONLY: [&str; 6] = [
+    "may_fail",
+    "wait",
+    "retries",
+    "updated",
+    "signer",
+    "update_wait",
+];
 
 /// The names of `sources` a merge queue may name.
 fn forges(sources: &BTreeMap<SourceName, Source>) -> Vec<&str> {
@@ -63,6 +77,9 @@ fn herald_keys(file: &MergeQueueFile) -> Vec<&'static str> {
         !file.may_fail.is_empty(),
         file.wait.is_some(),
         file.retries.is_some(),
+        file.updated.is_some(),
+        file.signer.is_some(),
+        file.update_wait.is_some(),
     ];
     HERALD_ONLY
         .into_iter()
@@ -113,6 +130,27 @@ impl Loader<'_> {
         (queues, spans)
     }
 
+    /// Each key of the merge queue `file` at `path` its `runs` leaves
+    /// unread or refuses.
+    fn ran(&mut self, file: &MergeQueueFile, runs: Runs, (path, span): (&str, &Range<usize>)) {
+        let at = |key: &str| format!("{path}.{key}");
+        let unread = if runs == Runs::Forge {
+            herald_keys(file)
+        } else {
+            Vec::new()
+        };
+        for key in unread {
+            self.error(
+                span,
+                &at(key),
+                format!("{key} shapes herald's own queue, and with runs = \"forge\" the forge proves each pull request; give runs = \"herald\", or remove {key}"),
+            );
+        }
+        if runs == Runs::Herald && file.role_lost.is_some() {
+            self.error(span, &at("role_lost"), UNFORGED_ROLE_LOST);
+        }
+    }
+
     /// The merge queue `file` at `path`, where each of its keys holds.
     fn merge_queue(
         &mut self,
@@ -123,11 +161,7 @@ impl Loader<'_> {
         let errors = self.errors.len();
         let at = |key: &str| format!("{path}.{key}");
         let runs = file.runs.unwrap_or_default();
-        let unread = if runs == Runs::Forge {
-            herald_keys(&file)
-        } else {
-            Vec::new()
-        };
+        self.ran(&file, runs, (path, span));
         let enter = file.enter.unwrap_or_default();
         if file.branch.trim().is_empty() {
             self.error(span, &at("branch"), BRANCHLESS);
@@ -154,16 +188,6 @@ impl Loader<'_> {
             && file.method.is_some_and(|method| !method.messaged())
         {
             self.error(span, &at("message"), UNMESSAGED);
-        }
-        for key in unread {
-            self.error(
-                span,
-                &at(key),
-                format!("{key} shapes herald's own queue, and with runs = \"forge\" the forge proves each pull request; give runs = \"herald\", or remove {key}"),
-            );
-        }
-        if runs == Runs::Herald && file.role_lost.is_some() {
-            self.error(span, &at("role_lost"), UNFORGED_ROLE_LOST);
         }
         if let Some(Err(why)) = file.write.as_ref().map(Write::check) {
             self.error(span, &at("write"), why);
@@ -199,6 +223,19 @@ impl Loader<'_> {
                 return None;
             }
         };
+        let unsigning = |signer: &str| forge.forge != GITHUB || signer.trim().is_empty();
+        if file.signer.as_deref().is_some_and(unsigning) {
+            self.error(span, &at("signer"), UNSIGNING);
+        }
+        let update_wait = file.update_wait.map_or(UPDATE_WAIT, |wait| wait.0);
+        if update_wait > UPDATE_WAIT_MOST {
+            let most = Duration(UPDATE_WAIT_MOST).written();
+            self.error(
+                span,
+                &at("update_wait"),
+                format!("update_wait is at most \"{most}\"; shorten it"),
+            );
+        }
         (self.errors.len() == errors).then(|| MergeQueue {
             source: name,
             forge,
@@ -208,6 +245,9 @@ impl Loader<'_> {
             least: file.least.unwrap_or_default(),
             vouches: file.vouches.unwrap_or_default(),
             skew: file.skew.map_or(SKEW, |skew| skew.0),
+            updated: file.updated.unwrap_or_default(),
+            signer: file.signer,
+            update_wait,
             method: file.method,
             message: file.message.unwrap_or_default(),
             may_fail: file.may_fail,

@@ -71,6 +71,7 @@ pub(super) fn entered_least(
         least,
         vouches,
         skew: SKEW,
+        updated: herald_core::merging::Updated::Signed,
     };
     pollster::block_on(reader.entered(&http, "main", asked))
 }
@@ -91,6 +92,8 @@ pub(super) fn approved_within(
     let http = ScriptedHttp::new(answers);
     let pull = Opened {
         number: 1,
+        title: String::new(),
+        body: String::new(),
         url: "u1".to_owned(),
         id: None,
         draft: false,
@@ -122,6 +125,8 @@ pub(super) fn branched(forge: Forge, answers: Vec<Response>) -> Result<Branched,
 pub(super) fn entry(head: &str) -> Entered {
     Entered {
         number: 1,
+        title: String::new(),
+        body: String::new(),
         url: "https://forge.test/o/r/pull/1".to_owned(),
         id: None,
         draft: false,
@@ -443,6 +448,7 @@ fn one(
         least: Permission::Write,
         vouches: Vouches::Gesture,
         skew: SKEW,
+        updated: herald_core::merging::Updated::Signed,
     };
     let entry = pollster::block_on(reader(forge).entry(&http, ("main", 7), asked));
     (http, entry)

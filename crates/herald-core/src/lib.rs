@@ -90,7 +90,7 @@ pub use decide::{
 };
 pub use declined::Declined;
 pub use dequeue::{Dequeue, dequeue_event, dequeue_identity, dequeues};
-pub use duration::Duration;
+pub use duration::{Duration, Lasting};
 pub use escaping::{Escaping, safe_url, segment, unreserved};
 pub use event::{Draft, Event, Problem};
 pub use glob::{Glob, NotAGlob};

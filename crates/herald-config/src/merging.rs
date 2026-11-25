@@ -2,9 +2,9 @@
 //! forge's merge queue or herald's own merges (ADR-0087).
 
 use herald_core::merging::{
-    AppliedBy, Enter, Message, Method, Retries, RoleLost, Runs, Vouches, Write,
+    AppliedBy, Enter, Message, Method, Retries, RoleLost, Runs, Updated, Vouches, Write,
 };
-use herald_core::{Duration, Installation, Permission, SourceName};
+use herald_core::{Duration, Installation, Lasting, Permission, SourceName};
 use herald_kinds::{Installed, Merging, WriteCredential};
 use jiff::SignedDuration;
 use schemars::JsonSchema;
@@ -48,6 +48,28 @@ pub(crate) struct MergeQueueFile {
     /// so the gesture vouches for no head that push may have brought; "5s"
     /// where absent.
     pub(crate) skew: Option<Duration>,
+    /// Whether a gesture vouches for the head herald's own update made from
+    /// the head it vouched for: "signed", where the new head's parents are
+    /// exactly that head and the base's head herald recorded, and the forge
+    /// itself signed it; "never", the pull request leaves and a new gesture
+    /// queues it; "approved", once one who holds `least` approved the new
+    /// head. "signed" where absent; herald's own queue alone.
+    pub(crate) updated: Option<Updated>,
+    /// The committer a GitHub Enterprise Server or GHE.com instance's web
+    /// flow signs the commits it makes for, as its signature names it: the
+    /// operator vouches that it is the instance's own identity, never a
+    /// user's. With `updated = "signed"` it lets a gesture vouch for the
+    /// head herald's own update made there; github.com's own,
+    /// `noreply@github.com`, where absent there; herald's own queue on GitHub
+    /// alone.
+    pub(crate) signer: Option<String>,
+    /// How long herald pauses in all, at most, for the head of a pull
+    /// request it brought up to date to move, where the forge answered
+    /// before it moved: herald reads the head right after its update, and
+    /// again every 2s while the head has not moved and the pauses stay
+    /// within this; "0s" reads it once. "10s" where absent, at most "1m";
+    /// herald's own queue alone.
+    pub(crate) update_wait: Option<Lasting>,
     /// How it merges: "merge", "squash", "rebase", "fast-forward", or
     /// "repository", the repository's one allowed method. A queue without
     /// it does not start.
@@ -106,6 +128,14 @@ pub struct MergeQueue {
     pub vouches: Vouches,
     /// How far apart the forge's stamps of a gesture and of a push may be.
     pub skew: SignedDuration,
+    /// Whether a gesture vouches for the head herald's own update made.
+    pub updated: Updated,
+    /// The committer the forge's web flow signs the commits it makes for,
+    /// where the config names one.
+    pub signer: Option<String>,
+    /// How long it pauses in all, at most, for the head of a pull request
+    /// it updated to move.
+    pub update_wait: SignedDuration,
     /// How it merges; it does not start without one.
     pub method: Option<Method>,
     /// The commit message it merges with.

@@ -1,4 +1,4 @@
-use herald_core::merging::{GestureKey, GestureRecord, HandedOff, TakenOut};
+use herald_core::merging::{GestureKey, GestureRecord, HandedOff, Stepped, TakenOut};
 use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Version, Versioned, Written};
 
@@ -46,6 +46,11 @@ impl Actions for Failing {
                     .hand_off
                     .as_ref()
                     .is_some_and(|hand_off| hand_off.outcome != HandedOff::Calling)
+                    || gesture
+                        .own
+                        .steps
+                        .last()
+                        .is_some_and(|step| step.outcome != Stepped::Calling)
             },
             |out| out.outcome != TakenOut::Calling,
         );

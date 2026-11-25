@@ -13,7 +13,10 @@ use herald_compose::told::why;
 use herald_config::{Config, Uses};
 use herald_core::Printed;
 use herald_core::merging::{HandedOff, Left, TakenOut, Verdict};
-use herald_flows::{Cancel, Cancels, Found, Judged, MergeQueueRead, Next, Took, TookOut, Undo};
+use herald_flows::{
+    Acted, Cancel, Cancels, Found, Judged, MergeQueueRead, Next, Took, TookOut, Undo,
+};
+use herald_native::TokioTimer;
 
 use super::output::say;
 use super::queueing::withheld_line;
@@ -41,6 +44,9 @@ fn next(next: &Next) -> String {
         Next::Verdict(Verdict::Merge) => {
             "next, it is merged with its head as the expected head".to_owned()
         }
+        Next::Verdict(Verdict::Rerun) => {
+            "next, the failed job of a check its queue's retries name is re-run".to_owned()
+        }
         Next::Behind => "waits its turn".to_owned(),
         Next::HandOff => {
             "next, it is handed to the forge's queue with its head as the expected head".to_owned()
@@ -60,6 +66,40 @@ fn next(next: &Next) -> String {
             )
         }
         Next::Took(took) => took_line(took),
+        Next::Held(step) => format!(
+            "herald recorded {} on head {} at {}: {}; it waits",
+            step.kind.said(),
+            step.head,
+            step.at,
+            step.outcome.said()
+        ),
+        Next::Acted(acted) => acted_line(acted),
+    }
+}
+
+/// What an apply did in herald's own queue, in words.
+fn acted_line(acted: &Acted) -> String {
+    match acted {
+        Acted::Stepped(kind, outcome) => match outcome.left(*kind) {
+            Some(left) => format!(
+                "{}: {}, so it leaves the queue: {}",
+                kind.said(),
+                outcome.said(),
+                reason(left)
+            ),
+            None => format!("{}: {}", kind.said(), outcome.said()),
+        },
+        Acted::Left(left) => format!(
+            "read again right before the step, it leaves the queue: {}",
+            reason(*left)
+        ),
+        Acted::Refused(why) => format!("no step taken: {why}"),
+        Acted::Unsent(kind, why) => format!("{}: the call was not sent: {why}", kind.said()),
+        Acted::Unrecorded(kind, outcome) => format!(
+            "{}: {}, but herald's record of it could not be updated, so herald takes no step again for this gesture",
+            kind.said(),
+            outcome.said()
+        ),
     }
 }
 
@@ -219,7 +259,7 @@ pub(crate) async fn merging(
     )
     .await?;
     let read = if apply {
-        composed.merge_apply(asked).await
+        composed.merge_apply(asked, &TokioTimer).await
     } else {
         composed.merge_queues(asked).await
     }

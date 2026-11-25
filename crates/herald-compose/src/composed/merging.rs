@@ -8,7 +8,7 @@ use std::sync::Arc;
 use herald_core::Printed;
 use herald_flows::{Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues};
 use herald_kinds::Branched;
-use herald_ports::{Base, Keyring, Store};
+use herald_ports::{Base, Keyring, Store, Timer};
 
 use super::{Composed, ServingOn, TIMEOUT_MS, Through};
 use crate::counted::Counted;
@@ -107,14 +107,17 @@ where
     /// The merge queue `name`, or every one, read now as
     /// [`Composed::merge_queues`] reads it, and each pull request due
     /// handed to the forge's queue with the queue's own write credential,
-    /// read from the host's secrets here alone (ADR-0087).
+    /// read from the host's secrets here alone, or stepped in herald's own
+    /// queue, waiting with `timer` for a head its update has not moved yet
+    /// (ADR-0087).
     ///
     /// # Errors
     ///
     /// Where no merge queue has the name.
-    pub async fn merge_apply(
+    pub async fn merge_apply<T: Timer>(
         &self,
         (name, printed): (Option<&str>, Printed),
+        timer: &T,
     ) -> Result<Vec<MergeQueueRead>, Stop> {
         let outbound = self.config.http.clone().timed(self.host.var(TIMEOUT_MS));
         let connect = |base: Base<'_>| {
@@ -125,6 +128,7 @@ where
         let handing = Handing {
             secrets: self.host.secrets(),
             connect: &connect,
+            timer,
         };
         let apply = Apply::<H> {
             handing: &handing,

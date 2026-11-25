@@ -9,8 +9,11 @@ use serde::Deserialize;
 
 use crate::{SecretRef, kind_name};
 
+pub use owning::{Leaving, Own, Step, StepKind, Stepped, rerun};
 pub use record::{CancelKey, GestureKey, GestureRecord, HandOff, HandedOff, TakeOut, TakenOut};
-pub use verdict::{Check, CheckState, Heads, Left, Read, Verdict, unvouched, verdict, vouched};
+pub use verdict::{
+    Check, CheckState, Heads, Left, Read, Verdict, failing, unvouched, verdict, vouched,
+};
 
 /// The label a pull request is queued by where `enter` is absent.
 pub const ENTER_LABEL: &str = "herald:merge";
@@ -27,6 +30,17 @@ pub const WAIT: SignedDuration = SignedDuration::from_hours(2);
 /// after it.
 pub const SKEW: SignedDuration = SignedDuration::from_secs(5);
 
+/// How long herald's own queue pauses in all, at most, for the head of a
+/// pull request it updated to move, where `update_wait` is absent.
+pub const UPDATE_WAIT: SignedDuration = SignedDuration::from_secs(10);
+
+/// The longest `update_wait` may be.
+pub const UPDATE_WAIT_MOST: SignedDuration = SignedDuration::from_mins(1);
+
+/// How long herald's own queue pauses before it reads the head of a pull
+/// request it updated again, where the head has not moved yet.
+pub const UPDATE_PAUSE: SignedDuration = SignedDuration::from_secs(2);
+
 /// Which head a gesture vouches for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -41,6 +55,24 @@ pub enum Vouches {
     Seen,
     /// The head herald first reads with the gesture standing, once one who
     /// holds the queue's least role approved that commit on the forge.
+    Approved,
+}
+
+/// Whether a gesture vouches for the head herald's own update of the
+/// branch made from the head it vouched for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[schemars(rename = "MergeUpdated")]
+pub enum Updated {
+    /// It does where the new head's parents are exactly the head the step
+    /// was taken on and the base's head herald recorded with it, and the
+    /// forge itself signed it; never after a rebase.
+    #[default]
+    Signed,
+    /// It never does: the pull request leaves, and a new gesture queues it.
+    Never,
+    /// It does once one who holds the queue's least role approved the new
+    /// head on the forge.
     Approved,
 }
 
@@ -226,6 +258,7 @@ impl Write {
     }
 }
 
+mod owning;
 mod record;
 #[cfg(test)]
 mod tests;

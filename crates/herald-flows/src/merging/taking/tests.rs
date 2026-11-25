@@ -23,6 +23,7 @@ fn kept(taken: &TakenBack) -> GestureRecord {
         seen_at: taken.gestures[0].at,
         hand_off: None,
         taken_out: Vec::new(),
+        own: herald_core::merging::Own::default(),
     }
 }
 

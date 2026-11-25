@@ -4,14 +4,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::merging::{Check, Enter, Method, Update, Vouches, Write};
-use herald_core::{Permission, Visibility};
+use herald_core::merging::{Check, Enter, Message, Method, Update, Updated, Vouches, Write};
+use herald_core::{Permission, Rerun, Visibility};
 use herald_ports::{Boxed, DynHttp};
 
 use crate::Credential;
 use jiff::{SignedDuration, Timestamp};
 
-use crate::Unpolled;
+use crate::{Plan, Unpolled};
 
 /// What a merge queue asks of the source it names.
 #[derive(Debug, Clone, Copy)]
@@ -39,6 +39,9 @@ pub struct EnterAsked<'a> {
     /// How far apart the forge's stamps may be: a push stamped up to this
     /// before a gesture or an approval counts as after it.
     pub skew: SignedDuration,
+    /// Whether the gesture vouches for the head herald's own update made:
+    /// approvals are read where it asks for one.
+    pub updated: Updated,
 }
 
 /// Why a source takes no merge queue as asked: the queue's key at fault,
@@ -119,6 +122,10 @@ pub struct Entered {
     pub draft: bool,
     /// Its head commit.
     pub head: String,
+    /// Its title.
+    pub title: String,
+    /// Its description; empty where it has none.
+    pub body: String,
     /// The gesture that queued it.
     pub gesture: Gesture,
     /// When its head arrived, by the forge's record of pushes, where it
@@ -145,6 +152,9 @@ pub struct Proved {
     /// Whether the forge says it can merge; none while the forge works it
     /// out.
     pub mergeable: Option<bool>,
+    /// Whether the forge says its head merges into the base's head without
+    /// a conflict; none while the forge works it out.
+    pub clean: Option<bool>,
     /// Whether every check on its head, and every check its base
     /// requires, was read: never green where one was not.
     pub whole: bool,
@@ -222,6 +232,71 @@ pub trait MergeReader: fmt::Debug + Send + Sync {
         pull: (&'a str, u64),
         asked: EnterAsked<'a>,
     ) -> Boxed<'a, Result<Option<TakenBack>, Unpolled>>;
+    /// Whether the pull request `number` is merged, asked through `http`.
+    fn merged<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        number: u64,
+    ) -> Boxed<'a, Result<bool, Unpolled>>;
+
+    /// The parents of the commit `sha`, in order, where the forge itself
+    /// made and signed it, as it signs a commit made through its own API
+    /// for the committer `signer`, or on github.com its own where `signer`
+    /// is none; none where it did not, or where the forge never says, asked
+    /// through `http`.
+    fn forge_made<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        made: (&'a str, Option<&'a str>),
+    ) -> Boxed<'a, Result<Option<Vec<String>>, Unpolled>>;
+
+    /// The methods the repository allows a merge by, asked through `http`.
+    fn methods<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Result<Methods, Unpolled>>;
+
+    /// The newest failed runs on the head of `failed` whose job of its
+    /// check failed, each with that job and the exact call re-running it
+    /// alone, or why none can be re-run, asked through `http` (ADR-0068).
+    fn failed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        failed: (&'a str, &'a str),
+    ) -> Boxed<'a, Result<Plan, Unpolled>>;
+}
+
+/// The methods a repository allows a merge by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Methods {
+    /// Each method it allows, never `repository`.
+    pub allowed: Vec<Method>,
+    /// Whether the forge said: none is known where the read credential may
+    /// not see the repository's settings.
+    pub whole: bool,
+}
+
+/// How a pull request is merged: the method, never `repository`, and the
+/// commit message where herald gives one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Merge<'a> {
+    /// The method.
+    pub method: Method,
+    /// The commit message, where herald gives one.
+    pub message: Message,
+    /// The pull request as read right before the merge.
+    pub entered: &'a Entered,
+}
+
+/// What the forge answered a step of herald's own queue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Done {
+    /// It took the step.
+    Took,
+    /// It could not bring the branch up to date: it conflicts with the
+    /// base, as it says.
+    Conflict(String),
+    /// It refused, saying this, with no credential in it.
+    Refused(String),
+    /// Its answer says neither, or was lost.
+    Lost,
 }
 
 /// A mark the forge records on a pull request: the id of the label event
@@ -329,6 +404,40 @@ pub trait MergeWriter: fmt::Debug + Send + Sync {
         write: &'a dyn DynHttp,
         taken: &'a TakenBack,
     ) -> Boxed<'a, Result<Answered, Unpolled>>;
+
+    /// `entered`'s branch brought up to date with its base as `update`
+    /// says, its head named as the head the forge must find where the forge
+    /// takes one, sent through `write`; what the forge answered, or why
+    /// nothing was sent.
+    fn update<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        entered: &'a Entered,
+        update: Update,
+    ) -> Boxed<'a, Result<Done, Unpolled>>;
+
+    /// The pull request `merge` names merged as it says, its head named as
+    /// the head the forge must find, sent through `write`; what the forge
+    /// answered, or why nothing was sent.
+    fn merge<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        merge: Merge<'a>,
+    ) -> Boxed<'a, Result<Done, Unpolled>>;
+
+    /// The failed job `job` re-run alone through ADR-0068's narrowest
+    /// call, sent through `write`; what the forge answered, or why nothing
+    /// was sent.
+    fn rerun<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        job: &'a Rerun,
+    ) -> Boxed<'a, Result<Done, Unpolled>>;
+
+    /// Whether the forge takes the head a branch must have when it brings
+    /// it up to date: where it does not, herald reads the head again right
+    /// before the call.
+    fn pins_update(&self) -> bool;
 }
 
 /// The credential a merge queue's step is made with, read by its apply

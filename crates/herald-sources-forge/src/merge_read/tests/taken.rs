@@ -10,6 +10,7 @@ fn asked(enter: &Enter) -> EnterAsked<'_> {
         least: Permission::Write,
         vouches: Vouches::Gesture,
         skew: SKEW,
+        updated: herald_core::merging::Updated::Signed,
     }
 }
 

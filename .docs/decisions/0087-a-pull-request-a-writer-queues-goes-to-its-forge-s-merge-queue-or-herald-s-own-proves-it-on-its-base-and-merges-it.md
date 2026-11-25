@@ -145,7 +145,60 @@ once.
    the base, waits for its checks on the new head, and merges it with the
    head it proved as the expected head (`sha`, `head_commit_id`). A base
    that moves before the merge brings it up to date again. A pull request
-   whose head already holds the base's head is not updated.
+   whose head already holds the base's head is not updated. Right before each
+   step herald reads the pull request, its base, its checks and whether
+   the forge can merge it again on their own, and takes the step only
+   where every input was read whole and it is still due for that step at
+   that head. Where the gesture no longer stands, herald judges every
+   mark on the pull request against it: a newer gesture or a later cancel
+   by one holding `least` now takes no step, marks by anyone else count
+   for nothing, and a gesturer below `least` now or with no role takes
+   it out (`removed`), recorded; a role the forge would not say takes no
+   step.
+   GitLab's rebase and Forgejo's update take no head to find, so herald
+   reads the head again right before that call. The head herald's own
+   update makes vouches as `updated` says: `"signed"` (the default) where
+   herald's compare-and-set record of the update names the head it was
+   taken on and the base's head and says the forge found, right before
+   the call, that they merge without a conflict, and the update was made
+   or read back as made; right after the call herald reads the pull
+   request's head with its read credential, and where it has not moved
+   yet, again every 2 s while those pauses come to no more than the
+   queue's `update_wait` ("10s" where absent, "0s" reads it once, at most
+   "1m"), each read within the run's budget; it records the first head it
+   reads moved, and reads no other, in the same compare-and-set record
+   only where that head itself has exactly those
+   two as its parents in that order and the forge itself signed it, as
+   GitHub signs a commit it makes for `noreply@github.com` on github.com,
+   or for the committer a queue's `signer` names on GitHub Enterprise
+   Server and GHE.com, an identity the operator vouches is the instance's
+   own and no user's. The gesture vouches for that recorded head alone,
+   proved again the same way right before each later step. No forge's
+   answer to the update names the new head (GitHub's update-branch answers
+   202 with a message and a URL, GitLab's rebase says
+   `rebase_in_progress`, Forgejo's update answers nothing), so herald reads
+   it. GitHub also signs a commit a GitHub App's token, an Actions token
+   among them, creates through its API with no author or committer given,
+   and that API takes any tree and any parents: between herald's update
+   call and its read of a moved head, one holding such a token with
+   contents write could place a commit with those two parents and another
+   tree, and herald would record it. That window runs from herald's update
+   call until herald reads a moved head, at most `update_wait` of pauses
+   and its reads' round trips; a commit pushed after that read is never
+   vouched for, and a head no read within `update_wait` finds moved
+   records nothing, so the pull request leaves as `head-moved` once it
+   moves. GitLab's rebase and
+   Forgejo give no such proof (Forgejo's API cannot tell the instance's
+   signature from an author's), so there it vouches for none. `"never"`: the pull request leaves as `head-moved`
+   and a new gesture queues it. `"approved"`: where herald's record names
+   its update and one holding `least` approved the new head. A signed merge commit with those parents is no
+   proof alone, as GitHub's web conflict editor makes one holding what its
+   author typed; two heads that merge without a conflict have one merge
+   alone, so herald brings a branch up to date only where the forge says
+   it merges without one (`conflict` where it does not; it waits while
+   the forge works it out). The method
+   is taken only where the repository's settings, read right before the
+   merge, allow it.
 8. **Up to date by merging the base in.** `[sources.<name>] update =
    "merge"` (the default on GitHub and Forgejo) merges the base into the
    branch through the forge, which keeps the author's commits and their

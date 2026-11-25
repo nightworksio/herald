@@ -3,8 +3,10 @@
 //! the forge must find, or taken out of it again, sent to the forge's API
 //! alone (ADR-0087).
 
-use herald_kinds::{Answered, Entered, MergeWriter, TakenBack, Unpolled};
-use herald_ports::{Boxed, DynHttp, Erased, Http as _, HttpError, Response};
+use herald_core::Rerun;
+use herald_core::merging::{StepKind, Update};
+use herald_kinds::{Answered, Done, Entered, Merge, MergeWriter, TakenBack, Unpolled};
+use herald_ports::{Boxed, DynHttp, Erased, Http as _, HttpError, Method, Response};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -121,8 +123,8 @@ fn messages(said: &[Said]) -> String {
         .join("; ")
 }
 
-/// The refusal `answer` holds, said without the credential's value `held`.
-fn refusal(answer: &Response, held: Option<&str>) -> Answered {
+/// What `answer` says, without the credential's value `held`.
+fn said_of(answer: &Response, held: Option<&str>) -> String {
     let said = serde_json::from_slice::<Said>(&answer.body)
         .map(|said| messages(&[said]))
         .unwrap_or_default();
@@ -131,7 +133,12 @@ fn refusal(answer: &Response, held: Option<&str>) -> Answered {
     } else {
         format!("the forge answered {}: {said}", answer.status)
     };
-    Answered::Refused(shown(&said, held))
+    shown(&said, held)
+}
+
+/// The refusal `answer` holds, said without the credential's value `held`.
+fn refusal(answer: &Response, held: Option<&str>) -> Answered {
+    Answered::Refused(said_of(answer, held))
 }
 
 /// A reader of a GitHub mutation's answer body: its errors, and whether it
@@ -269,7 +276,10 @@ impl ForgeMergeWriter {
             Forge::GitLab => {
                 let body = json!({ "sha": entered.head, "auto_merge": true });
                 let path = format!("/merge_trains/merge_requests/{}", entered.number);
-                Ok(self.origin.checked()?.posted(&path, &body, &self.token))
+                Ok(self
+                    .origin
+                    .checked()?
+                    .sent(Method::Post, &path, &body, &self.token))
             }
             Forge::Forgejo => Err(Unpolled::Unreadable(
                 crate::options::FORGEJO_QUEUELESS.to_owned(),
@@ -293,7 +303,7 @@ impl ForgeMergeWriter {
                 Ok(self
                     .origin
                     .checked()?
-                    .posted(&path, &json!({}), &self.token))
+                    .sent(Method::Post, &path, &json!({}), &self.token))
             }
             Forge::Forgejo => Err(Unpolled::Unreadable(
                 crate::options::FORGEJO_QUEUELESS.to_owned(),
@@ -347,7 +357,50 @@ impl MergeWriter for ForgeMergeWriter {
             Ok(self.answered(&answer, (dequeued, gitlab_cancelled)))
         })
     }
+
+    fn update<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        entered: &'a Entered,
+        update: Update,
+    ) -> Boxed<'a, Result<Done, Unpolled>> {
+        Box::pin(async move {
+            let request = self.updating(entered, update)?;
+            let answer = Erased(write).send(request).await;
+            Ok(self.done(&answer, StepKind::Update))
+        })
+    }
+
+    fn merge<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        merge: Merge<'a>,
+    ) -> Boxed<'a, Result<Done, Unpolled>> {
+        Box::pin(async move {
+            let request = self.merging(merge)?;
+            let answer = Erased(write).send(request).await;
+            Ok(self.done(&answer, StepKind::Merge))
+        })
+    }
+
+    fn rerun<'a>(
+        &'a self,
+        write: &'a dyn DynHttp,
+        job: &'a Rerun,
+    ) -> Boxed<'a, Result<Done, Unpolled>> {
+        Box::pin(async move {
+            let request = self.rerunning(job)?;
+            let answer = Erased(write).send(request).await;
+            Ok(self.done(&answer, StepKind::Rerun))
+        })
+    }
+
+    fn pins_update(&self) -> bool {
+        self.origin.forge() == Forge::GitHub
+    }
 }
+
+mod owning;
 
 #[cfg(test)]
 mod tests;

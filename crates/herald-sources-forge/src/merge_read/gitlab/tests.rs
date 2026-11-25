@@ -127,6 +127,16 @@ fn a_merge_request_is_proved_from_its_divergence_state_and_head_pipeline() {
     .unwrap();
     assert!(!stale.up_to_date);
     assert_eq!(stale.checks, []);
+    assert_eq!(read.clean, None);
+    for conflicts in [true, false] {
+        let answer = vec![ok(&json!({
+            "detailed_merge_status": "mergeable",
+            "diverged_commits_count": 2,
+            "has_conflicts": conflicts
+        }))];
+        let read = proved(Forge::GitLab, answer, (&entry("h1"), &base(&[], true))).unwrap();
+        assert_eq!(read.clean, Some(!conflicts));
+    }
 }
 
 #[test]

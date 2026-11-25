@@ -271,6 +271,22 @@ fn a_head_is_proved_from_its_comparison_merge_state_runs_and_statuses() {
     assert!(!partial.whole);
     let unread_base = proved(Forge::GitHub, answers(3), (&entry("h2"), &base(&[], false))).unwrap();
     assert!(!unread_base.whole);
+    for (merged, clean) in [
+        (
+            json!({"mergeable": true, "mergeable_state": "dirty"}),
+            Some(false),
+        ),
+        (
+            json!({"mergeable": true, "mergeable_state": "clean"}),
+            Some(true),
+        ),
+        (json!({"mergeable_state": "clean"}), None),
+    ] {
+        let mut asked = answers(3);
+        asked[1] = ok(&merged);
+        let read = proved(Forge::GitHub, asked, (&entry("h2"), &base(&[], true))).unwrap();
+        assert_eq!(read.clean, clean, "{merged}");
+    }
 }
 
 #[test]

@@ -8,7 +8,7 @@ use herald_ports::{DynHttp, Erased};
 use serde::Deserialize;
 
 use super::{Opened, PAGE, failed};
-use crate::Forge;
+use crate::{Forge, Origin, Token};
 
 /// What a head's failed GitHub Actions runs are read as.
 const RUNS: &str = "a head's failed workflow runs";
@@ -83,88 +83,106 @@ impl Opened<'_> {
     pub async fn planned(
         &self,
         http: &Erased<'_, dyn DynHttp + '_>,
-        (head, check): (&str, &str),
+        failed: (&str, &str),
         most: usize,
     ) -> Result<Plan, Unpolled> {
-        let parse = self.origin.reading().parse;
-        let (api, path) = (self.origin.api(), self.origin.path());
-        let runs = match self.origin.forge() {
-            Forge::Forgejo => return Ok(Plan::Unplanned(UNRERUN)),
-            Forge::GitLab => {
-                let checked = self.origin.checked()?;
-                let asked = checked.get(
-                    &format!("/pipelines?sha={head}&status=failed&per_page={most}"),
-                    self.token,
-                );
-                let body = self.asked(http, asked, PIPELINES).await?;
-                let pipelines: Vec<Pipeline> =
-                    herald_wire::read(PIPELINES, parse, &body).map_err(Unpolled::unreadable)?;
-                let project = crate::gitlab::project(api, path);
-                let mut planned = Vec::new();
-                for pipeline in pipelines.into_iter().take(most) {
-                    let asked = checked.get(
-                        &format!(
-                            "/pipelines/{}/jobs?scope=failed&per_page={PAGE}",
-                            pipeline.id
-                        ),
-                        self.token,
-                    );
-                    let body = self.asked(http, asked, FAILED_JOBS).await?;
-                    let jobs: Vec<PipelineJob> = herald_wire::read(FAILED_JOBS, parse, &body)
-                        .map_err(Unpolled::unreadable)?;
-                    if let Some(job) = jobs.iter().find(|job| job.name == check) {
-                        planned.push(Rerun {
-                            run: pipeline.id.to_string(),
-                            job: job.id.to_string(),
-                            page: pipeline.web_url,
-                            call: format!("POST {project}/jobs/{}/retry", job.id),
-                        });
-                    }
-                }
-                planned
-            }
-            Forge::GitHub => {
-                let checked = self.origin.checked()?;
-                let asked = checked.get(
-                    &format!("/actions/runs?head_sha={head}&status=failure&per_page={most}"),
-                    self.token,
-                );
-                let body = self.asked(http, asked, RUNS).await?;
-                let runs: Runs =
-                    herald_wire::read(RUNS, parse, &body).map_err(Unpolled::unreadable)?;
-                let mut planned = Vec::new();
-                for run in runs.workflow_runs.into_iter().take(most) {
-                    let asked = checked.get(
-                        &format!(
-                            "/actions/runs/{}/jobs?filter=latest&per_page={PAGE}",
-                            run.id
-                        ),
-                        self.token,
-                    );
-                    let body = self.asked(http, asked, JOBS).await?;
-                    let jobs: Jobs =
-                        herald_wire::read(JOBS, parse, &body).map_err(Unpolled::unreadable)?;
-                    let ran = jobs.jobs.iter().find(|job| {
-                        job.name == check && job.conclusion.as_deref().is_some_and(failed)
-                    });
-                    if let Some(job) = ran {
-                        planned.push(Rerun {
-                            run: run.id.to_string(),
-                            job: job.id.to_string(),
-                            page: run.html_url,
-                            call: format!("POST {api}/repos/{path}/actions/jobs/{}/rerun", job.id),
-                        });
-                    }
-                }
-                planned
-            }
-        };
-        Ok(match (runs.is_empty(), self.origin.forge()) {
-            (false, _) => Plan::Runs(runs),
-            (true, Forge::GitLab) => Plan::Unplanned(NO_PIPELINE),
-            (true, Forge::GitHub | Forge::Forgejo) => Plan::Unplanned(NO_RUN),
-        })
+        planned((self.origin, self.token), http, failed, most).await
     }
+}
+
+/// The failed runs of `origin` on `head` that ran the check `check`, read
+/// with `token`, the newest `most` read, each with its failed job of that
+/// name and the exact call re-running that job alone, asked through
+/// `http`: GitHub Actions' runs and GitLab's pipelines whose job of that
+/// name failed, and nothing on Forgejo, which says why.
+///
+/// # Errors
+///
+/// Where the runs could not be asked or read.
+pub(crate) async fn planned(
+    (origin, token): (&Origin, Option<&Token>),
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (head, check): (&str, &str),
+    most: usize,
+) -> Result<Plan, Unpolled> {
+    let parse = origin.reading().parse;
+    let (api, path) = (origin.api(), origin.path());
+    let runs = match origin.forge() {
+        Forge::Forgejo => return Ok(Plan::Unplanned(UNRERUN)),
+        Forge::GitLab => {
+            let checked = origin.checked()?;
+            let asked = checked.get(
+                &format!("/pipelines?sha={head}&status=failed&per_page={most}"),
+                token,
+            );
+            let body = super::asked(origin, http, asked, PIPELINES).await?;
+            let pipelines: Vec<Pipeline> =
+                herald_wire::read(PIPELINES, parse, &body).map_err(Unpolled::unreadable)?;
+            let project = crate::gitlab::project(api, path);
+            let mut planned = Vec::new();
+            for pipeline in pipelines.into_iter().take(most) {
+                let asked = checked.get(
+                    &format!(
+                        "/pipelines/{}/jobs?scope=failed&per_page={PAGE}",
+                        pipeline.id
+                    ),
+                    token,
+                );
+                let body = super::asked(origin, http, asked, FAILED_JOBS).await?;
+                let jobs: Vec<PipelineJob> =
+                    herald_wire::read(FAILED_JOBS, parse, &body).map_err(Unpolled::unreadable)?;
+                if let Some(job) = jobs.iter().find(|job| job.name == check) {
+                    planned.push(Rerun {
+                        run: pipeline.id.to_string(),
+                        job: job.id.to_string(),
+                        page: pipeline.web_url,
+                        call: format!("POST {project}/jobs/{}/retry", job.id),
+                    });
+                }
+            }
+            planned
+        }
+        Forge::GitHub => {
+            let checked = origin.checked()?;
+            let asked = checked.get(
+                &format!("/actions/runs?head_sha={head}&status=failure&per_page={most}"),
+                token,
+            );
+            let body = super::asked(origin, http, asked, RUNS).await?;
+            let runs: Runs = herald_wire::read(RUNS, parse, &body).map_err(Unpolled::unreadable)?;
+            let mut planned = Vec::new();
+            for run in runs.workflow_runs.into_iter().take(most) {
+                let asked = checked.get(
+                    &format!(
+                        "/actions/runs/{}/jobs?filter=latest&per_page={PAGE}",
+                        run.id
+                    ),
+                    token,
+                );
+                let body = super::asked(origin, http, asked, JOBS).await?;
+                let jobs: Jobs =
+                    herald_wire::read(JOBS, parse, &body).map_err(Unpolled::unreadable)?;
+                let ran = jobs
+                    .jobs
+                    .iter()
+                    .find(|job| job.name == check && job.conclusion.as_deref().is_some_and(failed));
+                if let Some(job) = ran {
+                    planned.push(Rerun {
+                        run: run.id.to_string(),
+                        job: job.id.to_string(),
+                        page: run.html_url,
+                        call: format!("POST {api}/repos/{path}/actions/jobs/{}/rerun", job.id),
+                    });
+                }
+            }
+            planned
+        }
+    };
+    Ok(match (runs.is_empty(), origin.forge()) {
+        (false, _) => Plan::Runs(runs),
+        (true, Forge::GitLab) => Plan::Unplanned(NO_PIPELINE),
+        (true, Forge::GitHub | Forge::Forgejo) => Plan::Unplanned(NO_RUN),
+    })
 }
 
 #[cfg(test)]
