@@ -26,6 +26,7 @@ mod runs;
 mod secrets;
 mod server;
 mod setup;
+mod setup_queue;
 mod stores;
 mod withdraw;
 mod world;

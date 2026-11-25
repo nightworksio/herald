@@ -2,7 +2,9 @@
 //! revoked keys added to `[federation] revoked`, every other line kept as
 //! it was.
 
-use toml_edit::{Array, DocumentMut, Item, Table, TableLike, value};
+use toml_edit::{Array, DocumentMut, Item, Table, value};
+
+use crate::edited::{document, table_of};
 
 /// The table every peer sits under.
 const PEERS: &str = "peers";
@@ -14,29 +16,6 @@ const URL: &str = "url";
 const KEYS: &str = "keys";
 /// The key naming the keys never trusted again.
 const REVOKED: &str = "revoked";
-
-/// `text` read as a TOML document.
-fn document(text: &str) -> Result<DocumentMut, String> {
-    text.parse::<DocumentMut>()
-        .map_err(|error| error.to_string())
-}
-
-/// The table `name` of `document`, made where it is absent, as a table
-/// under its parent's header where `implicit`.
-fn table_of<'d>(
-    document: &'d mut Table,
-    name: &str,
-    implicit: bool,
-) -> Result<&'d mut dyn TableLike, String> {
-    let entry = document.entry(name).or_insert_with(|| {
-        let mut table = Table::new();
-        table.set_implicit(implicit);
-        Item::Table(table)
-    });
-    entry
-        .as_table_like_mut()
-        .ok_or_else(|| format!("{name} is not written as a table; edit it by hand"))
-}
 
 /// `keys` as a TOML array.
 fn array(keys: &[String]) -> Array {

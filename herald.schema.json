@@ -9302,7 +9302,7 @@
           "const": "gesture"
         },
         {
-          "description": "The head herald first reads with the gesture standing.",
+          "description": "The head herald first reads with the gesture standing: a push\nbetween the gesture and that read is vouched for as if the writer\nhad seen it.",
           "type": "string",
           "const": "seen"
         },

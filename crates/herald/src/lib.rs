@@ -29,6 +29,7 @@ mod cli;
 mod connect;
 mod doctoring;
 mod dry_run;
+mod edited;
 mod followers;
 mod health;
 mod lambda;
@@ -38,6 +39,7 @@ mod output;
 mod pages;
 mod peers;
 mod preview;
+mod queue_setup;
 mod queueing;
 mod release;
 mod rerunning;
@@ -340,6 +342,12 @@ async fn answered(
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;
             finished(done, err)
         }
+        Reading::Setup(cli::SettingUp::MergeQueue(asked)) => {
+            let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
+            let done =
+                queue_setup::setting_up(config, path, (vars, connect), &asked, answers, out).await;
+            finished(done, err)
+        }
         Reading::Peer(asked) => {
             let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
             let done = peers::peering(config, path, &asked, (vars, connect), answers, out).await;
@@ -391,13 +399,17 @@ fn rewrite(path: &str, text: String) -> Result<(), String> {
 }
 
 fn read(path: &str) -> Result<Config, String> {
-    let text = text(path)?;
+    loaded(path, &text(path)?)
+}
+
+/// The config `text` writes, as read from the file at `path`.
+fn loaded(path: &str, text: &str) -> Result<Config, String> {
     let directory = Path::new(path).parent().unwrap_or(Path::new(""));
     let files = |file: &str| {
         std::fs::read_to_string(directory.join(file)).map_err(|error| error.to_string())
     };
     let mut config =
-        load(path, &text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
+        load(path, text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
     if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
         let mut options = options.clone();
         options.path = Some(options.file(directory).display().to_string());

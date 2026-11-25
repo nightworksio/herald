@@ -22,11 +22,16 @@ method = "squash"
 write = { app = "merger" }        # or { token = { secret = "NAME" } }
 ```
 
-`herald setup merge-queue` asks for each key in turn, with its default
-chosen and what the forge says shown beside it (whether the branch has a
-queue, which methods the repository allows), offers `runs = "herald"`
-where the forge has no queue on the branch, and writes the table into
-the config once you confirm it.
+`herald setup merge-queue [name]` asks for each key in turn, with its
+default chosen and what the forge says shown beside it (whether the
+branch has a queue; a method the forge refuses is not offered), offers
+`runs = "herald"` where the forge has no queue on the branch, and writes
+the table into the config once you confirm it, editing the queue of that
+branch where one is written already. A flag answers each question
+(`--branch main --method squash`), `--yes` takes the default of every
+question no flag answers, and `--print` prints the table in place of
+writing it. It names the secret the write token is kept under, never the
+token, and starts no queue: `herald merge-queue` reads it next.
 
 | Key | What it is | Default |
 |-----|------------|---------|
