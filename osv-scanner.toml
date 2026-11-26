@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0384"
+reason = "deny.toml ignores it and states why"

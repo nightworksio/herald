@@ -4,19 +4,17 @@
 *.rs diff=rust
 
 # A source archive of a release holds what builds and runs herald, and
-# nothing that only develops it.
+# nothing that only develops it, except `.github`, `fuzz` and `SECURITY.md`:
+# OpenSSF Scorecard reads the repository through that same archive.
 /.cargo/mutants.toml export-ignore
 /.config export-ignore
 /.docs export-ignore
 /.editorconfig export-ignore
 /.gitattributes export-ignore
-/.github export-ignore
 /.gitignore export-ignore
 /.markdownlint.jsonc export-ignore
 /CODE_OF_CONDUCT.md export-ignore
 /CONTRIBUTING.md export-ignore
-/fuzz export-ignore
-/SECURITY.md export-ignore
 /cliff.toml export-ignore
 /clippy.toml export-ignore
 /deny.toml export-ignore
