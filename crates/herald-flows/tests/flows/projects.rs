@@ -766,14 +766,17 @@ fn doctor_names_each_actor_s_name_more_than_one_holds() {
 
 #[test]
 fn a_name_one_route_holds_as_gone_is_served_by_the_route_that_holds_it_live() {
-    let team = "[[routes]]\nid = \"team\"\nsources = [\"org\"]\ndestination = \"fedi\"\ntemplate = \"t\"\nactor = \"{{ event.project }}\"\n[doctor]\nprivate_to_public = \"allow\"\n";
-    let world = World::with(
-        configured(&format!("{}{team}", config_text())),
-        Script::default(),
+    let narrowed = config_text().replace(
+        "sources = [\"org\", \"gate\", \"ci\"]",
+        "sources = [\"org\", \"gate\", \"ci\"]\nmatch = { projects = [\"php-*\"] }",
     );
-    members(&world.store, at());
-    followed_by(&world.store, "secret", None);
-    assert_eq!(world.answer(&get("/users/secret")).reply.status, 200);
+    let team = "[[routes]]\nid = \"team\"\nsources = [\"org\"]\ndestination = \"fedi\"\ntemplate = \"t\"\nactor = \"{{ event.project }}\"\n";
+    for (config, status) in [(narrowed.clone(), 410), (format!("{narrowed}{team}"), 200)] {
+        let world = world_of(configured(&config));
+        followed_by(&world.store, "cli", None);
+        assert_eq!(world.answer(&get("/users/cli")).reply.status, status);
+        assert_eq!(fingered(&world, "resource=acct:cli@herald.example"), status);
+    }
 }
 
 mod matching;

@@ -80,6 +80,10 @@ export async function postgres({ url, connect, statement }, driver = () => impor
     async transaction(statements) {
       const client = await pool.connect();
       let broken;
+      const closed = (error) => {
+        broken = error;
+      };
+      client.on("error", closed);
       try {
         await client.query("BEGIN");
         const answers = await statements.reduce(
@@ -95,6 +99,7 @@ export async function postgres({ url, connect, statement }, driver = () => impor
         broken = error;
         return await rolledBack(() => client.query("ROLLBACK"), error);
       } finally {
+        client.off("error", closed);
         client.release(broken);
       }
     },
