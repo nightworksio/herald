@@ -15,6 +15,7 @@ fn layer(stores: &[&'static str]) -> Layer {
         rounds: Rounds::Workflow,
         round_secrets: &[],
         keyring: Memory::PerRequest,
+        steps: false,
     }
 }
 
@@ -356,6 +357,7 @@ fn ranked(stores: &[&'static str]) -> [Layer; 4] {
         sessions: true,
         rounds: Rounds::Scheduled,
         keyring: Memory::Lasting,
+        steps: true,
         ..actions.clone()
     };
     [actions, lambda, worker, server]
@@ -411,6 +413,45 @@ fn commands_posted_to_herald_need_an_endpoint_and_sessions_need_a_layer_that_hol
     );
     assert_eq!(gap_keys(&on(&held, &worker)), Vec::<String>::new());
     assert_eq!(gap_keys(&on(&held, &server)), Vec::<String>::new());
+}
+
+#[test]
+fn a_queue_herald_server_steps_is_a_gap_on_every_layer_that_does_not_run_it() {
+    let config = config(
+        r#"[merge_queues.served]
+source = "gate"
+branch = "main"
+method = "squash"
+applied_by = "server"
+write = { token = { secret = "HERALD_MERGE" } }
+[merge_queues.commanded]
+source = "gate"
+branch = "next"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+"#,
+    );
+    let layers = ranked(&STORES);
+    let [actions, lambda, _, server] = layers.clone();
+    let steps = |layer: &Layer, layers: &[Layer]| {
+        doctor(&config, layer, layers, &Here::default())
+            .gaps
+            .into_iter()
+            .filter(|gap| gap.key.ends_with(".applied_by"))
+            .collect::<Vec<Gap>>()
+    };
+    let gaps = steps(&lambda, &layers);
+    assert_eq!(keys(&gaps), ["merge_queues.served.applied_by"]);
+    assert_eq!(gaps[0].feature, "the merge queue \"served\"");
+    assert_eq!(
+        gaps[0].why,
+        "applied_by = \"server\" leaves its steps to herald server, which does not run on the lambda layer, so no step is ever taken here; run herald on the server layer, or give applied_by = \"command\" and run herald merge-queue --apply on a schedule"
+    );
+    assert_eq!(
+        steps(&actions, std::slice::from_ref(&actions))[0].why,
+        "applied_by = \"server\" leaves its steps to herald server, which does not run on the actions layer, so no step is ever taken here; give applied_by = \"command\" and run herald merge-queue --apply on a schedule"
+    );
+    assert_eq!(keys(&steps(&server, &layers)), Vec::<&str>::new());
 }
 
 /// A change to a config that sets one bound above its default.

@@ -814,6 +814,7 @@ fn moving(config: &Config, notes: &mut Vec<String>) {
 fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Findings {
     let mut findings = Findings::default();
     unanswered(config, layer, layers, &mut findings.gaps);
+    merging::unstepped(config, layer, layers, &mut findings.gaps);
     if layer.endpoint {
         hosted(config, layer, here, &mut findings);
     } else {

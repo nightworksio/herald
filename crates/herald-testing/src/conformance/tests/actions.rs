@@ -1,4 +1,4 @@
-use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::merging::{GestureKey, GestureRecord, LeftKey, LeftRecord};
 use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Version, Versioned, Written};
 
@@ -74,6 +74,37 @@ impl Actions for Faulty {
             _ => self.inner.put_gesture(gesture, expected).await,
         }
     }
+
+    async fn left_record(
+        &self,
+        key: &LeftKey,
+    ) -> Result<Option<Versioned<LeftRecord>>, StoreError> {
+        self.refuses()?;
+        let asked = match self.fault {
+            Fault::SharesLeftAcrossPulls => LeftKey {
+                number: 7,
+                ..key.clone()
+            },
+            _ => key.clone(),
+        };
+        self.inner.left_record(&asked).await
+    }
+
+    async fn put_left_record(
+        &self,
+        left: &LeftRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::OverwritesAnyLeftVersion => {
+                let current = self.inner.left_record(&left.key).await?;
+                let version = current.map(|current| current.version);
+                self.inner.put_left_record(left, version).await
+            }
+            _ => self.inner.put_left_record(left, expected).await,
+        }
+    }
 }
 
 #[test]
@@ -116,6 +147,20 @@ fn a_store_that_breaks_its_promises_on_the_record_of_a_gesture_is_refused() {
         (
             Fault::SharesGesturesAcrossKeys,
             "the record of one gesture was read for another id",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_breaks_its_promises_on_the_record_of_a_leaving_is_refused() {
+    refused(&[
+        (
+            Fault::OverwritesAnyLeftVersion,
+            "the record of a pull request leaving herald's queue was written as new over one that exists",
+        ),
+        (
+            Fault::SharesLeftAcrossPulls,
+            "the record of one pull request leaving herald's queue was read for another",
         ),
     ]);
 }

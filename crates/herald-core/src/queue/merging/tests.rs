@@ -37,6 +37,12 @@ fn every_state_and_reason_has_a_name() {
             "conflict",
             "invalid",
             "protections",
+            "cannot-update",
+            "head-moved",
+            "unrecorded",
+            "unmergeable",
+            "merge-refused",
+            "unread",
             "removed",
             "cleared",
             "merged",
@@ -59,6 +65,7 @@ fn only_a_failure_of_the_pull_request_is_a_failure() {
         .collect();
     assert_eq!(failures, Dequeued::FAILURES);
     assert!(!Dequeued::Merged.failure() && !Dequeued::Unknown.failure());
+    assert!(Dequeued::Unread.failure() && !Dequeued::Removed.failure());
 }
 
 #[test]
@@ -115,4 +122,37 @@ fn a_reread_keeps_when_a_waiting_entry_entered_and_why_one_left() {
         Some(read)
     );
     assert_eq!(QueueEntry::reread(None, None), None);
+}
+
+#[test]
+fn herald_s_own_leaving_rides_an_entry_only_where_it_is_the_latest() {
+    let own = left(Dequeued::HeadMoved);
+    let waiting = QueueEntry::entered(Some(at(1)));
+    assert_eq!(
+        QueueEntry::left_own(Some(waiting.clone()), own),
+        waiting.clone()
+    );
+    assert_eq!(
+        QueueEntry::left_own(None, own),
+        QueueEntry::leaving(None, own)
+    );
+    let later = QueueEntry::leaving(
+        Some(&waiting),
+        Left {
+            at: at(9),
+            reason: Dequeued::Merged,
+        },
+    );
+    assert_eq!(QueueEntry::left_own(Some(later.clone()), own), later);
+    let earlier = QueueEntry::leaving(
+        Some(&waiting),
+        Left {
+            at: at(8),
+            reason: Dequeued::Removed,
+        },
+    );
+    assert_eq!(
+        QueueEntry::left_own(Some(earlier), own),
+        QueueEntry::leaving(Some(&waiting), own)
+    );
 }

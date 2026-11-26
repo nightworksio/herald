@@ -11,6 +11,7 @@ use herald_testing::{FakeStore, ScriptedHttp};
 use jiff::SignedDuration;
 
 use super::*;
+use stores::Judging;
 
 #[derive(Debug, Default)]
 pub(super) struct Fixed {
@@ -567,72 +568,15 @@ fn a_hand_off_recorded_for_a_gesture_is_shown_and_never_due_again_unless_never_s
     }
 }
 
-#[derive(Debug)]
-struct Unkept(bool);
-
-impl Actions for Unkept {
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn action(
-        &self,
-        _: &herald_core::RunKey,
-    ) -> Result<Option<Versioned<herald_core::RerunRecord>>, herald_ports::StoreError> {
-        unreachable!("a queue reads no re-run")
-    }
-
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn put_action(
-        &self,
-        _: &herald_core::RerunRecord,
-        _: Option<Version>,
-    ) -> Result<Written, herald_ports::StoreError> {
-        unreachable!("a queue writes no re-run")
-    }
-
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn gesture(
-        &self,
-        _: &GestureKey,
-    ) -> Result<Option<Versioned<GestureRecord>>, herald_ports::StoreError> {
-        if self.0 {
-            Ok(None)
-        } else {
-            Err(herald_ports::StoreError::Unavailable {
-                reason: "down".to_owned(),
-            })
-        }
-    }
-
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn put_gesture(
-        &self,
-        _: &GestureRecord,
-        _: Option<Version>,
-    ) -> Result<Written, herald_ports::StoreError> {
-        Ok(Written::Conflict)
-    }
-}
-
 #[test]
 fn a_first_seen_head_that_cannot_be_read_or_recorded_vouches_for_none() {
     let mut seen = queue(Runs::Forge);
     seen.vouches = Vouches::Seen;
     let entered = entry(1, ("h1", "h1"), true);
     for (unkept, applies) in [
-        (Unkept(false), false),
-        (Unkept(false), true),
-        (Unkept(true), true),
+        (Judging::Down, false),
+        (Judging::Down, true),
+        (Judging::Conflicting, true),
     ] {
         let keeping = Keeping {
             store: Some(&unkept),
@@ -757,57 +701,6 @@ fn a_gesture_the_forge_named_no_id_for_keeps_no_record() {
     );
 }
 
-#[derive(Debug)]
-struct ReadOnly;
-
-impl Actions for ReadOnly {
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn action(
-        &self,
-        _: &herald_core::RunKey,
-    ) -> Result<Option<Versioned<herald_core::RerunRecord>>, herald_ports::StoreError> {
-        unreachable!("a queue reads no re-run")
-    }
-
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn put_action(
-        &self,
-        _: &herald_core::RerunRecord,
-        _: Option<Version>,
-    ) -> Result<Written, herald_ports::StoreError> {
-        unreachable!("a queue writes no re-run")
-    }
-
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn gesture(
-        &self,
-        _: &GestureKey,
-    ) -> Result<Option<Versioned<GestureRecord>>, herald_ports::StoreError> {
-        Ok(None)
-    }
-
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn put_gesture(
-        &self,
-        _: &GestureRecord,
-        _: Option<Version>,
-    ) -> Result<Written, herald_ports::StoreError> {
-        panic!("a dry run writes no record")
-    }
-}
-
 #[test]
 fn a_dry_run_never_writes_a_record_whatever_its_queue_vouches_for() {
     let reader = Fixed::proving(Vec::new());
@@ -817,7 +710,7 @@ fn a_dry_run_never_writes_a_record_whatever_its_queue_vouches_for() {
         let mut entered = entry(1, ("h1", "h1"), true);
         entered.approved = true;
         let keeping = Keeping {
-            store: Some(&ReadOnly),
+            store: Some(&Judging::ReadOnly),
             applies: false,
         };
         let http = ScriptedHttp::new(Vec::new());
@@ -971,3 +864,5 @@ fn a_failed_read_of_the_forge_s_queue_leaves_the_entries_judged() {
     assert_eq!(due.judged.len(), 1);
     assert!(due.cancels.is_err());
 }
+
+mod stores;

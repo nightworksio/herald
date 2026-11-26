@@ -1926,7 +1926,7 @@
       ]
     },
     "Dequeued": {
-      "description": "Why a pull request left its forge's queue.",
+      "description": "Why a pull request left its forge's queue or herald's own.",
       "oneOf": [
         {
           "description": "It was merged.",
@@ -1972,6 +1972,36 @@
           "description": "The forge named no reason herald knows.",
           "type": "string",
           "const": "unknown"
+        },
+        {
+          "description": "herald's own queue could not bring it up to date.",
+          "type": "string",
+          "const": "cannot-update"
+        },
+        {
+          "description": "Its head moved past the one its gesture vouched for.",
+          "type": "string",
+          "const": "head-moved"
+        },
+        {
+          "description": "herald holds no record of the head its gesture vouches for.",
+          "type": "string",
+          "const": "unrecorded"
+        },
+        {
+          "description": "The forge said it cannot merge.",
+          "type": "string",
+          "const": "unmergeable"
+        },
+        {
+          "description": "The forge refused herald's merge of it.",
+          "type": "string",
+          "const": "merge-refused"
+        },
+        {
+          "description": "What decides whether it stands or is green could not be read whole.",
+          "type": "string",
+          "const": "unread"
         }
       ]
     },
@@ -5447,7 +5477,7 @@
           }
         },
         "dequeued": {
-          "description": "Whether it alerts on each pull request of its view that left its\nforge's merge queue, once each time one left: `true` for the\nreasons that are a failure of the pull request (\"checks-failed\",\n\"checks-timed-out\", \"conflict\", \"invalid\", \"protections\"), or the\nreasons it names, such as `[\"checks-failed\", \"removed\"]`; none where\nabsent. Why a pull request left is known where its source is read\nkept, from GitHub's `pull_request` `dequeued` webhook (ADR-0078).",
+          "description": "Whether it alerts on each pull request of its view that left its\nforge's merge queue or herald's own, once each time one left:\n`true` for the reasons that are a failure of the pull request\n(\"checks-failed\", \"checks-timed-out\", \"conflict\", \"invalid\",\n\"protections\", \"cannot-update\", \"head-moved\", \"unrecorded\",\n\"unmergeable\", \"merge-refused\", \"unread\"), or the reasons it names,\nsuch as `[\"checks-failed\", \"removed\"]`; none where absent. Why a\npull request left its forge's queue is known where its source is\nread kept, from GitHub's `pull_request` `dequeued` webhook\n(ADR-0078); why it left herald's own, from the record herald's own\nqueue keeps in the store (ADR-0087).",
           "$ref": "#/$defs/RuleDequeued"
         },
         "every": {

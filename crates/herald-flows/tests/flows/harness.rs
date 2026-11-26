@@ -309,6 +309,10 @@ pub(crate) enum Fault {
     WritesActions,
     ActionsConflict,
     SettlesNoAction,
+    /// Every read of a pull request's leaving of herald's queue fails.
+    ReadsLeft,
+    /// Every write of a pull request's leaving of herald's queue fails.
+    WritesLeft,
     OneAtATime,
     /// Every read of a source's members after the first fails.
     ReadsMembersOnce,

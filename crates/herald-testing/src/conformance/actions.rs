@@ -1,4 +1,5 @@
-use herald_core::merging::{GestureKey, GestureRecord, HandOff, HandedOff};
+use herald_core::merging::{GestureKey, GestureRecord, HandOff, HandedOff, LeftKey, LeftRecord};
+use herald_core::{Dequeued, Left};
 use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Written};
 
@@ -148,6 +149,58 @@ pub(super) async fn gestures<S: Actions>(store: &S, checks: &mut Checks) -> Resu
     checks.ensure(
         store.gesture(&again).await?.is_none(),
         "the record of one gesture was read for one in another repository with its id",
+    );
+    Ok(())
+}
+
+/// The record of pull request `number` of `o/r` having last left herald's
+/// own queue for the gesture `gesture` with `reason`.
+pub(super) fn left(number: u64, gesture: u64, reason: Dequeued) -> LeftRecord {
+    LeftRecord {
+        key: LeftKey {
+            api: "https://api.github.com".to_owned(),
+            repository: "o/r".to_owned(),
+            number,
+        },
+        gesture,
+        left: Left { at: NOON, reason },
+    }
+}
+
+/// Whether the record of each pull request's last leaving of herald's own
+/// queue is kept per pull request and written with compare-and-set, so a
+/// later leaving replaces it and a stale one never does.
+pub(super) async fn lefts<S: Actions>(store: &S, checks: &mut Checks) -> Result<(), StoreError> {
+    let moved = left(7, 0, Dequeued::HeadMoved);
+    checks.ensure(
+        store.left_record(&moved.key).await?.is_none(),
+        "a new store holds the record of a pull request leaving herald's queue",
+    );
+    let version = checks.written(store.put_left_record(&moved, None).await?);
+    checks.ensure(
+        store.put_left_record(&moved, None).await? == Written::Conflict,
+        "the record of a pull request leaving herald's queue was written as new over one that exists",
+    );
+    let unread = left(7, 1, Dequeued::Unread);
+    let next = checks.written(store.put_left_record(&unread, Some(version)).await?);
+    checks.ensure(
+        store.put_left_record(&moved, Some(version)).await? == Written::Conflict,
+        "the record of a pull request leaving herald's queue was written over a stale version",
+    );
+    checks.ensure(
+        store
+            .left_record(&moved.key)
+            .await?
+            .map(|read| (read.value, read.version))
+            == Some((unread, next)),
+        "the record of a pull request leaving herald's queue did not read back as last written",
+    );
+    checks.ensure(
+        store
+            .left_record(&left(8, 0, Dequeued::Unread).key)
+            .await?
+            .is_none(),
+        "the record of one pull request leaving herald's queue was read for another",
     );
     Ok(())
 }

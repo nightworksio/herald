@@ -303,7 +303,8 @@ fn every_reason_to_leave_but_a_taken_back_gesture_is_a_failure() {
         (Left::Unread, true, "\"unread\""),
         (Left::Unrecorded, true, "\"unrecorded\""),
     ] {
-        assert_eq!(left.failed(), failed, "{left:?}");
+        assert_eq!(left.dequeued().failure(), failed, "{left:?}");
+        assert_eq!(left.dequeued().name(), left.name());
         assert_eq!(serde_json::to_string(&left).unwrap(), written);
     }
 }

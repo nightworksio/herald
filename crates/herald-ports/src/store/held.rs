@@ -37,7 +37,9 @@ pub enum Held {
     Pulls,
     /// The reports whose living posts were sent advisories (ADR-0067).
     Recalls,
-    /// The record of each re-run an operator applied (ADR-0068).
+    /// The record of each re-run an operator applied, of each gesture that
+    /// queued a pull request and of each pull request's last leaving of
+    /// herald's own queue (ADR-0068, ADR-0087).
     Actions,
 }
 

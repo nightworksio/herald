@@ -35,7 +35,11 @@ fn a_queue_that_can_start_is_said_and_has_no_gap() {
             "{FORGEJO}[merge_queues.main]\nsource = \"codeberg\"\nbranch = \"main\"\nruns = \"herald\"\nupdated = \"never\"\nvouches = \"approved\"\nskew = \"1m\"\nmethod = \"fast-forward\"\napplied_by = \"server\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n"
         ),
     );
-    let findings = doctored(&served, &layer(&STORES));
+    let serving = Layer {
+        steps: true,
+        ..layer(&STORES)
+    };
+    let findings = doctored(&served, &serving);
     assert_eq!(keys(&findings.gaps), Vec::<&str>::new());
     assert!(
         findings.notes.contains(&"The merge queue main merges into main of acme/app on forgejo through herald's own queue, with method fast-forward, a gesture vouching for the head herald first reads with the gesture, once one holding its least role approved it, a push stamped up to 1m before it counted as after it, a branch brought up to date by merge, the write credential HERALD_MERGE, held apart, its steps taken by `herald server`, which then reads its write credential. It reads with its source's read credential: a token with read:repository and read:issue, of a user who administers the repository: Forgejo and Gitea say another person's role to an administrator alone.".to_owned()),

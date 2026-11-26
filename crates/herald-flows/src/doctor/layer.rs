@@ -99,6 +99,9 @@ pub struct Layer {
     pub round_secrets: &'static [&'static str],
     /// How long the keys it keeps in memory last.
     pub keyring: Memory,
+    /// Whether `herald server` runs there, which alone takes the steps of
+    /// a merge queue with `applied_by = "server"` (ADR-0087).
+    pub steps: bool,
 }
 
 /// What doctor finds set where it runs, for the settings a layer needs.

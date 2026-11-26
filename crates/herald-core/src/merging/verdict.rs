@@ -5,6 +5,7 @@ use jiff::SignedDuration;
 use serde::{Deserialize, Serialize};
 
 use super::Vouches;
+use crate::queue::Dequeued;
 
 /// Why a pull request leaves herald's queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,26 +37,25 @@ pub enum Left {
 impl Left {
     /// The reason as `queue.left` and a rule's `dequeued` name it.
     #[must_use]
-    pub const fn name(self) -> &'static str {
+    pub const fn dequeued(self) -> Dequeued {
         match self {
-            Self::ChecksFailed => "checks-failed",
-            Self::ChecksTimedOut => "checks-timed-out",
-            Self::Conflict => "conflict",
-            Self::CannotUpdate => "cannot-update",
-            Self::HeadMoved => "head-moved",
-            Self::Removed => "removed",
-            Self::Unmergeable => "unmergeable",
-            Self::MergeRefused => "merge-refused",
-            Self::Unread => "unread",
-            Self::Unrecorded => "unrecorded",
+            Self::ChecksFailed => Dequeued::ChecksFailed,
+            Self::ChecksTimedOut => Dequeued::ChecksTimedOut,
+            Self::Conflict => Dequeued::Conflict,
+            Self::CannotUpdate => Dequeued::CannotUpdate,
+            Self::HeadMoved => Dequeued::HeadMoved,
+            Self::Removed => Dequeued::Removed,
+            Self::Unmergeable => Dequeued::Unmergeable,
+            Self::MergeRefused => Dequeued::MergeRefused,
+            Self::Unread => Dequeued::Unread,
+            Self::Unrecorded => Dequeued::Unrecorded,
         }
     }
 
-    /// Whether it is a failure of the pull request, which a rule's
-    /// `dequeued` tells of: every reason but a gesture taken back.
+    /// The reason's name, as `queue.left` and a rule's `dequeued` write it.
     #[must_use]
-    pub const fn failed(self) -> bool {
-        !matches!(self, Self::Removed)
+    pub const fn name(self) -> &'static str {
+        self.dequeued().name()
     }
 }
 

@@ -148,6 +148,7 @@ fn every_step_of_herald_s_own_queue_has_its_words() {
         Next::Acted(Acted::Refused("why".to_owned())),
         Next::Acted(Acted::Unsent(StepKind::Merge, "why".to_owned())),
         Next::Acted(Acted::Unrecorded(StepKind::Update, Stepped::Took)),
+        Next::Acted(Acted::Untold(Left::Unread)),
     ]
     .iter()
     .map(next)
@@ -164,6 +165,7 @@ fn every_step_of_herald_s_own_queue_has_its_words() {
             "no step taken: why",
             "merging it: the call was not sent: why",
             "bringing it up to date: the forge took it, but herald's record of it could not be updated, so herald takes no step again for this gesture",
+            "it leaves the queue: unread, recorded for its gesture, but the record a view's row reads could not be written; the next run that takes this queue's steps writes it",
         ]
     );
 }

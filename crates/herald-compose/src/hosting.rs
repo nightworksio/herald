@@ -257,6 +257,13 @@ impl Hosting {
         matches!(self, Self::Worker | Self::Server)
     }
 
+    /// Whether `herald server` runs there, which alone takes the steps of
+    /// a merge queue with `applied_by = "server"` (ADR-0087).
+    #[must_use]
+    pub const fn steps(self) -> bool {
+        matches!(self, Self::Server | Self::Azure)
+    }
+
     /// How it reaches what herald fetches on others' behalf (ADR-0017).
     #[must_use]
     pub const fn egress(self) -> Egress {
@@ -383,6 +390,7 @@ impl Hosting {
             rounds: self.rounds(),
             round_secrets: self.round_secrets(),
             keyring: self.keyring(),
+            steps: self.steps(),
         }
     }
 
@@ -439,6 +447,7 @@ mod tests {
                     rounds: hosting.rounds(),
                     round_secrets: hosting.round_secrets(),
                     keyring: hosting.keyring(),
+                    steps: hosting.steps(),
                 }
             );
         }
@@ -455,6 +464,11 @@ mod tests {
             .filter(|hosting| hosting.sessions())
             .collect();
         assert_eq!(sessions, [Hosting::Worker, Hosting::Server]);
+        let steps: Vec<Hosting> = Hosting::ALL
+            .into_iter()
+            .filter(|hosting| hosting.steps())
+            .collect();
+        assert_eq!(steps, [Hosting::Azure, Hosting::Server]);
     }
 
     #[test]

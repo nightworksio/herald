@@ -1,7 +1,8 @@
-//! The record of each re-run, read and written through an erased store
-//! (ADR-0068).
+//! The record of each re-run, of each gesture and of each pull request's
+//! last leaving of herald's own queue, read and written through an erased
+//! store (ADR-0068, ADR-0087).
 
-use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::merging::{GestureKey, GestureRecord, LeftKey, LeftRecord};
 use herald_core::{RerunRecord, RunKey};
 
 use super::DynStore;
@@ -33,6 +34,19 @@ pub trait DynActions: Sync {
     fn put_gesture_boxed<'a>(
         &'a self,
         gesture: &'a GestureRecord,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Actions::left_record`].
+    fn left_record_boxed<'a>(
+        &'a self,
+        key: &'a LeftKey,
+    ) -> Boxed<'a, Result<Option<Versioned<LeftRecord>>, StoreError>>;
+
+    /// [`Actions::put_left_record`].
+    fn put_left_record_boxed<'a>(
+        &'a self,
+        left: &'a LeftRecord,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 }
@@ -67,6 +81,21 @@ impl<S: Store> DynActions for S {
     ) -> Boxed<'a, Result<Written, StoreError>> {
         Box::pin(async move { self.actions().put_gesture(gesture, expected).await })
     }
+
+    fn left_record_boxed<'a>(
+        &'a self,
+        key: &'a LeftKey,
+    ) -> Boxed<'a, Result<Option<Versioned<LeftRecord>>, StoreError>> {
+        Box::pin(async move { self.actions().left_record(key).await })
+    }
+
+    fn put_left_record_boxed<'a>(
+        &'a self,
+        left: &'a LeftRecord,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.actions().put_left_record(left, expected).await })
+    }
 }
 
 impl Actions for Erased<'_, dyn DynStore + '_> {
@@ -95,5 +124,20 @@ impl Actions for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_gesture_boxed(gesture, expected).await
+    }
+
+    async fn left_record(
+        &self,
+        key: &LeftKey,
+    ) -> Result<Option<Versioned<LeftRecord>>, StoreError> {
+        self.0.left_record_boxed(key).await
+    }
+
+    async fn put_left_record(
+        &self,
+        left: &LeftRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_left_record_boxed(left, expected).await
     }
 }

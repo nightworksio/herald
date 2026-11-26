@@ -707,6 +707,27 @@ template = "herald:dequeued"
 private = false
 "#;
 
+/// That a round at noon alerts on the private routes alone, once, on pull
+/// request `number` of `o/open`, which left at `at` for `reason`.
+fn alerted_alone(config: &Config, store: &Failing, (number, at): (u64, Timestamp), reason: &str) {
+    let script = Script::answering(&[POSTED]);
+    let swept = round(config, store, &script, NOON);
+    assert_eq!(
+        announced(&swept[0]),
+        [(
+            format!("rule/dequeued/github.com/o/open/pull/{number}/dequeued/{at}"),
+            vec![("alerts".to_owned(), true)]
+        )]
+    );
+    let alert = String::from_utf8(script.bodies()[0].clone())
+        .unwrap()
+        .replace('\\', "");
+    assert!(
+        alert.contains(&format!("o/open#{number} left the merge queue")) && alert.contains(reason),
+        "{alert}"
+    );
+}
+
 #[test]
 fn a_rule_alerts_once_on_a_private_pull_request_that_left_the_queue_for_a_failure_to_its_private_routes_alone()
  {
@@ -728,28 +749,74 @@ fn a_rule_alerts_once_on_a_private_pull_request_that_left_the_queue_for_a_failur
             (seen, queue),
         );
     }
-    let script = Script::answering(&[POSTED]);
-    let swept = round(&config, &store, &script, NOON);
-    assert_eq!(
-        announced(&swept[0]),
-        [(
-            format!(
-                "rule/dequeued/github.com/o/open/pull/2/dequeued/{}",
-                hours(-1)
-            ),
-            vec![("alerts".to_owned(), true)]
-        )]
-    );
-    let alert = String::from_utf8(script.bodies()[0].clone())
-        .unwrap()
-        .replace('\\', "");
-    assert!(
-        alert.contains("o/open#2 left the merge queue") && alert.contains("checks-failed"),
-        "{alert}"
-    );
+    alerted_alone(&config, &store, (2, hours(-1)), "checks-failed");
     let again = Script::answering(&[]);
     let swept = round(&config, &store, &again, hours(1));
     assert_eq!(announced(&swept[0])[0].1, [("alerts".to_owned(), false)]);
+}
+
+const OWN_QUEUE: &str = r#"[merge_queues.own]
+source = "open"
+branch = "main"
+runs = "herald"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+[merge_queues.forge]
+source = "open"
+branch = "next"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+[sources.unviewed]
+kind = "github"
+repository = "o/open"
+token = { secret = "HERALD_GITHUB_TOKEN" }
+[merge_queues.unviewed]
+source = "unviewed"
+branch = "dev"
+runs = "herald"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+"#;
+
+#[test]
+fn a_rule_alerts_on_a_pull_request_that_left_herald_s_own_queue_where_no_later_forge_entry_stands()
+{
+    use herald_core::merging::{LeftKey, LeftRecord};
+    use herald_core::{Checks, Dequeued, Left, QueueEntry, Visibility};
+    use herald_ports::Actions as _;
+    let config = config(&format!("{DEQUEUES}{OWN_QUEUE}"));
+    let store = healthy();
+    flaky_seen(&store, "Change", Visibility::Private);
+    let seen = (Checks::Passed, Visibility::Private);
+    let waiting = QueueEntry::entered(Some(hours(-3)));
+    for (number, base, queue) in [
+        (4, "main", None),
+        (5, "dev", None),
+        (6, "main", Some(waiting)),
+        (7, "next", None),
+    ] {
+        let mut pull = seen_pull(
+            ("github.com", "o/open"),
+            (number, "Change"),
+            (seen.clone(), queue),
+        );
+        pull.base = Some(base.to_owned());
+        keep_pull(&store, "github.com", pull);
+        let left = LeftRecord {
+            key: LeftKey {
+                api: "https://api.github.com".to_owned(),
+                repository: "o/open".to_owned(),
+                number,
+            },
+            gesture: 70,
+            left: Left {
+                at: hours(-2),
+                reason: Dequeued::HeadMoved,
+            },
+        };
+        pollster::block_on(store.inner.put_left_record(&left, None)).unwrap();
+    }
+    alerted_alone(&config, &store, (4, hours(-2)), "head-moved");
 }
 
 const READINESS: &str = r#"[views.ship]
