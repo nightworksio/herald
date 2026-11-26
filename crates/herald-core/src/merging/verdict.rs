@@ -34,6 +34,23 @@ pub enum Left {
 }
 
 impl Left {
+    /// The reason as `queue.left` and a rule's `dequeued` name it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::ChecksFailed => "checks-failed",
+            Self::ChecksTimedOut => "checks-timed-out",
+            Self::Conflict => "conflict",
+            Self::CannotUpdate => "cannot-update",
+            Self::HeadMoved => "head-moved",
+            Self::Removed => "removed",
+            Self::Unmergeable => "unmergeable",
+            Self::MergeRefused => "merge-refused",
+            Self::Unread => "unread",
+            Self::Unrecorded => "unrecorded",
+        }
+    }
+
     /// Whether it is a failure of the pull request, which a rule's
     /// `dequeued` tells of: every reason but a gesture taken back.
     #[must_use]

@@ -1,8 +1,10 @@
 use herald_core::Permission;
-use herald_core::merging::{Runs, Step, StepKind, Stepped};
+use herald_core::merging::{Left, Runs, Step, StepKind, Stepped};
 use herald_kinds::{Entered, Gesture, Holds, Marked, TakenBack};
 
 use super::*;
+
+const HINT: &str = "--private, or [cli] private, prints";
 
 fn judged(next: Next, role: Option<Permission>) -> Judged {
     Judged {
@@ -44,13 +46,16 @@ fn read(found: Found) -> MergeQueueRead {
 
 #[test]
 fn each_entry_says_who_queued_it_and_what_comes_next() {
-    let lines = queue_lines(&read(Found::Entries(vec![
-        judged(
-            Next::Verdict(Verdict::Leaves(Left::HeadMoved)),
-            Some(Permission::Write),
-        ),
-        judged(Next::Behind, None),
-    ])));
+    let lines = queue_lines(
+        &read(Found::Entries(vec![
+            judged(
+                Next::Verdict(Verdict::Leaves(Left::HeadMoved)),
+                Some(Permission::Write),
+            ),
+            judged(Next::Behind, None),
+        ])),
+        HINT,
+    );
     assert_eq!(
         lines,
         [
@@ -165,21 +170,24 @@ fn every_step_of_herald_s_own_queue_has_its_words() {
 
 #[test]
 fn a_queue_with_nothing_to_show_says_why() {
-    let empty = queue_lines(&read(Found::Entries(Vec::new())));
+    let empty = queue_lines(&read(Found::Entries(Vec::new())), HINT);
     assert_eq!(empty[1], "  no pull request is queued");
-    let unread = queue_lines(&read(Found::Unread(Some("the forge refused".to_owned()))));
+    let unread = queue_lines(
+        &read(Found::Unread(Some("the forge refused".to_owned()))),
+        HINT,
+    );
     assert_eq!(unread[1], "  not read: the forge refused");
-    let unsaid = queue_lines(&read(Found::Unread(None)));
+    let unsaid = queue_lines(&read(Found::Unread(None)), HINT);
     assert_eq!(
         unsaid[1],
         "  not read; --private, or [cli] private, prints why"
     );
     assert_eq!(unsaid[0], "app-main:");
-    let withheld = queue_lines(&read(Found::Withheld(2)));
+    let withheld = queue_lines(&read(Found::Withheld(2)), HINT);
     assert_eq!(withheld[0], "app-main:");
     assert_eq!(withheld.len(), 2);
     assert!(withheld[1].starts_with("  the entries of 2 pull requests"));
-    assert_eq!(queue_lines(&read(Found::Withheld(0))).len(), 1);
+    assert_eq!(queue_lines(&read(Found::Withheld(0)), HINT).len(), 1);
 }
 
 fn cancel(next: Undo, (by, role): (&str, Option<Permission>)) -> Cancel {
@@ -229,7 +237,7 @@ fn each_cancel_says_who_took_it_back_and_what_comes_of_it() {
         cancel(Undo::Uncarried("why".to_owned()), ("", None)),
     ]);
     assert_eq!(
-        queue_lines(&cancelled)[2..],
+        queue_lines(&cancelled, HINT)[2..],
         [
             "  #5 https://github.com/o/r/pull/5 taken back by x (maintain) at 2026-01-01T00:12:00Z: next, it is taken out of the forge's queue",
             "  #5 https://github.com/o/r/pull/5 taken back by an account the forge no longer names (no role) at 2026-01-01T00:12:00Z: not taken out: why",
@@ -237,12 +245,12 @@ fn each_cancel_says_who_took_it_back_and_what_comes_of_it() {
     );
     cancelled.cancels = herald_flows::Cancels::Unread(Some("the forge refused".to_owned()));
     assert_eq!(
-        queue_lines(&cancelled)[2],
+        queue_lines(&cancelled, HINT)[2],
         "  the forge's queue not read for cancels: the forge refused"
     );
     cancelled.cancels = herald_flows::Cancels::Unread(None);
     assert_eq!(
-        queue_lines(&cancelled)[2],
+        queue_lines(&cancelled, HINT)[2],
         "  the forge's queue not read for cancels; --private, or [cli] private, prints why"
     );
 }
@@ -283,4 +291,42 @@ fn every_undoing_has_its_words() {
             ),
         ]
     );
+}
+
+#[test]
+fn the_server_says_each_step_it_took_and_nothing_of_a_queue_it_took_none_in() {
+    let idle = read(Found::Entries(vec![
+        judged(Next::Behind, None),
+        judged(Next::Verdict(Verdict::Wait), None),
+    ]));
+    assert_eq!(stepped(&idle), Vec::<String>::new());
+    assert_eq!(stepped(&read(Found::Withheld(3))), Vec::<String>::new());
+    assert_eq!(
+        stepped(&read(Found::Unread(None))),
+        [
+            "app-main:",
+            "  not read; herald merge-queue --private prints why"
+        ]
+    );
+    let mut taken = read(Found::Entries(vec![
+        judged(Next::Behind, None),
+        judged(Next::Took(Took::Queued), Some(Permission::Write)),
+        judged(
+            Next::Acted(Acted::Stepped(StepKind::Merge, Stepped::Took)),
+            Some(Permission::Write),
+        ),
+    ]));
+    taken.cancels = Cancels::Read(vec![
+        cancel(Undo::TakeOut, ("x", Some(Permission::Write))),
+        cancel(Undo::Took(TookOut::Out), ("x", Some(Permission::Write))),
+    ]);
+    let mut unread = taken.clone();
+    unread.cancels = Cancels::Unread(None);
+    assert_eq!(stepped(&unread).len(), 3);
+    let said = stepped(&taken);
+    assert_eq!(said.len(), 4, "{said:?}");
+    assert_eq!(said[0], "app-main: o/r into main, run by herald");
+    assert!(said[1].ends_with("handed to the forge's queue, which took it"));
+    assert!(said[2].ends_with("merging it: the forge took it"));
+    assert!(said[3].ends_with("taken out of the forge's queue"));
 }

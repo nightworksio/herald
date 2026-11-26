@@ -227,6 +227,7 @@ impl World {
                 keys: &keys,
                 webhooks: &webhooks,
                 admission: herald_flows::Admission::Once,
+                merging: None,
             })
         })
     }

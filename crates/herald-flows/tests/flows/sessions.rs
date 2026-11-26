@@ -324,6 +324,7 @@ impl World {
             keys: &keys,
             webhooks: &webhooks,
             admission: herald_flows::Admission::Once,
+            merging: None,
         };
         let heard = RefCell::new(Vec::new());
         let stop = Notify::new();

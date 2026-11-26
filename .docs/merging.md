@@ -329,6 +329,15 @@ taken out. A take-out recorded as being made, refused or lost is never
 asked again for that cancel; one that provably never left herald is.
 A queue that takes no step holds its take-outs back too.
 
+With `applied_by = "server"`, `herald server` takes those steps after
+each poll round and as each webhook of the queue's source arrives,
+exactly as `--apply` takes them: the same reads right before each step,
+the same records written first, and the queue's own write credential,
+held apart, which the server reads then alone. A webhook only wakes the
+queue; every step reads the forge first. The server says each step it
+took and what came of it, and withholds a private repository's entries.
+No host but `herald server` takes them.
+
 Run `--apply` on a schedule or in a CI job of the base repository's own,
 never in a job that runs a pull request's code. `herald merge-queue`
 prints a private repository's entries only where its output is said

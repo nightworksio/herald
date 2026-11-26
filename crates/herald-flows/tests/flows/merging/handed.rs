@@ -21,6 +21,7 @@ use crate::harness::{Failing, Fault, NOON, config, healthy, secrets};
 
 mod elsewhere;
 mod owned;
+mod served;
 
 const QUEUE: &str = r#"[sources.app]
 kind = "github"

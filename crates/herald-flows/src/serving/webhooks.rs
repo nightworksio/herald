@@ -11,6 +11,7 @@ use herald_ports::{Clock, Secret, Store, Verifier};
 use super::jobs::{Job, Member};
 use super::replies::{Answered, missing, rejection, text_reply, unread};
 use super::{Inbound, Serving};
+use crate::merging::served;
 use crate::verification::{Checking, Verified, admitted, verified};
 
 /// The secret each forge source's webhooks are signed with, by the source,
@@ -33,6 +34,9 @@ const FANS: &str = "herald takes the delivery for each source the App reaches";
 const UNTAKEN: &str = "no source the App reaches takes the delivery";
 /// What a delivery whose change kept mode folds is answered (ADR-0061).
 const FOLDS: &str = "herald keeps the pull request's change";
+/// What a delivery that wakes merge queues herald server steps is answered
+/// (ADR-0087).
+const STEPS: &str = "herald reads the source's merge queues and takes the steps due";
 
 /// The answer to a delivery whose work is left to `job`, saying `what`
 /// herald does.
@@ -143,26 +147,58 @@ fn fold_of<S: Store, C, G, V, H, P, K>(
         }))
 }
 
-/// `found`, the work a delivery leaves, with `fold` where there is one,
-/// and what herald says it does; why it does nothing where it leaves no
-/// work at all.
-fn with_fold(
+/// The wake of the merge queues of `source` whose steps this run takes, of
+/// a delivery verified as `verified` under `scheme`, where it takes any.
+fn step_of<S, C, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    source: &SourceName,
+    (scheme, verified): (Scheme, &Verified),
+) -> Option<Job> {
+    let steps = serving.merging.is_some() && !served(serving.config, Some(source)).is_empty();
+    steps.then(|| Job::Step {
+        source: source.clone(),
+        scheme,
+        verified: verified.clone(),
+    })
+}
+
+/// The work a delivery leaves beside what its source makes of it: `fold`
+/// and `step`, where each is some, with what herald says each does.
+fn beside(fold: Option<Job>, step: Option<Job>) -> Vec<(Job, &'static str)> {
+    let folded = fold.map(|fold| (fold, FOLDS));
+    folded
+        .into_iter()
+        .chain(step.map(|step| (step, STEPS)))
+        .collect()
+}
+
+/// `found`, the work a delivery leaves, with `more` beside it, each with
+/// what herald says it does: one job alone, or every one fanned; why it
+/// does nothing where it leaves no work at all.
+fn with_more(
     found: Result<(Job, &'static str), &'static str>,
-    fold: Option<Job>,
+    more: impl IntoIterator<Item = (Job, &'static str)>,
     (scheme, verified): (Scheme, &Verified),
 ) -> Result<(Job, &'static str), &'static str> {
-    match (found, fold) {
-        (found, None) => found,
-        (Err(_), Some(fold)) => Ok((fold, FOLDS)),
-        (Ok((job, what)), Some(fold)) => Ok((
-            Job::Fanned {
-                jobs: vec![job, fold],
-                scheme,
-                verified: verified.clone(),
-            },
-            what,
-        )),
+    let (mut jobs, why) = match found {
+        Ok(job) => (vec![job], None),
+        Err(why) => (Vec::new(), Some(why)),
+    };
+    jobs.extend(more);
+    let Some(&(_, what)) = jobs.first() else {
+        return Err(why.unwrap_or_default());
+    };
+    if jobs.len() == 1 {
+        return jobs.pop().ok_or(what);
     }
+    Ok((
+        Job::Fanned {
+            jobs: jobs.into_iter().map(|(job, _)| job).collect(),
+            scheme,
+            verified: verified.clone(),
+        },
+        what,
+    ))
 }
 
 /// A webhook of the source `name`, verified and admitted, and the release
@@ -189,8 +225,9 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     let fold = fold_of(serving, (&source, hooking), inbound, (scheme, &verified));
     match (hooking.hooked(inbound.headers, inbound.body), fold) {
         (Ok(hooked), Ok(fold)) => {
+            let more = beside(fold, step_of(serving, &source, (scheme, &verified)));
             let found = job_of(source, hooked, (scheme, verified.clone()));
-            match with_fold(found, fold, (scheme, &verified)) {
+            match with_more(found, more, (scheme, &verified)) {
                 Ok((job, what)) => accepted(job, what),
                 Err(why) => text_reply(status::OK, why),
             }
@@ -239,8 +276,9 @@ pub(super) async fn app_hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             let hooked = hooking.hooked(inbound.headers, inbound.body).ok()?;
             let fold = fold_of(serving, (source, hooking), inbound, (scheme, &verified))
                 .unwrap_or_default();
+            let more = beside(fold, step_of(serving, source, (scheme, &verified)));
             let found = job_of(source.clone(), hooked, (scheme, verified.clone()));
-            with_fold(found, fold, (scheme, &verified)).ok()
+            with_more(found, more, (scheme, &verified)).ok()
         })
         .collect();
     match jobs.len() {

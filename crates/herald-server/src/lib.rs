@@ -27,8 +27,9 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_core::DestinationName;
 use herald_core::{media, status};
 use herald_flows::{
-    Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
-    answer, housekeep, poll, refusal, report, round, unplaced, unworked, work,
+    Answered, Housekept, Inbound, Job, MergeQueueRead, Round, Running, Serving, Sessions, Stop,
+    Swept, Worked, answer, housekeep, merge_served, poll, refusal, report, round, unplaced,
+    unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
@@ -69,6 +70,9 @@ pub enum Heard {
     Unworked(Box<Job>, Result<(), String>),
     /// The sources were polled.
     Polled(Vec<Swept>),
+    /// The merge queues whose steps the server takes were read and
+    /// stepped (ADR-0087).
+    Stepped(Vec<MergeQueueRead>),
     /// The threads whose chores fell due were kept.
     Kept(Result<Housekept, Stop>),
     /// A connection could not be taken, and why.
@@ -448,22 +452,20 @@ impl<'a> Rounds<'a> {
         }
     }
 
-    /// A poll, where none is running.
+    /// A poll, where none is running, and then the steps of each merge
+    /// queue the server steps, where it steps any.
     async fn polled<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
         &self,
         serving: &Serving<'_, S, C, G, V, H, P, K>,
     ) -> Option<Heard> {
         once(&self.polling, async {
-            Some(Heard::Polled(
-                poll(
-                    serving.config,
-                    serving.connected,
-                    serving.ports,
-                    serving.verifier,
-                    &named(),
-                )
-                .await,
-            ))
+            let flow = (serving.config, serving.connected, serving.ports);
+            let swept = poll(flow.0, flow.1, flow.2, serving.verifier, &named()).await;
+            let Some(handing) = serving.merging else {
+                return Some(Heard::Polled(swept));
+            };
+            (self.heard)(Heard::Polled(swept));
+            Some(Heard::Stepped(merge_served(flow, handing, None).await))
         })
         .await
     }

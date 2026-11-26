@@ -9,7 +9,7 @@ use std::io::Write;
 use herald_compose::{Host, Hosting, ServingOn, Through, told};
 use herald_config::{Config, Uses};
 use herald_flows::ROUND_SECRET;
-use herald_native::NativeSockets;
+use herald_native::{NativeSockets, TokioTimer};
 use herald_ports::{Keyring, Secret, Store};
 use herald_server::{Heard, HostTimers, Limits, serve};
 
@@ -126,6 +126,7 @@ pub(crate) fn heard_lines(heard: Heard) -> Vec<String> {
         Heard::Worked(worked) => told::worked(&worked),
         Heard::Unworked(job, released) => vec![told::unworked(&job, &released)],
         Heard::Polled(swept) => swept.iter().flat_map(told::polled).collect(),
+        Heard::Stepped(read) => read.iter().flat_map(told::stepped).collect(),
         Heard::Kept(kept) => told::kept(&kept),
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
         Heard::Refused(reason) => vec![told::refused(&reason)],
@@ -177,5 +178,5 @@ pub(crate) async fn serving(
         out: RefCell::new(out),
         stop,
     };
-    composed.run(listening).await
+    composed.serve(listening, &TokioTimer).await
 }

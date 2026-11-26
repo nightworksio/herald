@@ -1,13 +1,13 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Key, RouteId, Step};
 use herald_flows::{
-    Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
-    answer, busy, prepare, unplaced, unworked, work,
+    Answered, Connected, Did, FollowError, Followed, Handing, Inbound, Job, Outcome, Ports,
+    Serving, Stop, answer, busy, prepare, unplaced, unworked, work,
 };
 use herald_ports::Sealing;
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
-use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier, fake_ed25519};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, fake_ed25519};
 
 use crate::harness::{Failing, Fault, Script, broken, healthy, keys_in};
 use crate::inbound::{ANA, ANA_KEY, FOLLOW, activity, at, borrowed, document};
@@ -98,6 +98,7 @@ pub(crate) struct World {
     script: Script,
     now: std::cell::Cell<jiff::Timestamp>,
     sized: bool,
+    stepping: bool,
 }
 
 type Served<'a> =
@@ -163,7 +164,14 @@ impl World {
             script,
             now: std::cell::Cell::new(at()),
             sized: false,
+            stepping: false,
         }
+    }
+
+    /// It stepping the merge queues whose steps the server takes.
+    pub(crate) fn stepping(mut self) -> Self {
+        self.stepping = true;
+        self
     }
 
     /// It signing Ed25519 as long as a real key's signature is.
@@ -201,6 +209,15 @@ impl World {
             budget: herald_flows::Budget::UNBOUNDED,
         };
         let keys = keys_in(&self.keyring);
+        let held = secrets();
+        let script = self.script.clone();
+        let connect = move |_: herald_ports::Base<'_>| Ok(script.clone());
+        let timer = FakeTimer::default();
+        let handing = Handing {
+            secrets: &held,
+            connect: &connect,
+            timer: &timer,
+        };
         act(&Serving {
             config: &self.config,
             connected: &self.connected,
@@ -210,6 +227,7 @@ impl World {
             keys: &keys,
             webhooks: self.connected.webhooks(),
             admission,
+            merging: self.stepping.then_some(&handing),
         })
     }
 
@@ -382,6 +400,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         keys: &keys,
         webhooks: world.connected.webhooks(),
         admission: herald_flows::Admission::Once,
+        merging: None,
     };
     let answered = pollster::block_on(answer(&serving, &get("/users/php-mutation-gate")));
     assert_eq!(answered.reply.status, 500);
@@ -893,6 +912,7 @@ pub(crate) mod oidc;
 mod owned;
 mod peered;
 mod pushes;
+mod stepped;
 mod tagged;
 
 #[test]

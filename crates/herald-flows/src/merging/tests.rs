@@ -354,9 +354,17 @@ fn a_queue_s_wait_runs_from_its_gesture_or_its_head_s_arrival_whichever_is_later
 
 fn found_in(reader: &Fixed, queue: &MergeQueue, printed: Printed) -> Found {
     let http = ScriptedHttp::new(Vec::new());
-    let asked = (("app-main", queue), None::<&FakeStore>, false);
+    let asked = (
+        ("app-main", queue),
+        None::<&FakeStore>,
+        (false, AppliedBy::Command),
+    );
     match pollster::block_on(found((reader, &http), asked, printed, now())) {
         Reading::Done(found) => found,
+        Reading::Due(Due {
+            withheld: Some(withheld),
+            ..
+        }) => Found::Withheld(withheld),
         Reading::Due(due) => {
             Found::Entries(due.judged.into_iter().map(|(judged, _)| judged).collect())
         }
@@ -651,29 +659,64 @@ fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
         ..base()
     };
     let store = FakeStore::default();
-    assert_eq!(idle(&started, &queued, Some(&store)), Vec::<String>::new());
+    assert_eq!(
+        idle(&started, (&queued, AppliedBy::Command), Some(&store)),
+        Vec::<String>::new()
+    );
     let unsaid = Branched {
         queue: None,
         ..base()
     };
-    assert_eq!(idle(&started, &unsaid, Some(&store)), Vec::<String>::new());
+    assert_eq!(
+        idle(&started, (&unsaid, AppliedBy::Command), Some(&store)),
+        Vec::<String>::new()
+    );
     let mut gitlab = started.clone();
     gitlab.forge.forge = "gitlab";
-    assert_eq!(idle(&gitlab, &unsaid, Some(&store)), [TRAINS_UNSAID]);
-    assert_eq!(idle(&gitlab, &queued, Some(&store)), Vec::<String>::new());
+    assert_eq!(
+        idle(&gitlab, (&unsaid, AppliedBy::Command), Some(&store)),
+        [TRAINS_UNSAID]
+    );
+    assert_eq!(
+        idle(&gitlab, (&queued, AppliedBy::Command), Some(&store)),
+        Vec::<String>::new()
+    );
     gitlab.runs = Runs::Herald;
-    assert_eq!(idle(&gitlab, &unsaid, Some(&store)), Vec::<String>::new());
-    assert_eq!(idle(&started, &base(), Some(&store)), [NO_FORGE_QUEUE]);
-    assert_eq!(idle(&started, &queued, None::<&FakeStore>), [UNRECORDED]);
+    assert_eq!(
+        idle(&gitlab, (&unsaid, AppliedBy::Command), Some(&store)),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        idle(&started, (&base(), AppliedBy::Command), Some(&store)),
+        [NO_FORGE_QUEUE]
+    );
+    assert_eq!(
+        idle(&started, (&queued, AppliedBy::Command), None::<&FakeStore>),
+        [UNRECORDED]
+    );
     let mut served = started.clone();
     served.applied_by = AppliedBy::Server;
-    assert_eq!(idle(&served, &queued, Some(&store)), [SERVED]);
+    assert_eq!(
+        idle(&served, (&queued, AppliedBy::Command), Some(&store)),
+        [SERVED]
+    );
+    assert_eq!(
+        idle(&served, (&queued, AppliedBy::Server), Some(&store)),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        idle(&started, (&queued, AppliedBy::Server), Some(&store)),
+        [COMMANDED]
+    );
     let mut own = started.clone();
     own.runs = Runs::Herald;
-    assert_eq!(idle(&own, &base(), Some(&store)), Vec::<String>::new());
+    assert_eq!(
+        idle(&own, (&base(), AppliedBy::Command), Some(&store)),
+        Vec::<String>::new()
+    );
     let bare = queue(Runs::Forge);
     assert_eq!(
-        idle(&bare, &queued, Some(&store)),
+        idle(&bare, (&queued, AppliedBy::Command), Some(&store)),
         [METHODLESS.to_owned(), UNWRITTEN.to_owned()]
     );
     let mut forgejo = started;
@@ -844,7 +887,11 @@ fn a_take_out_is_held_back_where_the_queue_takes_no_step() {
         queue: None,
         ..base()
     };
-    let why = idle(&gitlab, &unsaid, Some(&FakeStore::default()));
+    let why = idle(
+        &gitlab,
+        (&unsaid, AppliedBy::Command),
+        Some(&FakeStore::default()),
+    );
     assert_eq!(why, [TRAINS_UNSAID]);
     let cancel = |next: Undo| Cancel {
         taken: taken_back(Some(Permission::Write)),
@@ -865,7 +912,11 @@ fn only_a_queue_the_forge_runs_reads_the_forge_s_queue_for_cancels() {
     reader.taken = Some(vec![partial]);
     let http = ScriptedHttp::new(Vec::new());
     let cancels = |runs: Runs| {
-        let asked = (("app-main", &queue(runs)), None::<&FakeStore>, false);
+        let asked = (
+            ("app-main", &queue(runs)),
+            None::<&FakeStore>,
+            (false, AppliedBy::Command),
+        );
         match pollster::block_on(found((&reader, &http), asked, Printed::Asked, now())) {
             Reading::Due(due) => due.cancels.unwrap().len(),
             Reading::Done(found) => panic!("{found:?}"),
@@ -907,7 +958,11 @@ fn a_failed_read_of_the_forge_s_queue_leaves_the_entries_judged() {
     reader.taken = None;
     let http = ScriptedHttp::new(Vec::new());
     let queue = queue(Runs::Forge);
-    let asked = (("app-main", &queue), None::<&FakeStore>, false);
+    let asked = (
+        ("app-main", &queue),
+        None::<&FakeStore>,
+        (false, AppliedBy::Command),
+    );
     let Reading::Due(due) =
         pollster::block_on(found((&reader, &http), asked, Printed::Asked, now()))
     else {
