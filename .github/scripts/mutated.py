@@ -28,7 +28,8 @@ UNREAD_FILES = frozenset({
     ".editorconfig", ".gitattributes", ".gitignore", ".gitleaks.toml",
     ".markdownlint.jsonc", ".sonarcloud.properties", "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md", "Containerfile", "LICENSE-APACHE", "LICENSE-MIT",
-    "SECURITY.md", "action.yml", "cliff.toml", "lychee.toml", "typos.toml",
+    "SECURITY.md", "action.yml", "cliff.toml", "lychee.toml", "osv-scanner.toml",
+    "typos.toml",
 })
 
 
