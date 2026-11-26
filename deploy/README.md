@@ -37,14 +37,20 @@ was already on that connection fails and is not run again.
 distroless static base, for `linux/amd64` and `linux/arm64`. Each release tags
 it with its version, and a release that is not a prerelease also with its minor
 and major versions. It is signed with cosign keylessly and carries an
-attestation of its provenance and of its SBOM:
+attestation of its provenance and of its SBOM, each made by herald's release
+workflow, `.github/workflows/release.yml`, run for a release tag. Check that
+identity, and nothing wider:
 
 ```sh
 cosign verify ghcr.io/nightworksio/herald:0 \
-  --certificate-identity-regexp '^https://github.com/nightworksio/herald/' \
+  --certificate-identity-regexp '^https://github\\.com/nightworksio/herald/\\.github/workflows/release\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/nightworksio/herald:0 --owner nightworksio
+gh attestation verify oci://ghcr.io/nightworksio/herald:0 --repo nightworksio/herald \
+  --cert-identity-regex '^https://github\\.com/nightworksio/herald/\\.github/workflows/release\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 ```
+
+A pinned version is checked against its own tag: see
+[SECURITY.md](../SECURITY.md#verifying-a-release).
 
 | Path or setting | What it holds |
 |-----------------|---------------|

@@ -97,7 +97,11 @@ pub async fn online<H: Http, G: Signer>(
         let destination = route.config.route.destination.as_str();
         let id = route.config.route.id.as_str();
         let delivery = &route.config.route.delivery;
-        for probe in route.reached.probe(http, delivery).await {
+        for probe in route
+            .reached
+            .probe(http, delivery, connected.recorded)
+            .await
+        {
             match probe {
                 Probe::Taken => {
                     taken.insert(destination);

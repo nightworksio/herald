@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Audience, Probe, Reach, Signing};
+use herald_kinds::{Audience, Probe, Reach, Recorded, Signing};
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
 
 use crate::markers::MatrixMarkers;
@@ -57,7 +57,12 @@ impl Reach for Matrix {
         text(&json(answer), "errcode").is_some()
     }
 
-    fn probe<'a>(&'a self, http: &'a dyn DynHttp, delivery: &'a Delivery) -> Boxed<'a, Vec<Probe>> {
+    fn probe<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        delivery: &'a Delivery,
+        _: Recorded,
+    ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(async move { crate::probe::probe(self, &Erased(http), delivery).await })
     }
 }

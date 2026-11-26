@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Audience, Probe, Reach, Signing};
+use herald_kinds::{Audience, Probe, Reach, Recorded, Signing};
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
 use serde_json::Value;
 
@@ -55,7 +55,14 @@ impl Reach for Discord {
         json(answer).get("code").is_some_and(Value::is_u64)
     }
 
-    fn probe<'a>(&'a self, http: &'a dyn DynHttp, _: &'a Delivery) -> Boxed<'a, Vec<Probe>> {
-        Box::pin(async move { crate::probe::probe(self, &Erased(http)).await })
+    fn probe<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        delivery: &'a Delivery,
+        recorded: Recorded,
+    ) -> Boxed<'a, Vec<Probe>> {
+        Box::pin(
+            async move { crate::probe::probe(self, &Erased(http), (delivery, recorded)).await },
+        )
     }
 }

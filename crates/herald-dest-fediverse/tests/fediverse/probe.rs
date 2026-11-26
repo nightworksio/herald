@@ -3,7 +3,7 @@
 
 use herald_core::Delivery;
 use herald_dest_fediverse::{Mastodon, RouteOptions};
-use herald_kinds::{Probe, Reach};
+use herald_kinds::{Probe, Reach, Recorded};
 use herald_ports::Secret;
 use herald_testing::{Fixture, Replay};
 use serde_json::json;
@@ -32,7 +32,8 @@ fn answered(statuses: Option<serde_json::Value>, verified: u16) -> Replay {
 }
 
 fn probed(route: RouteOptions, http: &Replay) -> Vec<Probe> {
-    let probes = pollster::block_on(mastodon(route).probe(http, &Delivery::default()));
+    let probes =
+        pollster::block_on(mastodon(route).probe(http, &Delivery::default(), Recorded::Kept));
     http.finish().unwrap();
     probes
 }

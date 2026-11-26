@@ -3,7 +3,7 @@
 
 use herald_core::Delivery;
 use herald_dest_discord::{Credential, Discord, RouteOptions};
-use herald_kinds::{Probe, Reach};
+use herald_kinds::{Probe, Reach, Recorded};
 use herald_ports::Secret;
 use herald_testing::{Fixture, Replay};
 
@@ -41,7 +41,7 @@ fn bot() -> Credential {
 fn a_bot_that_cannot_see_its_route_s_channel_is_told_so() {
     let http = fixture!("probe-bot");
     let discord = reached(bot(), Some("1566184281406177531"));
-    let probes = pollster::block_on(discord.probe(&http, &Delivery::default()));
+    let probes = pollster::block_on(discord.probe(&http, &Delivery::default(), Recorded::Kept));
     http.finish().unwrap();
     assert_eq!(
             probes,
@@ -62,9 +62,11 @@ fn a_webhook_is_asked_for_itself_and_nothing_else() {
         "HERALD_DISCORD_WEBHOOK",
         "https://discord.com/api/webhooks/1/hook",
     ));
-    let probes = pollster::block_on(
-        reached(webhook, Some("1566184281406177531")).probe(&http, &Delivery::default()),
-    );
+    let probes = pollster::block_on(reached(webhook, Some("1566184281406177531")).probe(
+        &http,
+        &Delivery::default(),
+        Recorded::Kept,
+    ));
     http.finish().unwrap();
     assert_eq!(
         probes,
@@ -87,9 +89,11 @@ fn first_answered(status: u16) -> Replay {
 #[test]
 fn a_refused_bot_is_not_asked_for_its_channel_nor_one_with_none() {
     let refused = first_answered(401);
-    let probes = pollster::block_on(
-        reached(bot(), Some("1566184281406177531")).probe(&refused, &Delivery::default()),
-    );
+    let probes = pollster::block_on(reached(bot(), Some("1566184281406177531")).probe(
+        &refused,
+        &Delivery::default(),
+        Recorded::Kept,
+    ));
     refused.finish().unwrap();
     assert_eq!(
         probes,
@@ -98,7 +102,11 @@ fn a_refused_bot_is_not_asked_for_its_channel_nor_one_with_none() {
         )]
     );
     let taken = first_answered(200);
-    let probes = pollster::block_on(reached(bot(), None).probe(&taken, &Delivery::default()));
+    let probes = pollster::block_on(reached(bot(), None).probe(
+        &taken,
+        &Delivery::default(),
+        Recorded::Kept,
+    ));
     taken.finish().unwrap();
     assert_eq!(probes, [Probe::Taken]);
 }

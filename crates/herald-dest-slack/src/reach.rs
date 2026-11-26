@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Audience, Probe, Reach, Signing};
+use herald_kinds::{Audience, Probe, Reach, Recorded, Signing};
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
 use serde_json::Value;
 
@@ -60,7 +60,12 @@ impl Reach for Slack {
             && text(&said, "error").is_some_and(|error| !UNSETTLED.contains(&error))
     }
 
-    fn probe<'a>(&'a self, http: &'a dyn DynHttp, delivery: &'a Delivery) -> Boxed<'a, Vec<Probe>> {
+    fn probe<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        delivery: &'a Delivery,
+        _: Recorded,
+    ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(async move { crate::probe::probe(self, &Erased(http), delivery).await })
     }
 }
