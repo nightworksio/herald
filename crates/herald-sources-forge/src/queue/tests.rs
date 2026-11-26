@@ -506,6 +506,18 @@ fn a_kept_listing_never_takes_the_visibility_a_tokenless_listing_states() {
 /// The pull requests a listing of `forge` reads predicting conflicts, at
 /// most one read in full, and the requests it asked.
 fn predicting(forge: Forge, tokened: bool, answers: Vec<Response>) -> (Vec<Pull>, Vec<String>) {
+    let (pulls, http) = predicted(forge, tokened, answers);
+    let asked = http.asked().into_iter().map(|(url, _)| url).collect();
+    (pulls.unwrap(), asked)
+}
+
+/// What a listing of `forge` reads predicting conflicts, at most one read
+/// in full, and what it asked.
+fn predicted(
+    forge: Forge,
+    tokened: bool,
+    answers: Vec<Response>,
+) -> (Result<Vec<Pull>, Unpolled>, ScriptedHttp) {
     let origin = origin(forge);
     let token = Token::Named(Secret::new("TOKEN", "t"));
     let opened = Opened {
@@ -521,9 +533,8 @@ fn predicting(forge: Forge, tokened: bool, answers: Vec<Response>) -> (Vec<Pull>
         queue: false,
     };
     let http = ScriptedHttp::new(answers);
-    let pulls = pollster::block_on(opened.pulls(&Erased(&http as &dyn DynHttp))).unwrap();
-    let asked = http.asked().into_iter().map(|(url, _)| url).collect();
-    (pulls, asked)
+    let pulls = pollster::block_on(opened.pulls(&Erased(&http as &dyn DynHttp)));
+    (pulls, http)
 }
 
 #[test]
@@ -795,4 +806,96 @@ fn a_view_reading_the_queue_reads_github_s_entries_in_its_query_and_gitlab_s_tra
     assert!(asked[1].ends_with("/merge_trains?scope=active&sort=asc&per_page=100"));
     let (pulls, asked, _) = queued(Forge::GitLab, vec![answer(200, &json!([]))]);
     assert_eq!((pulls.len(), asked.len()), (0, 1));
+}
+
+/// A GraphQL page of the pull requests `files` names, each changing its
+/// one path in the way it names.
+fn changing_page(files: &[(u64, &str, &str)]) -> Value {
+    let nodes: Vec<Value> = files
+        .iter()
+        .map(|(number, path, change)| {
+            json!({
+                "number": number, "title": "t", "url": "https://github.com/o/r/pull/1",
+                "isDraft": false, "createdAt": "2026-11-18T10:00:00Z",
+                "updatedAt": "2026-11-18T11:00:00Z",
+                "files": { "totalCount": 1, "nodes": [{ "path": path, "changeType": change }] }
+            })
+        })
+        .collect();
+    json!({ "data": { "repository": { "visibility": "PUBLIC", "pullRequests": {
+        "pageInfo": { "hasNextPage": false, "endCursor": null },
+        "nodes": nodes
+    } } } })
+}
+
+fn paths(pull: &Pull) -> (Vec<&str>, bool) {
+    let files = pull.files.as_ref().unwrap();
+    (
+        files.paths.iter().map(String::as_str).collect(),
+        files.whole,
+    )
+}
+
+#[test]
+fn a_renamed_file_on_graphql_has_its_old_path_read_over_rest_at_most_most_pulls_a_round() {
+    let mut page = changing_page(&[
+        (1, "b.rs", "RENAMED"),
+        (2, "c.rs", "MODIFIED"),
+        (3, "d.rs", "RENAMED"),
+    ]);
+    page["data"]["repository"]["pullRequests"]["nodes"][0]["files"]["totalCount"] = json!(2);
+    let renamed = json!([
+        { "filename": "b.rs", "previous_filename": "a.rs" },
+        { "filename": "e.rs" }
+    ]);
+    let (pulls, asked) = predicting(
+        Forge::GitHub,
+        true,
+        vec![answer(200, &page), answer(200, &renamed)],
+    );
+    assert_eq!(
+        asked,
+        [
+            "https://api.github.com/graphql",
+            "https://api.github.com/repos/o/r/pulls/1/files?per_page=100",
+        ]
+    );
+    let read: Vec<(Vec<&str>, bool)> = pulls.iter().map(paths).collect();
+    assert_eq!(
+        read,
+        [
+            (vec!["a.rs", "b.rs", "e.rs"], true),
+            (vec!["c.rs"], true),
+            (vec!["d.rs"], false),
+        ]
+    );
+}
+
+#[test]
+fn no_renamed_file_on_graphql_costs_no_request_more() {
+    let page = changing_page(&[(1, "c.rs", "MODIFIED"), (2, "d.rs", "ADDED")]);
+    let (pulls, asked) = predicting(Forge::GitHub, true, vec![answer(200, &page)]);
+    assert_eq!(asked, ["https://api.github.com/graphql"]);
+    assert_eq!(paths(&pulls[0]), (vec!["c.rs"], true));
+}
+
+#[test]
+fn a_refused_read_of_a_renamed_file_s_old_path_fails_the_listing() {
+    let page = changing_page(&[(1, "b.rs", "RENAMED")]);
+    let (read, http) = predicted(Forge::GitHub, true, vec![answer(200, &page)]);
+    assert!(matches!(read, Err(Unpolled::Unreachable(_))), "{read:?}");
+    assert_eq!(http.asked().len(), 2);
+}
+
+#[test]
+fn renamed_files_cost_a_request_a_pull_request_on_graphql_and_none_elsewhere() {
+    let most = herald_kinds::Most {
+        open: 300,
+        pulls: 20,
+    };
+    assert_eq!(cost(Forge::GitHub, true, most).renames, 20);
+    assert_eq!(cost(Forge::GitHub, false, most).renames, 0);
+    assert_eq!(cost(Forge::GitLab, true, most).renames, 0);
+    let few = herald_kinds::Most { open: 5, pulls: 20 };
+    assert_eq!(cost(Forge::GitHub, true, few).renames, 5);
 }

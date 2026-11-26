@@ -86,6 +86,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `boards.<name>.subscribe.role` | string | The opt-in role `subscribe` gives a member and `unsubscribe` takes away, by id. The route mentions it with its announcements. |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -142,6 +144,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -196,6 +200,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `boards.<name>.room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -250,6 +256,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
 | `boards.<name>.subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -304,6 +312,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -356,6 +366,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -407,6 +419,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `boards.<name>.templates.<name>` | string |  |
 | `boards.<name>.thread` | table | The thread to open for each announcement. |
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -916,6 +930,8 @@ Which events go where, rendered how.
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `routes[].subscribe.role` | string | The opt-in role `subscribe` gives a member and `unsubscribe` takes away, by id. The route mentions it with its announcements. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -969,6 +985,8 @@ Which events go where, rendered how.
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -1020,6 +1038,8 @@ Which events go where, rendered how.
 | `routes[].room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -1071,6 +1091,8 @@ Which events go where, rendered how.
 | `routes[].subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -1122,6 +1144,8 @@ Which events go where, rendered how.
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -1171,6 +1195,8 @@ Which events go where, rendered how.
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -1219,6 +1245,8 @@ Which events go where, rendered how.
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
+| `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
+| `routes[].templates.<name>` | string |  |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -2193,7 +2221,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.bumps` | array of string | Its own bump patterns, read before Dependabot's and Renovate's, such as "chore: bump {package} to {to}". |
 | `views.<name>.capacity_from` | [CapacityFrom](#capacityfrom) | Which repositories its capacity overview reads: "shown", those it shows a pull request of, where absent; or "members", its owner's newest pushed, at most `capacity_repositories`, or where it filters its repositories by name the first by name of those it holds. |
 | `views.<name>.capacity_repositories` | integer | The most members "members" reads, the newest pushed first, or the first by name where the view filters its repositories by name: 20 where absent, from 1 to 100. Each costs two requests on GitHub and GitLab and one on Forgejo, and the push order one more. |
-| `views.<name>.conflicts` | boolean | Whether it predicts conflicts: it reads the paths each pull request's head changes, at most 100 each, and each row names the open pull requests of its repository merging into its branch that change a path in common; false where absent. It costs a request a pull request read in full, but on GitHub with a token, which reads them with each pull request; a kept record keeps them until its head moves. |
+| `views.<name>.conflicts` | boolean | Whether it predicts conflicts: it reads the paths each pull request's head changes, at most 100 each, and each row names the open pull requests of its repository merging into its branch that change a path in common, a renamed file's old path among them; false where absent. It costs a request a pull request read in full, but on GitHub with a token, which reads them with each pull request and costs a request for each pull request renaming a file, whose old path GraphQL does not name, at most `most_pulls` a round; a kept record keeps them until its head moves. |
 | `views.<name>.decide` | table | The task that decides each slot its rules leave untold, such as `{ turn = "whose", priority = "urgency" }`; nothing is asked of a model where absent. |
 | `views.<name>.decide.<name>` | string |  |
 
@@ -2227,7 +2255,7 @@ The views of open pull requests reports and `herald queue` show, by name; `queue
 | `views.<name>.mode` | [ViewMode](#viewmode) | Where it reads its pull requests: "auto" where absent, kept of each source that takes webhooks where the store keeps pull requests and live otherwise; "live" from the forge each time; or "kept" from the records the store keeps, folded from webhooks and reconciled with a listing. |
 | `views.<name>.most_advisories` | integer | The most open advisories its overview reads, a page of 100 a request: 1000 where absent, at most 10000. Past it the section says more were open. |
 | `views.<name>.most_open` | integer | The most open pull requests it lists of each repository: 500 where absent. |
-| `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token: 100 where absent; those past it read as unknown. |
+| `views.<name>.most_pulls` | integer | The most it reads in full where each takes requests of its own, as on Forgejo and on GitHub without a token, those past it read as unknown; and on GitHub with a token, predicting conflicts, the most whose renamed files' old paths it reads, those past it read with their paths not whole: 100 where absent. |
 | `views.<name>.overviews` | array of [OverviewName](#overviewname) | The overviews it shows beside its rows, such as `["capacity"]`: none where absent (ADR-0066). |
 | `views.<name>.queue` | boolean | Whether it reads each pull request's entry in its forge's merge queue: its position, state, when it entered and the forge's estimate, on GitHub with a token in the query that reads it, at no request of its own; false where absent. Without it a row still says whether a pull request is in the queue where its forge does. A row shows the entry, and why it last left where a webhook said, as it shows the rest of the pull request (ADR-0078). |
 | `views.<name>.reconcile` | [Duration](#duration) | How long kept mode waits at least before listing a source's open pull requests again, each page conditional on its last answer; every round where absent. |

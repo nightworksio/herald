@@ -289,6 +289,19 @@
             "package-release"
           ]
         },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
+          ]
+        },
         "thread": {
           "description": "The thread to open for each announcement.",
           "$ref": "#/$defs/Thread"
@@ -765,6 +778,19 @@
                 "package-release"
               ]
             },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
+              ]
+            },
             "thread": {
               "description": "The thread to open for each announcement.",
               "$ref": "#/$defs/Thread"
@@ -913,6 +939,19 @@
                 "package-release"
               ]
             },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
+              ]
+            },
             "thread": {
               "description": "The thread to open for each announcement.",
               "$ref": "#/$defs/Thread"
@@ -1052,6 +1091,19 @@
                 "package-release"
               ]
             },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
+              ]
+            },
             "thread": {
               "description": "The thread to open for each announcement.",
               "$ref": "#/$defs/Thread"
@@ -1180,6 +1232,19 @@
               "type": "string",
               "examples": [
                 "package-release"
+              ]
+            },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
               ]
             },
             "thread": {
@@ -1318,6 +1383,19 @@
                 "package-release"
               ]
             },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
+              ]
+            },
             "thread": {
               "description": "The thread to open for each announcement.",
               "$ref": "#/$defs/Thread"
@@ -1445,6 +1523,19 @@
                 "package-release"
               ]
             },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
+              ]
+            },
             "thread": {
               "description": "The thread to open for each announcement.",
               "$ref": "#/$defs/Thread"
@@ -1564,6 +1655,19 @@
               "type": "string",
               "examples": [
                 "package-release"
+              ]
+            },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
               ]
             },
             "thread": {
@@ -2551,6 +2655,19 @@
             "package-release"
           ]
         },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
+          ]
+        },
         "thread": {
           "description": "The thread to open for each announcement.",
           "$ref": "#/$defs/Thread"
@@ -3194,6 +3311,19 @@
             "package-release"
           ]
         },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
+          ]
+        },
         "thread": {
           "description": "The thread to open for each announcement.",
           "$ref": "#/$defs/Thread"
@@ -3310,6 +3440,19 @@
           "type": "string",
           "examples": [
             "package-release"
+          ]
+        },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
           ]
         },
         "thread": {
@@ -3742,6 +3885,19 @@
             "package-release"
           ]
         },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
+          ]
+        },
         "thread": {
           "description": "The thread to open for each announcement.",
           "$ref": "#/$defs/Thread"
@@ -4052,6 +4208,19 @@
           "type": "string",
           "examples": [
             "package-release"
+          ]
+        },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
           ]
         },
         "thread": {
@@ -6135,6 +6304,19 @@
           "type": "string",
           "examples": [
             "package-release"
+          ]
+        },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
           ]
         },
         "thread": {
@@ -9216,7 +9398,7 @@
           "minimum": 1
         },
         "conflicts": {
-          "description": "Whether it predicts conflicts: it reads the paths each pull\nrequest's head changes, at most 100 each, and each row names the\nopen pull requests of its repository merging into its branch that\nchange a path in common; false where absent. It costs a request a\npull request read in full, but on GitHub with a token, which reads\nthem with each pull request; a kept record keeps them until its head\nmoves.",
+          "description": "Whether it predicts conflicts: it reads the paths each pull\nrequest's head changes, at most 100 each, and each row names the\nopen pull requests of its repository merging into its branch that\nchange a path in common, a renamed file's old path among them; false\nwhere absent. It costs a request a pull request read in full, but on\nGitHub with a token, which reads them with each pull request and\ncosts a request for each pull request renaming a file, whose old\npath GraphQL does not name, at most `most_pulls` a round; a kept\nrecord keeps them until its head moves.",
           "type": "boolean",
           "default": false
         },
@@ -9275,7 +9457,7 @@
           "minimum": 1
         },
         "most_pulls": {
-          "description": "The most it reads in full where each takes requests of its own, as\non Forgejo and on GitHub without a token: 100 where absent; those\npast it read as unknown.",
+          "description": "The most it reads in full where each takes requests of its own, as\non Forgejo and on GitHub without a token, those past it read as\nunknown; and on GitHub with a token, predicting conflicts, the most\nwhose renamed files' old paths it reads, those past it read with\ntheir paths not whole: 100 where absent.",
           "type": "integer",
           "format": "uint",
           "minimum": 0

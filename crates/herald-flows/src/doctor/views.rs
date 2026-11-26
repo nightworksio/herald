@@ -454,6 +454,13 @@ fn watched(
                     "; {reading} {PATHS} by at most {more} more requests a round"
                 ),
             };
+            if cost.renames > 0 {
+                let _ = write!(
+                    note,
+                    ", and the old path of each renamed file by at most {} more requests a round",
+                    cost.renames
+                );
+            }
         }
         if view.queue {
             note.push_str("; ");

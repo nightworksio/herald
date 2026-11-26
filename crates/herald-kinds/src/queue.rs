@@ -91,6 +91,10 @@ pub struct QueueCost {
     /// The most requests reading the paths each pull request's head
     /// changes adds a round, where a view predicts conflicts (ADR-0063).
     pub files: usize,
+    /// The most requests reading the old paths of renamed files adds a
+    /// round where the paths come with each pull request and name no old
+    /// path, where a view predicts conflicts (ADR-0063).
+    pub renames: usize,
     /// How it reads each pull request's merge queue entry, where a view
     /// reads the queue (ADR-0078).
     pub queue: QueueRead,

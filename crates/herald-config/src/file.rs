@@ -197,6 +197,14 @@ pub(crate) struct RouteFile {
     /// push, which carries each event as an envelope.
     #[schemars(with = "Option<String>", example = "package-release")]
     pub(crate) template: Option<Spanned<String>>,
+    /// The template it renders with in place of `template` where its
+    /// destination's dialect is one of these, each keyed by the kind of
+    /// destination that writes the dialect, such as `{ mastodon =
+    /// "release-short" }`. Each is Markdown, converted to the dialect as
+    /// `template` is; `template` where its destination's dialect has none.
+    #[serde(default)]
+    #[schemars(with = "BTreeMap<String, String>", example = RouteFile::templates_example())]
+    pub(crate) templates: BTreeMap<String, Spanned<String>>,
     /// Whether to crosspost each announcement.
     #[serde(default)]
     pub(crate) crosspost: bool,
@@ -347,6 +355,11 @@ impl RouteFile {
     const SOURCES: [&str; 1] = ["herald"];
     /// The destination the schema shows as an example.
     const DESTINATION: &str = "discord";
+
+    /// The templates by dialect the schema shows as an example.
+    fn templates_example() -> BTreeMap<String, String> {
+        BTreeMap::from([("mastodon".to_owned(), "release-short".to_owned())])
+    }
 }
 
 /// Whether a route pins, and how it finds its earlier pin.
@@ -372,7 +385,7 @@ impl PinFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 20] = [
+pub(crate) const ROUTE_KEYS: [&str; 21] = [
     "id",
     "sources",
     "kinds",
@@ -380,6 +393,7 @@ pub(crate) const ROUTE_KEYS: [&str; 20] = [
     "versions",
     "destination",
     "template",
+    "templates",
     "crosspost",
     "thread",
     "pin",

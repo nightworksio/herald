@@ -150,12 +150,13 @@ decision 5), or an owner's rows, which its membership record names.
 conflict (ADR-0063). It reads the paths each pull request's head changes,
 at most 100 each, and each row's `overlaps` names the open pull requests
 of its repository merging into the same branch whose heads change a path
-in common, whether the view shows them or not. The forge's own
+in common, a renamed file's old path among them, whether the view shows
+them or not. The forge's own
 `conflict` state still puts a pull request on its author's turn.
 
 | Forge | Changed paths |
 |-------|---------------|
-| GitHub with a token | in the same GraphQL request as each pull request, no request more |
+| GitHub with a token | in the same GraphQL request as each pull request; one renaming a file, whose old path GraphQL does not name, takes `pulls/<number>/files` too, at most `most_pulls` |
 | GitHub without a token, Forgejo | `pulls/<number>/files`, a request each pull request read in full |
 | GitLab | `merge_requests/<iid>/diffs`, a request each, at most `most_pulls` |
 

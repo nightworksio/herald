@@ -55,6 +55,16 @@ impl Kinds {
             .find(|kind| kind.name() == name)
     }
 
+    /// The name of every destination kind whose routes render a template,
+    /// each the dialect it converts to.
+    pub(crate) fn dialects(&self) -> Vec<&'static str> {
+        self.destinations
+            .iter()
+            .filter(|kind| kind.renders())
+            .map(|kind| kind.name())
+            .collect()
+    }
+
     pub(crate) fn destinations(&self) -> impl Iterator<Item = &dyn Kinded> {
         self.destinations.iter().map(AsRef::as_ref)
     }
@@ -150,6 +160,8 @@ pub(crate) trait Kinded: Send + Sync {
 
     fn inherits(&self) -> &'static [Inherited];
 
+    fn renders(&self) -> bool;
+
     fn parse(
         &self,
         loader: &mut Loader<'_>,
@@ -188,6 +200,10 @@ where
 
     fn inherits(&self) -> &'static [Inherited] {
         K::INHERITS
+    }
+
+    fn renders(&self) -> bool {
+        K::RENDERS
     }
 
     fn parse(

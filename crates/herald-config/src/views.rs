@@ -332,8 +332,10 @@ pub(crate) struct ViewFile {
     /// absent.
     pub(crate) most_open: Option<NonZeroUsize>,
     /// The most it reads in full where each takes requests of its own, as
-    /// on Forgejo and on GitHub without a token: 100 where absent; those
-    /// past it read as unknown.
+    /// on Forgejo and on GitHub without a token, those past it read as
+    /// unknown; and on GitHub with a token, predicting conflicts, the most
+    /// whose renamed files' old paths it reads, those past it read with
+    /// their paths not whole: 100 where absent.
     pub(crate) most_pulls: Option<usize>,
     /// The task that decides each slot its rules leave untold, such as
     /// `{ turn = "whose", priority = "urgency" }`; nothing is asked of a
@@ -362,10 +364,12 @@ pub(crate) struct ViewFile {
     /// Whether it predicts conflicts: it reads the paths each pull
     /// request's head changes, at most 100 each, and each row names the
     /// open pull requests of its repository merging into its branch that
-    /// change a path in common; false where absent. It costs a request a
-    /// pull request read in full, but on GitHub with a token, which reads
-    /// them with each pull request; a kept record keeps them until its head
-    /// moves.
+    /// change a path in common, a renamed file's old path among them; false
+    /// where absent. It costs a request a pull request read in full, but on
+    /// GitHub with a token, which reads them with each pull request and
+    /// costs a request for each pull request renaming a file, whose old
+    /// path GraphQL does not name, at most `most_pulls` a round; a kept
+    /// record keeps them until its head moves.
     #[serde(default)]
     pub(crate) conflicts: bool,
     /// Whether it reads each pull request's entry in its forge's merge

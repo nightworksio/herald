@@ -551,57 +551,119 @@ impl Loader<'_> {
         None
     }
 
-    /// The template `route` renders with, where `templates` has the one it
-    /// names: none where it is a route to a feed, which renders none.
+    /// The template `route` renders with on a destination writing
+    /// `dialect`: the one its `templates` gives that dialect, else its
+    /// `template`, each where `templates` has the one it names; none where
+    /// it is a route to a feed, which renders none.
     ///
     /// # Errors
     ///
     /// When a route to a feed names a template, another route names none,
-    /// or `templates` has not the one it names.
+    /// its `templates` keys a dialect no destination kind writes, or
+    /// `templates` has not one it names.
     fn rendered(
         &mut self,
         route: &RouteFile,
-        (path, span): (&str, &Range<usize>),
+        (path, span, dialect): (&str, &Range<usize>, &str),
         feeds: bool,
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Result<Option<Rendered>, ()> {
         let key = format!("{path}.template");
-        let given = match (&route.template, feeds) {
-            (None, true) => return Ok(None),
-            (Some(given), false) => given,
-            (Some(given), true) => {
-                self.error(&given.span(), &key, "a herald feed or push carries each event as an envelope and renders no template; remove template");
+        let dialected = self.dialected(route, path, feeds, templates);
+        if feeds {
+            let Some(given) = &route.template else {
+                return dialected.map(|_| None);
+            };
+            self.error(&given.span(), &key, "a herald feed or push carries each event as an envelope and renders no template; remove template");
+            return Err(());
+        }
+        let own = route
+            .template
+            .as_ref()
+            .map(|given| self.template_named(given, &key, templates).ok_or(()));
+        if own.is_none() && !route.templates.contains_key(dialect) {
+            self.error(
+                span,
+                &key,
+                "give the template the route renders with: template = \"<name>\"",
+            );
+            return Err(());
+        }
+        let own = own.transpose()?;
+        Ok(dialected?.remove(dialect).or(own))
+    }
+
+    /// The template `route`'s `templates` gives each dialect, each keyed by
+    /// a dialect a destination kind writes and naming a template of
+    /// `templates`.
+    ///
+    /// # Errors
+    ///
+    /// When it gives a route to a feed any, keys a dialect no destination
+    /// kind writes, or names a template `templates` has not.
+    fn dialected(
+        &mut self,
+        route: &RouteFile,
+        path: &str,
+        feeds: bool,
+        templates: &BTreeMap<TemplateName, Written>,
+    ) -> Result<BTreeMap<String, Rendered>, ()> {
+        let dialects = self.kinds.dialects();
+        let mut sound = true;
+        let mut dialected = BTreeMap::new();
+        for (dialect, given) in &route.templates {
+            let key = format!("{path}.templates.{dialect}");
+            if feeds {
+                self.error(&given.span(), &key, "a herald feed or push carries each event as an envelope and renders no template; remove templates");
                 return Err(());
             }
-            (None, false) => {
+            if !dialects.contains(&dialect.as_str()) {
                 self.error(
-                    span,
+                    &given.span(),
                     &key,
-                    "give the template the route renders with: template = \"<name>\"",
+                    format!(
+                        "no destination kind writes a dialect named \"{dialect}\"; the dialects are {}",
+                        list(&dialects)
+                    ),
                 );
-                return Err(());
+                sound = false;
+            } else if let Some(rendered) = self.template_named(given, &key, templates) {
+                dialected.insert(dialect.clone(), rendered);
+            } else {
+                sound = false;
             }
-        };
+        }
+        sound.then_some(dialected).ok_or(())
+    }
+
+    /// The template `given` names, written at `key`, where `templates` has
+    /// it; else the error naming those it has.
+    fn template_named(
+        &mut self,
+        given: &Spanned<String>,
+        key: &str,
+        templates: &BTreeMap<TemplateName, Written>,
+    ) -> Option<Rendered> {
         let template = TemplateName::new(given.get_ref());
         let Some(written) = templates.get(&template) else {
             let names: Vec<&str> = templates.keys().map(TemplateName::as_str).collect();
             self.error(
                 &given.span(),
-                &key,
+                key,
                 format!(
                     "no template is named \"{}\"; the templates are {}",
                     given.get_ref(),
                     list(&names)
                 ),
             );
-            return Err(());
+            return None;
         };
-        Ok(Some(Rendered {
+        Some(Rendered {
             template,
             title_span: written.title.span(),
             body_span: written.body.span(),
             body_path: written.body_path.clone(),
-        }))
+        })
     }
 
     /// Whether the destination `destination`, as `reach` reaches it, can do
@@ -660,7 +722,7 @@ impl Loader<'_> {
         let reached = self.reached(&destination, &route, &path, destinations)?;
         let span = route.id.span();
         let feeds = reached.feeding().is_some() || reached.pushing().is_some();
-        let rendered = self.rendered(&route, (&path, &span), feeds, templates);
+        let rendered = self.rendered(&route, (&path, &span, reached.kind()), feeds, templates);
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;
         let (profile, as_bot) = reached.profile(&options)?;

@@ -112,6 +112,30 @@ fn a_route_to_a_feed_naming_a_template_does_not_load() {
 }
 
 #[test]
+fn a_route_to_a_feed_giving_a_dialect_a_template_does_not_load() {
+    for template in ["", "template = \"t\"\n"] {
+        let templated = format!(
+            "{ROUTE}{template}templates = {{ discord = \"t\" }}\n\n[templates.t]\ntitle = \"t\"\nbody = \"b\"\n"
+        );
+        let error = loaded(
+            "kind = \"sqlite\"",
+            &format!("{FEDERATION}{FEED}"),
+            &templated,
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("routes[0].templates.discord: a herald feed or push carries each event as an envelope and renders no template; remove templates"),
+            "{error}"
+        );
+        assert_eq!(
+            error.contains("routes[0].template:"),
+            !template.is_empty(),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn a_feed_beside_a_store_that_does_not_load_names_only_the_store() {
     let error = loaded("kind = \"nowhere\"", &format!("{FEDERATION}{FEED}"), ROUTE).unwrap_err();
     assert!(error.contains("store.kind"), "{error}");
