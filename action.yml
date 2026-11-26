@@ -94,7 +94,7 @@ runs:
         fi
         archive=$(ls "herald-$target".*)
         gh attestation verify "$archive" --repo "$ACTION_REPOSITORY" \
-          --signer-workflow "$ACTION_REPOSITORY/.github/workflows/release.yml"
+          --cert-identity "https://github.com/$ACTION_REPOSITORY/.github/workflows/release.yml@refs/tags/$RELEASE"
         tar -xf "$archive"
         binary="$directory/herald"
         [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"

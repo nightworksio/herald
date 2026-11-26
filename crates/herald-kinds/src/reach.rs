@@ -112,12 +112,14 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
     fn declines(&self, answer: &Response) -> bool;
 
     /// What its platform says, asked through `http`, of its credential and
-    /// of what a route delivering as `delivery` needs, with nothing posted
-    /// (ADR-0002): nothing where it has no platform to ask.
+    /// of what a route delivering as `delivery`, its announcements
+    /// `recorded` so, needs, with nothing posted (ADR-0002): nothing where
+    /// it has no platform to ask.
     fn probe<'a>(
         &'a self,
         _http: &'a dyn DynHttp,
         _delivery: &'a Delivery,
+        _recorded: Recorded,
     ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(ready(Vec::new()))
     }
@@ -150,6 +152,16 @@ impl Audience {
 /// Why a kind that posts where anyone may read, or carries no view, is
 /// never sent an advisories section, whatever a route says.
 pub const UNADVISED: &str = "its kind of destination is never sent an advisories section";
+
+/// Where a run finds what a route already announced (ADR-0005).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Recorded {
+    /// In a store that keeps records.
+    #[default]
+    Kept,
+    /// In the route's own posts, read back for their markers.
+    Posts,
+}
 
 /// What a platform answers when asked whether it serves a route
 /// (ADR-0002).

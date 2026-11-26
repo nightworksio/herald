@@ -3,7 +3,7 @@
 
 use herald_core::Delivery;
 use herald_dest_discord::{Credential, Discord, RouteOptions, UNCHECKED};
-use herald_kinds::{Audience, Probe, Reach};
+use herald_kinds::{Audience, Probe, Reach, Recorded};
 use herald_ports::{Response, Secret};
 use herald_testing::ScriptedHttp;
 use serde_json::{Value, json};
@@ -14,6 +14,7 @@ const MODS: &str = "1566184281406170001";
 const ADMINS: &str = "1566184281406170002";
 const MEMBER: &str = "1566184281406170003";
 const VIEW: u64 = 1 << 10;
+const SEND: u64 = 1 << 11;
 const ADMINISTRATOR: u64 = 1 << 3;
 
 fn bot(channel: &str, viewers: &[&str]) -> Discord {
@@ -263,9 +264,11 @@ fn doctor_names_the_roles_that_withhold_a_channel_its_section() {
     let http = ScriptedHttp::new(vec![
         answer(200, &json!({ "id": "1" })),
         answer(200, &hidden(&[overwrite(MODS, 0, (VIEW, 0))])),
-        answer(200, &server(VIEW, &[(MODS, "Mods", 0)])),
+        answer(200, &server(VIEW | SEND, &[(MODS, "Mods", 0)])),
+        answer(200, &json!({ "roles": [MODS] })),
     ]);
-    let probes = pollster::block_on(bot(CHANNEL, &[]).probe(&http, &Delivery::default()));
+    let probes =
+        pollster::block_on(bot(CHANNEL, &[]).probe(&http, &Delivery::default(), Recorded::Kept));
     assert_eq!(
         probes,
         [
@@ -339,7 +342,7 @@ fn an_onboarding_prompt_showing_the_channel_makes_it_public_and_one_showing_anot
 fn doctor_names_a_channel_that_is_no_path_segment_and_says_nothing_of_a_private_one() {
     let probed = |discord: &Discord, answers: Vec<Response>| {
         let http = ScriptedHttp::new(answers);
-        let probes = pollster::block_on(discord.probe(&http, &Delivery::default()));
+        let probes = pollster::block_on(discord.probe(&http, &Delivery::default(), Recorded::Kept));
         (probes, http.asked().len())
     };
     let (dotted, asked) = probed(&bot("..", &[]), vec![answer(200, &json!({ "id": "1" }))]);
@@ -355,16 +358,17 @@ fn doctor_names_a_channel_that_is_no_path_segment_and_says_nothing_of_a_private_
     );
     assert_eq!(asked, 1);
     let (private, asked) = probed(
-        &bot(CHANNEL, &[]),
+        &bot(CHANNEL, &[ADMINS]),
         vec![
             answer(200, &json!({ "id": "1" })),
-            answer(200, &hidden(&[])),
-            answer(200, &server(VIEW, &[])),
+            answer(200, &hidden(&[overwrite(ADMINS, 0, (VIEW | SEND, 0))])),
+            answer(200, &server(VIEW, &[(ADMINS, "Herald", 0)])),
+            answer(200, &json!({ "roles": [ADMINS] })),
             answer(200, &onboarding(&[], &[])),
         ],
     );
     assert_eq!(private, [Probe::Taken]);
-    assert_eq!(asked, 4);
+    assert_eq!(asked, 5);
 }
 
 #[test]

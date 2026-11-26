@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use herald_config::{Config, Destination, Pages, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex, itself};
-use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Registering};
+use herald_kinds::{
+    Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Recorded, Registering,
+};
 use herald_peers::discovery::Instance;
 use herald_ports::{
     Algorithm, Base, Binding, CryptoError, DynInfer, Http, Secret, SecretError, Secrets, Signer,
@@ -268,6 +270,7 @@ pub struct Prepared {
     instance: Vec<Secret>,
     pages: Option<PreparedPages>,
     issuers: Vec<(String, Vec<String>)>,
+    recorded: Recorded,
 }
 
 /// Where the static signed log is written, with the token that pushes to
@@ -340,6 +343,7 @@ pub struct Connected<H> {
     pub(crate) instance: Vec<Secret>,
     pub(crate) pages: Option<(PreparedPages, H)>,
     pub(crate) issuers: Vec<(String, H)>,
+    pub(crate) recorded: Recorded,
 }
 
 impl<H> Connected<H> {
@@ -505,6 +509,7 @@ impl Prepared {
             interacting,
             webhooks: self.webhooks,
             instance: self.instance,
+            recorded: self.recorded,
         })
     }
 }
@@ -834,6 +839,11 @@ pub async fn prepare<S: Secrets, G: Signer>(
             crate::oidc::issuers(config)
         } else {
             Vec::new()
+        },
+        recorded: if config.store.reads_posts() {
+            Recorded::Posts
+        } else {
+            Recorded::Kept
         },
     })
 }

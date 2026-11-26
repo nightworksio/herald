@@ -14,6 +14,7 @@ use serde::de::DeserializeOwned;
 
 use crate::discord::Discord;
 use crate::interactions::snowflake;
+use crate::permissions::{ADMINISTRATOR, VIEW_CHANNEL};
 use crate::request::{get, path};
 
 /// What herald asks before a run's first advisory send, as doctor names
@@ -28,14 +29,10 @@ pub const UNCHECKED: &str = "a Discord webhook cannot read who may view its chan
 /// server's onboarding.
 pub(crate) const REQUESTS: usize = 3;
 
-/// The permission to view a channel.
-const VIEW_CHANNEL: u64 = 1 << 10;
-/// The permission that grants every other.
-const ADMINISTRATOR: u64 = 1 << 3;
 /// The channel types of a thread, whose audience is its parent's.
 const THREADS: [u8; 3] = [10, 11, 12];
 /// The overwrite type of one member.
-const MEMBER: u8 = 1;
+pub(crate) const MEMBER: u8 = 1;
 
 /// A channel as Discord answers for it.
 #[derive(Deserialize)]
@@ -44,28 +41,33 @@ pub(crate) struct Channel {
     kind: u8,
     guild_id: Option<String>,
     #[serde(default)]
-    permission_overwrites: Vec<Overwrite>,
+    pub(crate) permission_overwrites: Vec<Overwrite>,
 }
 
 #[derive(Deserialize)]
-struct Overwrite {
-    id: String,
+pub(crate) struct Overwrite {
+    pub(crate) id: String,
     #[serde(rename = "type")]
-    kind: u8,
-    allow: String,
-    deny: String,
+    pub(crate) kind: u8,
+    pub(crate) allow: String,
+    pub(crate) deny: String,
 }
 
 #[derive(Deserialize)]
-struct Guild {
-    roles: Vec<Role>,
+pub(crate) struct Guild {
+    pub(crate) owner_id: Option<String>,
+    pub(crate) roles: Vec<Role>,
 }
 
 #[derive(Deserialize)]
-struct Role {
-    id: String,
-    name: String,
-    permissions: String,
+pub(crate) struct Role {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) permissions: String,
+    #[serde(default)]
+    pub(crate) position: i64,
+    #[serde(default)]
+    pub(crate) mentionable: bool,
 }
 
 #[derive(Deserialize)]
@@ -110,13 +112,13 @@ async fn read<T: DeserializeOwned, H: Http>(
 }
 
 /// A permission bit field as Discord writes one.
-fn bits(text: &str) -> Option<u64> {
+pub(crate) fn bits(text: &str) -> Option<u64> {
     text.parse().ok()
 }
 
 /// The permissions `base` leaves once the overwrite `overwrite` is laid
 /// over them; none where it is not written as Discord writes one.
-fn laid(base: u64, overwrite: Option<&Overwrite>) -> Option<u64> {
+pub(crate) fn laid(base: u64, overwrite: Option<&Overwrite>) -> Option<u64> {
     overwrite.map_or(Some(base), |overwrite| {
         Some((base & !bits(&overwrite.deny)?) | bits(&overwrite.allow)?)
     })
@@ -198,16 +200,39 @@ pub(crate) async fn seen<H: Http>(
         Ok(found) => found,
         Err(why) => return Audience::Unread(why),
     };
+    let placed = server(discord, http, &found).await;
+    within(discord, http, (channel, &found), placed).await
+}
+
+/// The id of the server `found` is in, and the server as read through
+/// `http`; or why it is not read.
+pub(crate) async fn server<H: Http>(
+    discord: &Discord,
+    http: &H,
+    found: &Channel,
+) -> Result<(String, Guild), String> {
     if THREADS.contains(&found.kind) {
-        return Audience::Unread(
+        return Err(
             "the route's channel is a thread, whose audience herald does not read; route to its parent channel".to_owned(),
         );
     }
-    let Some(guild) = found.guild_id.filter(|guild| snowflake(guild)) else {
-        return Audience::Unread("Discord did not say which server the channel is in".to_owned());
+    let Some(guild) = found.guild_id.clone().filter(|guild| snowflake(guild)) else {
+        return Err("Discord did not say which server the channel is in".to_owned());
     };
-    let server: Guild = match read(discord, http, &["guilds", &guild]).await {
-        Ok(server) => server,
+    let server = read(discord, http, &["guilds", &guild]).await?;
+    Ok((guild, server))
+}
+
+/// Who may view `channel`, as Discord's answer for it, `found`, the server
+/// it is in, `placed`, and the further answers asked through `http` say.
+pub(crate) async fn within<H: Http>(
+    discord: &Discord,
+    http: &H,
+    (channel, found): (&str, &Channel),
+    placed: Result<(String, Guild), String>,
+) -> Audience {
+    let (guild, server) = match placed {
+        Ok(placed) => placed,
         Err(why) => return Audience::Unread(why),
     };
     let seeing = match viewing(&server, &guild, &found.permission_overwrites) {

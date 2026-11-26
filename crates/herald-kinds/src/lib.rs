@@ -41,7 +41,9 @@ pub use queue::{
     Asked, BaseFound, Codeowning, Found, MOST_OPEN, MOST_PULLS, Most, Plan, Queue, QueueCost,
     QueueRead, Relisted, Scope, Teamed,
 };
-pub use reach::{Audience, Posts, Probe, Reach, Reached, Signing, UNADVISED, UnreadPosts};
+pub use reach::{
+    Audience, Posts, Probe, Reach, Reached, Recorded, Signing, UNADVISED, UnreadPosts,
+};
 pub use rerunning::{
     Device, Granted, Polled, Rerunner, RunNow, SignIn, UNSIGNED, UNWRITTEN, WriteCredential,
 };

@@ -2,7 +2,7 @@
 
 use herald_core::{Delivery, Pinning};
 use herald_dest_slack::{Credential, RouteOptions, Slack};
-use herald_kinds::{Probe, Reach};
+use herald_kinds::{Probe, Reach, Recorded};
 use herald_ports::Secret;
 use herald_testing::{Fixture, Replay};
 use serde_json::{Value, json};
@@ -36,7 +36,7 @@ fn probed(slack: &Slack, http: &Replay, pinning: bool) -> Vec<Probe> {
         pin: pinning.then_some(Pinning::Store),
         ..Delivery::default()
     };
-    let probes = pollster::block_on(slack.probe(http, &delivery));
+    let probes = pollster::block_on(slack.probe(http, &delivery, Recorded::Kept));
     http.finish().unwrap();
     probes
 }

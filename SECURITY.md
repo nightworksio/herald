@@ -27,22 +27,25 @@ moving its pin.
 ## Verifying a release
 
 Every release asset, the archives, the two WebAssembly components and
-`SHA256SUMS`, carries a provenance attestation from herald's release workflow.
-Check one with the GitHub CLI:
+`SHA256SUMS`, carries a provenance attestation from herald's release workflow,
+which names the workflow and the tag it ran for. Check one with the GitHub CLI,
+pinning both, with `<version>` such as `0.1.0`:
 
 ```sh
 gh attestation verify herald-x86_64-unknown-linux-musl.tar.gz --repo nightworksio/herald \
-  --signer-workflow nightworksio/herald/.github/workflows/release.yml
+  --cert-identity https://github.com/nightworksio/herald/.github/workflows/release.yml@refs/tags/v<version>
 ```
 
 The image, the components on GHCR and the Helm chart are signed keylessly
-with cosign, and attested too. With `<version>` such as `0.1.0`:
+with cosign, and attested too. cosign pins the same identity and its issuer,
+GitHub Actions:
 
 ```sh
 cosign verify ghcr.io/nightworksio/herald:<version> \
-  --certificate-identity-regexp '^https://github.com/nightworksio/herald/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-identity https://github.com/nightworksio/herald/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/nightworksio/herald:<version> --repo nightworksio/herald
+gh attestation verify oci://ghcr.io/nightworksio/herald:<version> --repo nightworksio/herald \
+  --cert-identity https://github.com/nightworksio/herald/.github/workflows/release.yml@refs/tags/v<version>
 ```
 
 `herald-component`, `herald-component-spin` and `charts/herald` verify the

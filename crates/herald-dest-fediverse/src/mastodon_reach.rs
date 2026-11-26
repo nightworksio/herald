@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Audience, Probe, Reach, Signing};
+use herald_kinds::{Audience, Probe, Reach, Recorded, Signing};
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
 
 use crate::markers::MastodonMarkers;
@@ -57,7 +57,12 @@ impl Reach for Mastodon {
         text(&json(answer), "error").is_some()
     }
 
-    fn probe<'a>(&'a self, http: &'a dyn DynHttp, _: &'a Delivery) -> Boxed<'a, Vec<Probe>> {
+    fn probe<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        _: &'a Delivery,
+        _: Recorded,
+    ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(async move { crate::probe::probe(self, &Erased(http)).await })
     }
 }

@@ -2,7 +2,7 @@
 
 use herald_core::{Delivery, Pinning};
 use herald_dest_matrix::{Matrix, RouteOptions};
-use herald_kinds::{Probe, Reach};
+use herald_kinds::{Probe, Reach, Recorded};
 use herald_ports::Secret;
 use herald_testing::{Fixture, Replay};
 use serde_json::{Value, json};
@@ -37,7 +37,7 @@ fn probed(http: &Replay, pinning: bool) -> Vec<Probe> {
         pin: pinning.then_some(Pinning::Markers),
         ..Delivery::default()
     };
-    let probes = pollster::block_on(matrix().probe(http, &delivery));
+    let probes = pollster::block_on(matrix().probe(http, &delivery, Recorded::Kept));
     http.finish().unwrap();
     probes
 }

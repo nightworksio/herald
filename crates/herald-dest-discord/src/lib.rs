@@ -17,6 +17,7 @@ mod interactions;
 mod look;
 mod markers;
 mod options;
+mod permissions;
 mod probe;
 mod reach;
 mod read;
