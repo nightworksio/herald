@@ -1,8 +1,10 @@
 //! The record of each re-run an operator applied, one record per run and
 //! head in one directory (ADR-0068), and of each gesture that queued a pull
-//! request, one record per gesture in another (ADR-0087).
+//! request, one record per gesture in another, and of the last time each
+//! pull request left herald's own queue, one record per pull request in a
+//! third (ADR-0087).
 
-use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::merging::{GestureKey, GestureRecord, LeftKey, LeftRecord};
 use herald_core::{RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Version, Versioned, Written};
 
@@ -37,6 +39,22 @@ impl<R: RecordBackend> Actions for RecordStore<R> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::gesture(&gesture.key), gesture, expected)
+            .await
+    }
+
+    async fn left_record(
+        &self,
+        key: &LeftKey,
+    ) -> Result<Option<Versioned<LeftRecord>>, StoreError> {
+        self.record(&paths::left(key)).await
+    }
+
+    async fn put_left_record(
+        &self,
+        left: &LeftRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::left(&left.key), left, expected)
             .await
     }
 }

@@ -1,5 +1,6 @@
 //! Where an open pull request stands in its forge's merge queue or merge
-//! train, and why it last left it (ADR-0078).
+//! train, and why it last left it or herald's own queue (ADR-0078,
+//! ADR-0087).
 
 use jiff::Timestamp;
 use schemars::JsonSchema;
@@ -35,7 +36,7 @@ impl QueueState {
     }
 }
 
-/// Why a pull request left its forge's queue.
+/// Why a pull request left its forge's queue or herald's own.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
@@ -59,16 +60,34 @@ pub enum Dequeued {
     Protections,
     /// The forge named no reason herald knows.
     Unknown,
+    /// herald's own queue could not bring it up to date.
+    CannotUpdate,
+    /// Its head moved past the one its gesture vouched for.
+    HeadMoved,
+    /// herald holds no record of the head its gesture vouches for.
+    Unrecorded,
+    /// The forge said it cannot merge.
+    Unmergeable,
+    /// The forge refused herald's merge of it.
+    MergeRefused,
+    /// What decides whether it stands or is green could not be read whole.
+    Unread,
 }
 
 impl Dequeued {
     /// Every reason, in the order a rule's setting lists them.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 15] = [
         Self::ChecksFailed,
         Self::ChecksTimedOut,
         Self::Conflict,
         Self::Invalid,
         Self::Protections,
+        Self::CannotUpdate,
+        Self::HeadMoved,
+        Self::Unrecorded,
+        Self::Unmergeable,
+        Self::MergeRefused,
+        Self::Unread,
         Self::Removed,
         Self::Cleared,
         Self::Merged,
@@ -77,12 +96,18 @@ impl Dequeued {
 
     /// The reasons that are a failure of the pull request: those a rule
     /// alerts on unless it names others.
-    pub const FAILURES: [Self; 5] = [
+    pub const FAILURES: [Self; 11] = [
         Self::ChecksFailed,
         Self::ChecksTimedOut,
         Self::Conflict,
         Self::Invalid,
         Self::Protections,
+        Self::CannotUpdate,
+        Self::HeadMoved,
+        Self::Unrecorded,
+        Self::Unmergeable,
+        Self::MergeRefused,
+        Self::Unread,
     ];
 
     /// The reason as a row, a rule and an event name it.
@@ -98,6 +123,12 @@ impl Dequeued {
             Self::Invalid => "invalid",
             Self::Protections => "protections",
             Self::Unknown => "unknown",
+            Self::CannotUpdate => "cannot-update",
+            Self::HeadMoved => "head-moved",
+            Self::Unrecorded => "unrecorded",
+            Self::Unmergeable => "unmergeable",
+            Self::MergeRefused => "merge-refused",
+            Self::Unread => "unread",
         }
     }
 
@@ -108,7 +139,8 @@ impl Dequeued {
     }
 }
 
-/// When and why a pull request last left its forge's queue.
+/// When and why a pull request last left its forge's queue or herald's
+/// own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Left {
     /// When.
@@ -161,6 +193,18 @@ impl QueueEntry {
         entry.estimate = None;
         entry.left = Some(left);
         entry
+    }
+
+    /// The entry `read` with herald's own queue's last leaving `left` on
+    /// it: `read` where the pull request is in the forge's queue now or
+    /// last left it no earlier than `left`, else `read` left as `left`
+    /// says.
+    #[must_use]
+    pub fn left_own(read: Option<Self>, left: Left) -> Self {
+        match read {
+            Some(read) if read.left.is_none_or(|last| last.at >= left.at) => read,
+            read => Self::leaving(read.as_ref(), left),
+        }
     }
 
     /// What a full read saying `read` makes of the entry `kept`: an entry

@@ -492,6 +492,7 @@ fn doctor_names_each_project_of_a_source_app_or_member_that_names_no_actor() {
         rounds: herald_flows::Rounds::Workflow,
         round_secrets: &[],
         keyring: herald_flows::Memory::PerRequest,
+        steps: false,
     };
     let findings = herald_flows::doctor(
         &config,
@@ -709,6 +710,7 @@ fn doctor_names_each_actor_s_name_more_than_one_holds() {
         rounds: herald_flows::Rounds::Workflow,
         round_secrets: &[],
         keyring: herald_flows::Memory::PerRequest,
+        steps: false,
     };
     let findings = herald_flows::doctor(
         &config,

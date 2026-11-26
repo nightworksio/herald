@@ -51,6 +51,7 @@ struct FakeState {
     actions: BTreeMap<RunKey, Versioned<RerunRecord>>,
     gestures:
         BTreeMap<herald_core::merging::GestureKey, Versioned<herald_core::merging::GestureRecord>>,
+    left: BTreeMap<herald_core::merging::LeftKey, Versioned<herald_core::merging::LeftRecord>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -671,6 +672,27 @@ impl Actions for FakeStore {
             &mut state.gestures,
             gesture.key.clone(),
             gesture,
+            expected,
+        ))
+    }
+
+    async fn left_record(
+        &self,
+        key: &herald_core::merging::LeftKey,
+    ) -> Result<Option<Versioned<herald_core::merging::LeftRecord>>, StoreError> {
+        Ok(lock(&self.state).left.get(key).cloned())
+    }
+
+    async fn put_left_record(
+        &self,
+        left: &herald_core::merging::LeftRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.left,
+            left.key.clone(),
+            left,
             expected,
         ))
     }

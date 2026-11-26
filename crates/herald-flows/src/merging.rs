@@ -22,6 +22,7 @@ use crate::{Connected, Ports, Stop};
 
 mod branch;
 mod handing;
+mod left;
 mod owning;
 mod taking;
 
@@ -29,6 +30,7 @@ pub use branch::merge_branch;
 pub use handing::{
     DRAFTED, GONE, RACED, REGESTURED, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED,
 };
+pub(crate) use left::with_left;
 pub use owning::{Acted, METHODS_UNREAD, OWN_DRAFTED, OWN_REGESTURED, OWN_UNSAID, UNDUE, allowed};
 pub use taking::{
     RACED_OUT, RECANCELLED, UNHANDED, UNMATCHED_OUT, UNNAMED_CANCEL, UNREAD_CANCEL, UNROLED_CANCEL,

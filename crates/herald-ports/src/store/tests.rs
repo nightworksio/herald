@@ -1,4 +1,4 @@
-use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::merging::{GestureKey, GestureRecord, LeftKey, LeftRecord};
 use herald_core::{RerunRecord, RunKey};
 
 use super::*;
@@ -675,6 +675,23 @@ impl Actions for OneGesture {
             expected.map_or(1, |at| at.0 + 1),
         ))))
     }
+
+    fn left_record(
+        &self,
+        _: &LeftKey,
+    ) -> impl Future<Output = Result<Option<Versioned<LeftRecord>>, StoreError>> + Send {
+        ready(Ok(None))
+    }
+
+    fn put_left_record(
+        &self,
+        _: &LeftRecord,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Ok(Written::Written(Version(
+            expected.map_or(1, |at| at.0 + 1),
+        ))))
+    }
 }
 
 #[test]
@@ -709,10 +726,31 @@ fn the_record_of_a_gesture_kept_somewhere_reads_and_writes_as_its_keeper_does() 
         pollster::block_on(kept.put_gesture(&record, Some(Version(3)))),
         Ok(Written::Written(Version(4)))
     );
+    let left = LeftRecord {
+        key: key.pull(),
+        gesture: 70,
+        left: herald_core::Left {
+            at: Timestamp::UNIX_EPOCH,
+            reason: herald_core::Dequeued::Unread,
+        },
+    };
+    assert_eq!(pollster::block_on(kept.left_record(&left.key)), Ok(None));
+    assert_eq!(
+        pollster::block_on(kept.put_left_record(&left, None)),
+        Ok(Written::Written(Version(1)))
+    );
     for unkept in [None, Some(&Unkept)] {
         assert_eq!(unsupported(unkept.gesture(&key)), naming("re-runs"));
         assert_eq!(
             unsupported(unkept.put_gesture(&record, None)),
+            naming("re-runs")
+        );
+        assert_eq!(
+            unsupported(unkept.left_record(&left.key)),
+            naming("re-runs")
+        );
+        assert_eq!(
+            unsupported(unkept.put_left_record(&left, None)),
             naming("re-runs")
         );
     }

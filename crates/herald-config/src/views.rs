@@ -773,12 +773,16 @@ pub(crate) struct RuleFile {
     #[schemars(with = "Option<FlakyRuleFile>")]
     pub(crate) flaky: Option<Spanned<FlakyRuleFile>>,
     /// Whether it alerts on each pull request of its view that left its
-    /// forge's merge queue, once each time one left: `true` for the
-    /// reasons that are a failure of the pull request ("checks-failed",
-    /// "checks-timed-out", "conflict", "invalid", "protections"), or the
-    /// reasons it names, such as `["checks-failed", "removed"]`; none where
-    /// absent. Why a pull request left is known where its source is read
-    /// kept, from GitHub's `pull_request` `dequeued` webhook (ADR-0078).
+    /// forge's merge queue or herald's own, once each time one left:
+    /// `true` for the reasons that are a failure of the pull request
+    /// ("checks-failed", "checks-timed-out", "conflict", "invalid",
+    /// "protections", "cannot-update", "head-moved", "unrecorded",
+    /// "unmergeable", "merge-refused", "unread"), or the reasons it names,
+    /// such as `["checks-failed", "removed"]`; none where absent. Why a
+    /// pull request left its forge's queue is known where its source is
+    /// read kept, from GitHub's `pull_request` `dequeued` webhook
+    /// (ADR-0078); why it left herald's own, from the record herald's own
+    /// queue keeps in the store (ADR-0087).
     pub(crate) dequeued: Option<DequeuedFile>,
     /// What it alerts on of its view's release, as
     /// `{ ready = true, late = 7 }`: once the release turns ready, and once

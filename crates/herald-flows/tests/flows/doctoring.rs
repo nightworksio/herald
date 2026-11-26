@@ -35,6 +35,7 @@ pub(crate) fn actions() -> Layer {
         rounds: Rounds::Workflow,
         round_secrets: &[],
         keyring: Memory::PerRequest,
+        steps: false,
     }
 }
 
@@ -74,6 +75,7 @@ fn server() -> Layer {
         sessions: true,
         rounds: Rounds::Scheduled,
         keyring: Memory::Lasting,
+        steps: true,
         ..actions()
     }
 }

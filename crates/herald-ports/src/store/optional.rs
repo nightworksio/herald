@@ -3,7 +3,7 @@
 //! does not.
 
 use crate::{Actions, Decisions, Pulls, Recalls};
-use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::merging::{GestureKey, GestureRecord, LeftKey, LeftRecord};
 use herald_core::{
     AdvisedReports, BaseKey, CodeownersKey, Decided, KeptBase, KeptCodeowners, KeptPull, PullKey,
     Reconciled, RepositoryKey,
@@ -570,6 +570,27 @@ impl<T: Actions> Actions for Option<&T> {
         match self {
             Some(kept) => kept.put_gesture(gesture, expected).await,
             None => Unkept.put_gesture(gesture, expected).await,
+        }
+    }
+
+    async fn left_record(
+        &self,
+        key: &LeftKey,
+    ) -> Result<Option<Versioned<LeftRecord>>, StoreError> {
+        match self {
+            Some(kept) => kept.left_record(key).await,
+            None => Unkept.left_record(key).await,
+        }
+    }
+
+    async fn put_left_record(
+        &self,
+        left: &LeftRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_left_record(left, expected).await,
+            None => Unkept.put_left_record(left, expected).await,
         }
     }
 }

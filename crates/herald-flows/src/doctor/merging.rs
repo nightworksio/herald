@@ -9,7 +9,7 @@ use herald_core::Duration;
 use herald_core::merging::{AppliedBy, RoleLost, Runs, Updated, Vouches};
 use herald_kinds::Merging;
 
-use super::{Findings, gap};
+use super::{Findings, Gap, Layer, gap, listed};
 
 /// What `queue`, named `name`, does, as doctor says it.
 fn said(name: &str, queue: &MergeQueue) -> String {
@@ -85,6 +85,38 @@ const UNSIGNED_FORGE: &str = "updated = \"signed\" never lets a gesture vouch fo
 
 /// Why `updated = "signed"` never carries off github.com without a signer.
 const UNSIGNED_HOST: &str = "updated = \"signed\" never lets a gesture vouch for the head herald's own update made here: off github.com herald knows no committer the instance signs its own commits for; give signer = the committer its web flow signs for, which you vouch is the instance's own and no user's, or updated = \"approved\" or \"never\"";
+
+/// A gap for each merge queue of `config` whose steps `herald server`
+/// alone takes, where `layer` does not run it, naming the `layers` that do.
+pub(super) fn unstepped(config: &Config, layer: &Layer, layers: &[Layer], gaps: &mut Vec<Gap>) {
+    if layer.steps {
+        return;
+    }
+    let serving: Vec<&str> = layers
+        .iter()
+        .filter(|layer| layer.steps)
+        .map(|layer| layer.name)
+        .collect();
+    let run = if serving.is_empty() {
+        String::new()
+    } else {
+        format!("run herald on the {} layer, or ", listed(&serving, "or"))
+    };
+    let served = config
+        .merge_queues
+        .iter()
+        .filter(|(_, queue)| queue.applied_by == AppliedBy::Server);
+    for (name, _) in served {
+        gaps.push(gap(
+            &format!("the merge queue \"{name}\""),
+            format!("merge_queues.{name}.applied_by"),
+            format!(
+                "applied_by = \"server\" leaves its steps to herald server, which does not run on the {} layer, so no step is ever taken here; {run}give applied_by = \"command\" and run herald merge-queue --apply on a schedule",
+                layer.name
+            ),
+        ));
+    }
+}
 
 /// Each merge queue of `config` said, and a gap for each reason one does
 /// not start.

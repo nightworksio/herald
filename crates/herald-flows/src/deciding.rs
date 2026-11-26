@@ -3,7 +3,8 @@
 //! unchanged, asked of the task's models in turn where none is kept, and
 //! unknown where none answers among its options sure enough, where no
 //! model may see a private repository's data, or where the store keeps no
-//! decisions (ADR-0057).
+//! decisions (ADR-0057); and each pull request's last leaving of herald's
+//! own queue the store keeps, on its row (ADR-0087).
 
 use std::collections::BTreeMap;
 
@@ -17,16 +18,19 @@ use herald_ports::{Clock, Decisions, Http, Request, Signer, Store};
 use jiff::Timestamp;
 
 use crate::announce::Ports;
+use crate::merging::with_left;
 use crate::prepare::{Asking, Connected, PreparedModel};
 
-/// The rows `view` shows of `pulls` now, each slot its tasks decide
-/// settled where an answer may be taken.
+/// The rows `view` shows of `pulls` now, each with its last leaving of
+/// herald's own queue where the store keeps one, each slot its tasks
+/// decide settled where an answer may be taken.
 pub(crate) async fn decided_rows<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
     pulls: &[Pull],
 ) -> Vec<Row> {
-    let mut shown = rows(&view.view, pulls, ports.clock.now());
+    let pulls = with_left((config, ports.store.actions()), view, pulls).await;
+    let mut shown = rows(&view.view, &pulls, ports.clock.now());
     let tasks = view
         .decide
         .iter()

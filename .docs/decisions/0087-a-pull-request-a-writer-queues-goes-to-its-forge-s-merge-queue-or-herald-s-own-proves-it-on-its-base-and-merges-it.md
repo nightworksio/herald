@@ -256,8 +256,9 @@ once.
     takes those steps, and is meant to run on a schedule or a CI job of
     the base repository's own. `applied_by = "server"` lets `herald
     server` take the steps each round and as webhooks wake it; the server
-    then reads that queue's write credential, and doctor says so.
-    `"command"` is the default.
+    then reads that queue's write credential, and doctor says so, and
+    says on every layer that does not run `herald server` that no step
+    of that queue is taken there. `"command"` is the default.
 13. **The write credential.** `[merge_queues.<name>] write` is a token
     (`{ token = { secret } }`) or a GitHub App (`{ app }`), held apart
     from every credential herald reads with by ADR-0068's rules, and sent
@@ -295,9 +296,15 @@ once.
     record also holds each take-out of point 6, keyed by the cancel's id,
     who made it and when (none for the role lost), written the same way
     on the anchor's record: one take-out per cancel, and a new cancel
-    after a new gesture is another. Only
+    after a new gesture is another. Beside them the port keeps one
+    record per pull request, keyed by the forge's API, the repository
+    and the number, of the last time it left herald's own queue: when,
+    why and the gesture's id, never a title, a body or a credential. It
+    is written once the gesture's record says it left, and again by a
+    later run where that write failed; every view puts it on the pull
+    request's row as `queue.left`. Only
     `herald merge-queue --apply` (or the server, with `applied_by =
-    "server"`) writes it; the dry run reads it. The markers store keeps
+    "server"`) writes these; the dry run reads them. The markers store keeps
     no records, so a queue on it does not start.
 15. **The setup wizard sets every key.** `herald setup merge-queue`
     asks for each key in turn, with its default chosen and the forge's

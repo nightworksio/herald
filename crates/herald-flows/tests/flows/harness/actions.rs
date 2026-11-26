@@ -1,4 +1,6 @@
-use herald_core::merging::{GestureKey, GestureRecord, HandedOff, Stepped, TakenOut};
+use herald_core::merging::{
+    GestureKey, GestureRecord, HandedOff, LeftKey, LeftRecord, Stepped, TakenOut,
+};
 use herald_core::{Reran, RerunRecord, RunKey};
 use herald_ports::{Actions, StoreError, Version, Versioned, Written};
 
@@ -61,6 +63,27 @@ impl Actions for Failing {
             _ => self.inner.put_gesture(gesture, expected).await,
         }
     }
+
+    async fn left_record(
+        &self,
+        key: &LeftKey,
+    ) -> Result<Option<Versioned<LeftRecord>>, StoreError> {
+        if matches!(self.fault, Fault::ReadsActions | Fault::ReadsLeft) {
+            return Err(broken());
+        }
+        self.inner.left_record(key).await
+    }
+
+    async fn put_left_record(
+        &self,
+        left: &LeftRecord,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self.fault {
+            Fault::WritesActions | Fault::WritesLeft => Err(broken()),
+            _ => self.inner.put_left_record(left, expected).await,
+        }
+    }
 }
 
 impl Actions for Refusing {
@@ -82,6 +105,18 @@ impl Actions for Refusing {
     async fn put_gesture(
         &self,
         _: &GestureRecord,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn left_record(&self, _: &LeftKey) -> Result<Option<Versioned<LeftRecord>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_left_record(
+        &self,
+        _: &LeftRecord,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(self.0.clone())

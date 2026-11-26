@@ -458,4 +458,17 @@ pub(super) async fn actions(store: &impl Actions, checks: &mut Checks) {
         Held::Actions,
         "put_gesture",
     );
+    let left = super::actions::left(7, 0, herald_core::Dequeued::Unread);
+    refused(
+        checks,
+        store.left_record(&left.key).await,
+        Held::Actions,
+        "left_record",
+    );
+    refused(
+        checks,
+        store.put_left_record(&left, None).await,
+        Held::Actions,
+        "put_left_record",
+    );
 }

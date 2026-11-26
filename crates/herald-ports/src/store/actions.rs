@@ -1,10 +1,11 @@
 //! The record of each re-run an operator applies, and of each gesture that
-//! queued a pull request, written with compare-and-set before the call
-//! (ADR-0068, ADR-0087).
+//! queued a pull request, written with compare-and-set before the call, and
+//! of the last time each pull request left herald's own queue (ADR-0068,
+//! ADR-0087).
 
 use std::future::{Future, ready};
 
-use herald_core::merging::{GestureKey, GestureRecord};
+use herald_core::merging::{GestureKey, GestureRecord, LeftKey, LeftRecord};
 use herald_core::{RerunRecord, RunKey};
 
 use super::{Held, StoreError, Unkept, Version, Versioned, Written};
@@ -41,6 +42,21 @@ pub trait Actions: Sync {
         gesture: &GestureRecord,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// The record of the last time the pull request `key` left herald's own
+    /// queue, where one is kept (ADR-0087).
+    fn left_record(
+        &self,
+        key: &LeftKey,
+    ) -> impl Future<Output = Result<Option<Versioned<LeftRecord>>, StoreError>> + Send;
+
+    /// Writes `left` if its stored record is at `expected`, or absent when
+    /// `expected` is `None`.
+    fn put_left_record(
+        &self,
+        left: &LeftRecord,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
 
 impl Actions for Unkept {
@@ -69,6 +85,21 @@ impl Actions for Unkept {
     fn put_gesture(
         &self,
         _: &GestureRecord,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Actions.unsupported()))
+    }
+
+    fn left_record(
+        &self,
+        _: &LeftKey,
+    ) -> impl Future<Output = Result<Option<Versioned<LeftRecord>>, StoreError>> + Send {
+        ready(Err(Held::Actions.unsupported()))
+    }
+
+    fn put_left_record(
+        &self,
+        _: &LeftRecord,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         ready(Err(Held::Actions.unsupported()))

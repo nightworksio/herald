@@ -22,6 +22,7 @@ use herald_wire::github_app::{merging, rerunning, updating};
 use jiff::{SignedDuration, Timestamp};
 
 use super::handing::{Ready, Unfit, ready, ungestured};
+use super::left::told;
 use super::taking::{after, holding, holds};
 use super::{
     Flow, Found, GONE, Handing, Judged, Next, RACED, UNNAMED, UNREAD_AGAIN, again, asked,
@@ -69,6 +70,10 @@ pub enum Acted {
     /// updated, so it still says the call is being made and no step is
     /// taken again for this gesture.
     Unrecorded(StepKind, Stepped),
+    /// It left the queue for this reason, recorded for its gesture, but
+    /// the record of it a view's row reads could not be written; the next
+    /// run that takes the queue's steps writes it while the gesture stands.
+    Untold(Left),
 }
 
 /// The last update recorded as taken, where one was, on a head the forge
@@ -360,12 +365,16 @@ async fn settled<A: Actions>(
         step.outcome = outcome;
         step.made = made;
     }
-    if let Some(left) = outcome.left(kind) {
-        record.own.left = Some(Leaving { left, at: now });
-    }
+    let leaving = outcome.left(kind).map(|left| Leaving { left, at: now });
+    record.own.left = leaving.or(record.own.left);
     Next::Acted(match (store.put_gesture(&record, Some(at)).await, why) {
         (Ok(Written::Written(_)), Some(why)) => Acted::Unsent(kind, why),
-        (Ok(Written::Written(_)), None) => Acted::Stepped(kind, outcome),
+        (Ok(Written::Written(_)), None) => match leaving {
+            Some(leaving) if !told(store, &record.key, leaving).await => {
+                Acted::Untold(leaving.left)
+            }
+            _ => Acted::Stepped(kind, outcome),
+        },
         (Ok(Written::Conflict) | Err(_), _) => Acted::Unrecorded(kind, outcome),
     })
 }
@@ -402,9 +411,13 @@ async fn leaving<A: Actions>(
     let Some(mut record) = record_of(queued, entered, kept, now) else {
         return Next::Verdict(Verdict::Leaves(left));
     };
-    record.own.left = Some(Leaving { left, at: now });
+    let leaving = Leaving { left, at: now };
+    record.own.left = Some(leaving);
     match store.put_gesture(&record, version(kept)).await {
-        Ok(Written::Written(_)) => Next::Acted(Acted::Left(left)),
+        Ok(Written::Written(_)) if told(store, &record.key, leaving).await => {
+            Next::Acted(Acted::Left(left))
+        }
+        Ok(Written::Written(_)) => Next::Acted(Acted::Untold(left)),
         _ => Next::Verdict(Verdict::Leaves(left)),
     }
 }
@@ -720,13 +733,21 @@ pub(super) async fn stepped<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
             _ => None,
         };
         let next = match (&judged.next, kind, &prepared) {
-            (Next::Verdict(Verdict::Leaves(left)), _, _)
-                if kept
-                    .as_ref()
-                    .is_none_or(|kept| kept.value.own.left.is_none()) =>
-            {
-                let gestured = (&judged.entered, kept.as_ref());
-                leaving(store, (named, queue), gestured, (*left, now)).await
+            (Next::Verdict(Verdict::Leaves(left)), _, _) => {
+                let recorded = kept.as_ref().and_then(|kept| {
+                    let leaving = kept.value.own.left?;
+                    Some((&kept.value.key, leaving))
+                });
+                match recorded {
+                    None => {
+                        let gestured = (&judged.entered, kept.as_ref());
+                        leaving(store, (named, queue), gestured, (*left, now)).await
+                    }
+                    Some((key, kept_left)) if told(store, key, kept_left).await => {
+                        judged.next.clone()
+                    }
+                    Some(_) => Next::Acted(Acted::Untold(*left)),
+                }
             }
             (_, Some(kind), Some(Ok(ready))) => {
                 let gestured = (&judged.entered, kept.as_ref(), kind);

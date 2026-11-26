@@ -255,8 +255,19 @@ page of its head's checks, so a pull request with more leaves as
 more than 50 that may hold a gesture (those carrying the label, or every
 open one where the gesture is a comment), is not read at all: `herald
 merge-queue` says why, and herald takes no step in it.
-A view's row holds the reason in `queue.left`, and a rule with `dequeued
-= true` tells people.
+A view's row holds when and why in `queue.left`, and a rule with
+`dequeued = true` tells people: every reason but `removed` is a failure
+of the pull request. herald keeps the last time each pull request left
+its own queue in a record of its own, keyed by the forge's API, the
+repository and the pull request's number, holding when, why and the
+gesture's id and never a title, a body or a credential. The run that
+records the leaving in the gesture's record writes it, and where that write failed,
+the next run that takes the queue's steps writes it while the gesture
+still stands. Every
+view, polled or kept, puts it on the row of each pull request it reads
+through the queue's source on the queue's branch, unless the forge's
+own queue holds the pull request now or it left that queue later. The
+row keeps the last leaving after the pull request enters again.
 
 ## Running the steps
 
@@ -336,7 +347,9 @@ the same records written first, and the queue's own write credential,
 held apart, which the server reads then alone. A webhook only wakes the
 queue; every step reads the forge first. The server says each step it
 took and what came of it, and withholds a private repository's entries.
-No host but `herald server` takes them.
+No host but `herald server` takes them, in a container, on a host of its
+own or as an Azure Functions custom handler: `herald doctor --layer`
+names each such queue on any other layer, where no step is ever taken.
 
 Run `--apply` on a schedule or in a CI job of the base repository's own,
 never in a job that runs a pull request's code. `herald merge-queue`
@@ -383,8 +396,9 @@ never called again; a new gesture is. Only a record whose call
 provably never left herald (the run's request budget ended, the write
 App's token could not be minted, or the request could not be made) is
 handed over again, after a fresh read. A gesture the forge names no id
-for is never handed over. A store that keeps no records (`markers`) runs
-no queue. The forge's audit log names the credential; herald's records
+for is never handed over. The record of each pull request's last leaving
+of herald's own queue is kept beside these, in every store that keeps
+them. A store that keeps no records (`markers`) runs no queue. The forge's audit log names the credential; herald's records
 name who queued.
 
 ## Hosts

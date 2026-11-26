@@ -99,6 +99,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         let mut checks = Checks::default();
         actions::actions(kept, &mut checks).await?;
         actions::gestures(kept, &mut checks).await?;
+        actions::lefts(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.waiting() {

@@ -752,6 +752,88 @@ fn a_rule_alerts_once_on_a_private_pull_request_that_left_the_queue_for_a_failur
     assert_eq!(announced(&swept[0])[0].1, [("alerts".to_owned(), false)]);
 }
 
+const OWN_QUEUE: &str = r#"[merge_queues.own]
+source = "open"
+branch = "main"
+runs = "herald"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+[merge_queues.forge]
+source = "open"
+branch = "next"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+[sources.unviewed]
+kind = "github"
+repository = "o/open"
+token = { secret = "HERALD_GITHUB_TOKEN" }
+[merge_queues.unviewed]
+source = "unviewed"
+branch = "dev"
+runs = "herald"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE" } }
+"#;
+
+#[test]
+fn a_rule_alerts_on_a_pull_request_that_left_herald_s_own_queue_where_no_later_forge_entry_stands()
+{
+    use herald_core::merging::{LeftKey, LeftRecord};
+    use herald_core::{Checks, Dequeued, Left, QueueEntry, Visibility};
+    use herald_ports::Actions as _;
+    let config = config(&format!("{DEQUEUES}{OWN_QUEUE}"));
+    let store = healthy();
+    flaky_seen(&store, "Change", Visibility::Private);
+    let seen = (Checks::Passed, Visibility::Private);
+    let waiting = QueueEntry::entered(Some(hours(-3)));
+    for (number, base, queue) in [
+        (4, "main", None),
+        (5, "dev", None),
+        (6, "main", Some(waiting)),
+        (7, "next", None),
+    ] {
+        let mut pull = seen_pull(
+            ("github.com", "o/open"),
+            (number, "Change"),
+            (seen.clone(), queue),
+        );
+        pull.base = Some(base.to_owned());
+        keep_pull(&store, "github.com", pull);
+        let left = LeftRecord {
+            key: LeftKey {
+                api: "https://api.github.com".to_owned(),
+                repository: "o/open".to_owned(),
+                number,
+            },
+            gesture: 70,
+            left: Left {
+                at: hours(-2),
+                reason: Dequeued::HeadMoved,
+            },
+        };
+        pollster::block_on(store.inner.put_left_record(&left, None)).unwrap();
+    }
+    let script = Script::answering(&[POSTED]);
+    let swept = round(&config, &store, &script, NOON);
+    assert_eq!(
+        announced(&swept[0]),
+        [(
+            format!(
+                "rule/dequeued/github.com/o/open/pull/4/dequeued/{}",
+                hours(-2)
+            ),
+            vec![("alerts".to_owned(), true)]
+        )]
+    );
+    let alert = String::from_utf8(script.bodies()[0].clone())
+        .unwrap()
+        .replace('\\', "");
+    assert!(
+        alert.contains("o/open#4 left the merge queue") && alert.contains("head-moved"),
+        "{alert}"
+    );
+}
+
 const READINESS: &str = r#"[views.ship]
 sources = ["open"]
 mode = "kept"

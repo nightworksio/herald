@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use crate::{SecretRef, kind_name};
 
+pub use left::{LeftKey, LeftRecord};
 pub use owning::{Leaving, Own, Step, StepKind, Stepped, rerun};
 pub use record::{CancelKey, GestureKey, GestureRecord, HandOff, HandedOff, TakeOut, TakenOut};
 pub use verdict::{
@@ -258,6 +259,7 @@ impl Write {
     }
 }
 
+mod left;
 mod owning;
 mod record;
 #[cfg(test)]

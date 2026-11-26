@@ -23,6 +23,7 @@ mod made;
 mod minted;
 mod refreshed;
 mod retried;
+mod told;
 
 const OWN: &str = r#"[sources.app]
 kind = "github"

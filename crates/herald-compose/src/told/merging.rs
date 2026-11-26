@@ -122,6 +122,10 @@ fn acted_line(acted: &Acted) -> String {
             kind.said(),
             outcome.said()
         ),
+        Acted::Untold(left) => format!(
+            "it leaves the queue: {}, recorded for its gesture, but the record a view's row reads could not be written; the next run that takes this queue's steps writes it",
+            left.name()
+        ),
     }
 }
 

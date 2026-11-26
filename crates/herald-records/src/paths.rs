@@ -260,6 +260,13 @@ pub(crate) fn gesture(key: &herald_core::merging::GestureKey) -> String {
     format!("gestures/{}.json", segment(&key.to_string()))
 }
 
+/// Where the record of the last time the pull request `key` left herald's
+/// own queue is kept: every pull request in one directory, its key written
+/// as one segment (ADR-0087).
+pub(crate) fn left(key: &herald_core::merging::LeftKey) -> String {
+    format!("left/{}.json", segment(&key.to_string()))
+}
+
 pub(crate) fn position(destination: &DestinationName) -> String {
     format!("positions/{}.json", segment(destination.as_str()))
 }

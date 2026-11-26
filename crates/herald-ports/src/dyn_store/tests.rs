@@ -263,6 +263,21 @@ impl crate::Actions for Refusing {
     ) -> Result<Written, StoreError> {
         Err(refused("put_gesture"))
     }
+
+    async fn left_record(
+        &self,
+        _: &herald_core::merging::LeftKey,
+    ) -> Result<Option<Versioned<herald_core::merging::LeftRecord>>, StoreError> {
+        Err(refused("left_record"))
+    }
+
+    async fn put_left_record(
+        &self,
+        _: &herald_core::merging::LeftRecord,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_left_record"))
+    }
 }
 
 impl crate::Decisions for Refusing {
@@ -965,11 +980,19 @@ fn an_erased_store_hands_the_record_of_each_gesture_to_the_one_it_erases() {
         taken_out: Vec::new(),
         own: herald_core::merging::Own::default(),
     };
+    let leaving = herald_core::merging::Leaving {
+        left: herald_core::merging::Left::Unread,
+        at: Timestamp::UNIX_EPOCH,
+    };
+    let left = herald_core::merging::LeftRecord::of(&key, leaving);
     assert_eq!(
         [
             answered(erased.gesture(&key)),
             answered(erased.put_gesture(&gesture, None)),
+            answered(erased.left_record(&left.key)),
+            answered(erased.put_left_record(&left, None)),
         ],
-        [Some(refused("gesture")), Some(refused("put_gesture"))]
+        ["gesture", "put_gesture", "left_record", "put_left_record"]
+            .map(|what| Some(refused(what)))
     );
 }
