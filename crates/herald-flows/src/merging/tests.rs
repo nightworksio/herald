@@ -11,7 +11,7 @@ use herald_testing::{FakeStore, ScriptedHttp};
 use jiff::SignedDuration;
 
 use super::*;
-use stores::{ReadOnly, Unkept};
+use stores::Judging;
 
 #[derive(Debug, Default)]
 pub(super) struct Fixed {
@@ -574,9 +574,9 @@ fn a_first_seen_head_that_cannot_be_read_or_recorded_vouches_for_none() {
     seen.vouches = Vouches::Seen;
     let entered = entry(1, ("h1", "h1"), true);
     for (unkept, applies) in [
-        (Unkept(false), false),
-        (Unkept(false), true),
-        (Unkept(true), true),
+        (Judging::Down, false),
+        (Judging::Down, true),
+        (Judging::Conflicting, true),
     ] {
         let keeping = Keeping {
             store: Some(&unkept),
@@ -710,7 +710,7 @@ fn a_dry_run_never_writes_a_record_whatever_its_queue_vouches_for() {
         let mut entered = entry(1, ("h1", "h1"), true);
         entered.approved = true;
         let keeping = Keeping {
-            store: Some(&ReadOnly),
+            store: Some(&Judging::ReadOnly),
             applies: false,
         };
         let http = ScriptedHttp::new(Vec::new());
