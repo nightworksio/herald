@@ -231,6 +231,8 @@ fn overwrites_lay_over_the_server_s_permissions_as_discord_lays_them() {
         overwrite(NEWS, ROLE, (SEND, 0)),
     ]);
     assert_eq!(allowed_over_denied, []);
+    let allowed_again = probe(&[overwrite(HERALD, ROLE, (VIEW | SEND, 0))]);
+    assert_eq!(allowed_again, []);
     let own_denial = probe(&[
         overwrite(HERALD, ROLE, (VIEW, 0)),
         overwrite(BOT, MEMBER, (0, SEND)),
@@ -356,6 +358,24 @@ fn a_bot_that_manages_roles_below_its_own_gives_the_opt_in_role() {
         ),
     );
     assert_eq!(probes, []);
+    let level = checked(
+        &discord(false, Some(OTHER)),
+        (&Delivery::default(), Recorded::Kept),
+        (
+            channel(0, &[overwrite(HERALD, ROLE, (VIEW, 0))]),
+            server("1", &managing),
+            held(&[HERALD, OTHER]),
+        ),
+    );
+    assert_eq!(
+        level,
+        [Probe::Route {
+            key: Some("subscribe"),
+            why: format!(
+                "the opt-in role Manager ({OTHER}) is not below the bot's highest role, so herald cannot give or take it; move the bot's role above it in the server's roles"
+            ),
+        }]
+    );
     let missing = checked(
         &discord(false, Some(OTHER)),
         (&Delivery::default(), Recorded::Kept),
