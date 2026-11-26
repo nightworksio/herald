@@ -19,10 +19,6 @@ const SETTINGS: &str = "the repository's merge settings";
 /// GitLab's state of a merged merge request.
 const MERGED: &str = "merged";
 
-/// The address GitHub commits a merge it makes through its own API with,
-/// signed with its own key.
-const WEB_FLOW: &str = "noreply@github.com";
-
 /// GitLab's squash setting that allows no squash.
 const NEVER: &str = "never";
 
@@ -110,7 +106,7 @@ fn signing<'s>(reader: &ForgeMergeReader, signer: Option<&'s str>) -> Option<&'s
     if reader.forge() != Forge::GitHub {
         return None;
     }
-    signer.or_else(|| (reader.origin.api() == herald_wire::github::API).then_some(WEB_FLOW))
+    signer.or_else(|| herald_wire::github::web_flow(reader.origin.api()))
 }
 
 /// The parents of the commit `sha` where GitHub made and signed it through

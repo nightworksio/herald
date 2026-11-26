@@ -938,6 +938,7 @@ dependencies = [
  "herald-store-repo-variables",
  "herald-store-sqlite",
  "herald-testing",
+ "herald-wire",
  "jiff",
  "jsonschema",
  "pollster",

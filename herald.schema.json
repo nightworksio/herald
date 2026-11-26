@@ -4212,7 +4212,7 @@
           "type": "string"
         },
         "update_wait": {
-          "description": "How long herald pauses in all, at most, for the head of a pull\nrequest it brought up to date to move, where the forge answered\nbefore it moved: herald reads the head right after its update, and\nagain every 2s while the head has not moved and the pauses stay\nwithin this; \"0s\" reads it once. \"10s\" where absent, at most \"1m\";\nherald's own queue alone.",
+          "description": "How long herald pauses in all, at most, for the head of a pull\nrequest it brought up to date to move, where the forge answered\nbefore it moved: herald reads the head right after its update, and\nagain every 2s while the head has not moved and the pauses stay\nwithin this; \"0s\" reads it once. \"10s\" where absent, at most \"1m\";\nherald's own queue alone, read with `updated = \"signed\"` alone.",
           "$ref": "#/$defs/Lasting"
         },
         "updated": {

@@ -30,6 +30,7 @@ pub use federation::{
     Shown, SourceShown, federation,
 };
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
+pub use merging::unsigned;
 pub use online::{kept_tokens, keys, online, secrets};
 pub use peers::{granted, handed_over, shared};
 pub use recalls::recalls;

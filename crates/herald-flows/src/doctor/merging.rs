@@ -7,6 +7,7 @@
 use herald_config::{Config, MergeQueue};
 use herald_core::Duration;
 use herald_core::merging::{AppliedBy, RoleLost, Runs, Updated, Vouches};
+use herald_kinds::Merging;
 
 use super::{Findings, gap};
 
@@ -57,18 +58,26 @@ fn said(name: &str, queue: &MergeQueue) -> String {
     )
 }
 
-/// Why `updated = "signed"` on herald's own queue `queue` can never let a
+/// Why `updated = "signed"` on `forge` with `signer` can never let a
 /// gesture vouch for the head herald's own update made, where it cannot:
 /// no forge but GitHub signs a commit it makes, and off github.com only a
 /// `signer` names whose signature counts.
-fn unsigned(queue: &MergeQueue) -> Option<&'static str> {
+#[must_use]
+pub fn unsigned(forge: &Merging, signer: Option<&str>) -> Option<&'static str> {
+    if !MergeQueue::signs(forge.forge) {
+        return Some(UNSIGNED_FORGE);
+    }
+    (signer.is_none() && herald_wire::github::web_flow(&forge.api).is_none())
+        .then_some(UNSIGNED_HOST)
+}
+
+/// Why `updated = "signed"` on herald's own queue `queue` can never let a
+/// gesture vouch for the head herald's own update made, where it cannot.
+fn unsigned_queue(queue: &MergeQueue) -> Option<&'static str> {
     if queue.runs != Runs::Herald || queue.updated != Updated::Signed {
         return None;
     }
-    if queue.forge.forge != "github" {
-        return Some(UNSIGNED_FORGE);
-    }
-    (queue.signer.is_none() && queue.forge.api != herald_wire::github::API).then_some(UNSIGNED_HOST)
+    unsigned(&queue.forge, queue.signer.as_deref())
 }
 
 /// Why `updated = "signed"` never carries on GitLab or Forgejo.
@@ -94,7 +103,7 @@ pub(super) fn queued(config: &Config, findings: &mut Findings) {
                 .gaps
                 .push(gap(&format!("the merge queue \"{name}\""), key, why));
         }
-        if let Some(why) = unsigned(queue) {
+        if let Some(why) = unsigned_queue(queue) {
             let feature = format!("the merge queue \"{name}\"");
             findings
                 .gaps

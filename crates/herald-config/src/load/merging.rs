@@ -5,10 +5,8 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::merging::{
-    Enter, Message, Runs, SKEW, UPDATE_WAIT, UPDATE_WAIT_MOST, WAIT, Write,
-};
-use herald_core::{Duration, SourceName};
+use herald_core::SourceName;
+use herald_core::merging::{Enter, Message, Runs, SKEW, UPDATE_WAIT, WAIT, Write};
 use herald_kinds::{MergeAsked, Source};
 
 use super::{Loader, Value, list};
@@ -32,12 +30,6 @@ const UNMESSAGED: &str = "message = \"pull\" sets the commit message of a merge 
 
 /// Why `role_lost` beside `runs = "herald"` is refused.
 const UNFORGED_ROLE_LOST: &str = "role_lost says what herald does with a pull request it handed to the forge's queue, and with runs = \"herald\" herald hands none over; give runs = \"forge\", or remove role_lost";
-/// Why `signer` is refused where the forge is not GitHub, or it is blank.
-const UNSIGNING: &str = "signer names the committer a GitHub Enterprise Server or GHE.com instance signs the commits it makes for, such as signer = \"noreply@ghe.example\"; GitLab and Forgejo give no such signature, so remove signer there";
-
-/// The kind of a GitHub source, as a merge queue's forge names it.
-const GITHUB: &str = "github";
-
 /// The keys that shape herald's own queue alone, unread where the forge
 /// runs it.
 const HERALD_ONLY: [&str; 6] = [
@@ -223,18 +215,13 @@ impl Loader<'_> {
                 return None;
             }
         };
-        let unsigning = |signer: &str| forge.forge != GITHUB || signer.trim().is_empty();
-        if file.signer.as_deref().is_some_and(unsigning) {
-            self.error(span, &at("signer"), UNSIGNING);
+        let unsigning = |signer: &str| MergeQueue::unsigning(forge.forge, signer);
+        if let Some(why) = file.signer.as_deref().and_then(unsigning) {
+            self.error(span, &at("signer"), why);
         }
         let update_wait = file.update_wait.map_or(UPDATE_WAIT, |wait| wait.0);
-        if update_wait > UPDATE_WAIT_MOST {
-            let most = Duration(UPDATE_WAIT_MOST).written();
-            self.error(
-                span,
-                &at("update_wait"),
-                format!("update_wait is at most \"{most}\"; shorten it"),
-            );
+        if let Some(why) = MergeQueue::unwaited(update_wait) {
+            self.error(span, &at("update_wait"), why);
         }
         (self.errors.len() == errors).then(|| MergeQueue {
             source: name,

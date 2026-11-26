@@ -46,6 +46,7 @@ herald-store-markers.workspace = true
 herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
+herald-wire.workspace = true
 jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true

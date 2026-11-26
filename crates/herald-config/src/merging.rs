@@ -2,7 +2,8 @@
 //! forge's merge queue or herald's own merges (ADR-0087).
 
 use herald_core::merging::{
-    AppliedBy, Enter, Message, Method, Retries, RoleLost, Runs, Updated, Vouches, Write,
+    AppliedBy, Enter, Message, Method, Retries, RoleLost, Runs, UPDATE_WAIT_MOST, Updated, Vouches,
+    Write,
 };
 use herald_core::{Duration, Installation, Lasting, Permission, SourceName};
 use herald_kinds::{Installed, Merging, WriteCredential};
@@ -10,6 +11,12 @@ use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use toml::Spanned;
+
+/// The kind of a GitHub source, as a merge queue's forge names it.
+const GITHUB: &str = "github";
+
+/// Why `signer` is refused where the forge is not GitHub, or it is blank.
+pub(crate) const UNSIGNING: &str = "signer names the committer a GitHub Enterprise Server or GHE.com instance signs the commits it makes for, such as signer = \"noreply@ghe.example\"; GitLab and Forgejo give no such signature, so remove signer there";
 
 /// A `[merge_queues.<name>]` table, as written.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -68,7 +75,7 @@ pub(crate) struct MergeQueueFile {
     /// before it moved: herald reads the head right after its update, and
     /// again every 2s while the head has not moved and the pauses stay
     /// within this; "0s" reads it once. "10s" where absent, at most "1m";
-    /// herald's own queue alone.
+    /// herald's own queue alone, read with `updated = "signed"` alone.
     pub(crate) update_wait: Option<Lasting>,
     /// How it merges: "merge", "squash", "rebase", "fast-forward", or
     /// "repository", the repository's one allowed method. A queue without
@@ -157,6 +164,30 @@ pub struct MergeQueue {
 }
 
 impl MergeQueue {
+    /// Whether a queue on the forge `forge`, as a source's kind names it,
+    /// takes a `signer`: GitHub alone signs the commits it makes.
+    #[must_use]
+    pub fn signs(forge: &str) -> bool {
+        forge == GITHUB
+    }
+
+    /// Why a queue on the forge `forge` refuses `signer`, where it does:
+    /// off GitHub, or blank.
+    #[must_use]
+    pub fn unsigning(forge: &str, signer: &str) -> Option<&'static str> {
+        (!Self::signs(forge) || signer.trim().is_empty()).then_some(UNSIGNING)
+    }
+
+    /// Why a queue refuses `update_wait` of `wait`, where it does: longer
+    /// than [`UPDATE_WAIT_MOST`].
+    #[must_use]
+    pub fn unwaited(wait: SignedDuration) -> Option<String> {
+        (wait > UPDATE_WAIT_MOST).then(|| {
+            let most = Duration(UPDATE_WAIT_MOST).written();
+            format!("update_wait is at most \"{most}\"; shorten it")
+        })
+    }
+
     /// The credential its steps are made with, sent to its forge's API
     /// alone, where it names one.
     #[must_use]
