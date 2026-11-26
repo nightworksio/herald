@@ -157,6 +157,7 @@ pub(super) fn page(
         next: None,
         repository: id,
         visibility: named,
+        renamed: super::Renamed::new(),
     })
 }
 

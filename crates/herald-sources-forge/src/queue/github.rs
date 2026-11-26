@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::github::Label;
 use serde_json::json;
 
-use super::{FAILED, Named, PAGE, Page};
+use super::{FAILED, Named, PAGE, Page, Renamed};
 use crate::graphql::posted;
 
 /// What GitHub's open pull requests are read as.
@@ -40,7 +40,7 @@ pub(super) struct Ask {
 /// What the query reads of each pull request, as `ask` says.
 fn fields(ask: Ask) -> String {
     let changed = if ask.files {
-        format!(" files(first: {MOST_FILES}) {{ totalCount nodes {{ path }} }}")
+        format!(" files(first: {MOST_FILES}) {{ totalCount nodes {{ path changeType }} }}")
     } else {
         String::new()
     };
@@ -320,11 +320,24 @@ struct Files {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Path {
     path: String,
+    change_type: Option<String>,
 }
 
+/// What GitHub's GraphQL names the change of a renamed file, whose old
+/// path it does not name (ADR-0063).
+const RENAMED: &str = "RENAMED";
+
 impl Files {
+    /// Whether it names a renamed file.
+    fn renames(&self) -> bool {
+        self.nodes
+            .iter()
+            .any(|file| file.change_type.as_deref() == Some(RENAMED))
+    }
+
     /// The paths it names, whole where it names every one.
     fn changed(self) -> Changed {
         let whole = self.nodes.len() >= self.total_count;
@@ -376,6 +389,15 @@ fn visibility(named: Option<&str>) -> Visibility {
 }
 
 impl Node {
+    /// The pull request, of `project` at `repository`, seen by `seen`,
+    /// held in `renamed` where it names a renamed file.
+    fn taken(self, named: (&str, &str), seen: Visibility, renamed: &mut Renamed) -> Pull {
+        if self.files.as_ref().is_some_and(Files::renames) {
+            renamed.insert((named.1.to_owned(), self.number));
+        }
+        self.read(named, seen)
+    }
+
     /// The pull request, of `project` at `repository`, seen by `seen`.
     fn read(self, (project, repository): (&str, &str), seen: Visibility) -> Pull {
         let requested = self
@@ -462,40 +484,43 @@ pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, 
         .page_info
         .filter(|info| info.has_next_page)
         .and_then(|info| info.end_cursor);
+    let mut renamed = Renamed::new();
     let pulls = found
         .pull_requests
         .nodes
         .into_iter()
-        .map(|node| node.read((project, repository), seen))
+        .map(|node| node.taken((project, repository), seen, &mut renamed))
         .collect();
     Ok(Page {
         pulls,
         next,
-        repository: None,
-        visibility: None,
+        renamed,
+        ..Page::default()
     })
 }
 
 /// The pull requests `body` reads in full, parsing no more than `parse`
-/// bytes, named by `named`; one the answer holds no pull request for is
-/// left out.
+/// bytes, named by `named`, and those of them naming a renamed file; one
+/// the answer holds no pull request for is left out.
 pub(super) fn numbered(
     body: &[u8],
     parse: usize,
     named: Named<'_>,
-) -> Result<Vec<Pull>, SourceError> {
+) -> Result<(Vec<Pull>, Renamed), SourceError> {
     let (project, repository, known) = named;
     let answer: NumberedAnswer = herald_wire::read(WHAT, parse, body)?;
     let Some(found) = answer.data.and_then(|data| data.repository) else {
         return Err(unnamed());
     };
     let seen = known.unwrap_or_else(|| visibility(found.visibility.as_deref()));
-    Ok(found
+    let mut renamed = Renamed::new();
+    let pulls = found
         .pulls
         .into_values()
         .flatten()
-        .map(|node| node.read((project, repository), seen))
-        .collect())
+        .map(|node| node.taken((project, repository), seen, &mut renamed))
+        .collect();
+    Ok((pulls, renamed))
 }
 
 #[derive(Deserialize)]
@@ -506,16 +531,18 @@ struct ScopedAnswer {
 /// The pull requests `body` reads in full of each repository `named`
 /// names in the order [`scoped_request`] asked them, parsing no more than
 /// `parse` bytes, each seen by the stricter of who its repository's own
-/// answer and `named` say may see it; a repository or pull request the
-/// answer holds nothing for is left out (ADR-0062).
+/// answer and `named` say may see it, and those of them naming a renamed
+/// file; a repository or pull request the answer holds nothing for is
+/// left out (ADR-0062).
 pub(super) fn scoped(
     body: &[u8],
     parse: usize,
     named: &[Named<'_>],
-) -> Result<Vec<Pull>, SourceError> {
+) -> Result<(Vec<Pull>, Renamed), SourceError> {
     let answer: ScopedAnswer = herald_wire::read(WHAT, parse, body)?;
     let mut found = answer.data.unwrap_or_default();
     let mut pulls = Vec::new();
+    let mut renamed = Renamed::new();
     for (place, (project, repository, known)) in named.iter().enumerate() {
         let Some(Some(numbered)) = found.remove(&format!("r{place}")) else {
             continue;
@@ -527,10 +554,10 @@ pub(super) fn scoped(
                 .pulls
                 .into_values()
                 .flatten()
-                .map(|node| node.read((project, repository), seen)),
+                .map(|node| node.taken((project, repository), seen, &mut renamed)),
         );
     }
-    Ok(pulls)
+    Ok((pulls, renamed))
 }
 
 /// Why an answer naming no repository cannot be read.

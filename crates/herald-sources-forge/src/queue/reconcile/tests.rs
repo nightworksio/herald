@@ -354,3 +354,37 @@ fn github_s_graphql_reads_a_page_of_them_a_request_leaving_out_one_it_holds_none
     let (garbled, _) = completed(Forge::GitHub, true, vec![answer(200, None, &json!([]))]);
     assert!(matches!(garbled, Err(Unpolled::Unreadable(_))));
 }
+
+#[test]
+fn github_s_graphql_reads_a_renamed_file_s_old_path_over_rest() {
+    let node = |number: u64, change: &str| {
+        json!({
+            "number": number, "title": "read", "url": "https://github.com/o/r/pull/7",
+            "isDraft": false, "createdAt": "2026-11-18T10:00:00Z",
+            "updatedAt": "2026-11-18T11:00:00Z",
+            "files": { "totalCount": 1, "nodes": [{ "path": "b.rs", "changeType": change }] }
+        })
+    };
+    let body = json!({ "data": { "repository": {
+        "visibility": "PUBLIC", "p0": node(7, "RENAMED"), "p1": node(8, "MODIFIED")
+    } } });
+    let renamed = json!([{ "filename": "b.rs", "previous_filename": "a.rs" }]);
+    let (read, http) = completed(
+        Forge::GitHub,
+        true,
+        vec![answer(200, None, &body), answer(200, None, &renamed)],
+    );
+    let read = read.unwrap();
+    let paths: Vec<Vec<&str>> = read
+        .iter()
+        .map(|pull| {
+            let files = pull.files.as_ref().unwrap();
+            files.paths.iter().map(String::as_str).collect()
+        })
+        .collect();
+    assert_eq!(paths, [vec!["a.rs", "b.rs"], vec!["b.rs"]]);
+    assert_eq!(
+        http.asked().pop().unwrap().0,
+        "https://api.github.com/repos/o/r/pulls/7/files?per_page=100"
+    );
+}

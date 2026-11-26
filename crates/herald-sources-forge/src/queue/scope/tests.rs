@@ -846,3 +846,53 @@ fn an_owner_s_member_reads_its_own_base_branch() {
         herald_core::BaseRead::Checked(Checks::Failed(vec!["test".to_owned()]))
     );
 }
+
+#[test]
+fn an_owner_s_renamed_file_on_graphql_has_its_old_path_read_from_its_member_at_most_most_pulls() {
+    let scoped = scoped(Forge::GitHub, true);
+    let members = members();
+    let node = |number: u64| {
+        json!({ "number": number, "title": "read", "url": "https://github.com/o/app/pull/1",
+            "isDraft": false, "createdAt": "2026-11-18T10:00:00Z",
+            "updatedAt": "2026-11-18T11:00:00Z",
+            "files": { "totalCount": 1, "nodes": [{ "path": "b.rs", "changeType": "RENAMED" }] } })
+    };
+    let http = ScriptedHttp::new(vec![
+        answer(200, &searched(2, &[found(1, "o/app"), found(2, "o/vault")])),
+        answer(
+            200,
+            &json!({ "data": {
+                "r0": { "visibility": "PUBLIC", "p0": node(1) },
+                "r1": { "visibility": "PRIVATE", "p0": node(2) }
+            } }),
+        ),
+        answer(
+            200,
+            &json!([{ "filename": "b.rs", "previous_filename": "a.rs" }]),
+        ),
+    ]);
+    let most = Most {
+        pulls: 1,
+        ..Most::default()
+    };
+    let pulls = opened(&scoped, &http, asked(Owner::Organization, &members, most));
+    assert_eq!(
+        urls(&http).pop().unwrap(),
+        "https://api.github.com/repos/o/app/pulls/1/files?per_page=100"
+    );
+    let read: Vec<(u64, Vec<&str>, bool)> = pulls
+        .iter()
+        .map(|pull| {
+            let files = pull.files.as_ref().unwrap();
+            (
+                pull.number,
+                files.paths.iter().map(String::as_str).collect(),
+                files.whole,
+            )
+        })
+        .collect();
+    assert_eq!(
+        read,
+        [(1, vec!["a.rs", "b.rs"], true), (2, vec!["b.rs"], false)]
+    );
+}

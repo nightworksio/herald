@@ -28,6 +28,7 @@ impl DestinationKind for HeraldKind {
     const NAME: &str = HERALD;
     const DESCRIPTION: &str = "A feed of herald's own, served on the [federation] domain: each event as an envelope proved by the instance's newest key.";
     const LABEL: &str = "herald feed";
+    const RENDERS: bool = false;
     const ROUTE: &str = "HeraldRoute";
     const ROUTE_DESCRIPTION: &str = "A route publishing its events to a feed of herald's own.";
 

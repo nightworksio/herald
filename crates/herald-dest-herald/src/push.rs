@@ -37,6 +37,7 @@ impl DestinationKind for PushKind {
     const NAME: &str = HERALD_PUSH;
     const DESCRIPTION: &str = "A peer's herald source each event is pushed to: an envelope proved by the instance's newest key, in a request signed by it.";
     const LABEL: &str = "herald push";
+    const RENDERS: bool = false;
     const ROUTE: &str = "HeraldPushRoute";
     const ROUTE_DESCRIPTION: &str = "A route pushing its events to a peer's herald source.";
 

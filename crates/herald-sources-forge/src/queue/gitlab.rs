@@ -164,6 +164,7 @@ pub(super) fn page(body: &[u8], parse: usize, named: Named<'_>) -> Result<Page, 
         next: None,
         repository: id,
         visibility: None,
+        renamed: super::Renamed::new(),
     })
 }
 

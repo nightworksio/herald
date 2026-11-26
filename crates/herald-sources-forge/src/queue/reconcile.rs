@@ -6,7 +6,7 @@ use herald_core::{Pull, Validators};
 use herald_kinds::{Relisted, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Request, Response};
 
-use super::{PAGE, Page, ReadPath, github, gitlab, listed_more, listing};
+use super::{PAGE, Page, ReadPath, Renamed, github, gitlab, listed_more, listing};
 use crate::Forge;
 use crate::forge::{authorized, validators};
 use crate::limited::checked;
@@ -88,9 +88,10 @@ impl Opened<'_> {
 
     /// `pulls`, as [`Opened::relisted`] found them, each read in full: as
     /// listed on GitLab, whose listing reads them so, with its merge train
-    /// entry where it reads them; through GitHub's
-    /// GraphQL a page of them a request; else each one's reviews and
-    /// checks. One GraphQL holds no pull request for is left out.
+    /// entry where it reads them; through GitHub's GraphQL a page of them a
+    /// request, and the old paths of renamed files over REST, at most
+    /// `most_pulls` of them; else each one's reviews and checks. One
+    /// GraphQL holds no pull request for is left out.
     ///
     /// # Errors
     ///
@@ -115,6 +116,7 @@ impl Opened<'_> {
                 let parse = self.origin.reading().parse;
                 let named = (self.project, self.origin.path(), self.visibility);
                 let mut read = Vec::new();
+                let mut renamed = Renamed::new();
                 for chunk in pulls.chunks(PAGE) {
                     let numbers: Vec<u64> = chunk.iter().map(|pull| pull.number).collect();
                     let request = authorized(
@@ -128,10 +130,12 @@ impl Opened<'_> {
                         self.token,
                     );
                     let body = self.asked(http, request, github::WHAT).await?;
-                    read.extend(
-                        github::numbered(&body, parse, named).map_err(Unpolled::unreadable)?,
-                    );
+                    let (pulls, found) =
+                        github::numbered(&body, parse, named).map_err(Unpolled::unreadable)?;
+                    read.extend(pulls);
+                    renamed.extend(found);
                 }
+                self.renames_read(http, &mut read, &renamed).await?;
                 Ok(read)
             }
         }

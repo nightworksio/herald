@@ -16,6 +16,8 @@ mod destination_settings;
 #[cfg(test)]
 mod destinations;
 #[cfg(test)]
+mod dialects;
+#[cfg(test)]
 mod federation;
 #[cfg(test)]
 mod feeds;

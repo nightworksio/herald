@@ -24,9 +24,13 @@ herald keeps records.
    read overlaps none. A renamed file counts its old path too. The
    forge's own conflict state keeps its place among herald's rules.
 3. **Read where it is cheapest.** GitHub's GraphQL reads the paths in the
-   same request as each pull request. Without a token, and on Forgejo, a
-   pull request read in full takes one request more; on GitLab each merge
-   request's diffs take one, at most `most_pulls` a round. A read naming
+   same request as each pull request. It names no renamed file's old
+   path, so a pull request it names a renamed file of has its first page
+   of changed files read over REST, one request more, at most
+   `most_pulls` a round; one past them reads as partial. Without a
+   token, and on Forgejo, a pull request read in full takes one request
+   more; on GitLab each merge request's diffs take one, at most
+   `most_pulls` a round. A read naming
    every path says so, so a page cut at 100 is known as partial.
 4. **Kept once a head.** A kept record keeps the paths until a delivery
    or a read moves its head. A record kept without them is read in full
@@ -36,6 +40,6 @@ herald keeps records.
 
 ## Consequences
 
-- A view predicting conflicts on GitHub with a token costs nothing more
-  in requests, only a larger answer.
+- A view predicting conflicts on GitHub with a token costs a larger
+  answer, and a request more only for each pull request renaming a file.
 - Areas and CODEOWNERS (phase 4) can read the same paths.

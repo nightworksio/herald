@@ -1,6 +1,8 @@
 //! A repository's open pull requests as a view reads them: whose turn each
 //! is, from its reviews, checks and mergeability.
 
+use std::collections::BTreeSet;
+
 use herald_core::{Pull, Visibility};
 use herald_kinds::{Asked, Unpolled};
 use herald_ports::{DynHttp, Erased, Http as _, Request};
@@ -159,14 +161,39 @@ pub struct Opened<'a> {
 /// the repository's full path, and who may see it where that is known.
 pub(crate) type Named<'a> = (&'a str, &'a str, Option<Visibility>);
 
-/// A page of open pull requests, where the next begins, and the forge's
-/// id of their repository and who may see it, where the page names them.
+/// The pull requests a GraphQL answer names a renamed file of, each its
+/// repository's full path and its number: GraphQL names no renamed
+/// file's old path, which their changed files over REST name (ADR-0063).
+pub(crate) type Renamed = BTreeSet<(String, u64)>;
+
+/// A page of open pull requests, where the next begins, the forge's id of
+/// their repository and who may see it, where the page names them, and
+/// those of them naming a renamed file, where GraphQL read them.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Page {
     pub(crate) pulls: Vec<Pull>,
     pub(crate) next: Option<String>,
     pub(crate) repository: Option<String>,
     pub(crate) visibility: Option<Visibility>,
+    pub(crate) renamed: Renamed,
+}
+
+/// Those of `pulls` that `renamed` holds, the first `most` of them, to
+/// read the old paths of; each past them is left with its paths not read
+/// whole (ADR-0063).
+fn renaming<'p>(pulls: &'p mut [Pull], renamed: &Renamed, most: usize) -> Vec<&'p mut Pull> {
+    let mut read = Vec::new();
+    for pull in pulls
+        .iter_mut()
+        .filter(|pull| renamed.contains(&(pull.repository.clone(), pull.number)))
+    {
+        if read.len() < most {
+            read.push(pull);
+        } else if let Some(files) = pull.files.as_mut() {
+            files.whole = false;
+        }
+    }
+    read
 }
 
 /// Whether a listing on `forge` has a page after `page`: GitHub and GitLab
@@ -274,6 +301,36 @@ impl Opened<'_> {
         Ok(())
     }
 
+    /// `pull`, read through GraphQL naming a renamed file, with the old
+    /// path of each renamed file its first page of changed files over REST
+    /// names (ADR-0063).
+    async fn renamed(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pull: &mut Pull,
+    ) -> Result<(), Unpolled> {
+        let read = self.files_of(http, pull.number).await?;
+        if let Some(files) = pull.files.as_mut() {
+            files.whole |= read.whole;
+            files.paths.extend(read.paths);
+        }
+        Ok(())
+    }
+
+    /// `pulls`, read through GraphQL, with the old paths of the renamed
+    /// files of those `renamed` holds, at most `most_pulls` of them.
+    async fn renames_read(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        pulls: &mut [Pull],
+        renamed: &Renamed,
+    ) -> Result<(), Unpolled> {
+        for pull in renaming(pulls, renamed, self.most_pulls) {
+            self.renamed(http, pull).await?;
+        }
+        Ok(())
+    }
+
     /// The paths pull request `number` changes, its first page of them.
     ///
     /// # Errors
@@ -309,6 +366,7 @@ impl Opened<'_> {
     pub async fn pulls(&self, http: &Erased<'_, dyn DynHttp + '_>) -> Result<Vec<Pull>, Unpolled> {
         let what = self.what();
         let mut pulls = Vec::new();
+        let mut renamed = Renamed::new();
         let mut after: Option<String> = None;
         for number in 1..=self.most_open.div_ceil(PAGE) {
             let asked = self.request(after.as_deref(), number)?;
@@ -326,6 +384,7 @@ impl Opened<'_> {
                 }
             }
             pulls.extend(page.pulls);
+            renamed.extend(page.renamed);
             after = page.next;
             if !more {
                 break;
@@ -343,7 +402,7 @@ impl Opened<'_> {
                 }
             }
             ReadPath::Listing => self.furthered(http, &mut pulls).await?,
-            ReadPath::Graphql => {}
+            ReadPath::Graphql => self.renames_read(http, &mut pulls, &renamed).await?,
         }
         Ok(pulls)
     }
@@ -572,6 +631,7 @@ pub fn cost(forge: Forge, tokened: bool, most: herald_kinds::Most) -> herald_kin
         mergeability: !matches!((forge, path), (Forge::GitHub, ReadPath::Detailed)),
         scoped: false,
         files: files_cost(path, most),
+        renames: renames_cost(path, most),
         queue: queue_read(forge, tokened, 1),
     }
 }
@@ -607,6 +667,17 @@ fn files_cost(path: ReadPath, most: herald_kinds::Most) -> usize {
     match path {
         ReadPath::Graphql => 0,
         ReadPath::Listing | ReadPath::Detailed => most.pulls.min(most.open),
+    }
+}
+
+/// The most requests reading the old paths of renamed files adds a round
+/// on `path`, reading at most `most`: one for each pull request GitHub's
+/// GraphQL names a renamed file of, at most one for each it would read in
+/// full, and none elsewhere, whose changed files name them (ADR-0063).
+fn renames_cost(path: ReadPath, most: herald_kinds::Most) -> usize {
+    match path {
+        ReadPath::Graphql => most.pulls.min(most.open),
+        ReadPath::Listing | ReadPath::Detailed => 0,
     }
 }
 

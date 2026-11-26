@@ -97,6 +97,10 @@ pub trait DestinationKind: 'static {
     /// table leaves them out.
     const INHERITS: &[Inherited] = &[];
 
+    /// Whether a route to it renders a template, converted to its dialect;
+    /// false where each event goes as an envelope.
+    const RENDERS: bool = true;
+
     /// `options`, checked and completed with the files they name, read
     /// through `read`, with the faults the destination is kept beside.
     ///

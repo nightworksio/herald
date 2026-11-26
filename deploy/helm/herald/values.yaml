@@ -17,17 +17,40 @@ config: |
   key = { secret = "HERALD_MARKER_SECRET" }
 
 server:
+  listen: null
+  base: null
+  url: null
   jobs: null
+  queue: null
   connections: null
   body: null
   fetches: null
   completions: null
   silence: null
+  busy_retry: null
+  read: null
+  held: null
+  accept_pause: null
   keys:
     cache: null
     most: null
     refresh_after: null
     reread_after: null
+    document: null
+  inbound:
+    replay_window: null
+    signatures: null
+    covered: null
+  sessions:
+    first_wait: null
+    longest_wait: null
+    jitter: null
+    stale: null
+  work:
+    after: null
+    spare: null
+    requests: null
+    spare_requests: null
 
 schedule:
   poll: null

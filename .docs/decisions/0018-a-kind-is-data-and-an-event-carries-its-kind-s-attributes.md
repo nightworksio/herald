@@ -1,6 +1,6 @@
 # ADR-0018: A kind is data, and an event carries its kind's attributes
 
-**Status:** Accepted; a link's label and how a button is labelled extended by [ADR-0019](0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md); a private kind extended by [ADR-0051](0051-a-forge-source-announces-its-security-alerts-to-private-places.md)
+**Status:** Accepted; a link's label and how a button is labelled extended by [ADR-0019](0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md); a private kind extended by [ADR-0051](0051-a-forge-source-announces-its-security-alerts-to-private-places.md); the check of a template's attributes superseded in part by [ADR-0088](0088-a-template-is-checked-against-its-route-s-kinds-as-the-config-loads.md)
 **Date:** 2026-11-10
 
 ## Context

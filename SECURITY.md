@@ -24,6 +24,25 @@ No version is tagged yet; the first release is 0.1.0. Until it is tagged, a
 fix lands on `main`, and a project that pins herald by commit takes it by
 moving its pin.
 
+## How `main` is protected
+
+herald has one maintainer, so no change waits on a second person's review:
+`main` requires no approving review, and the owner accepts the two OpenSSF
+Scorecard alerts that follow from it, Branch-Protection's missing approver and
+Code-Review. What guards `main` instead:
+
+- a commit reaches it only once every required check passes on it, among
+  them the tests, line coverage, mutation testing, fuzzing, CodeQL,
+  `cargo deny`, `cargo audit`, zizmor, gitleaks and SonarCloud;
+- every commit on it is signed, and its history is linear: a pull request
+  lands as one squashed commit;
+- it cannot be force-pushed or deleted;
+- a release tag, `v*.*.*`, is created by an administrator alone and is never
+  moved or deleted.
+
+The rules on `main` do not bind the repository's administrators; the rule that
+a release tag is never moved or deleted binds everyone.
+
 ## Verifying a release
 
 Every release asset, the archives, the two WebAssembly components and

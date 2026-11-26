@@ -294,7 +294,7 @@ fn a_view_predicting_conflicts_asks_each_pull_request_s_changed_paths_and_its_br
         let body: Value = serde_json::from_slice(&asked.body).unwrap();
         let query = body["query"].as_str().unwrap();
         assert!(
-            query.contains("files(first: 100) { totalCount nodes { path } }"),
+            query.contains("files(first: 100) { totalCount nodes { path changeType } }"),
             "{query}"
         );
     }

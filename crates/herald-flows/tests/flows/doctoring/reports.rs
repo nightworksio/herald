@@ -180,7 +180,7 @@ view = "zoned"
     };
     assert_eq!(
         named("The report daily"),
-        "The report daily reads the view queue of org by search, at most 10 requests a round; it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each; to predict conflicts it reads the paths each pull request's head changes, at most 100 each, with each pull request."
+        "The report daily reads the view queue of org by search, at most 10 requests a round; it reads only the repositories the owner's membership record holds, each seen as that record says; where GitHub's search finds more than 1000, or the owner is a GitLab user, it lists each repository on its own, at least a request each; to predict conflicts it reads the paths each pull request's head changes, at most 100 each, with each pull request, and the old path of each renamed file by at most 100 more requests a round."
     );
     assert_eq!(
         named("The report weekly"),
