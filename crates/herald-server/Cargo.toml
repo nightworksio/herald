@@ -13,23 +13,20 @@ publish.workspace = true
 herald-environment.workspace = true
 herald-native.workspace = true
 futures-util.workspace = true
-herald-config.workspace = true
 herald-core.workspace = true
-herald-dest-discord.workspace = true
-herald-dest-matrix.workspace = true
-herald-dest-slack.workspace = true
 herald-flows.workspace = true
 herald-ports.workspace = true
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
-jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 
 [dev-dependencies]
 herald-compose.workspace = true
+herald-config.workspace = true
 herald-records.workspace = true
 herald-testing.workspace = true
+jiff.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync", "test-util", "time"] }
 

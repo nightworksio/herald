@@ -76,6 +76,16 @@ pub struct Planned {
     pub run: Result<Rerun, String>,
 }
 
+/// What an apply came to: each job an operator named, and each source
+/// whose forge was asked to revoke the operator's token and did not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RerunApplied {
+    /// Each job named, in the order named.
+    pub applied: Vec<Applied>,
+    /// Each source whose operator's token was not revoked, and why.
+    pub unrevoked: Vec<(SourceName, String)>,
+}
+
 /// What signing in shows the operator: where to go, and the code to enter.
 #[derive(Debug, Clone, Copy)]
 pub struct SigningIn<'a> {
@@ -213,7 +223,8 @@ pub(crate) async fn read_credential<H>(
 /// source of a job they hold alone, and each such job is checked right
 /// before its call; each other refused, saying why. The operator's tokens
 /// live until the apply ends, when each forge that lets a public client
-/// revoke one is asked to, every token that arrived, whatever came after.
+/// revoke one is asked to, every token that arrived, whatever came after;
+/// each it was asked to revoke and did not is said beside the jobs.
 ///
 /// # Errors
 ///
@@ -223,7 +234,7 @@ pub async fn rerun_apply<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     applying: &Applying<'_, H, T>,
     ((rule, printed), chosen): (PlansAsked<'_>, &[(String, String)]),
-) -> Result<Vec<Applied>, Stop> {
+) -> Result<RerunApplied, Stop> {
     let (config, connected, ports) = flow;
     if chosen.is_empty() {
         return Err(Stop::Source(UNCHOSEN.to_owned()));
@@ -269,8 +280,14 @@ pub async fn rerun_apply<S: Store, C: Clock, G: Signer, H: Http, T: Timer>(
             },
         });
     }
-    for revoking in ready.into_values().filter_map(|(revoking, _)| revoking) {
-        revoking.end().await;
+    let mut unrevoked = Vec::new();
+    for (name, revoking) in ready
+        .into_iter()
+        .filter_map(|(name, (revoking, _))| Some((name, revoking?)))
+    {
+        if let Err(why) = revoking.end().await {
+            unrevoked.push((name, why));
+        }
     }
-    Ok(applied)
+    Ok(RerunApplied { applied, unrevoked })
 }

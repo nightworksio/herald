@@ -14,10 +14,7 @@ futures-util.workspace = true
 herald-aws.workspace = true
 herald-config.workspace = true
 herald-core.workspace = true
-herald-dest-discord.workspace = true
 herald-dest-fediverse.workspace = true
-herald-dest-matrix.workspace = true
-herald-dest-slack.workspace = true
 herald-keys.workspace = true
 herald-kinds.workspace = true
 herald-models.workspace = true
@@ -30,7 +27,10 @@ jiff.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+herald-dest-discord.workspace = true
 herald-dest-herald.workspace = true
+herald-dest-matrix.workspace = true
+herald-dest-slack.workspace = true
 herald-records.workspace = true
 herald-sources-feed.workspace = true
 herald-sources-forge.workspace = true

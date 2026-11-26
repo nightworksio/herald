@@ -52,8 +52,11 @@ run's shards run at most four at a time.
    mutate the rest of it. `mutants-compute` mutates `herald-wasi` and
    `herald-fastly` only where each is in the scope; the shards exclude
    both.
-6. **Four shards at a time.** A scheduled run's twelve shards run four at
-   a time (`max-parallel`). A pull request's are not capped.
+6. **Shards, four at a time.** `mutants-scope` names the shards. A pull
+   request's diff is cut into twelve, all run at once. Every other run is
+   cut into thirty, so each shard ends well inside its 180 minutes; a
+   scheduled run's run four at a time (`max-parallel`), and any other
+   run's twelve at a time.
 
 ## Alternatives considered
 

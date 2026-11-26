@@ -1,9 +1,9 @@
 use herald_core::{Reran, Rerun, SourceName};
-use herald_flows::{Applied, Done, Planned, UNPLANNED};
+use herald_flows::{Applied, Done, Planned, RerunApplied, UNPLANNED};
 use serde_json::json;
 
 use super::world::*;
-use crate::rerunning::{applied_line, planned_lines};
+use crate::rerunning::{applied_line, applied_lines, planned_lines};
 use crate::*;
 
 const LISTED: &str =
@@ -123,6 +123,17 @@ fn a_plan_and_what_an_apply_did_are_printed_in_plain_words() {
     assert!(lines[2].contains("status 403; a later apply may ask again"));
     assert!(lines[3].starts_with("cli/cli#7 job 420@h1: unsettled: the forge's answer was lost"));
     assert!(lines[4].contains("could not be updated"));
+    let ended = RerunApplied {
+        applied: vec![applied(Done::Rerun)],
+        unrevoked: vec![(SourceName::new("lab"), "the forge answered 500".to_owned())],
+    };
+    assert_eq!(
+        applied_lines(&ended),
+        [
+            lines[0].clone(),
+            "warning: the operator's token signed in at lab was not revoked: the forge answered 500; revoke it at the forge".to_owned(),
+        ]
+    );
 }
 
 #[test]

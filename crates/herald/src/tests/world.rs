@@ -435,6 +435,20 @@ pub(super) fn herald_until(
     args: &[&str],
     stop: impl std::future::Future<Output = ()>,
 ) -> Run {
+    herald_stopped(setup, world, args, async {
+        stop.await;
+        Ok(())
+    })
+}
+
+/// [`herald_until`], `stop` completing with why the server stops, where
+/// it says.
+pub(super) fn herald_stopped(
+    setup: &Setup,
+    world: &World,
+    args: &[&str],
+    stop: impl std::future::Future<Output = Result<(), String>>,
+) -> Run {
     let config = setup
         .directory
         .path()

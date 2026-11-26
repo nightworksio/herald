@@ -6,7 +6,7 @@
 use herald_core::Rerun;
 use herald_core::merging::{Message, Method, StepKind, Update};
 use herald_kinds::{Done, Entered, Merge, Unpolled};
-use herald_ports::{HttpError, Method as Verb, Request, Response};
+use herald_ports::{HttpError, Method as Verb, Request, Response, Secret};
 use serde_json::{Map, Value, json};
 
 use super::{ForgeMergeWriter, refusing, said_of};
@@ -153,11 +153,12 @@ impl ForgeMergeWriter {
             return Done::Lost;
         };
         let forge = self.origin.forge();
-        let held = self.exposed();
+        let held = self.held();
+        let held = held.as_ref().map(Secret::expose);
         if conflicts(forge, kind, answer) {
-            Done::Conflict(said_of(answer, held.as_deref()))
+            Done::Conflict(said_of(answer, held))
         } else if refusing(answer.status) {
-            Done::Refused(said_of(answer, held.as_deref()))
+            Done::Refused(said_of(answer, held))
         } else if answer.succeeded() {
             Done::Took
         } else {

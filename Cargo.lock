@@ -931,11 +931,8 @@ dependencies = [
  "herald-sources-app",
  "herald-sources-forge",
  "herald-store-actions-cache",
- "herald-store-dynamodb",
  "herald-store-git-branch",
- "herald-store-markers",
  "herald-store-postgres",
- "herald-store-repo-variables",
  "herald-store-sqlite",
  "herald-testing",
  "herald-wire",
@@ -1338,9 +1335,6 @@ dependencies = [
  "herald-compose",
  "herald-config",
  "herald-core",
- "herald-dest-discord",
- "herald-dest-matrix",
- "herald-dest-slack",
  "herald-environment",
  "herald-flows",
  "herald-native",
@@ -1551,7 +1545,6 @@ dependencies = [
  "herald-core",
  "herald-kinds",
  "herald-ports",
- "herald-records",
  "herald-testing",
  "jiff",
  "pollster",
@@ -1619,7 +1612,6 @@ dependencies = [
 name = "herald-wasi"
 version = "0.0.0"
 dependencies = [
- "futures-util",
  "herald-compose",
  "herald-config",
  "herald-core",

@@ -268,7 +268,7 @@ fn a_minted_write_credential_is_hidden_from_a_refusal_too() {
         Answered::Refused(format!("the forge answered 403: {HIDDEN} is read-only"))
     );
     writer.token = Token::Minted(std::sync::Arc::new(herald_kinds::Minted::default()));
-    assert_eq!(writer.exposed(), None);
+    assert_eq!(writer.held(), None);
 }
 
 fn taken(id: Option<&str>) -> TakenBack {

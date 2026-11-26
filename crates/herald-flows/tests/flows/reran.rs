@@ -5,7 +5,7 @@
 use std::sync::Mutex;
 
 use herald_config::{Config, Uses, load};
-use herald_core::{Printed, Reran, RunKey};
+use herald_core::{Printed, Reran, RunKey, SourceName};
 use herald_flows::{
     Applied, Applying, Budget, Connected, Done, Ports, Requests, Stop, UNCHOSEN, UNKEPT, UNPLANNED,
     prepare, rerun_apply, rerun_plans,
@@ -192,6 +192,7 @@ fn scripted(parts: &[Vec<(&'static str, u16, String)>]) -> Script {
 /// What one apply did.
 struct Ended {
     applied: Result<Vec<Applied>, Stop>,
+    unrevoked: Vec<(SourceName, String)>,
     bases: Vec<String>,
     told: Vec<String>,
     waited: usize,
@@ -287,8 +288,13 @@ fn applied_from(
         &applying,
         ((Some("flaky"), printed), &chosen),
     ));
+    let (applied, unrevoked) = match applied {
+        Ok(ended) => (Ok(ended.applied), ended.unrevoked),
+        Err(stop) => (Err(stop), Vec::new()),
+    };
     Ended {
         applied,
+        unrevoked,
         bases: bases.into_inner().unwrap(),
         told: told.into_inner().unwrap(),
         waited: timer.waited().len(),

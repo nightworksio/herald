@@ -11,7 +11,7 @@ use std::io::Write;
 use herald_compose::Hosting;
 use herald_compose::told::why;
 use herald_config::{Config, Uses};
-use herald_flows::{Applied, Done, Planned, PlansAsked, SigningIn};
+use herald_flows::{Applied, Done, Planned, PlansAsked, RerunApplied, SigningIn};
 use herald_native::TokioTimer;
 
 use super::output::say;
@@ -71,6 +71,23 @@ pub(crate) fn applied_line(applied: &Applied) -> String {
         ),
     };
     format!("{at}job {}@{}: {said}", applied.job, applied.head)
+}
+
+/// What came of `applied`: a line for each job named, then a warning for
+/// each source whose operator's token was not revoked.
+pub(crate) fn applied_lines(applied: &RerunApplied) -> Vec<String> {
+    let unrevoked = applied.unrevoked.iter().map(|(source, why)| {
+        format!(
+            "warning: the operator's token signed in at {} was not revoked: {why}; revoke it at the forge",
+            source.as_str()
+        )
+    });
+    applied
+        .applied
+        .iter()
+        .map(applied_line)
+        .chain(unrevoked)
+        .collect()
 }
 
 /// Each `<job>@<head>` of `named`, or the first that is not one.
@@ -137,8 +154,8 @@ pub(crate) async fn rerunning(
         .await
         .map_err(|stop| why(&stop))?;
     let out = out.into_inner();
-    for applied in &applied {
-        say(out, &applied_line(applied));
+    for line in applied_lines(&applied) {
+        say(out, &line);
     }
     Ok(DONE)
 }
