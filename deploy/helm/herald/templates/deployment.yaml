@@ -36,13 +36,19 @@ spec:
           image: {{ include "herald.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["server"]
-          {{- with .Values.extraEnv }}
+          {{- if or .Values.server.listen .Values.extraEnv }}
           env:
+            {{- with .Values.server.listen }}
+            - name: HERALD_LISTEN
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ include "herald.port" . }}
           readinessProbe:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           livenessProbe:

@@ -49,8 +49,19 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{ .Values.config | trimSuffix "\n" }}
 {{- include "herald.table" (list "server" .Values.server) }}
 {{- include "herald.table" (list "server.keys" .Values.server.keys) }}
+{{- include "herald.table" (list "server.inbound" .Values.server.inbound) }}
+{{- include "herald.table" (list "server.sessions" .Values.server.sessions) }}
+{{- include "herald.table" (list "server.work" .Values.server.work) }}
 {{- include "herald.table" (list "schedule" .Values.schedule) }}
 {{ end -}}
+
+{{- define "herald.port" -}}
+{{- if .Values.server.listen -}}
+{{- splitList ":" .Values.server.listen | last -}}
+{{- else -}}
+8080
+{{- end -}}
+{{- end -}}
 
 {{- define "herald.secretName" -}}
 {{- default (printf "%s-secrets" (include "herald.fullname" .)) .Values.secrets.existingSecret -}}

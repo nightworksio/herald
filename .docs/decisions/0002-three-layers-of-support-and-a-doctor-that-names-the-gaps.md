@@ -1,6 +1,6 @@
 # ADR-0002: Three layers of support, each a superset of the one before, and a doctor that names what a layer cannot serve
 
-**Status:** Accepted
+**Status:** Accepted; the names `--layer` takes superseded by [ADR-0024](0024-a-host-is-described-once-and-every-driver-composes-through-one-composition.md), which names each host
 **Date:** 2026-10-31
 
 ## Context

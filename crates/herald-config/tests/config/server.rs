@@ -371,3 +371,43 @@ fn each_run_reads_the_secrets_its_work_needs_and_each_is_named_by_its_keys() {
     );
     assert_eq!(config.keys_naming("UNNAMED"), Vec::<String>::new());
 }
+
+fn chart_keys(values: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut path: Vec<(usize, String)> = Vec::new();
+    for line in values.lines() {
+        let Some((key, _)) = line.split_once(':') else {
+            continue;
+        };
+        let name = key.trim_start();
+        if name.is_empty() || name.starts_with('#') || name.contains(' ') {
+            continue;
+        }
+        let depth = key.len() - name.len();
+        path.retain(|(at, _)| *at < depth);
+        path.push((depth, name.to_owned()));
+        let dotted: Vec<&str> = path.iter().map(|(_, name)| name.as_str()).collect();
+        if matches!(dotted.first(), Some(&("server" | "schedule"))) && dotted.len() > 1 {
+            keys.push(dotted.join("."));
+        }
+    }
+    keys.sort();
+    keys
+}
+
+#[test]
+fn the_helm_chart_has_a_value_for_each_server_and_schedule_key() {
+    let settings = include_str!("../../../../.docs/settings.md");
+    let mut settings: Vec<String> = settings
+        .lines()
+        .filter_map(|row| row.strip_prefix("| `")?.split_once('`'))
+        .map(|(key, _)| key.to_owned())
+        .filter(|key| key.starts_with("server.") || key.starts_with("schedule."))
+        .collect();
+    settings.sort();
+    assert_eq!(
+        chart_keys(include_str!("../../../../deploy/helm/herald/values.yaml")),
+        settings,
+        "deploy/helm/herald/values.yaml writes each [server] and [schedule] key (ADR-0009)"
+    );
+}

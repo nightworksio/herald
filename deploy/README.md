@@ -96,6 +96,8 @@ The chart in `helm/herald/` is pushed with each release to
 `oci://ghcr.io/nightworksio/charts/herald`, signed and attested as the image
 is. `config` holds `herald.toml` but for its `[server]` and `[schedule]`
 tables, which `server.*` and `schedule.*` write, each key the config's own.
+`server.listen` also sets `HERALD_LISTEN`, which the image sets to
+`0.0.0.0:8080`, and the container's port.
 `secrets.values` makes the Secret, or `secrets.existingSecret` names one.
 
 ```sh
