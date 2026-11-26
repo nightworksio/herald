@@ -3,11 +3,12 @@ release's gate and the weekly run mutate the whole workspace, a pull request's
 narrowed to its diff by its shards. The nightly run mutates the crates changed
 since the last green scheduled run on main, and every crate depending on one.
 Where that run cannot be found, or a change outside the crates may reach a
-build or a test, the nightly run mutates the whole workspace too. It writes
-A push to main mutates nothing. It runs on every event, and writes
-the scope to $GITHUB_OUTPUT: `shards` (the cargo-mutants arguments naming
-what the shards mutate, empty for nothing), and `wasm`, `wasi` and `fastly`
-(whether the runtime jobs mutate those crates)."""
+build or a test, the nightly run mutates the whole workspace too. A push to
+main mutates nothing. It runs on every event, and writes the scope to
+$GITHUB_OUTPUT: `shards` (the cargo-mutants arguments naming what the shards
+mutate, empty for nothing), `matrix` (the shards' indices, as JSON), and
+`wasm`, `wasi` and `fastly` (whether the runtime jobs mutate those
+crates)."""
 import json
 import os
 import pathlib
@@ -20,6 +21,8 @@ WEEKLY = "17 2 * * 6"
 WORKFLOW = "ci.yml"
 MAIN = "refs/heads/main"
 RUNS_READ = 30
+SHARDS = 30
+PULL_REQUEST_SHARDS = 12
 RUNTIMES = ("herald-wasm", "herald-wasi", "herald-fastly")
 UNSHARDED = frozenset({"herald-wasi", "herald-fastly", "herald-spin"})
 UNREAD_DIRECTORIES = (".docs/decisions/", ".github/", "fuzz/")
@@ -37,6 +40,7 @@ class Scope(NamedTuple):
     whole: bool
     packages: frozenset[str]
     why: str
+    cut: int = SHARDS
 
     def outputs(self) -> dict[str, str]:
         """The job outputs naming it."""
@@ -45,7 +49,8 @@ class Scope(NamedTuple):
         else:
             shards = " ".join(f"--package {name}" for name in sorted(self.packages - UNSHARDED))
         reached = {name.removeprefix("herald-"): self.whole or name in self.packages for name in RUNTIMES}
-        return {"shards": shards} | {name: str(value).lower() for name, value in reached.items()}
+        matrix = json.dumps(list(range(self.cut)), separators=(",", ":"))
+        return {"shards": shards, "matrix": matrix} | {name: str(value).lower() for name, value in reached.items()}
 
 
 def whole(why: str) -> Scope:
@@ -136,6 +141,8 @@ def scope(event: str, schedule: str, ref: str) -> Scope:
         return Scope(False, frozenset(), "a push to main mutates nothing: its pull request mutated its diff, and the next scheduled run mutates it again")
     if event == "schedule" and schedule == WEEKLY:
         return whole("the weekly run mutates the whole workspace")
+    if event == "pull_request":
+        return whole("a pull_request run mutates the whole workspace narrowed to its diff")._replace(cut=PULL_REQUEST_SHARDS)
     if event != "schedule" or schedule != NIGHTLY:
         return whole(f"a {event or 'called'} run mutates the whole workspace, a pull request's narrowed to its diff")
     repository = os.environ["GITHUB_REPOSITORY"]

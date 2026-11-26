@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use herald_flows::{
-    Admission, Applied, Applying, PlansAsked, RerunPlans, SigningIn, Stop, rerun_apply, rerun_plans,
+    Admission, Applying, PlansAsked, RerunApplied, RerunPlans, SigningIn, Stop, rerun_apply,
+    rerun_plans,
 };
 use herald_ports::{Base, Keyring, Store, Timer};
 
@@ -35,7 +36,7 @@ struct Apply<'a, H: Host, T> {
 }
 
 impl<H: Host, T: Timer> Through<H> for Apply<'_, H, T> {
-    type Done = Result<Vec<Applied>, Stop>;
+    type Done = Result<RerunApplied, Stop>;
 
     async fn through<S: Store, K: Keyring>(
         self,
@@ -85,7 +86,7 @@ where
         (planning, chosen): (PlansAsked<'_>, &[(String, String)]),
         timer: &T,
         told: &dyn Fn(SigningIn<'_>),
-    ) -> Result<Vec<Applied>, Stop> {
+    ) -> Result<RerunApplied, Stop> {
         let outbound = self.config.http.clone().timed(self.host.var(TIMEOUT_MS));
         let connect = |base: Base<'_>| {
             self.host

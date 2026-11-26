@@ -2,6 +2,7 @@
 //! refused at sign-in, refused by a check, or used for a call (ADR-0068).
 
 use herald_config::{Config, load};
+use herald_core::SourceName;
 use herald_flows::Done;
 use serde_json::json;
 
@@ -133,6 +134,11 @@ fn an_operator_s_token_is_revoked_whether_it_was_refused_at_sign_in_or_by_a_chec
             Some(Ok("client_id=Iv23liClient&token=operator-value".to_owned())),
             "{said}"
         );
+        assert!(
+            applied.unrevoked.is_empty(),
+            "{said}: {:?}",
+            applied.unrevoked
+        );
     }
     let store = healthy();
     flaky_on(&store, ("lab", "gitlab.com", "g/open"), "Change");
@@ -151,4 +157,24 @@ fn an_operator_s_token_is_revoked_whether_it_was_refused_at_sign_in_or_by_a_chec
             .iter()
             .all(|line| !line.ends_with("/revoke"))
     );
+}
+
+#[test]
+fn a_token_the_forge_does_not_revoke_is_said_without_the_token() {
+    let config = gitlab();
+    let store = healthy();
+    flaky_on(&store, ("lab", "gitlab.com", "g/open"), "Change");
+    let script = scripted(&[
+        planned(),
+        signed_in(&["api"]),
+        vec![(REVOKE, 503, "operator-value".to_owned())],
+    ]);
+    let applied = apply((&config, &store, &secrets()), &script, (CHOSEN, None));
+    assert!(refused(&applied).contains("can do more than read"));
+    let [(source, why)] = applied.unrevoked.as_slice() else {
+        panic!("{:?}", applied.unrevoked);
+    };
+    assert_eq!(source, &SourceName::new("lab"));
+    assert!(why.contains("503"), "{why}");
+    assert!(!why.contains("operator-value"), "{why}");
 }

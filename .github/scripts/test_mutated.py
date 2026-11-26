@@ -5,6 +5,7 @@ import unittest
 import mutated
 
 ROOT = "/w"
+WHOLE = "[" + ",".join(str(index) for index in range(mutated.SHARDS)) + "]"
 
 
 def package(name: str, *on: str) -> dict:
@@ -79,7 +80,7 @@ class Nightly(unittest.TestCase):
     def test_no_green_run_mutates_the_whole_workspace(self):
         found = mutated.nightly(None, changing(), METADATA)
         self.assertTrue(found.whole)
-        self.assertEqual(found.outputs(), {"shards": "--workspace", "wasm": "true", "wasi": "true", "fastly": "true"})
+        self.assertEqual(found.outputs(), {"shards": "--workspace", "matrix": WHOLE, "wasm": "true", "wasi": "true", "fastly": "true"})
 
     def test_a_read_path_outside_the_crates_mutates_the_whole_workspace(self):
         found = mutated.nightly("g1", changing("crates/herald-core/src/lib.rs", "Cargo.lock"), METADATA)
@@ -91,7 +92,7 @@ class Nightly(unittest.TestCase):
         self.assertFalse(found.whole)
         self.assertEqual(
             found.outputs(),
-            {"shards": "--package herald-flows --package herald-ports --package herald-wasm", "wasm": "true",
+            {"shards": "--package herald-flows --package herald-ports --package herald-wasm", "matrix": WHOLE, "wasm": "true",
              "wasi": "false", "fastly": "false"},
         )
         self.assertIn("herald-flows herald-ports herald-wasm", found.why)
@@ -99,11 +100,11 @@ class Nightly(unittest.TestCase):
     def test_a_crate_the_shards_exclude_whole_is_left_to_its_runtime_job(self):
         metadata = {"workspace_root": ROOT, "packages": [package("herald-wasi"), package("herald-spin")]}
         found = mutated.nightly("g1", changing("crates/herald-wasi/src/lib.rs", "crates/herald-spin/src/lib.rs"), metadata)
-        self.assertEqual(found.outputs(), {"shards": "", "wasm": "false", "wasi": "true", "fastly": "false"})
+        self.assertEqual(found.outputs(), {"shards": "", "matrix": WHOLE, "wasm": "false", "wasi": "true", "fastly": "false"})
 
     def test_nothing_changed_mutates_nothing(self):
         found = mutated.nightly("g1", changing(".docs/decisions/0002-y.md"), METADATA)
-        self.assertEqual(found.outputs(), {"shards": "", "wasm": "false", "wasi": "false", "fastly": "false"})
+        self.assertEqual(found.outputs(), {"shards": "", "matrix": WHOLE, "wasm": "false", "wasi": "false", "fastly": "false"})
         self.assertEqual(found.why, "no crate changed since g1, so nothing is mutated")
 
 
@@ -116,9 +117,15 @@ class Scope(unittest.TestCase):
         self.assertEqual(mutated.scope("schedule", mutated.WEEKLY, mutated.MAIN).why,
                          "the weekly run mutates the whole workspace")
 
+    def test_a_pull_request_cuts_its_diff_into_fewer_shards_than_a_whole_run(self):
+        found = mutated.scope("pull_request", "", "refs/pull/1/merge")
+        self.assertEqual(found.outputs()["matrix"], "[0,1,2,3,4,5,6,7,8,9,10,11]")
+        self.assertEqual(found.outputs()["shards"], "--workspace")
+        self.assertEqual(mutated.scope("workflow_dispatch", "", mutated.MAIN).outputs()["matrix"], WHOLE)
+
     def test_a_push_to_main_mutates_nothing(self):
         found = mutated.scope("push", "", mutated.MAIN)
-        self.assertEqual(found.outputs(), {"shards": "", "wasm": "false", "wasi": "false", "fastly": "false"})
+        self.assertEqual(found.outputs(), {"shards": "", "matrix": WHOLE, "wasm": "false", "wasi": "false", "fastly": "false"})
 
 
 FORGE_PLACES = frozenset({".github/CODEOWNERS"})

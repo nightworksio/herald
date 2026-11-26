@@ -93,14 +93,14 @@ fn worded<T>(made: Result<T, impl Display>) -> Result<T, String> {
 /// The CLI, run with `args`, in an environment of `vars`, reaching each base
 /// URL through what `connect` makes for it, and writing to `out` and `err`.
 /// It answers the process's exit code. A server it runs runs until `stop`
-/// completes.
+/// completes, and fails where it completes with why.
 pub async fn run_until(
     args: &[String],
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
-    stop: impl Future<Output = ()>,
+    stop: impl Future<Output = Result<(), String>>,
 ) -> u8 {
     Box::pin(stopping(args, vars, connect, out, err, Box::pin(stop))).await
 }
@@ -112,7 +112,7 @@ async fn stopping(
     connect: Connect<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
-    stop: Pin<Box<dyn Future<Output = ()> + '_>>,
+    stop: Pin<Box<dyn Future<Output = Result<(), String>> + '_>>,
 ) -> u8 {
     let cli = match parsed(args, out, err) {
         Ok(cli) => cli,
@@ -204,7 +204,7 @@ async fn ran(
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
-    stop: Pin<Box<dyn Future<Output = ()> + '_>>,
+    stop: Pin<Box<dyn Future<Output = Result<(), String>> + '_>>,
 ) -> Result<u8, String> {
     match run {
         Running::Announce {

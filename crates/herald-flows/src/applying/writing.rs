@@ -50,8 +50,16 @@ pub(super) struct Revoking<H> {
 impl<H: Http> Revoking<H> {
     /// The token revoked where its forge lets a public client revoke it,
     /// whatever the budget holds, and dropped.
-    pub(super) async fn end(self) {
-        let _ = self.rerunner.revoked(&self.web, &self.token).await;
+    ///
+    /// # Errors
+    ///
+    /// Where its forge was asked to revoke it and did not, saying why.
+    pub(super) async fn end(self) -> Result<(), String> {
+        self.rerunner
+            .revoked(&self.web, &self.token)
+            .await
+            .map(drop)
+            .map_err(said)
     }
 }
 

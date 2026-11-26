@@ -408,6 +408,7 @@ jobs:
       contents: read
     outputs:
       shards: ${{ steps.scope.outputs.shards }}
+      matrix: ${{ steps.scope.outputs.matrix }}
       wasm: ${{ steps.scope.outputs.wasm }}
       wasi: ${{ steps.scope.outputs.wasi }}
       fastly: ${{ steps.scope.outputs.fastly }}
@@ -425,8 +426,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/mutated.py
 
-  # Any missed mutant fails its shard; a scheduled run's shards run four at
-  # a time (ADR-0070).
+  # Any missed mutant fails its shard; mutants-scope names the shards, and a
+  # scheduled run's run four at a time (ADR-0070).
   mutants-shard:
     name: mutants shard ${{ matrix.shard }}
     needs: mutants-scope
@@ -437,7 +438,7 @@ jobs:
       fail-fast: false
       max-parallel: ${{ github.event_name == 'schedule' && 4 || 12 }}
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        shard: ${{ fromJSON(needs.mutants-scope.outputs.matrix) }}
     services: *postgres
     env: *postgres-env
     steps:

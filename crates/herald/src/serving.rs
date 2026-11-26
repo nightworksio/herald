@@ -27,10 +27,14 @@ struct Listening<'a, F> {
     stop: F,
 }
 
-impl<H: Host, F: Future<Output = ()>> Through<H> for Listening<'_, F> {
-    type Done = u8;
+impl<H: Host, F: Future<Output = Result<(), String>>> Through<H> for Listening<'_, F> {
+    type Done = Result<u8, String>;
 
-    async fn through<S: Store, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) -> u8 {
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
         let config = serving.config;
         let server = &config.server;
         let period = |every: Option<jiff::SignedDuration>| {
@@ -57,16 +61,14 @@ impl<H: Host, F: Future<Output = ()>> Through<H> for Listening<'_, F> {
                 say(&mut **out, &line);
             }
         };
-        serve(
-            serving,
-            self.listener,
-            &self.sockets,
-            limits,
-            &heard,
-            self.stop,
-        )
-        .await;
-        DONE
+        let unheard = RefCell::new(None);
+        let stop = async {
+            if let Err(why) = self.stop.await {
+                *unheard.borrow_mut() = Some(why);
+            }
+        };
+        serve(serving, self.listener, &self.sockets, limits, &heard, stop).await;
+        unheard.into_inner().map_or(Ok(DONE), Err)
     }
 }
 
@@ -137,7 +139,7 @@ pub(crate) async fn serving(
     connect: Connect<'_>,
     listen: Option<&str>,
     out: &mut dyn Write,
-    stop: impl Future<Output = ()>,
+    stop: impl Future<Output = Result<(), String>>,
 ) -> Result<u8, String> {
     let azure = vars
         .get(AZURE_PORT)
@@ -175,5 +177,5 @@ pub(crate) async fn serving(
         out: RefCell::new(out),
         stop,
     };
-    Ok(composed.run(listening).await)
+    composed.run(listening).await
 }

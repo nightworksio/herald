@@ -69,7 +69,7 @@ fn a_process_stops_when_it_is_asked_to() {
             .status()
             .unwrap();
         assert!(told.success());
-        asked.await;
+        assert_eq!(asked.await, Ok(()));
     });
 }
 
@@ -90,9 +90,44 @@ fn a_process_listening_for_its_signals_waits_until_one_arrives() {
 
 #[cfg(unix)]
 #[test]
-fn a_process_that_cannot_listen_for_its_signals_stops_at_once() {
+fn a_process_that_cannot_listen_for_its_signals_stops_at_once_saying_why() {
+    use tokio::signal::unix::{SignalKind, signal};
     let unheard = || Err(std::io::Error::other("no signals here"));
-    on_tokio(crate::signals::signalled(unheard(), unheard()));
+    assert_eq!(
+        on_tokio(crate::signals::signalled(unheard(), unheard())),
+        Err(
+            "herald cannot listen for SIGTERM, so the server stops at once: no signals here"
+                .to_owned()
+        )
+    );
+    let heard = on_tokio(async {
+        crate::signals::signalled(signal(SignalKind::user_defined1()), unheard()).await
+    });
+    assert_eq!(
+        heard,
+        Err(
+            "herald cannot listen for SIGINT, so the server stops at once: no signals here"
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn a_server_whose_signals_cannot_be_listened_for_stops_and_says_why() {
+    let (_, served) = on_free_port(|port| {
+        herald_stopped(
+            &setup(CONFIG),
+            &World::default(),
+            &["server", "--listen", &format!("127.0.0.1:{port}")],
+            std::future::ready(Err("herald cannot listen for SIGTERM".to_owned())),
+        )
+    });
+    assert_ne!(served.code, DONE);
+    assert!(
+        served.err.contains("herald cannot listen for SIGTERM"),
+        "{}",
+        served.err
+    );
 }
 
 #[test]

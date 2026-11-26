@@ -6,7 +6,7 @@
 use herald_core::Rerun;
 use herald_core::merging::{StepKind, Update};
 use herald_kinds::{Answered, Done, Entered, Merge, MergeWriter, TakenBack, Unpolled};
-use herald_ports::{Boxed, DynHttp, Erased, Http as _, HttpError, Method, Response};
+use herald_ports::{Boxed, DynHttp, Erased, Http as _, HttpError, Method, Response, Secret};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -239,11 +239,11 @@ fn gitlab_handed(answer: &Response, held: Option<&str>) -> Answered {
 }
 
 impl ForgeMergeWriter {
-    /// The write credential's value, where it holds one now.
-    fn exposed(&self) -> Option<String> {
+    /// The write credential, where it holds one now.
+    fn held(&self) -> Option<Secret> {
         match &self.token {
-            Token::Named(secret) | Token::Run(secret) => Some(secret.expose().to_owned()),
-            Token::Minted(minted) => minted.current().map(|secret| secret.expose().to_owned()),
+            Token::Named(secret) | Token::Run(secret) => Some(secret.clone()),
+            Token::Minted(minted) => minted.current(),
         }
     }
 
@@ -321,10 +321,11 @@ impl ForgeMergeWriter {
         let Ok(answer) = answer else {
             return Answered::Lost;
         };
-        let held = self.exposed();
+        let held = self.held();
+        let held = held.as_ref().map(Secret::expose);
         match self.origin.forge() {
-            Forge::GitHub => github_answered(answer, held.as_deref(), github),
-            Forge::GitLab | Forge::Forgejo => gitlab(answer, held.as_deref()),
+            Forge::GitHub => github_answered(answer, held, github),
+            Forge::GitLab | Forge::Forgejo => gitlab(answer, held),
         }
     }
 }
