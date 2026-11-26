@@ -8,18 +8,20 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use herald_compose::Hosting;
-use herald_config::{Config, Uses};
+use herald_config::{Config, MergeQueue, Uses};
 use herald_core::merging::{
-    AppliedBy, ENTER_LABEL, Enter, Message, Method, Runs, SKEW, Vouches, WAIT, Write,
+    AppliedBy, ENTER_LABEL, Enter, Message, Method, RoleLost, Runs, SKEW, UPDATE_WAIT,
+    UPDATE_WAIT_MOST, Updated, Vouches, WAIT, Write,
 };
-use herald_core::{Duration, Permission, Printed, kind_name};
+use herald_core::{Duration, Lasting, Permission, Printed, kind_name};
 use herald_kinds::{MergeAsked, Merging, Source};
+use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use tokio::io::AsyncBufRead;
 use toml_edit::{Item, TableLike, Value};
 
-use self::asking::{Asking, Question, choices, default_name, parsed};
+use self::asking::{Asking, NONE, Question, choices, default_name, parsed};
 use self::table::{Keys, inline, listed, text};
 use super::stores::composed;
 use super::{Connect, DONE, STOPPED};
@@ -32,7 +34,14 @@ mod table;
 const FORGELESS: &str = "no source of kind github, gitlab or forgejo is configured; add one under [sources.<name>] first";
 
 /// Why herald's own queue's keys were given to a queue the forge runs.
-const HERALD_ONLY: &str = "--may-fail, --wait, --retry and --retry-times hold for herald's own queue alone; give --runs herald, or leave them out";
+const HERALD_ONLY: &str = "--may-fail, --wait, --retry, --retry-times, --updated, --signer and --update-wait hold for herald's own queue alone; give --runs herald, or leave them out";
+
+/// Why the forge's queue's key was given to herald's own queue.
+const FORGE_ONLY: &str =
+    "--role-lost holds for a queue the forge runs alone; give --runs forge, or leave it out";
+
+/// Why the keys of a signed update were given where `updated` is another.
+const SIGNED_ONLY: &str = "--signer and --update-wait hold where updated is signed alone; give --updated signed, or leave them out";
 
 /// The refused answers to one question after which the wizard stops.
 pub(crate) const MOST_REFUSED: u8 = 3;
@@ -91,6 +100,22 @@ pub(crate) struct Answers {
     /// The most re-runs on one head.
     #[arg(long)]
     pub(crate) retry_times: Option<String>,
+    /// Whether a gesture vouches for the head herald's own update made:
+    /// signed, never or approved.
+    #[arg(long)]
+    pub(crate) updated: Option<String>,
+    /// The committer a GitHub instance signs the commits it makes for;
+    /// "none" for none.
+    #[arg(long)]
+    pub(crate) signer: Option<String>,
+    /// How long it pauses, at most, for the head it updated to move, such
+    /// as 10s.
+    #[arg(long)]
+    pub(crate) update_wait: Option<String>,
+    /// What becomes of a pull request in the forge's queue once who queued
+    /// it lost the least role: take-out or stay.
+    #[arg(long)]
+    pub(crate) role_lost: Option<String>,
     /// Where its steps are taken: command or server.
     #[arg(long)]
     pub(crate) applied_by: Option<String>,
@@ -173,6 +198,14 @@ fn duration(answer: &str) -> Result<String, String> {
     Duration::parse(answer)
         .map(Duration::written)
         .ok_or_else(|| "answer a number above 0 and its unit, such as 5s, 30m or 2h".to_owned())
+}
+
+/// `answer` as a length of time that may be none, as the config writes
+/// it, where a queue's `update_wait` takes it.
+fn update_wait(answer: &str) -> Result<String, String> {
+    let lasting = Lasting::parse(answer)
+        .ok_or_else(|| "answer a number and its unit, such as 0s, 10s or 1m".to_owned())?;
+    MergeQueue::unwaited(lasting.0).map_or_else(|| Ok(lasting.written()), Err)
 }
 
 /// The name a new queue on `branch` of `source` is offered.
@@ -498,13 +531,13 @@ async fn chosen<T: JsonSchema + DeserializeOwned + Default + PartialEq>(
     (was_here, key): (Option<&dyn TableLike>, &'static str),
     asking: &mut Asking<'_>,
     keys: &mut Keys,
-) -> Result<(), String> {
+) -> Result<T, String> {
     let default = was(was_here, &[key]).unwrap_or_else(default_name::<T>);
-    let (name, _) = asking
+    let (name, value) = asking
         .choice::<T>(question(asked, flag, given, Some(default)), &choices::<T>())
         .await?;
     keys.push((key, text(&name)));
-    Ok(())
+    Ok(value)
 }
 
 /// The gesture that queues a pull request, the least role of who makes
@@ -659,22 +692,14 @@ pub(crate) async fn setting_up(
         let message = ("The commit message", "message", asked.message.as_deref());
         chosen::<Message>(message, (was_here, "message"), &mut asking, &mut keys).await?;
     }
-    if runs == Runs::Herald {
-        herald_keys(
-            sourced.source,
-            (repository, was_here),
-            asked,
-            &mut asking,
-            &mut keys,
-        )
-        .await?;
-    } else if !asked.may_fail.is_empty()
-        || asked.wait.is_some()
-        || !asked.retry.is_empty()
-        || asked.retry_times.is_some()
-    {
-        return Err(HERALD_ONLY.to_owned());
-    }
+    ran_by(
+        runs,
+        (&sourced, repository),
+        (was_here, asked),
+        &mut asking,
+        &mut keys,
+    )
+    .await?;
     let applied = (
         "Where its steps are taken",
         "applied-by",
@@ -698,12 +723,46 @@ pub(crate) async fn setting_up(
     .await
 }
 
+/// The keys of who runs the queue asked: herald's own queue's, or what
+/// becomes of a pull request in the forge's; a key of the other refused.
+async fn ran_by(
+    runs: Runs,
+    (sourced, repository): (&Sourced<'_>, Option<&str>),
+    (was_here, asked): (Option<&dyn TableLike>, &Answers),
+    asking: &mut Asking<'_>,
+    keys: &mut Keys,
+) -> Result<(), String> {
+    if runs == Runs::Herald {
+        if asked.role_lost.is_some() {
+            return Err(FORGE_ONLY.to_owned());
+        }
+        herald_keys((sourced, repository), (was_here, asked), asking, keys).await
+    } else if !asked.may_fail.is_empty()
+        || asked.wait.is_some()
+        || !asked.retry.is_empty()
+        || asked.retry_times.is_some()
+        || asked.updated.is_some()
+        || asked.signer.is_some()
+        || asked.update_wait.is_some()
+    {
+        Err(HERALD_ONLY.to_owned())
+    } else {
+        let role_lost = (
+            "What becomes of a pull request in the forge's queue once who queued it no longer holds the least role",
+            "role-lost",
+            asked.role_lost.as_deref(),
+        );
+        chosen::<RoleLost>(role_lost, (was_here, "role_lost"), asking, keys).await?;
+        Ok(())
+    }
+}
+
 /// The keys of herald's own queue asked: the checks that may fail, the
-/// wait, and the re-runs where the forge takes them.
+/// wait, what its own update vouches for, and the re-runs where the forge
+/// takes them.
 async fn herald_keys(
-    source: &Source,
-    (repository, was_here): (Option<&str>, Option<&dyn TableLike>),
-    asked: &Answers,
+    (sourced, repository): (&Sourced<'_>, Option<&str>),
+    (was_here, asked): (Option<&dyn TableLike>, &Answers),
     asking: &mut Asking<'_>,
     keys: &mut Keys,
 ) -> Result<(), String> {
@@ -734,7 +793,8 @@ async fn herald_keys(
         )
         .await?;
     keys.push(("wait", text(&wait)));
-    if let Err(refused) = merged(source, &asking_of(repository, None, true, None)) {
+    updating(&sourced.merging, (was_here, asked), asking, keys).await?;
+    if let Err(refused) = merged(sourced.source, &asking_of(repository, None, true, None)) {
         return if asked.retry.is_empty() && asked.retry_times.is_none() {
             Ok(())
         } else {
@@ -775,6 +835,82 @@ async fn herald_keys(
             ("times", Value::from(i64::from(times.get()))),
         ])),
     ));
+    Ok(())
+}
+
+/// Whether a gesture vouches for the head herald's own update made, asked
+/// after why a signed one never does on `merging`, where it never does;
+/// with `updated = "signed"`, the committer the forge signs for, on GitHub,
+/// and how long herald pauses for that head; each added to `keys`.
+async fn updating(
+    merging: &Merging,
+    (was_here, asked): (Option<&dyn TableLike>, &Answers),
+    asking: &mut Asking<'_>,
+    keys: &mut Keys,
+) -> Result<(), String> {
+    let was_signer = was(was_here, &["signer"]);
+    let signer = asked.signer.as_deref().or(was_signer.as_deref());
+    if let Some(why) = herald_flows::unsigned(merging, signer.filter(|signer| *signer != NONE)) {
+        asking.say(&format!("{why}."));
+    }
+    let updated = (
+        "Whether a gesture vouches for the head herald's own update made from the head it vouched for",
+        "updated",
+        asked.updated.as_deref(),
+    );
+    if chosen::<Updated>(updated, (was_here, "updated"), asking, keys).await? != Updated::Signed {
+        return if asked.signer.is_none() && asked.update_wait.is_none() {
+            Ok(())
+        } else {
+            Err(SIGNED_ONLY.to_owned())
+        };
+    }
+    if MergeQueue::signs(merging.forge) || asked.signer.is_some() {
+        let none = herald_wire::github::web_flow(&merging.api)
+            .map_or_else(|| "no such committer".to_owned(), ToOwned::to_owned);
+        let signer_asked = format!(
+            "The committer {} signs the commits it makes for, which you vouch is the instance's own and no user's; {NONE} for {none}",
+            merging.api
+        );
+        let signer = asking
+            .answer(
+                question(
+                    &signer_asked,
+                    "signer",
+                    asked.signer.as_deref(),
+                    Some(was_signer.unwrap_or_else(|| NONE.to_owned())),
+                ),
+                |answer| match answer {
+                    NONE => Ok(None),
+                    _ => MergeQueue::unsigning(merging.forge, answer)
+                        .map_or_else(|| Ok(Some(answer.to_owned())), |why| Err(why.to_owned())),
+                },
+            )
+            .await?;
+        if let Some(signer) = signer {
+            keys.push(("signer", text(&signer)));
+        }
+    }
+    let wait_asked = format!(
+        "How long it pauses in all, at most, for the head of a pull request it updated to move, up to {}; {} reads it once",
+        Duration(UPDATE_WAIT_MOST).written(),
+        Lasting(SignedDuration::ZERO).written()
+    );
+    let wait = asking
+        .answer(
+            question(
+                &wait_asked,
+                "update-wait",
+                asked.update_wait.as_deref(),
+                Some(
+                    was(was_here, &["update_wait"])
+                        .unwrap_or_else(|| Lasting(UPDATE_WAIT).written()),
+                ),
+            ),
+            update_wait,
+        )
+        .await?;
+    keys.push(("update_wait", text(&wait)));
     Ok(())
 }
 

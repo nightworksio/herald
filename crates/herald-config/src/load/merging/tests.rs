@@ -5,9 +5,8 @@ use herald_core::merging::{
 };
 use jiff::SignedDuration;
 
-use super::{
-    BRANCHLESS, UNENTERED, UNFORGED_ROLE_LOST, UNMESSAGED, UNNAMED_CHECK, UNRETRIED, UNSIGNING,
-};
+use super::{BRANCHLESS, UNENTERED, UNFORGED_ROLE_LOST, UNMESSAGED, UNNAMED_CHECK, UNRETRIED};
+use crate::merging::UNSIGNING;
 use crate::{Config, Kinds, load};
 
 const HEAD: &str = r#"version = 1

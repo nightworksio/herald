@@ -131,6 +131,17 @@ impl Lasting {
         }
         Duration::parse(text).map(|duration| Self(duration.0))
     }
+
+    /// The length of time as a config writes it: "0s" for none, and else
+    /// as a [`Duration`] writes it; `parse` reads it back.
+    #[must_use]
+    pub fn written(self) -> String {
+        if self.0.is_zero() {
+            "0s".to_owned()
+        } else {
+            Duration(self.0).written()
+        }
+    }
 }
 
 impl JsonSchema for Lasting {
@@ -261,6 +272,16 @@ mod tests {
                 .to_string(),
             "invalid value: string \"-1s\", expected a length of time such as \"0s\", \"250ms\", \"10s\" or \"1m\" at line 1 column 5"
         );
+        for (text, written) in [
+            ("00m", "0s"),
+            ("0w", "0s"),
+            ("60s", "1m"),
+            ("250ms", "250ms"),
+        ] {
+            let lasting = Lasting::parse(text).unwrap();
+            assert_eq!(lasting.written(), written, "{text}");
+            assert_eq!(Lasting::parse(written), Some(lasting), "{text}");
+        }
         let schema = schemars::schema_for!(Lasting);
         assert_eq!(
             schema.get("pattern").and_then(|pattern| pattern.as_str()),

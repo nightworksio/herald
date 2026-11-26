@@ -56,6 +56,19 @@ pub fn containers(api: &str) -> String {
     format!("containers.{}", tenant.unwrap_or(&host))
 }
 
+/// The committer github.com signs the commits it makes through its own API
+/// for, with its own key.
+const WEB_FLOW: &str = "noreply@github.com";
+
+/// The committer the GitHub behind the REST API at `api` signs the commits
+/// it makes through that API for, where herald knows it unasked:
+/// github.com's beside api.github.com; none beside a GitHub Enterprise
+/// Server's or a GHE.com tenant's, whose own a merge queue's `signer` names.
+#[must_use]
+pub fn web_flow(api: &str) -> Option<&'static str> {
+    (api.trim_end_matches('/') == API).then_some(WEB_FLOW)
+}
+
 /// `request` with the headers GitHub's REST API asks for, identified as
 /// herald's.
 #[must_use]
@@ -114,6 +127,18 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn github_com_alone_signs_for_a_committer_herald_knows_unasked() {
+        for (rest, signer) in [
+            ("https://api.github.com", Some("noreply@github.com")),
+            ("https://api.github.com/", Some("noreply@github.com")),
+            ("https://api.acme.ghe.com", None),
+            ("https://ghe.example/api/v3", None),
+        ] {
+            assert_eq!(web_flow(rest), signer, "{rest}");
+        }
+    }
 
     #[test]
     fn the_api_is_the_one_given_or_github_s_own_without_a_trailing_slash() {

@@ -25,7 +25,10 @@ write = { app = "merger" }        # or { token = { secret = "NAME" } }
 `herald setup merge-queue [name]` asks for each key in turn, with its
 default chosen and what the forge says shown beside it (whether the
 branch has a queue; a method the forge refuses is not offered), offers
-`runs = "herald"` where the forge has no queue on the branch, and writes
+`runs = "herald"` where the forge has no queue on the branch, asks
+`role_lost` of a queue the forge runs and `updated` of herald's own (with
+`updated = "signed"`, `update_wait` too, and `signer` on GitHub), saying
+first where a signed update can vouch for no head, and writes
 the table into the config once you confirm it, editing the queue of that
 branch where one is written already. A flag answers each question
 (`--branch main --method squash`), `--yes` takes the default of every
@@ -45,7 +48,7 @@ token, and starts no queue: `herald merge-queue` reads it next.
 | `skew` | how far apart the forge's stamps of a gesture and of a push may be: a push stamped up to this before a gesture, or before a GitLab approval's note, counts as after it, so the gesture never vouches for a head that push may have brought | `"5s"` |
 | `updated` | whether a gesture vouches for the head herald's own update makes from the head it vouched for (see [herald's own queue](#heralds-own-queue)): `"signed"`, `"never"` or `"approved"`; herald's own queue alone, refused with `runs = "forge"` | `"signed"` |
 | `signer` | the committer a GitHub Enterprise Server or GHE.com instance's web flow signs the commits it makes for, which you vouch is the instance's own identity and no user's: with `updated = "signed"` it lets a gesture vouch for the head herald's own update made there; GitHub alone, herald's own queue alone | `noreply@github.com` on github.com, none elsewhere |
-| `update_wait` | how long herald pauses in all, at most, for the head of a pull request its own update brought up to date to move, where the forge answered before it moved: herald reads the head right after the call, and again every 2 s while it has not moved and the pauses stay within this; `"0s"` reads it once; at most `"1m"`; herald's own queue alone, refused with `runs = "forge"` | `"10s"` |
+| `update_wait` | how long herald pauses in all, at most, for the head of a pull request its own update brought up to date to move, where the forge answered before it moved: herald reads the head right after the call, and again every 2 s while it has not moved and the pauses stay within this; `"0s"` reads it once; at most `"1m"`; read with `updated = "signed"` alone; herald's own queue alone, refused with `runs = "forge"` | `"10s"` |
 | `method` | `"merge"`, `"squash"`, `"rebase"`, `"fast-forward"`, or `"repository"`: the repository's one allowed method | required: a queue without it does not start |
 | `message` | `"forge"`: the forge's own commit message for the method; `"pull"`: the pull request's title and body, with `"merge"` or `"squash"` | `"forge"` |
 | `may_fail` | checks that may be red or missing on this branch; never one the forge requires; herald's own queue alone, refused with `runs = "forge"` | none |

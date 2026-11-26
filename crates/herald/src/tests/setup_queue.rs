@@ -4,6 +4,7 @@ use super::world::*;
 use crate::*;
 
 mod refused;
+mod updated;
 
 /// The config's path in `setup`.
 fn path_of(setup: &Setup) -> String {
@@ -94,6 +95,8 @@ skew = \"5s\"
 method = \"squash\"
 message = \"forge\"
 wait = \"2h\"
+updated = \"signed\"
+update_wait = \"10s\"
 applied_by = \"command\"
 write = { token = { secret = \"HERALD_GITHUB_MERGE_TOKEN\" } }
 ";
@@ -108,7 +111,7 @@ fn each_question_s_default_is_taken_by_an_empty_answer_and_the_table_loads_and_s
     let setup = setup(CONFIG);
     let world = World::default();
     ruled(&world, false);
-    let answers = "\nmain\n\n\n\n\n\n\n\n\nsquash\n\n\n\n\n\n\ny\n";
+    let answers = "\nmain\n\n\n\n\n\n\n\n\nsquash\n\n\n\n\n\n\n\n\n\ny\n";
     let (done, out) = wizard(&setup, &world, &[], answers);
     assert_eq!(done, Ok(DONE), "{out}");
     assert_eq!(config_of(&setup), format!("{CONFIG}\n{DEFAULTS}"));
@@ -125,6 +128,10 @@ fn each_question_s_default_is_taken_by_an_empty_answer_and_the_table_loads_and_s
         "Who runs it [herald]: ",
         "  seen: The head herald first reads with the gesture standing: a push between the gesture and that read is vouched for as if the writer had seen it.",
         "How it merges: ",
+        "  never: It never does: the pull request leaves, and a new gesture queues it.",
+        "made from the head it vouched for [signed]: ",
+        "The committer https://api.github.com signs the commits it makes for, which you vouch is the instance's own and no user's; none for noreply@github.com [none]: ",
+        "up to 1m; 0s reads it once [10s]: ",
         "this question has no default; give an answer",
         "Store its write token as the secret HERALD_GITHUB_MERGE_TOKEN",
         "herald --config ",
@@ -132,6 +139,7 @@ fn each_question_s_default_is_taken_by_an_empty_answer_and_the_table_loads_and_s
         assert!(out.contains(said), "{said} in {out}");
     }
     assert!(!out.contains("fast-forward"), "{out}");
+    assert!(!out.contains("never lets a gesture vouch"), "{out}");
     let doctor = doctored(&setup, &world);
     assert!(
         doctor.contains("The merge queue cli-main merges into main"),
@@ -173,6 +181,12 @@ fn every_alternative_is_written_as_its_flag_answers_it() {
         "test",
         "--retry-times",
         "3",
+        "--updated",
+        "signed",
+        "--signer",
+        "web-flow@cli.example",
+        "--update-wait",
+        "0ms",
         "--applied-by",
         "server",
         "--write-token",
@@ -200,6 +214,9 @@ method = \"merge\"
 message = \"pull\"
 may_fail = [\"lint\", \"test (ubuntu, 1)\"]
 wait = \"30m\"
+updated = \"signed\"
+signer = \"web-flow@cli.example\"
+update_wait = \"0s\"
 retries = { checks = [\"test\"], times = 3 }
 applied_by = \"server\"
 write = { token = { secret = \"HERALD_MERGER\" } }
@@ -219,6 +236,8 @@ fn the_forge_s_queue_is_chosen_where_it_has_one_and_herald_s_keys_are_not_asked(
         "approved",
         "--method",
         "rebase",
+        "--role-lost",
+        "stay",
         "--source",
         "cli",
         "--yes",
@@ -230,10 +249,19 @@ fn the_forge_s_queue_is_chosen_where_it_has_one_and_herald_s_keys_are_not_asked(
         "runs = \"forge\"",
         "vouches = \"approved\"",
         "method = \"rebase\"",
+        "role_lost = \"stay\"\napplied_by",
     ] {
         assert!(written.contains(key), "{key} in {written}");
     }
-    for key in ["message", "wait", "may_fail", "retries"] {
+    for key in [
+        "message",
+        "wait",
+        "may_fail",
+        "retries",
+        "updated",
+        "signer",
+        "update_wait",
+    ] {
         assert!(!written.contains(&format!("{key} =")), "{key} in {written}");
     }
     let (refused, _) = wizard(
@@ -253,7 +281,7 @@ fn a_refused_answer_is_asked_again_and_never_repeated() {
     let world = World::default();
     ruled(&world, false);
     let answers = format!(
-        "\n\nmain\nMain Queue\n\nsometimes\n\n\n\n\n\nsoon\n\nfast-forward\nsquash\n\n\n\n\nwhenever\n\n{}\nHERALD_MERGER\nn\n",
+        "\n\nmain\nMain Queue\n\nsometimes\n\n\n\n\n\nsoon\n\nfast-forward\nsquash\n\n\n\nmaybe\n\n\n2m\n\n\nwhenever\n\n{}\nHERALD_MERGER\nn\n",
         ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_")
     );
     let (done, out) = wizard(&setup, &world, &[], &answers);
@@ -264,13 +292,22 @@ fn a_refused_answer_is_asked_again_and_never_repeated() {
         "answer one of forge, herald",
         "answer a number above 0 and its unit",
         "answer one of merge, squash, rebase, repository",
+        "answer one of signed, never, approved",
+        "update_wait is at most \"1m\"; shorten it",
         "answer one of command, server",
         "what was typed is not repeated",
         "Nothing was written.",
     ] {
         assert!(out.contains(said), "{said} in {out}");
     }
-    for typed in ["ghp_", "sometimes", "Main Queue", "whenever", "soon"] {
+    for typed in [
+        "ghp_",
+        "sometimes",
+        "Main Queue",
+        "whenever",
+        "soon",
+        "maybe",
+    ] {
         assert_eq!(out.matches(typed).count(), 0, "{typed} in {out}");
     }
     assert_eq!(config_of(&setup), CONFIG);
@@ -498,7 +535,7 @@ fn an_app_writes_where_the_source_is_github() {
     let setup = setup(&format!("{CONFIG}{apps}"));
     let world = World::default();
     ruled(&world, true);
-    let answers = "\nmain\n\n\n\n\n\n\n\nmerge\n\n\napp\n\nmerger\n42\ny\n";
+    let answers = "\nmain\n\n\n\n\n\n\n\nmerge\n\n\n\napp\n\nmerger\n42\ny\n";
     let (done, out) = wizard(&setup, &world, &[], answers);
     assert_eq!(done, Ok(DONE), "{out}");
     assert!(config_of(&setup).contains("write = { app = \"merger\", installation = 42 }"));
@@ -529,7 +566,7 @@ fn a_source_s_one_app_is_the_default_writer() {
     let setup = setup(&format!("{CONFIG}{MERGER}"));
     let world = World::default();
     ruled(&world, true);
-    let answers = "\nmain\n\n\n\n\n\n\n\nmerge\n\n\napp\n\n\ny\n";
+    let answers = "\nmain\n\n\n\n\n\n\n\nmerge\n\n\n\napp\n\n\ny\n";
     let (done, out) = wizard(&setup, &world, &[], answers);
     assert_eq!(done, Ok(DONE), "{out}");
     assert!(out.contains("(merger) [merger]: "), "{out}");
@@ -675,7 +712,7 @@ fn a_queue_is_edited_with_its_own_answers_and_never_moved_onto_another_s_branch(
         "HERALD_MERGER",
         "--print",
     ];
-    let (listed, out) = wizard(&setup, &world, &flags, "build\ntest (a, b)\n\nnone\n");
+    let (listed, out) = wizard(&setup, &world, &flags, "build\ntest (a, b)\n\n\n\n\nnone\n");
     assert_eq!(listed, Ok(DONE), "{out}");
     assert!(out.contains("[lint]: "), "{out}");
     assert!(
@@ -711,6 +748,8 @@ fn an_owner_s_repository_is_asked_and_a_forge_not_read_says_so_only_where_printe
         "2h",
         "--retry",
         "none",
+        "--updated",
+        "approved",
         "--applied-by",
         "command",
         "--write-token",
@@ -728,6 +767,8 @@ fn an_owner_s_repository_is_asked_and_a_forge_not_read_says_so_only_where_printe
         "The source whose repository it merges in (cli, group): ",
         "\"other/app\" is no repository of the owner group",
         "main was not read; --private, or [cli] private, prints why.",
+        "GitLab's rebase rewrites the commits",
+        "wait = \"2h\"\nupdated = \"approved\"\napplied_by",
         "[merge_queues.group-main]\nsource = \"group\"\nrepository = \"group/app\"\nbranch = \"main\"\n",
     ] {
         assert!(out.contains(said), "{said} in {out}");
