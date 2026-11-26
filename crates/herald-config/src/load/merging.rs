@@ -223,6 +223,9 @@ impl Loader<'_> {
         if let Some(why) = MergeQueue::unwaited(update_wait) {
             self.error(span, &at("update_wait"), why);
         }
+        let updated = file
+            .updated
+            .unwrap_or_else(|| MergeQueue::updated_by_default(&forge, file.signer.as_deref()));
         (self.errors.len() == errors).then(|| MergeQueue {
             source: name,
             forge,
@@ -232,7 +235,7 @@ impl Loader<'_> {
             least: file.least.unwrap_or_default(),
             vouches: file.vouches.unwrap_or_default(),
             skew: file.skew.map_or(SKEW, |skew| skew.0),
-            updated: file.updated.unwrap_or_default(),
+            updated,
             signer: file.signer,
             update_wait,
             method: file.method,

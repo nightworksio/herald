@@ -8,10 +8,12 @@ use herald_config::{Config, MergeQueue};
 use herald_core::Printed;
 use herald_core::SourceName;
 use herald_core::merging::{
-    AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Runs, Step, TakenOut, Verdict,
-    Vouches, unvouched,
+    AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Method, Runs, Step, TakenOut,
+    Verdict, Vouches, unvouched,
 };
-use herald_kinds::{Branched, EnterAsked, Entered, Marked, MergeReader, TakenBack, Unpolled};
+use herald_kinds::{
+    Branched, EnterAsked, Entered, Marked, MergeReader, Methods, TakenBack, Unpolled,
+};
 use herald_ports::{
     Actions, Base, Boxed, Clock, DynHttp, DynSecrets, DynTimer, Http, Signer, Store, Version,
     Versioned, Written,
@@ -26,7 +28,8 @@ mod left;
 mod owning;
 mod taking;
 
-pub use branch::merge_branch;
+pub(crate) use branch::unhanded;
+pub use branch::{BranchSaid, merge_branch};
 pub use handing::{
     DRAFTED, GONE, RACED, REGESTURED, UNNAMED, UNREAD_AGAIN, UNRECORDED_HEAD, UNROLED,
 };
@@ -54,20 +57,9 @@ pub const SERVED: &str = "applied_by = \"server\": herald server takes its steps
 /// --apply` runs.
 pub const COMMANDED: &str = "applied_by = \"command\": herald merge-queue --apply takes its steps, and herald server takes none";
 
-/// Why a queue run by GitLab takes no step where GitLab does not say the
-/// project has merge trains on.
-const TRAINS_UNSAID: &str = "GitLab does not say the project has merge trains on, and its merge train API does not say what adding a merge request does where they are off, so with runs = \"forge\" herald hands nothing over; turn merge trains on, or give runs = \"herald\"";
-
-/// The forge whose merge trains must be said to be on before a hand-off.
-const GITLAB: &str = "gitlab";
-
-/// Why a queue run by the forge takes no step where the forge says it has
-/// no merge queue on the branch.
 /// Why an entry is not stepped where herald's record of its gesture's id
 /// names another maker or time than the forge does now.
 pub const UNMATCHED: &str = "herald's record of this gesture's id names another maker or time than the forge does now, so it is not the same gesture and herald writes nothing for it";
-
-const NO_FORGE_QUEUE: &str = "the forge says the branch has no merge queue or merge train, so with runs = \"forge\" the queue does not start; give runs = \"herald\" to run herald's own";
 
 /// What a queue does next with one of its entries.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -286,11 +278,7 @@ pub(crate) fn unstarted(queue: &MergeQueue, markers: bool) -> Vec<(&'static str,
         .forge
         .queueless
         .filter(|_| queue.runs == Runs::Forge)
-        .map(|why| {
-            format!(
-                "{why}, so with runs = \"forge\" the queue does not start; give runs = \"herald\" to run herald's own"
-            )
-        });
+        .map(|why| format!("{why}{}", branch::UNSTARTED));
     [
         queue
             .method
@@ -308,24 +296,26 @@ pub(crate) fn unstarted(queue: &MergeQueue, markers: bool) -> Vec<(&'static str,
     .collect()
 }
 
-/// Why a run of `by` takes no step in `queue`, on the base `branched`,
-/// with `store` keeping records where it is some: each reason it does not
-/// start, or that its steps are another's to take.
+/// Why a queue run by the forge takes no step where its source writes to
+/// no queue of the forge's.
+const WRITERLESS: &str = "the forge says the branch has no merge queue or merge train, so with runs = \"forge\" the queue does not start; give runs = \"herald\" to run herald's own";
+
+/// Why a run of `by` takes no step in `queue`, on the base `branched` of a
+/// repository allowing `methods` where they were read, with `store`
+/// keeping records where it is some: each reason it does not start, or
+/// that its steps are another's to take.
 fn idle<A>(
     queue: &MergeQueue,
-    (branched, by): (&Branched, AppliedBy),
+    (branched, methods, by): (&Branched, Option<&Methods>, AppliedBy),
     store: Option<&A>,
 ) -> Vec<String> {
     let mut idle: Vec<String> = unstarted(queue, store.is_none())
         .into_iter()
         .map(|(_, why)| why)
         .collect();
-    if queue.runs == Runs::Forge && branched.queue == Some(false) {
-        idle.push(NO_FORGE_QUEUE.to_owned());
-    }
-    if queue.runs == Runs::Forge && queue.forge.forge == GITLAB && branched.queue.is_none() {
-        idle.push(TRAINS_UNSAID.to_owned());
-    }
+    let asked = (queue.runs, queue.method, queue.forge.forge);
+    let unhanded = branch::unhanded(asked, branched, methods);
+    idle.extend(unhanded.into_iter().map(|(_, why)| why));
     if queue.applied_by != by {
         idle.push(
             match by {
@@ -791,7 +781,15 @@ async fn found<A: Actions>(
         Err(error) => return unread(error),
     };
     let withheld = (!printed.prints(branched.visibility)).then_some(entries.len());
-    let idle = idle(queue, (&branched, by), store);
+    let compared = queue.runs == Runs::Forge
+        && queue.method == Some(Method::Repository)
+        && branched.queued.method.is_some();
+    let methods = if compared {
+        reader.methods(http).await.ok()
+    } else {
+        None
+    };
+    let idle = idle(queue, (&branched, methods.as_ref(), by), store);
     let keeping = Keeping {
         store,
         applies: applies && idle.is_empty(),

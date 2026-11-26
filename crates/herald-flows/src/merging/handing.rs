@@ -292,7 +292,7 @@ async fn handed_off<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
         ready
             .source
             .merge_writer(with)
-            .ok_or(super::NO_FORGE_QUEUE.to_owned())
+            .ok_or(super::WRITERLESS.to_owned())
     });
     let writer: Arc<dyn herald_kinds::MergeWriter> = match writer {
         Ok(writer) => writer,

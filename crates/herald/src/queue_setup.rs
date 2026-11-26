@@ -7,13 +7,13 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
-use herald_compose::Hosting;
-use herald_config::{Config, MergeQueue, Uses};
+use herald_config::{Config, MergeQueue};
 use herald_core::merging::{
     AppliedBy, ENTER_LABEL, Enter, Message, Method, RoleLost, Runs, SKEW, UPDATE_WAIT,
     UPDATE_WAIT_MOST, Updated, Vouches, WAIT, Write,
 };
 use herald_core::{Duration, Lasting, Permission, Printed, kind_name};
+use herald_flows::BranchSaid;
 use herald_kinds::{MergeAsked, Merging, Source};
 use jiff::SignedDuration;
 use schemars::JsonSchema;
@@ -21,13 +21,14 @@ use serde::de::DeserializeOwned;
 use tokio::io::AsyncBufRead;
 use toml_edit::{Item, TableLike, Value};
 
-use self::asking::{Asking, NONE, Question, choices, default_name, parsed};
+use self::asking::{Asking, NONE, Question, choices, default_name};
+use self::forge::{forge_said, offered_methods};
 use self::table::{Keys, inline, listed, text};
-use super::stores::composed;
 use super::{Connect, DONE, STOPPED};
 
 mod asking;
 mod credential;
+mod forge;
 mod table;
 
 /// Why there is nothing to set a merge queue up on.
@@ -179,20 +180,6 @@ const fn asking_of<'a>(
     }
 }
 
-/// The methods offered on `source` in `repository`: each the config takes
-/// that the forge does not refuse. Where the repository's allowed methods
-/// are read, they narrow this offer.
-fn offered_methods(source: &Source, repository: Option<&str>) -> Vec<(String, String)> {
-    choices::<Method>()
-        .into_iter()
-        .filter(|(name, _)| {
-            parsed::<Method>(name).is_some_and(|method| {
-                merged(source, &asking_of(repository, Some(method), false, None)).is_ok()
-            })
-        })
-        .collect()
-}
-
 /// `answer` as a length of time, as the config writes it.
 fn duration(answer: &str) -> Result<String, String> {
     Duration::parse(answer)
@@ -260,49 +247,6 @@ fn listed_at(table: Option<&dyn TableLike>, path: &[&str]) -> Option<Vec<String>
             .filter_map(|name| name.as_str().map(ToOwned::to_owned))
             .collect(),
     )
-}
-
-/// What the forge says of `branch` of the merge queue `name` in
-/// `candidate`, said: whether it has a merge queue there, where read.
-async fn forge_said(
-    (candidate, vars, connect): (&Config, &BTreeMap<String, String>, Connect<'_>),
-    (name, branch, printed): (&str, &str, Printed),
-    asking: &mut Asking<'_>,
-) -> Option<bool> {
-    let read = async {
-        composed(
-            candidate,
-            vars,
-            connect,
-            Hosting::Actions,
-            Uses::Polls,
-            "setup merge-queue",
-        )
-        .await
-        .map_err(Some)?
-        .merge_branch((name, printed))
-        .await
-    }
-    .await;
-    let (line, queue) = match read {
-        Ok(branched) => (
-            match branched.queue {
-                Some(true) => format!("The forge has a merge queue on {branch}."),
-                Some(false) => format!("The forge has no merge queue on {branch}."),
-                None => format!("The forge does not say whether {branch} has a merge queue."),
-            },
-            branched.queue,
-        ),
-        Err(why) => (
-            why.filter(|_| printed.prints_failures()).map_or_else(
-                || format!("{branch} was not read; --private, or [cli] private, prints why."),
-                |why| format!("{branch} was not read: {why}"),
-            ),
-            None,
-        ),
-    };
-    asking.say(&line);
-    queue
 }
 
 /// Where a merge queue merges, as answered.
@@ -474,13 +418,14 @@ async fn naming(
 }
 
 /// Who runs the queue, asked after what the forge says of its branch:
-/// herald's own offered where the forge has none there.
+/// herald's own offered where the forge has none there, or none herald can
+/// hand a pull request to; with what the forge said, where read.
 async fn running(
     (vars, connect): (&BTreeMap<String, String>, Connect<'_>),
     (candidate, name, sourced): (&Config, &str, &Sourced<'_>),
     (was_here, asked, printed): (Option<&dyn TableLike>, &Answers, Printed),
     asking: &mut Asking<'_>,
-) -> Result<(String, Runs), String> {
+) -> Result<(String, Runs, Option<BranchSaid>), String> {
     let merging = &sourced.merging;
     asking.say(&format!(
         "The merge queue {name} merges into {} of {} on {} at {}.",
@@ -503,12 +448,18 @@ async fn running(
     if let Some(why) = merging.queueless {
         asking.say(&format!("{why}."));
     }
-    let queueless = merging.queueless.is_some() || read == Some(false);
+    let unhanded = read.as_ref().is_some_and(|said| {
+        said.branched.queue == Some(false) || said.branched.queued.unhanded.is_some()
+    });
+    let queueless = merging.queueless.is_some() || unhanded;
     if queueless {
         asking
             .say("Without the forge's queue, herald's own runs it: runs = \"herald\" is offered.");
     }
-    let unknown = read.is_none() && asking.yes;
+    let unknown = read
+        .as_ref()
+        .is_none_or(|said| said.branched.queue.is_none())
+        && asking.yes;
     let default = was(was_here, &["runs"]).or_else(|| {
         if queueless {
             Some(Runs::Herald.name().to_owned())
@@ -516,12 +467,13 @@ async fn running(
             (!unknown).then(default_name::<Runs>)
         }
     });
-    asking
+    let (named, runs) = asking
         .choice::<Runs>(
             question("Who runs it", "runs", asked.runs.as_deref(), default),
             &choices::<Runs>(),
         )
-        .await
+        .await?;
+    Ok((named, runs, read))
 }
 
 /// The value of `T` a question with `asked` and `flag` chooses, its
@@ -666,7 +618,7 @@ pub(crate) async fn setting_up(
     keys.push(("branch", text(&sourced.branch)));
     let candidate = super::loaded(path, &table::placed(&file, &name, &keys)?)?;
     let printed = Printed::of(asked.private, config.cli.private);
-    let (runs_name, runs) = running(
+    let (runs_name, runs, said) = running(
         (vars, connect),
         (&candidate, &name, &sourced),
         (was_here, asked, printed),
@@ -676,15 +628,20 @@ pub(crate) async fn setting_up(
     keys.push(("runs", text(&runs_name)));
     gestured((was_here, asked), &mut asking, &mut keys).await?;
     let repository = sourced.repository.as_deref();
+    let own = said
+        .as_ref()
+        .and_then(|said| said.branched.queued.method)
+        .filter(|_| runs == Runs::Forge)
+        .map(|method| method.name().to_owned());
     let (method_name, method) = asking
         .choice::<Method>(
             question(
                 "How it merges",
                 "method",
                 asked.method.as_deref(),
-                was(was_here, &["method"]),
+                was(was_here, &["method"]).or(own),
             ),
-            &offered_methods(sourced.source, repository),
+            &offered_methods(sourced.source, repository, (runs, said.as_ref())),
         )
         .await?;
     keys.push(("method", text(&method_name)));
@@ -839,9 +796,11 @@ async fn herald_keys(
 }
 
 /// Whether a gesture vouches for the head herald's own update made, asked
-/// after why a signed one never does on `merging`, where it never does;
-/// with `updated = "signed"`, the committer the forge signs for, on GitHub,
-/// and how long herald pauses for that head; each added to `keys`.
+/// after why a signed one never does on `merging`, where it never does,
+/// `"signed"` chosen where herald can prove that signature and `"never"`
+/// elsewhere; with `updated = "signed"`, the committer the forge signs
+/// for, on GitHub, and how long herald pauses for that head; each added to
+/// `keys`.
 async fn updating(
     merging: &Merging,
     (was_here, asked): (Option<&dyn TableLike>, &Answers),
@@ -858,7 +817,20 @@ async fn updating(
         "updated",
         asked.updated.as_deref(),
     );
-    if chosen::<Updated>(updated, (was_here, "updated"), asking, keys).await? != Updated::Signed {
+    let unasked = signer.filter(|signer| *signer != NONE);
+    let default = was(was_here, &["updated"]).unwrap_or_else(|| {
+        MergeQueue::updated_by_default(merging, unasked)
+            .name()
+            .to_owned()
+    });
+    let (named, chose) = asking
+        .choice::<Updated>(
+            question(updated.0, updated.1, updated.2, Some(default)),
+            &choices::<Updated>(),
+        )
+        .await?;
+    keys.push(("updated", text(&named)));
+    if chose != Updated::Signed {
         return if asked.signer.is_none() && asked.update_wait.is_none() {
             Ok(())
         } else {

@@ -1,7 +1,7 @@
 //! A merge queue's reads on GitLab.com, GitLab Self-Managed and Dedicated.
 
 use herald_core::merging::{Check, CheckState};
-use herald_kinds::{Branched, Entered, Holds, Proved, Unpolled};
+use herald_kinds::{Branched, Entered, Holds, Proved, Queued, Unpolled};
 use herald_ports::{DynHttp, Erased};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
@@ -51,6 +51,22 @@ const TRAIN: &str = "the branch's merge train";
 
 /// GitLab's system note of an approval taken back.
 const UNAPPROVED: &str = "unapproved this merge request";
+
+/// The levels of GitLab's merge train enforcement at which it refuses
+/// every merge but the train's.
+const ENFORCED: [&str; 2] = ["enforce_for_all_users", "enforce_with_owner_override"];
+
+/// Why herald hands nothing to a project's merge train where they are off.
+const TRAINS_OFF: &str = "merge trains are off on the project; GitLab has them on Premium and Ultimate, turned on under Settings > Merge requests";
+
+/// The most commit statuses one head's read takes.
+const MOST_STATUSES: usize = 100;
+
+/// What the listing of a head's commit statuses is called in an error.
+const STATUSES: &str = "the head's commit statuses";
+
+/// The state of a job a person starts by hand.
+const MANUAL: &str = "manual";
 
 #[derive(Deserialize)]
 struct User {
@@ -165,6 +181,7 @@ struct Version {
 struct Project {
     visibility: String,
     merge_trains_enabled: Option<bool>,
+    merge_train_enforcement: Option<String>,
     #[serde(default)]
     only_allow_merge_if_pipeline_succeeds: bool,
 }
@@ -181,8 +198,19 @@ struct Branch {
 
 #[derive(Deserialize)]
 struct Pipeline {
+    id: u64,
     sha: String,
     status: String,
+}
+
+#[derive(Deserialize)]
+struct Status {
+    id: u64,
+    name: String,
+    #[serde(rename = "status")]
+    state: String,
+    #[serde(default)]
+    allow_failure: bool,
 }
 
 #[derive(Deserialize)]
@@ -431,12 +459,71 @@ pub(super) async fn branch(
             Vec::new()
         },
         queue: project.merge_trains_enabled,
+        queued: Queued {
+            unhanded: (project.merge_trains_enabled == Some(false)).then(|| TRAINS_OFF.to_owned()),
+            only: project.merge_trains_enabled == Some(true)
+                && project
+                    .merge_train_enforcement
+                    .as_deref()
+                    .is_some_and(|level| ENFORCED.contains(&level)),
+            method: None,
+        },
         whole: true,
     })
 }
 
+/// The latest commit statuses on `head`, of every pipeline that ran on it,
+/// or of the pipeline `pipeline` alone, with whether they were read whole.
+async fn statuses(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (head, pipeline): (&str, Option<u64>),
+) -> Result<(Vec<Status>, bool), Unpolled> {
+    let sha = crate::forge::named(head, "head")?;
+    let only = pipeline.map_or_else(String::new, |id| format!("pipeline_id={id}&"));
+    let ask =
+        |query: &str| reader.get(&format!("/repository/commits/{sha}/statuses?{only}{query}"));
+    reader.paged(http, &ask, (MOST_STATUSES, STATUSES)).await
+}
+
+/// The commit statuses on `entered`'s head outside its head pipeline
+/// `piped`, each a check of its own, as the external services and other
+/// pipelines that set them name it, with whether they were read whole.
+async fn outside(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    (entered, piped): (&Entered, Option<&Pipeline>),
+) -> Result<(Vec<Check>, bool), Unpolled> {
+    let (all, whole) = statuses(reader, http, (&entered.head, None)).await?;
+    let (inside, inside_whole) = match piped {
+        Some(pipeline) => statuses(reader, http, (&entered.head, Some(pipeline.id))).await?,
+        None => (Vec::new(), true),
+    };
+    let checks = all
+        .into_iter()
+        .filter(|status| !inside.iter().any(|held| held.id == status.id))
+        .map(|status| Check {
+            state: stated(&status),
+            name: status.name,
+        })
+        .collect();
+    Ok((checks, whole && inside_whole))
+}
+
+/// How the commit status `status` stands: one whose failure GitLab allows,
+/// or a job left to start by hand that allows it, has passed.
+fn stated(status: &Status) -> CheckState {
+    let state = piped(&status.state);
+    if status.allow_failure && (state == CheckState::Failed || status.state == MANUAL) {
+        CheckState::Passed
+    } else {
+        state
+    }
+}
+
 /// What proves `entered` green on `branched`: whether its source branch has
-/// fallen behind, GitLab's merge state, and its head's pipeline.
+/// fallen behind, GitLab's merge state, its head's pipeline, and every
+/// commit status on its head outside that pipeline.
 pub(super) async fn proved(
     reader: &ForgeMergeReader,
     http: &Erased<'_, dyn DynHttp + '_>,
@@ -453,18 +540,22 @@ pub(super) async fn proved(
             "merge request",
         )
         .await?;
+    let piped_head = detailed
+        .head_pipeline
+        .filter(|pipeline| pipeline.sha == entered.head);
+    let (statused, whole) = outside(reader, http, (entered, piped_head.as_ref())).await?;
+    let mut checks: Vec<Check> = piped_head
+        .iter()
+        .map(|pipeline| Check {
+            name: PIPELINE.to_owned(),
+            state: piped(&pipeline.status),
+        })
+        .collect();
+    checks.extend(statused);
     Ok(Proved {
-        whole: branched.whole,
+        whole: branched.whole && whole,
         up_to_date: detailed.diverged_commits_count == Some(0),
-        checks: detailed
-            .head_pipeline
-            .filter(|pipeline| pipeline.sha == entered.head)
-            .map(|pipeline| Check {
-                name: PIPELINE.to_owned(),
-                state: piped(&pipeline.status),
-            })
-            .into_iter()
-            .collect(),
+        checks,
         required: branched.required.clone(),
         clean: detailed.has_conflicts.map(|conflicts| !conflicts),
         mergeable: mergeable(detailed.status.as_deref()),

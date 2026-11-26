@@ -84,7 +84,15 @@ fn gitlab(head: &str, behind: u64) -> Forge {
         .answering(
             &format!("GET {PROJECT}/merge_requests/7?include_diverged_commits_count=true"),
             &[answer(200, &json!({ "detailed_merge_status": "mergeable", "diverged_commits_count": behind,
-                "has_conflicts": false, "head_pipeline": { "sha": head, "status": "success" } }))],
+                "has_conflicts": false, "head_pipeline": { "id": 9, "sha": head, "status": "success" } }))],
+        )
+        .answering(
+            &format!("GET {PROJECT}/repository/commits/{head}/statuses?per_page=100&page=1"),
+            &[answer(200, &json!([{ "id": 90, "name": "test", "status": "success" }]))],
+        )
+        .answering(
+            &format!("GET {PROJECT}/repository/commits/{head}/statuses?pipeline_id=9&per_page=100&page=1"),
+            &[answer(200, &json!([{ "id": 90, "name": "test", "status": "success" }]))],
         )
         .answering(&format!("PUT {PROJECT}/merge_requests/7/rebase"), &[answer(202, &json!({ "rebase_in_progress": true }))])
         .answering(&format!("PUT {PROJECT}/merge_requests/7/merge"), &[answer(200, &json!({ "state": "merged" }))])

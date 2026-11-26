@@ -2,7 +2,7 @@
 
 use herald_core::Glob;
 use herald_core::merging::{Check, CheckState};
-use herald_kinds::{Branched, Entered, Holds, Proved, Unpolled};
+use herald_kinds::{Branched, Entered, Holds, Proved, Queued, Unpolled};
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -343,6 +343,7 @@ pub(super) async fn branch(
             Vec::new()
         },
         queue: Some(false),
+        queued: Queued::default(),
         whole: true,
     })
 }

@@ -74,6 +74,9 @@ fn a_queue_is_the_forge_s_entered_by_the_herald_merge_label_and_waits_two_hours_
     assert_eq!(Runs::default(), Runs::Forge);
     assert_eq!(Runs::Forge.name(), "forge");
     assert_eq!(Runs::Herald.name(), "herald");
+    assert_eq!(Updated::Signed.name(), "signed");
+    assert_eq!(Updated::Never.name(), "never");
+    assert_eq!(Updated::Approved.name(), "approved");
     assert_eq!(Enter::default(), Enter::Label("herald:merge".to_owned()));
     assert_eq!(Message::default(), Message::Forge);
     assert_eq!(AppliedBy::default(), AppliedBy::Command);

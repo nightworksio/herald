@@ -17,6 +17,7 @@ herald-kinds.workspace = true
 herald-models.workspace = true
 herald-peers.workspace = true
 herald-store-git-branch.workspace = true
+herald-wire.workspace = true
 jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true

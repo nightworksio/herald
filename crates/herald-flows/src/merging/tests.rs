@@ -23,6 +23,7 @@ pub(super) struct Fixed {
     pub(super) taken: Option<Vec<TakenBack>>,
     pub(super) took: Option<Vec<TakenBack>>,
     pub(super) asked: Mutex<Vec<(Enter, Permission, Vouches, SignedDuration)>>,
+    pub(super) methods: Option<herald_kinds::Methods>,
 }
 
 impl Fixed {
@@ -44,6 +45,7 @@ impl Fixed {
             taken: Some(Vec::new()),
             took: None,
             asked: Mutex::default(),
+            methods: None,
         }
     }
 }
@@ -148,7 +150,8 @@ impl MergeReader for Fixed {
         &'a self,
         _: &'a dyn DynHttp,
     ) -> Boxed<'a, Result<herald_kinds::Methods, Unpolled>> {
-        Box::pin(async { Err(Unpolled::Unreadable("the methods unread".to_owned())) })
+        let methods = self.methods.clone().ok_or_else(|| unasked("the methods"));
+        Box::pin(async move { methods })
     }
 
     fn failed<'a>(
@@ -238,6 +241,7 @@ pub(super) fn base() -> Branched {
         head: "b1".to_owned(),
         required: Vec::new(),
         queue: Some(false),
+        queued: herald_kinds::Queued::default(),
         whole: true,
     }
 }
@@ -587,8 +591,8 @@ fn a_first_seen_head_that_cannot_be_read_or_recorded_vouches_for_none() {
     }
 }
 
-#[test]
-fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
+/// A queue the forge runs that starts: squashing, with a write token.
+pub(super) fn started() -> MergeQueue {
     let mut started = queue(Runs::Forge);
     started.method = Some(herald_core::merging::Method::Squash);
     started.write = Some(herald_core::merging::Write {
@@ -598,13 +602,19 @@ fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
         app: None,
         installation: None,
     });
+    started
+}
+
+#[test]
+fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
+    let started = started();
     let queued = Branched {
         queue: Some(true),
         ..base()
     };
     let store = FakeStore::default();
     assert_eq!(
-        idle(&started, (&queued, AppliedBy::Command), Some(&store)),
+        idle(&started, (&queued, None, AppliedBy::Command), Some(&store)),
         Vec::<String>::new()
     );
     let unsaid = Branched {
@@ -612,55 +622,62 @@ fn a_queue_says_each_reason_it_takes_no_step_and_holds_back_its_hand_offs() {
         ..base()
     };
     assert_eq!(
-        idle(&started, (&unsaid, AppliedBy::Command), Some(&store)),
+        idle(&started, (&unsaid, None, AppliedBy::Command), Some(&store)),
         Vec::<String>::new()
     );
     let mut gitlab = started.clone();
     gitlab.forge.forge = "gitlab";
     assert_eq!(
-        idle(&gitlab, (&unsaid, AppliedBy::Command), Some(&store)),
-        [TRAINS_UNSAID]
+        idle(&gitlab, (&unsaid, None, AppliedBy::Command), Some(&store)),
+        [branch::TRAINS_UNSAID]
     );
     assert_eq!(
-        idle(&gitlab, (&queued, AppliedBy::Command), Some(&store)),
+        idle(&gitlab, (&queued, None, AppliedBy::Command), Some(&store)),
         Vec::<String>::new()
     );
     gitlab.runs = Runs::Herald;
     assert_eq!(
-        idle(&gitlab, (&unsaid, AppliedBy::Command), Some(&store)),
+        idle(&gitlab, (&unsaid, None, AppliedBy::Command), Some(&store)),
         Vec::<String>::new()
     );
     assert_eq!(
-        idle(&started, (&base(), AppliedBy::Command), Some(&store)),
-        [NO_FORGE_QUEUE]
+        idle(&started, (&base(), None, AppliedBy::Command), Some(&store)),
+        [format!(
+            "the forge says the branch has no merge queue or merge train{}",
+            branch::UNSTARTED
+        )]
     );
     assert_eq!(
-        idle(&started, (&queued, AppliedBy::Command), None::<&FakeStore>),
+        idle(
+            &started,
+            (&queued, None, AppliedBy::Command),
+            None::<&FakeStore>
+        ),
         [UNRECORDED]
     );
     let mut served = started.clone();
     served.applied_by = AppliedBy::Server;
     assert_eq!(
-        idle(&served, (&queued, AppliedBy::Command), Some(&store)),
+        idle(&served, (&queued, None, AppliedBy::Command), Some(&store)),
         [SERVED]
     );
     assert_eq!(
-        idle(&served, (&queued, AppliedBy::Server), Some(&store)),
+        idle(&served, (&queued, None, AppliedBy::Server), Some(&store)),
         Vec::<String>::new()
     );
     assert_eq!(
-        idle(&started, (&queued, AppliedBy::Server), Some(&store)),
+        idle(&started, (&queued, None, AppliedBy::Server), Some(&store)),
         [COMMANDED]
     );
     let mut own = started.clone();
     own.runs = Runs::Herald;
     assert_eq!(
-        idle(&own, (&base(), AppliedBy::Command), Some(&store)),
+        idle(&own, (&base(), None, AppliedBy::Command), Some(&store)),
         Vec::<String>::new()
     );
     let bare = queue(Runs::Forge);
     assert_eq!(
-        idle(&bare, (&queued, AppliedBy::Command), Some(&store)),
+        idle(&bare, (&queued, None, AppliedBy::Command), Some(&store)),
         [METHODLESS.to_owned(), UNWRITTEN.to_owned()]
     );
     let mut forgejo = started;
@@ -782,10 +799,10 @@ fn a_take_out_is_held_back_where_the_queue_takes_no_step() {
     };
     let why = idle(
         &gitlab,
-        (&unsaid, AppliedBy::Command),
+        (&unsaid, None, AppliedBy::Command),
         Some(&FakeStore::default()),
     );
-    assert_eq!(why, [TRAINS_UNSAID]);
+    assert_eq!(why, [branch::TRAINS_UNSAID]);
     let cancel = |next: Undo| Cancel {
         taken: taken_back(Some(Permission::Write)),
         cancel: None,
@@ -865,4 +882,5 @@ fn a_failed_read_of_the_forge_s_queue_leaves_the_entries_judged() {
     assert!(due.cancels.is_err());
 }
 
+mod forge;
 mod stores;

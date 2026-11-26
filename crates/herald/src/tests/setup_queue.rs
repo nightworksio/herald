@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use super::world::*;
 use crate::*;
 
+mod forge;
 mod refused;
 mod updated;
 
@@ -123,7 +124,7 @@ fn each_question_s_default_is_taken_by_an_empty_answer_and_the_table_loads_and_s
         );
     }
     for said in [
-        "The forge has no merge queue on main.",
+        "The forge has no merge queue on main: no ruleset on the branch requires a merge queue; add one that does.",
         "runs = \"herald\" is offered",
         "Who runs it [herald]: ",
         "  seen: The head herald first reads with the gesture standing: a push between the gesture and that read is vouched for as if the writer had seen it.",

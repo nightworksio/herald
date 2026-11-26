@@ -75,7 +75,7 @@ fn an_enterprise_signer_is_asked_by_the_queue_s_own_api_and_kept_until_answered_
         "--write-token",
         "HERALD_MERGER",
     ];
-    let answers = "\n\n\n\n\n\n\n\n\n\n\nnoreply@ghe.example\n0s\n\n\ny\n";
+    let answers = "\n\n\n\n\n\n\n\n\n\nsigned\nnoreply@ghe.example\n0s\n\n\ny\n";
     let (done, out) = wizard(&setup, &world, &flags, answers);
     assert_eq!(done, Ok(DONE), "{out}");
     let noted = out.find(UNSIGNED_HOST);
@@ -129,6 +129,13 @@ fn where_the_forge_signs_no_update_it_is_said_before_updated_is_asked_and_no_sig
         out.contains("Forgejo's API cannot tell the instance's signature from an author's"),
         "{out}"
     );
+    let written = config_of(&setup);
+    assert!(written.contains("updated = \"never\"\n"), "{written}");
+    assert!(!written.contains("update_wait ="), "{written}");
+    assert!(!written.contains("signer ="), "{written}");
+    let signed = [&flags[..], &["--updated", "signed"]].concat();
+    let (done, out) = wizard(&setup, &world, &signed, "");
+    assert_eq!(done, Ok(DONE), "{out}");
     let written = config_of(&setup);
     assert!(
         written.contains("updated = \"signed\"\nupdate_wait = \"10s\"\n"),

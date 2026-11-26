@@ -81,7 +81,7 @@ fn each_flag_s_refused_value_stops_the_wizard_naming_the_flag() {
         "kind = \"forgejo\"\nrepository = \"forgejo/forgejo\"",
     );
     for (config, signer) in [(CONFIG, " "), (forgejo.as_str(), "web-flow@cli.example")] {
-        let why = refused(config, &[("--signer", signer)]);
+        let why = refused(config, &[("--signer", signer), ("--updated", "signed")]);
         assert!(
             why.starts_with("--signer: signer names the committer")
                 && why.ends_with("so remove signer there"),

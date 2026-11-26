@@ -140,7 +140,7 @@ write = {{ app = "merger", installation = 42 }}
     assert_eq!(lab.skew, SignedDuration::from_secs(30));
     assert_eq!(lab.method, Some(Method::Squash));
     assert_eq!(lab.message, Message::Pull);
-    assert_eq!(lab.updated, Updated::Signed);
+    assert_eq!(lab.updated, Updated::Never);
     assert_eq!(lab.signer, None);
     assert_eq!(lab.may_fail, ["flaky"]);
     assert_eq!(lab.wait, SignedDuration::from_mins(30));
@@ -411,6 +411,33 @@ fn a_queue_says_whether_a_gesture_vouches_for_herald_s_own_update_and_who_signs_
     }
     for key in ["updated = \"never\"", "signer = \"noreply@ghe.example\""] {
         refused(&format!("{QUEUE}{key}\n"), "with runs = \"forge\"");
+    }
+}
+
+#[test]
+fn a_signed_update_is_the_default_only_where_herald_can_prove_the_forge_signed_it() {
+    let own = "runs = \"herald\"\nmethod = \"merge\"\n";
+    let server = "[sources.server]\nkind = \"github\"\nrepository = \"acme/app\"\napi = \"https://ghe.example/api/v3\"\n[sources.tenant]\nkind = \"github\"\nrepository = \"acme/app\"\napi = \"https://api.acme.ghe.com\"\n";
+    let signer = "signer = \"noreply@ghe.example\"\n";
+    for (source, rest, updated) in [
+        ("app", "", Updated::Signed),
+        ("server", "", Updated::Never),
+        ("server", signer, Updated::Signed),
+        ("tenant", "", Updated::Never),
+        ("tenant", signer, Updated::Signed),
+        ("lab", "", Updated::Never),
+        ("forge", "", Updated::Never),
+        ("server", "updated = \"signed\"\n", Updated::Signed),
+        ("app", "updated = \"approved\"\n", Updated::Approved),
+    ] {
+        let given = format!(
+            "{server}[merge_queues.main]\nsource = \"{source}\"\nbranch = \"main\"\n{own}{rest}"
+        );
+        assert_eq!(
+            loaded(&given).unwrap().merge_queues["main"].updated,
+            updated,
+            "{source} {rest}"
+        );
     }
 }
 

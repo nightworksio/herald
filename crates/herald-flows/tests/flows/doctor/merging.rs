@@ -95,21 +95,26 @@ fn a_queue_without_a_method_a_write_credential_a_store_that_keeps_records_or_a_f
 }
 
 #[test]
-fn a_queue_whose_host_signs_no_update_herald_makes_says_so_unless_told_who_signs() {
+fn a_signed_update_herald_cannot_prove_is_said_where_set_and_never_the_default() {
     let server = "[sources.server]\nkind = \"github\"\nrepository = \"acme/app\"\napi = \"https://ghe.example/api/v3\"\n[sources.lab]\nkind = \"gitlab\"\nrepository = \"group/app\"\n";
     let queue = |source: &str, rest: &str| {
         format!(
             "{FORGEJO}{server}[merge_queues.main]\nsource = \"{source}\"\nbranch = \"main\"\nruns = \"herald\"\nmethod = \"merge\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\n{rest}"
         )
     };
+    let signed = "updated = \"signed\"\n";
     for (source, rest, gapped) in [
         ("gate", "", false),
-        ("server", "", true),
+        ("gate", signed, false),
+        ("server", "", false),
+        ("server", signed, true),
         ("server", "signer = \"noreply@ghe.example\"\n", false),
         ("server", "updated = \"approved\"\n", false),
-        ("lab", "", true),
+        ("lab", "", false),
+        ("lab", signed, true),
         ("lab", "updated = \"never\"\n", false),
-        ("codeberg", "", true),
+        ("codeberg", "", false),
+        ("codeberg", signed, true),
         ("codeberg", "updated = \"approved\"\n", false),
     ] {
         let config = on("git-branch", &queue(source, rest));

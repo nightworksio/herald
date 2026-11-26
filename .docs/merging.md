@@ -24,8 +24,12 @@ write = { app = "merger" }        # or { token = { secret = "NAME" } }
 
 `herald setup merge-queue [name]` asks for each key in turn, with its
 default chosen and what the forge says shown beside it (whether the
-branch has a queue; a method the forge refuses is not offered), offers
-`runs = "herald"` where the forge has no queue on the branch, asks
+branch has a queue and why not, the method that queue merges by, whether
+the forge merges into the branch only through it, and the methods the
+repository allows), offers only the methods the repository allows (with
+`runs = "forge"`, the forge queue's own), offers `runs = "herald"` where
+the forge has no queue on the branch herald can hand a pull request to,
+asks
 `role_lost` of a queue the forge runs and `updated` of herald's own (with
 `updated = "signed"`, `update_wait` too, and `signer` on GitHub), saying
 first where a signed update can vouch for no head, and writes
@@ -46,7 +50,7 @@ token, and starts no queue: `herald merge-queue` reads it next.
 | `least` | the least role the person who queues holds: `"write"` (GitHub write, GitLab Developer, Forgejo write, or above), `"maintain"` or `"admin"` | `"write"` |
 | `vouches` | which head a gesture vouches for: `"gesture"`, `"seen"` or `"approved"` (see [which head a gesture vouches for](#which-head-a-gesture-vouches-for)) | `"gesture"` |
 | `skew` | how far apart the forge's stamps of a gesture and of a push may be: a push stamped up to this before a gesture, or before a GitLab approval's note, counts as after it, so the gesture never vouches for a head that push may have brought | `"5s"` |
-| `updated` | whether a gesture vouches for the head herald's own update makes from the head it vouched for (see [herald's own queue](#heralds-own-queue)): `"signed"`, `"never"` or `"approved"`; herald's own queue alone, refused with `runs = "forge"` | `"signed"` |
+| `updated` | whether a gesture vouches for the head herald's own update makes from the head it vouched for (see [herald's own queue](#heralds-own-queue)): `"signed"`, `"never"` or `"approved"`; herald's own queue alone, refused with `runs = "forge"` | `"signed"` where herald can prove the forge's signature (github.com, or GitHub Enterprise Server and GHE.com with `signer` set), `"never"` elsewhere |
 | `signer` | the committer a GitHub Enterprise Server or GHE.com instance's web flow signs the commits it makes for, which you vouch is the instance's own identity and no user's: with `updated = "signed"` it lets a gesture vouch for the head herald's own update made there; GitHub alone, herald's own queue alone | `noreply@github.com` on github.com, none elsewhere |
 | `update_wait` | how long herald pauses in all, at most, for the head of a pull request its own update brought up to date to move, where the forge answered before it moved: herald reads the head right after the call, and again every 2 s while it has not moved and the pauses stay within this; `"0s"` reads it once; at most `"1m"`; read with `updated = "signed"` alone; herald's own queue alone, refused with `runs = "forge"` | `"10s"` |
 | `method` | `"merge"`, `"squash"`, `"rebase"`, `"fast-forward"`, or `"repository"`: the repository's one allowed method | required: a queue without it does not start |
@@ -135,12 +139,25 @@ says neither, is read back (GitHub's `isInMergeQueue`, GitLab's train
 car or the merge request's `merge_when_pipeline_succeeds`) and never
 asked again. `queue = true` on a view shows where it stands (see [the
 queue](queue.md#merge-queue)). Where the forge has no queue on the
-branch, the queue does not start and `herald doctor` says why (the
-forge, its tier or the kind of repository) and that `runs = "herald"`
-runs herald's own. On GitHub a branch under
-classic branch protection may have a merge queue the REST API does not
-show; there doctor says the forge would not say, and each pull request
-is handed over all the same.
+branch, or none herald can hand a pull request to, the queue does not
+start and `herald merge-queue` and `herald doctor` say why, and that
+`runs = "herald"` runs herald's own:
+
+| Forge | Why herald hands nothing over |
+|-------|-------------------------------|
+| GitHub, GHE.com, GitHub Enterprise Server | the repository is a personal one (GitHub has merge queues on an organization's repositories alone); no ruleset on the branch requires a merge queue, which on github.com a private repository has only where its organization uses GitHub Enterprise Cloud; or a GitHub Enterprise Server's GraphQL API has no `enqueuePullRequest`, which herald reads from its schema with the read credential where the branch has a merge queue, before any hand-off |
+| GitLab | merge trains are off on the project (a Premium and Ultimate feature), or GitLab does not say they are on |
+| Forgejo, Gitea | none has a merge queue |
+
+On GitHub a branch under classic branch protection may have a merge
+queue the REST API does not show; there doctor says the forge would not
+say, and each pull request is handed over all the same.
+
+With `runs = "forge"` the method is the forge queue's own: where GitHub's
+merge queue rule names the method it merges by and `method` names
+another (`"repository"` taken as the repository's one allowed method),
+the queue does not start, and doctor says which to give. GitLab names no
+method of its merge train's own.
 
 ## herald's own queue
 
@@ -194,7 +211,7 @@ for. `updated` says whether the gesture vouches for it:
 
 | `updated` | The gesture vouches for the updated head where |
 |-----------|-------------------------------------------------|
-| `"signed"` | herald's record of its update, written before the call, names the head it was taken on and the base's head and says the forge found, right before it, that the head merges into that base without a conflict; the update was made, or read back as made; the first moved head herald read with its read credential after the call, within `update_wait`, and recorded in the same record, is the pull request's head now (not a later commit on it); that head has as its parents exactly those two, in that order; and the forge itself made and signed it: GitHub's verified signature for `noreply@github.com` on github.com, or for the committer `signer` names on GitHub Enterprise Server and GHE.com, where none is vouched for without it. Its parents and signature are read when herald records the head and again right before each later step. GitLab's rebase rewrites the commits, and Forgejo's API cannot tell the instance's signature from an author's, so there it vouches for none, and `herald doctor` says so |
+| `"signed"` | herald's record of its update, written before the call, names the head it was taken on and the base's head and says the forge found, right before it, that the head merges into that base without a conflict; the update was made, or read back as made; the first moved head herald read with its read credential after the call, within `update_wait`, and recorded in the same record, is the pull request's head now (not a later commit on it); that head has as its parents exactly those two, in that order; and the forge itself made and signed it: GitHub's verified signature for `noreply@github.com` on github.com, or for the committer `signer` names on GitHub Enterprise Server and GHE.com, where none is vouched for without it. Its parents and signature are read when herald records the head and again right before each later step. GitLab's rebase rewrites the commits, and Forgejo's API cannot tell the instance's signature from an author's, so there it vouches for none and is not the default; where it is given there, or off github.com without `signer`, `herald doctor` says so, and herald reads no head to prove it |
 | `"approved"` | herald's record names its update, and a person holding `least` approved the new head on the forge |
 | `"never"` | never: the pull request leaves as `head-moved`, and a new gesture queues it |
 
@@ -235,10 +252,15 @@ requires on the base is there and passed, and the forge says it can
 merge, which holds the reviews it requires. A head on which no check
 that counts is reported is waited for, and leaves as `checks-timed-out`
 once `wait` has passed; it is never merged at once. A check `may_fail`
-names never counts for this. herald never bypasses a
-protection. On a GitHub branch whose rules allow merging through the
-merge queue alone, the forge refuses herald's own merge, and `herald
-doctor` says so first.
+names never counts for this. On GitLab the checks are the head's
+pipeline and each commit status on the head outside that pipeline (an
+external service's, or another pipeline's job), by its own name; one
+GitLab allows to fail, or a job to start by hand that allows it, counts
+as passed. herald never bypasses a protection. On a branch whose forge
+lets a pull request merge only through its own queue (a GitHub ruleset's
+merge queue rule, or GitLab's merge train enforcement at
+`enforce_for_all_users` or `enforce_with_owner_override`), the forge
+refuses herald's own merge, and `herald doctor` says so first.
 
 A pull request leaves at once, with its reason, when a check fails
 (`checks-failed`), its checks outlast `wait` (`checks-timed-out`), its
@@ -406,7 +428,8 @@ name who queued.
 Every read and step goes to the source's API: github.com, a GHE.com
 tenant, GitHub Enterprise Server, GitLab.com, Self-Managed and
 Dedicated, and any Forgejo or Gitea host. A GitHub Enterprise Server
-whose GraphQL lacks `enqueuePullRequest` takes `runs = "herald"` alone.
+whose GraphQL lacks `enqueuePullRequest` takes `runs = "herald"` alone:
+herald reads that from the server's GraphQL schema before any hand-off.
 
 ## Not built
 

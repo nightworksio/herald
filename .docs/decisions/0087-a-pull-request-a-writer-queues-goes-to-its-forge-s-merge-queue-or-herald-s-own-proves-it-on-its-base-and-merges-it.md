@@ -21,6 +21,16 @@ What the forges offer (read 2026-11-24):
 | GitLab.com, Self-Managed, Dedicated | merge trains on Premium and Ultimate: `POST …/merge_trains/merge_requests/:iid` with `sha` and `auto_merge` | `PUT …/merge_requests/:iid/merge` with `sha` (405, 409 sha mismatch, 422) | `PUT …/merge_requests/:iid/rebase`, the only call |
 | Forgejo, Gitea | none | `POST …/pulls/{index}/merge` with `Do` and `head_commit_id` (405, 409, 423) | `POST …/pulls/{index}/update?style=merge\|rebase` |
 
+A GitHub ruleset's `merge_queue` rule says merges must be made through
+the merge queue, and names its `merge_method`; GitHub's merge queue
+serves an organization's public repositories, its private ones on
+GitHub Enterprise Cloud, and every organization repository on GitHub
+Enterprise Server. GitLab 19.3 and later can enforce a project's merge
+train (`merge_train_enforcement` at `enforce_for_all_users` or
+`enforce_with_owner_override`); the merge API then refuses a direct merge
+with 405. By default (`allow_bypass`) GitLab merges a merge request
+directly beside its train (read 2026-11-27).
+
 The user decided, on 2026-11-24: the forge's own queue by default and
 herald's own as a setting per branch; a writer's label or comment puts a
 pull request in, checked at each step; herald's queue is serial and
@@ -42,11 +52,16 @@ once.
    itself. `runs = "herald"` makes herald's own serial queue run the
    branch, also where the forge has a queue of its own. On a branch
    whose forge rules let a pull request merge only through the forge's
-   queue, herald's own merge is refused by the forge, and doctor says so
-   before it is tried. Where `runs = "forge"` and the forge has no queue
-   on the branch, the queue refuses to start and doctor names why (the
-   forge, the tier or the repository kind) and that `runs = "herald"`
-   runs herald's own.
+   queue (a GitHub ruleset's merge queue rule, GitLab's merge train
+   enforcement), herald's own merge is refused by the forge, and doctor
+   says so before it is tried. Where `runs = "forge"` and the forge has
+   no queue on the branch, or none herald can hand a pull request to, the
+   queue refuses to start and doctor names why (the forge; a personal
+   GitHub repository; a private one on github.com outside GitHub
+   Enterprise Cloud; no ruleset requiring a merge queue; GitLab's merge
+   trains off, a Premium and Ultimate feature; a GitHub Enterprise Server
+   without `enqueuePullRequest`) and that `runs = "herald"` runs herald's
+   own.
 3. **A writer's gesture puts a pull request in.** `enter = { label =
    "<name>" }`, `"herald:merge"` where absent, or `enter = { comment =
    "<command>" }`: a comment whose whole body, trimmed, is the command,
@@ -157,7 +172,10 @@ once.
    step.
    GitLab's rebase and Forgejo's update take no head to find, so herald
    reads the head again right before that call. The head herald's own
-   update makes vouches as `updated` says: `"signed"` (the default) where
+   update makes vouches as `updated` says, which defaults to `"signed"`
+   where herald can prove the forge's signature (on github.com, and on
+   GitHub Enterprise Server and GHE.com where `signer` is set) and to
+   `"never"` elsewhere, a value given always standing: `"signed"` where
    herald's compare-and-set record of the update names the head it was
    taken on and the base's head and says the forge found, right before
    the call, that they merge without a conflict, and the update was made
@@ -208,7 +226,9 @@ once.
    updated: it leaves the queue (`cannot-update`), the author's turn.
 9. **Green.** By default herald merges only where every check reported
    on the head has passed (GitHub's check runs and statuses, GitLab's
-   commit statuses, Forgejo's statuses), every check the forge requires
+   head pipeline and each commit status on the head outside it by its
+   own name, one GitLab allows to fail counting as passed, Forgejo's
+   statuses), every check the forge requires
    on the base is present and passed (GitHub's rules for the branch,
    GitLab's and Forgejo's protection where readable), and the forge says
    the pull request is mergeable (GitHub's merge state `clean`, GitLab's
@@ -232,7 +252,9 @@ once.
     alone. herald refuses a method the repository does not allow, and on
     GitLab one other than the project's merge method (squash beside it
     as the project allows). With `runs = "forge"` the method is the forge
-    queue's own, and a `method` naming another does not start.
+    queue's own, as GitHub's merge queue rule names it (`"repository"`
+    taken as the repository's one allowed method), and a `method` naming
+    another does not start; GitLab names no method of its train's own.
 11. **A failure leaves at once.** A pull request whose check fails, whose
     checks time out, whose update conflicts or fails, whose head moves,
     whose gesture is taken back, that the forge says cannot merge, whose
@@ -308,19 +330,26 @@ once.
     no records, so a queue on it does not start.
 15. **The setup wizard sets every key.** `herald setup merge-queue`
     asks for each key in turn, with its default chosen and the forge's
-    own answers shown (whether the branch has a queue, the methods the
-    repository allows), offers `runs = "herald"` where the forge has no
-    queue on the branch, and writes the `[merge_queues.<name>]` table
-    into the config once the operator confirms it.
+    own answers shown (whether the branch has a queue and why not, the
+    method it merges by, whether it merges only through it, the methods
+    the repository allows), offers `runs = "herald"` where the forge has
+    no queue on the branch herald can hand a pull request to, offers only
+    the methods the repository allows (with `runs = "forge"`, the forge
+    queue's own), defaults `updated` as the config does, and writes the
+    `[merge_queues.<name>]` table into the config once the operator
+    confirms it.
 16. **Doctor names, for each queue,** the forge and whether it has a
-    queue on the branch, the method and whether the repository allows
-    it, which head a gesture vouches for and its `skew`, the update style, whether the write credential is set and held
+    queue on the branch herald can hand a pull request to, or lets one
+    merge there only through it, the method and whether the repository
+    allows it and, with `runs = "forge"`, whether it is the forge
+    queue's, which head a gesture vouches for and its `skew`, the update style, whether the write credential is set and held
     apart, whether the store keeps records, and where the steps run.
 17. **Every forge's own host.** Each read and step goes to the source's
     configured API base: github.com, a GHE.com tenant, GitHub Enterprise
     Server (whose merge queue serves organization repositories; a server
-    whose GraphQL lacks `enqueuePullRequest` takes no `runs = "forge"`,
-    and herald never calls `merge-async`), GitLab.com, Self-Managed and
+    whose GraphQL lacks `enqueuePullRequest`, as herald reads its schema
+    with the read credential where the branch has a merge queue, takes no
+    `runs = "forge"`, and herald never calls `merge-async`), GitLab.com, Self-Managed and
     Dedicated (merge trains on Premium and Ultimate), and any Forgejo or
     Gitea host (herald's own queue alone).
 18. **What is said and kept.** `herald merge-queue` prints each step and
