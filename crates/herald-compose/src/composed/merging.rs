@@ -6,7 +6,9 @@
 use std::sync::Arc;
 
 use herald_core::Printed;
-use herald_flows::{Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues};
+use herald_flows::{
+    Admission, Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues, served,
+};
 use herald_kinds::Branched;
 use herald_ports::{Base, Keyring, Store, Timer};
 
@@ -96,12 +98,8 @@ where
         &self,
         (name, printed): (Option<&str>, Printed),
     ) -> Result<Vec<MergeQueueRead>, Stop> {
-        self.through(
-            herald_flows::Admission::Once,
-            self.started(),
-            Queues(name, printed),
-        )
-        .await
+        self.through(Admission::Once, self.started(), Queues(name, printed))
+            .await
     }
 
     /// The merge queue `name`, or every one, read now as
@@ -119,12 +117,7 @@ where
         (name, printed): (Option<&str>, Printed),
         timer: &T,
     ) -> Result<Vec<MergeQueueRead>, Stop> {
-        let outbound = self.config.http.clone().timed(self.host.var(TIMEOUT_MS));
-        let connect = |base: Base<'_>| {
-            self.host
-                .connect(base, &outbound)
-                .map(|http| Counted::new(http, Arc::clone(&self.made)))
-        };
+        let connect = self.connecting();
         let handing = Handing {
             secrets: self.host.secrets(),
             connect: &connect,
@@ -135,8 +128,38 @@ where
             name,
             printed,
         };
-        self.through(herald_flows::Admission::Once, self.started(), apply)
+        self.through(Admission::Once, self.started(), apply).await
+    }
+
+    /// `work` done through everything composed, as `herald server` does
+    /// it: where a merge queue's steps are the server's (`applied_by =
+    /// "server"`), each round and each webhook of its source steps it with
+    /// its own write credential, read from the host's secrets then alone,
+    /// waiting with `timer` for a head its update has not moved yet
+    /// (ADR-0087). Where none is, no write credential is reached.
+    pub async fn serve<W: Through<H>, T: Timer>(&self, work: W, timer: &T) -> W::Done {
+        if served(&self.config, None).is_empty() {
+            return self.run(work).await;
+        }
+        let connect = self.connecting();
+        let handing = Handing {
+            secrets: self.host.secrets(),
+            connect: &connect,
+            timer,
+        };
+        self.stepping(Admission::Once, self.started(), work, Some(&handing))
             .await
+    }
+
+    /// What makes a connection reaching one base alone, counted with the
+    /// run's other requests.
+    fn connecting(&self) -> impl Fn(Base<'_>) -> Result<Counted<H::Http>, String> + Sync + '_ {
+        let outbound = self.config.http.clone().timed(self.host.var(TIMEOUT_MS));
+        move |base: Base<'_>| {
+            self.host
+                .connect(base, &outbound)
+                .map(|http| Counted::new(http, Arc::clone(&self.made)))
+        }
     }
 
     /// The base branch of the merge queue `name`, read now, or why it was
@@ -151,11 +174,7 @@ where
         &self,
         (name, printed): (&str, Printed),
     ) -> Result<Branched, Option<String>> {
-        self.through(
-            herald_flows::Admission::Once,
-            self.started(),
-            Branch(name, printed),
-        )
-        .await
+        self.through(Admission::Once, self.started(), Branch(name, printed))
+            .await
     }
 }

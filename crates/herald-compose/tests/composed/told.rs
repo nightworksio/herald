@@ -646,3 +646,43 @@ fn a_job_left_undone_names_what_it_was_and_a_release_that_failed() {
         "herald stopped before it worked the commands given on chat"
     );
 }
+
+#[test]
+fn the_steps_of_a_source_s_merge_queues_say_what_they_did_and_one_left_undone_says_so() {
+    let scheme = herald_core::Scheme {
+        name: "github",
+        signed: herald_core::Signed::Body {
+            headers: &["X-Hub-Signature-256"],
+            prefix: "sha256=",
+        },
+        key: herald_core::KeyForm::Bytes,
+    };
+    let step = Job::Step {
+        source: SourceName::new("gate"),
+        scheme,
+        verified: herald_flows::Verified {
+            delivery: Some("d4".to_owned()),
+            signer: None,
+        },
+    };
+    assert_eq!(
+        told::unworked(&step, &Ok(())),
+        "herald stopped before it worked the steps of gate's merge queues"
+    );
+    let unread = herald_flows::MergeQueueRead {
+        name: "app".to_owned(),
+        repository: "o/r".to_owned(),
+        branch: "main".to_owned(),
+        runs: herald_core::merging::Runs::Herald,
+        idle: Vec::new(),
+        found: herald_flows::Found::Unread(None),
+        cancels: herald_flows::Cancels::Read(Vec::new()),
+    };
+    assert_eq!(
+        told::worked(&did(Did::Stepped(vec![unread]))),
+        [
+            "app:",
+            "  not read; herald merge-queue --private prints why"
+        ]
+    );
+}

@@ -1,13 +1,13 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Key, RouteId, Step};
 use herald_flows::{
-    Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
-    answer, busy, prepare, unplaced, unworked, work,
+    Answered, Connected, Did, FollowError, Followed, Handing, Inbound, Job, Outcome, Ports,
+    Serving, Stop, answer, busy, prepare, unplaced, unworked, work,
 };
 use herald_ports::Sealing;
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
-use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier, fake_ed25519};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, fake_ed25519};
 
 use crate::harness::{Failing, Fault, Script, broken, healthy, keys_in};
 use crate::inbound::{ANA, ANA_KEY, FOLLOW, activity, at, borrowed, document};
@@ -98,6 +98,7 @@ pub(crate) struct World {
     script: Script,
     now: std::cell::Cell<jiff::Timestamp>,
     sized: bool,
+    stepping: bool,
 }
 
 type Served<'a> =
@@ -163,7 +164,14 @@ impl World {
             script,
             now: std::cell::Cell::new(at()),
             sized: false,
+            stepping: false,
         }
+    }
+
+    /// It stepping the merge queues whose steps the server takes.
+    pub(crate) fn stepping(mut self) -> Self {
+        self.stepping = true;
+        self
     }
 
     /// It signing Ed25519 as long as a real key's signature is.
@@ -201,6 +209,15 @@ impl World {
             budget: herald_flows::Budget::UNBOUNDED,
         };
         let keys = keys_in(&self.keyring);
+        let held = secrets();
+        let script = self.script.clone();
+        let connect = move |_: herald_ports::Base<'_>| Ok(script.clone());
+        let timer = FakeTimer::default();
+        let handing = Handing {
+            secrets: &held,
+            connect: &connect,
+            timer: &timer,
+        };
         act(&Serving {
             config: &self.config,
             connected: &self.connected,
@@ -210,6 +227,7 @@ impl World {
             keys: &keys,
             webhooks: self.connected.webhooks(),
             admission,
+            merging: self.stepping.then_some(&handing),
         })
     }
 
@@ -382,6 +400,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         keys: &keys,
         webhooks: world.connected.webhooks(),
         admission: herald_flows::Admission::Once,
+        merging: None,
     };
     let answered = pollster::block_on(answer(&serving, &get("/users/php-mutation-gate")));
     assert_eq!(answered.reply.status, 500);
@@ -523,6 +542,75 @@ fn a_webhook_that_is_not_let_through_or_announces_nothing_is_answered_by_why() {
             .reply
             .status,
         503
+    );
+}
+
+/// The config, with a merge queue on `gate` whose steps the server takes.
+fn served_config() -> Config {
+    let text = format!(
+        "{}[merge_queues.gate]\nsource = \"gate\"\nbranch = \"main\"\nmethod = \"squash\"\nwrite = {{ token = {{ secret = \"HERALD_MERGE\" }} }}\napplied_by = \"server\"\n",
+        config_text()
+    );
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_webhook_of_a_source_whose_queues_the_server_steps_wakes_them() {
+    let signature = signed("hook-secret", EVENT.as_bytes());
+    let ping = [
+        ("X-Hub-Signature-256", signature.as_str()),
+        ("X-GitHub-Event", "ping"),
+    ];
+    let release = [
+        ("X-Hub-Signature-256", signature.as_str()),
+        ("X-GitHub-Event", "release"),
+    ];
+    let unstepped = World::with(served_config(), Script::default());
+    let quiet = unstepped.answer(&hooked("/hooks/gate", &ping, EVENT.as_bytes()));
+    assert_eq!((quiet.reply.status, quiet.job), (200, None));
+    let world = World::with(served_config(), Script::default()).stepping();
+    let woken = world.answer(&hooked("/hooks/gate", &ping, EVENT.as_bytes()));
+    assert_eq!(
+        said(&woken),
+        (
+            202,
+            TEXT,
+            "herald reads the source's merge queues and takes the steps due".to_owned()
+        )
+    );
+    let Some(step @ Job::Step { .. }) = woken.job else {
+        panic!("the delivery wakes the queues");
+    };
+    assert!(step.delivery().is_some());
+    let Did::Stepped(read) = world.work(step.clone()) else {
+        panic!("the queues are stepped");
+    };
+    assert_eq!(
+        read.iter()
+            .map(|read| read.name.as_str())
+            .collect::<Vec<_>>(),
+        ["gate"]
+    );
+    assert!(!Did::Stepped(read).stopped());
+    assert_eq!(unstepped.work(step), Did::Stepped(Vec::new()));
+    let fresh = World::with(served_config(), Script::default()).stepping();
+    let announced = fresh.answer(&hooked("/hooks/gate", &release, EVENT.as_bytes()));
+    assert_eq!(
+        said(&announced).2,
+        "herald announces the release".to_owned()
+    );
+    let Some(Job::Fanned { jobs, .. }) = announced.job else {
+        panic!("the release is announced and the queues woken");
+    };
+    assert!(
+        matches!(&jobs[..], [Job::Announce { .. }, Job::Step { .. }]),
+        "{jobs:?}"
     );
 }
 

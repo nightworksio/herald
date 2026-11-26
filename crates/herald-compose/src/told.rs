@@ -1,6 +1,10 @@
 //! What a run did, in words: each announcement, poll, chore and job, as
 //! every driver says it.
 
+mod merging;
+
+pub use merging::{queue_lines, stepped};
+
 use herald_core::{Chore, Identity, Printed, Schedule, Step};
 use herald_flows::{
     Announced, Chored, Did, FollowError, Followed, Fresh, Housekept, HousekeptSchedule, Interacted,
@@ -310,6 +314,7 @@ fn lines(did: &Did) -> Vec<String> {
             "a webhook's change moved {moved} kept pull requests"
         )],
         Did::Folded(Err(reason)) => vec![format!("a webhook's change could not be kept: {reason}")],
+        Did::Stepped(stepped_queues) => stepped_queues.iter().flat_map(stepped).collect(),
     }
 }
 
@@ -347,6 +352,7 @@ pub fn unworked(job: &Job, released: &Result<(), String>) -> String {
             format!("the change to {}'s kept pull requests", source.as_str())
         }
         Job::Pushed { source, .. } => format!("what a peer pushed into {}", source.as_str()),
+        Job::Step { source, .. } => format!("the steps of {}'s merge queues", source.as_str()),
     };
     match released {
         Ok(()) => format!("herald stopped before it worked {what}"),

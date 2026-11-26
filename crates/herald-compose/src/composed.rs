@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use herald_config::{Config, Uses};
 use herald_core::{Board, Printed, RouteId, status};
 use herald_flows::{
-    Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Orphaned, Place, Ports,
+    Admission, Budget, Connected, Handing, Housekept, Inbound, Job, Keys, Orphaned, Place, Ports,
     Publishing, Requests, Room, Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked,
     answer, housekeep_announcing, orphans, orphans_cleared, poll, prepare, publish, queue, refusal,
     report, unplaced, work,
@@ -378,11 +378,25 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         started: Started,
         work: W,
     ) -> W::Done {
+        self.stepping(admission, started, work, None).await
+    }
+
+    /// `work` done as [`Composed::through`] does it, the merge queues
+    /// whose steps `herald server` takes stepped through `merging` where it
+    /// is some.
+    async fn stepping<W: Through<H>>(
+        &self,
+        admission: Admission,
+        started: Started,
+        work: W,
+        merging: Option<&Handing<'_, Counted<H::Http>>>,
+    ) -> W::Done {
         let through = Keying {
             composed: self,
             admission,
             started,
             work,
+            merging,
         };
         self.records
             .serve(&self.connected, self.host.signer(), through)
@@ -424,14 +438,15 @@ pub trait Through<H: Host> {
     ) -> impl Future<Output = Self::Done>;
 }
 
-struct Keying<'c, H: Host, W> {
+struct Keying<'c, 'm, H: Host, W> {
     composed: &'c Composed<'c, H>,
     admission: Admission,
     started: Started,
     work: W,
+    merging: Option<&'m Handing<'m, Counted<H::Http>>>,
 }
 
-impl<H: Host, W: Through<H>> Served for Keying<'_, H, W> {
+impl<H: Host, W: Through<H>> Served for Keying<'_, '_, H, W> {
     type Done = W::Done;
 
     async fn over<S: Store + Keyring>(self, store: &S) -> W::Done {
@@ -444,7 +459,7 @@ impl<H: Host, W: Through<H>> Served for Keying<'_, H, W> {
     }
 }
 
-impl<H: Host, W: Through<H>> Keying<'_, H, W> {
+impl<H: Host, W: Through<H>> Keying<'_, '_, H, W> {
     /// The work done over `store`, the keys activities are checked with
     /// kept in `keyring`.
     async fn with_keyring<S: Store, K: Keyring>(self, store: &S, keyring: &K) -> W::Done {
@@ -480,6 +495,7 @@ impl<H: Host, W: Through<H>> Keying<'_, H, W> {
             keys: &keys,
             webhooks: composed.connected.webhooks(),
             admission: self.admission,
+            merging: self.merging,
         };
         let run = format!("{}/{}", composed.run, host.nonce());
         self.work.through(&serving, &run).await

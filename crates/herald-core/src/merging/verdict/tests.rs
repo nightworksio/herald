@@ -307,3 +307,24 @@ fn every_reason_to_leave_but_a_taken_back_gesture_is_a_failure() {
         assert_eq!(serde_json::to_string(&left).unwrap(), written);
     }
 }
+
+#[test]
+fn each_reason_is_named_as_queue_left_writes_it() {
+    for left in [
+        Left::ChecksFailed,
+        Left::ChecksTimedOut,
+        Left::Conflict,
+        Left::CannotUpdate,
+        Left::HeadMoved,
+        Left::Removed,
+        Left::Unmergeable,
+        Left::MergeRefused,
+        Left::Unread,
+        Left::Unrecorded,
+    ] {
+        assert_eq!(
+            serde_json::to_value(left).unwrap(),
+            serde_json::Value::from(left.name())
+        );
+    }
+}

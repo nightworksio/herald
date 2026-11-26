@@ -6,6 +6,7 @@
 
 use herald_config::{Config, MergeQueue};
 use herald_core::Printed;
+use herald_core::SourceName;
 use herald_core::merging::{
     AppliedBy, GestureKey, GestureRecord, HandedOff, Heads, Left, Runs, Step, TakenOut, Verdict,
     Vouches, unvouched,
@@ -46,6 +47,10 @@ pub(crate) const UNRECORDED: &str = "the markers store keeps no record to write 
 /// Why `herald merge-queue --apply` takes no step in a queue the server
 /// runs.
 pub const SERVED: &str = "applied_by = \"server\": herald server takes its steps, and herald merge-queue --apply takes none";
+
+/// Why `herald server` takes no step in a queue `herald merge-queue
+/// --apply` runs.
+pub const COMMANDED: &str = "applied_by = \"command\": herald merge-queue --apply takes its steps, and herald server takes none";
 
 /// Why a queue run by GitLab takes no step where GitLab does not say the
 /// project has merge trains on.
@@ -237,6 +242,10 @@ pub struct MergeQueueRead {
     pub cancels: Cancels,
 }
 
+/// What a run steps a queue through, where it steps any, and whose steps
+/// it takes.
+type Stepping<'a, 'h, H> = (Option<&'a Handing<'h, H>>, AppliedBy);
+
 /// A run's config, connections and ports.
 type Flow<'f, 'p, S, C, G, H> = (&'f Config, &'f Connected<H>, &'f Ports<'p, S, C, G>);
 
@@ -251,6 +260,12 @@ pub struct Handing<'a, H> {
     pub connect: &'a (dyn Fn(Base<'_>) -> Result<H, String> + Sync),
     /// What waits between reads of a head.
     pub timer: &'a dyn DynTimer,
+}
+
+impl<H> std::fmt::Debug for Handing<'_, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Handing").finish_non_exhaustive()
+    }
 }
 
 /// The records a queue's read keeps of each gesture, and whether it writes
@@ -291,10 +306,14 @@ pub(crate) fn unstarted(queue: &MergeQueue, markers: bool) -> Vec<(&'static str,
     .collect()
 }
 
-/// Why an apply takes no step in `queue`, on the base `branched`, with
-/// `store` keeping records where it is some: each reason it does not
-/// start, or that the server, or herald's own queue, takes its steps.
-fn idle<A>(queue: &MergeQueue, branched: &Branched, store: Option<&A>) -> Vec<String> {
+/// Why a run of `by` takes no step in `queue`, on the base `branched`,
+/// with `store` keeping records where it is some: each reason it does not
+/// start, or that its steps are another's to take.
+fn idle<A>(
+    queue: &MergeQueue,
+    (branched, by): (&Branched, AppliedBy),
+    store: Option<&A>,
+) -> Vec<String> {
     let mut idle: Vec<String> = unstarted(queue, store.is_none())
         .into_iter()
         .map(|(_, why)| why)
@@ -305,8 +324,14 @@ fn idle<A>(queue: &MergeQueue, branched: &Branched, store: Option<&A>) -> Vec<St
     if queue.runs == Runs::Forge && queue.forge.forge == GITLAB && branched.queue.is_none() {
         idle.push(TRAINS_UNSAID.to_owned());
     }
-    if queue.applied_by == AppliedBy::Server {
-        idle.push(SERVED.to_owned());
+    if queue.applied_by != by {
+        idle.push(
+            match by {
+                AppliedBy::Command => SERVED,
+                AppliedBy::Server => COMMANDED,
+            }
+            .to_owned(),
+        );
     }
     idle
 }
@@ -416,7 +441,7 @@ async fn judged<A: Actions>(
     (named, queue, keeping): (&str, &MergeQueue, &Keeping<'_, A>),
     (entries, branched): (Vec<Entered>, &Branched),
     now: Timestamp,
-) -> Result<Vec<(Judged, Option<Versioned<GestureRecord>>)>, herald_kinds::Unpolled> {
+) -> Result<Vec<(Judged, Option<Versioned<GestureRecord>>)>, Unpolled> {
     let mut judged = Vec::with_capacity(entries.len());
     let mut flying = false;
     for entered in entries {
@@ -478,7 +503,8 @@ pub async fn merge_queues<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (name, printed): (Option<&str>, Printed),
 ) -> Result<Vec<MergeQueueRead>, Stop> {
-    read_queues(flow, None, (name, printed)).await
+    let names = named(flow.0, name)?;
+    Ok(read_queues(flow, (None, AppliedBy::Command), (&names, printed)).await)
 }
 
 /// The merge queue `name`, or every one, read now as
@@ -495,18 +521,53 @@ pub async fn merge_apply<S: Store, C: Clock, G: Signer, H: Http>(
     handing: &Handing<'_, H>,
     (name, printed): (Option<&str>, Printed),
 ) -> Result<Vec<MergeQueueRead>, Stop> {
-    read_queues(flow, Some(handing), (name, printed)).await
+    let names = named(flow.0, name)?;
+    let by = (Some(handing), AppliedBy::Command);
+    Ok(read_queues(flow, by, (&names, printed)).await)
 }
 
-/// The queues `name` names read, and stepped through `handing` where it is
+/// Every merge queue whose steps `herald server` takes (`applied_by =
+/// "server"`), of the source `source` where it is some, as a webhook of it
+/// wakes them, read now and stepped as [`merge_apply`] steps a queue, with
+/// the queue's own write credential read through `handing` alone; a
+/// private or internal repository's entries are stepped and withheld from
+/// what is said (ADR-0087). None where no such queue is configured.
+pub async fn merge_served<S: Store, C: Clock, G: Signer, H: Http>(
+    flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    handing: &Handing<'_, H>,
+    source: Option<&SourceName>,
+) -> Vec<MergeQueueRead> {
+    let names = served(flow.0, source);
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let by = (Some(handing), AppliedBy::Server);
+    read_queues(flow, by, (&names, Printed::Withheld)).await
+}
+
+/// The queues whose steps `herald server` takes, of `source` where it is
 /// some.
+#[must_use]
+pub fn served<'c>(config: &'c Config, source: Option<&SourceName>) -> Vec<&'c str> {
+    config
+        .merge_queues
+        .iter()
+        .filter(|(_, queue)| {
+            queue.applied_by == AppliedBy::Server
+                && source.is_none_or(|source| &queue.source == source)
+        })
+        .map(|(name, _)| name.as_str())
+        .collect()
+}
+
+/// The queues `names` names read, and stepped through `handing` where it
+/// is some, as a run of `by`.
 async fn read_queues<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    handing: Option<&Handing<'_, H>>,
-    (name, printed): (Option<&str>, Printed),
-) -> Result<Vec<MergeQueueRead>, Stop> {
+    (handing, by): (Option<&Handing<'_, H>>, AppliedBy),
+    (names, printed): (&[&str], Printed),
+) -> Vec<MergeQueueRead> {
     let (config, connected, _) = flow;
-    let names = named(config, name)?;
     let (stopped, _) = crate::poll::minting(flow, |_| false).await;
     let mut read = Vec::with_capacity(names.len());
     for (source, http) in &connected.sources {
@@ -524,7 +585,7 @@ async fn read_queues<S: Store, C: Clock, G: Signer, H: Http>(
             } else {
                 let reader = (reading.reader.as_ref(), http as &dyn DynHttp);
                 let queued = (reading.name.as_str(), queue);
-                queue_read((flow, handing), reader, queued, printed).await
+                queue_read((flow, (handing, by)), reader, queued, printed).await
             };
             read.push(MergeQueueRead {
                 name: reading.name.clone(),
@@ -538,30 +599,54 @@ async fn read_queues<S: Store, C: Clock, G: Signer, H: Http>(
         }
     }
     read.sort_by(|one, other| one.name.cmp(&other.name));
-    Ok(read)
+    read
 }
 
 /// The queue `queued` read through `reader` as `printed` prints it, and
 /// stepped through `handing` where it is some and the queue takes steps;
 /// with why it takes none, and its cancels.
 async fn queue_read<S: Store, C: Clock, G: Signer, H: Http>(
-    (flow, handing): (Flow<'_, '_, S, C, G, H>, Option<&Handing<'_, H>>),
+    (flow, (handing, by)): (Flow<'_, '_, S, C, G, H>, Stepping<'_, '_, H>),
     reader: (&dyn MergeReader, &dyn DynHttp),
     queued: (&str, &MergeQueue),
     printed: Printed,
 ) -> (Found, Vec<String>, Cancels) {
     let ports = flow.2;
     let store = ports.store.actions();
-    let asked = (queued, store, handing.is_some());
+    let asked = (queued, store, (handing.is_some(), by));
     let due = match found(reader, asked, printed, ports.clock.now()).await {
         Reading::Done(found) => return (found, Vec::new(), Cancels::Read(Vec::new())),
         Reading::Due(due) => due,
     };
+    let withheld = due.withheld;
+    let (found, idle, cancels) = stepped_queue((flow, handing), reader, queued, due).await;
+    if let Some(withheld) = withheld {
+        return (
+            Found::Withheld(withheld),
+            Vec::new(),
+            Cancels::Read(Vec::new()),
+        );
+    }
+    (found, idle, read_cancels(cancels, printed))
+}
+
+/// The queue `queued`, read as `due`, stepped through `handing` where it is
+/// some and the queue takes steps; with why it takes none, and its
+/// cancels.
+async fn stepped_queue<S: Store, C: Clock, G: Signer, H: Http>(
+    (flow, handing): (Flow<'_, '_, S, C, G, H>, Option<&Handing<'_, H>>),
+    reader: (&dyn MergeReader, &dyn DynHttp),
+    queued: (&str, &MergeQueue),
+    due: Due,
+) -> (Found, Vec<String>, Result<Vec<Cancel>, Unpolled>) {
+    let ports = flow.2;
+    let store = ports.store.actions();
     let Due {
         judged,
         branched,
         idle,
         cancels,
+        ..
     } = due;
     let stepping = handing.zip(store).filter(|_| idle.is_empty());
     let Some((handing, store)) = stepping else {
@@ -575,11 +660,11 @@ async fn queue_read<S: Store, C: Clock, G: Signer, H: Http>(
                 .map(|(cancel, _)| idled_out(cancel, &idle))
                 .collect()
         });
-        return (Found::Entries(found), idle, read_cancels(cancels, printed));
+        return (Found::Entries(found), idle, cancels);
     };
     if queued.1.runs == Runs::Herald {
         let found = owning::stepped((flow, handing), store, reader, queued, judged).await;
-        return (found, idle, Cancels::Read(Vec::new()));
+        return (found, idle, Ok(Vec::new()));
     }
     let handing_off = judged
         .iter()
@@ -593,7 +678,7 @@ async fn queue_read<S: Store, C: Clock, G: Signer, H: Http>(
         let found = judged.into_iter().map(|(judged, _)| judged).collect();
         let cancels =
             cancels.map(|cancels| cancels.into_iter().map(|(cancel, _)| cancel).collect());
-        return (Found::Entries(found), idle, read_cancels(cancels, printed));
+        return (Found::Entries(found), idle, cancels);
     }
     let prepared = handing::ready(flow, handing, queued.1).await;
     let made = (ports, &prepared);
@@ -602,7 +687,7 @@ async fn queue_read<S: Store, C: Clock, G: Signer, H: Http>(
         Ok(cancels) => Ok(taken_out(made, store, reader, queued.1, cancels).await),
         Err(error) => Err(error),
     };
-    (found, idle, read_cancels(cancels, printed))
+    (found, idle, cancels)
 }
 
 /// Each of `cancels` due taken out of the forge's queue as `prepared`
@@ -631,7 +716,7 @@ async fn taken_out<S: Store, C: Clock, G: Signer, H: Http, A: Actions>(
 
 /// `cancels` as the output says them: their read's error said only where
 /// `printed` prints failures.
-fn read_cancels(cancels: Result<Vec<Cancel>, herald_kinds::Unpolled>, printed: Printed) -> Cancels {
+fn read_cancels(cancels: Result<Vec<Cancel>, Unpolled>, printed: Printed) -> Cancels {
     match cancels {
         Ok(cancels) => Cancels::Read(cancels),
         Err(error) => Cancels::Unread(printed.prints_failures().then(|| error.into_reason())),
@@ -664,12 +749,14 @@ fn idled_out(cancel: Cancel, idle: &[String]) -> Cancel {
 type Kept = Option<Versioned<GestureRecord>>;
 
 /// A queue's entries read and judged, each with its gesture's record where
-/// one is kept, with the base and why the queue takes no step.
+/// one is kept, with the base, why the queue takes no step, and how many
+/// entries are withheld from what is said where they are.
 struct Due {
     judged: Vec<(Judged, Kept)>,
     branched: Branched,
     idle: Vec<String>,
-    cancels: Result<Vec<(Cancel, Kept)>, herald_kinds::Unpolled>,
+    cancels: Result<Vec<(Cancel, Kept)>, Unpolled>,
+    withheld: Option<usize>,
 }
 
 /// What a queue's read came to: done, or entries a step may be due on.
@@ -680,14 +767,15 @@ enum Reading {
 
 /// What the queue `named`, `queue`, read through `reader` finds as of
 /// `now`, as `printed` prints it, each gesture's record read from `store`
-/// and, where `applies` and the queue takes steps, written.
+/// and, where `applies` and the queue takes steps in a run of `by`,
+/// written.
 async fn found<A: Actions>(
     (reader, http): (&dyn MergeReader, &dyn DynHttp),
-    ((named, queue), store, applies): ((&str, &MergeQueue), Option<&A>, bool),
+    ((named, queue), store, (applies, by)): ((&str, &MergeQueue), Option<&A>, (bool, AppliedBy)),
     printed: Printed,
     now: Timestamp,
 ) -> Reading {
-    let unread = |error: herald_kinds::Unpolled| {
+    let unread = |error: Unpolled| {
         Reading::Done(Found::Unread(
             printed.prints_failures().then(|| error.into_reason()),
         ))
@@ -700,10 +788,8 @@ async fn found<A: Actions>(
         Ok(entries) => entries,
         Err(error) => return unread(error),
     };
-    if !printed.prints(branched.visibility) {
-        return Reading::Done(Found::Withheld(entries.len()));
-    }
-    let idle = idle(queue, &branched, store);
+    let withheld = (!printed.prints(branched.visibility)).then_some(entries.len());
+    let idle = idle(queue, (&branched, by), store);
     let keeping = Keeping {
         store,
         applies: applies && idle.is_empty(),
@@ -733,6 +819,7 @@ async fn found<A: Actions>(
         branched,
         idle,
         cancels,
+        withheld,
     })
 }
 

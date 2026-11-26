@@ -17,7 +17,7 @@ use futures_util::FutureExt as _;
 use herald_compose::Capped;
 use herald_config::{Config, Uses, load};
 use herald_core::{DestinationName, Subscription};
-use herald_flows::{Connected, Keys, Ports, Serving, Stop, prepare};
+use herald_flows::{Connected, Handing, Keys, Ports, Serving, Stop, prepare};
 use herald_ports::{
     Admitted, Clock as _, Deliveries, Http, HttpError, Keyring, KnownKey, Request, Response,
     Secret, StoreError, Subscriptions,
@@ -40,8 +40,13 @@ const EVENT: &str =
 const BOUND: Duration = Duration::from_secs(5);
 
 fn config() -> Config {
-    load(
-        "herald.toml",
+    config_with("")
+}
+
+/// The config, with `extra` after it.
+fn config_with(extra: &str) -> Config {
+    let text = format!(
+        "{}{extra}",
         r#"version = 1
 [store]
 kind = "sqlite"
@@ -65,7 +70,11 @@ body = "{{ event.body }}"
 [federation]
 domain = "herald.example"
 keys = [{ secret = "HERALD_KEY" }]
-"#,
+"#
+    );
+    load(
+        "herald.toml",
+        &text,
         &|_| Err(String::new()),
         &herald_compose::kinds(),
     )
@@ -132,11 +141,25 @@ struct World {
     public: Capped<Gate>,
     clock: FakeClock,
     sockets: ScriptedSockets,
+    stepping: bool,
+    http: Gate,
 }
 
 impl World {
     async fn new(http: Gate) -> Self {
-        let config = config();
+        Self::with(config(), http).await
+    }
+
+    /// A world whose server steps a merge queue on `gate` its config names.
+    async fn stepping(http: Gate) -> Self {
+        let queue = "[merge_queues.app]\nsource = \"gate\"\nbranch = \"main\"\nmethod = \"squash\"\nwrite = { token = { secret = \"HERALD_MERGE\" } }\napplied_by = \"server\"\n";
+        Self {
+            stepping: true,
+            ..Self::with(config_with(queue), http).await
+        }
+    }
+
+    async fn with(config: Config, http: Gate) -> Self {
         let prepared = prepare(&config, &secrets(), &FakeSigner, Uses::Serves)
             .await
             .unwrap();
@@ -149,9 +172,11 @@ impl World {
                 keys: MemoryKeyring::new(8),
                 unforgetting: false,
             },
-            public: Capped::new(http, std::num::NonZeroUsize::new(2).unwrap()),
+            public: Capped::new(http.clone(), std::num::NonZeroUsize::new(2).unwrap()),
             clock: FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap()),
             sockets: ScriptedSockets::default(),
+            stepping: false,
+            http,
         }
     }
 
@@ -173,6 +198,15 @@ impl World {
             refreshed: jiff::SignedDuration::from_hours(1),
             reread: jiff::SignedDuration::from_mins(1),
         };
+        let held = secrets();
+        let gate = self.http.clone();
+        let connect = move |_: herald_ports::Base<'_>| Ok(gate.clone());
+        let timer = herald_testing::FakeTimer::default();
+        let handing = Handing {
+            secrets: &held,
+            connect: &connect,
+            timer: &timer,
+        };
         let serving = Serving {
             config: &self.config,
             connected: &self.connected,
@@ -182,6 +216,7 @@ impl World {
             keys: &keys,
             webhooks: self.connected.webhooks(),
             admission: herald_flows::Admission::Once,
+            merging: self.stepping.then_some(&handing),
         };
         let stop: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(stop);
         tokio::time::timeout(
@@ -274,6 +309,7 @@ fn named(heard: &Heard) -> String {
         Heard::Worked(_) => "worked".to_owned(),
         Heard::Unworked(_, released) => format!("unworked: {released:?}"),
         Heard::Polled(_) => "polled".to_owned(),
+        Heard::Stepped(read) => format!("stepped {}", read.len()),
         Heard::Kept(_) => "kept".to_owned(),
         Heard::Unaccepted(reason) => format!("unaccepted: {reason}"),
         Heard::Refused(reason) => format!("refused: {reason}"),
@@ -862,4 +898,37 @@ async fn a_connection_that_cannot_be_taken_is_said_and_the_next_is_taken() {
     let (answer, ()) = tokio::join!(client, world.serve(flaky, limits(), &hear, stop.notified()));
     assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
     assert_eq!(said(&heard), ["unaccepted: too many open files"]);
+}
+
+#[tokio::test]
+async fn a_poll_round_steps_the_merge_queues_the_server_runs_after_the_poll() {
+    let world = World::stepping(Gate::default()).await;
+    let (listener, address) = listening().await;
+    let heard = RefCell::new(Vec::new());
+    let stop = Notify::new();
+    let secret = Secret::new("HERALD_ROUND_SECRET", "s3cret");
+    let held = Limits {
+        secret: Some(&secret),
+        ..limits()
+    };
+    let client = async {
+        let polled = asked(
+            address,
+            &posted(
+                "/herald/round/poll",
+                &[("Authorization", "Bearer s3cret")],
+                b"",
+            ),
+        )
+        .await;
+        stop.notify_one();
+        polled
+    };
+    let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+    let (polled, ()) = tokio::join!(client, world.serve(listener, held, &hear, stop.notified()));
+    assert!(polled.starts_with("HTTP/1.1 200"), "{polled}");
+    let said = said(&heard);
+    let at = |line: &str| said.iter().position(|said| said == line);
+    assert!(at("polled") < at("stepped 1"), "{said:?}");
+    assert!(at("polled").is_some(), "{said:?}");
 }

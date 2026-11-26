@@ -5,6 +5,7 @@
 use herald_config::Config;
 
 use crate::announce::Ports;
+use crate::merging::Handing;
 use crate::prepare::Connected;
 use crate::verification::{Admission, Keys};
 
@@ -74,4 +75,8 @@ pub struct Serving<'a, S, C, G, V, H, P, K> {
     pub webhooks: &'a Webhooks,
     /// Whether a request's delivery is let through once, or again.
     pub admission: Admission,
+    /// What steps the merge queues whose steps `herald server` takes
+    /// (`applied_by = "server"`), where this run takes them: none on every
+    /// other run, which then reads no merge queue's write credential.
+    pub merging: Option<&'a Handing<'a, H>>,
 }

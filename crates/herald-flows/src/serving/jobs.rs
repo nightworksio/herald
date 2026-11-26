@@ -15,6 +15,7 @@ use crate::announce::Stop;
 use crate::announce::{Announced, Outcome, Within, announce_within};
 use crate::command_answers::{Answer, interact, replied};
 use crate::follows::{FollowError, Followed, followed};
+use crate::merging::{MergeQueueRead, merge_served};
 use crate::poll::{Remembered, Sweep, Swept, polled, remembered, stored};
 use crate::prepare::expanded;
 use crate::verification::{Checking, Verified, released};
@@ -107,6 +108,18 @@ pub enum Job {
         /// What its signature names.
         verified: Verified,
     },
+    /// A webhook delivery of `source`, whose merge queues `herald server`
+    /// steps (`applied_by = "server"`), to wake them: each step reads the
+    /// forge first, so the delivery says nothing a step stands on
+    /// (ADR-0087).
+    Step {
+        /// The source the webhook is of.
+        source: SourceName,
+        /// The scheme it is signed under.
+        scheme: Scheme,
+        /// What its signature names.
+        verified: Verified,
+    },
     /// Commands given on `destination`, each to answer where it says.
     Interact {
         /// The destination they were given on.
@@ -148,6 +161,8 @@ pub enum Did {
     /// How many kept pull requests a delivery's change moved, or why it
     /// could not be folded (ADR-0061).
     Folded(Result<usize, String>),
+    /// What each merge queue a delivery woke did (ADR-0087).
+    Stepped(Vec<MergeQueueRead>),
 }
 
 /// The owner's member a webhook delivery is of (ADR-0030).
@@ -204,7 +219,7 @@ impl Did {
             Self::Polled(swept) => swept
                 .iter()
                 .any(|swept| matches!(swept.outcome, Sweep::Stopped(_))),
-            Self::Interacted(_) => false,
+            Self::Interacted(_) | Self::Stepped(_) => false,
             Self::Withheld(withheld) => matches!(withheld, Withheld::Unread(_)),
             Self::Fanned(each) => each.iter().any(Self::stopped),
             Self::Folded(folded) => folded.is_err(),
@@ -239,6 +254,9 @@ impl Job {
                 scheme, verified, ..
             }
             | Self::Fold {
+                scheme, verified, ..
+            }
+            | Self::Step {
                 scheme, verified, ..
             } => Some((scheme.name, verified)),
             Self::App { verified, .. } => Some((herald_sources_app::ADMITTED, verified)),
@@ -428,6 +446,13 @@ async fn done<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
             .await
             .map_err(|error| error.to_string()),
         ),
+        Job::Step { source, .. } => Did::Stepped(match serving.merging {
+            Some(handing) => {
+                let flow = (serving.config, serving.connected, serving.ports);
+                merge_served(flow, handing, Some(&source)).await
+            }
+            None => Vec::new(),
+        }),
         Job::Fanned { jobs, .. } => {
             let mut each = Vec::new();
             for job in jobs {

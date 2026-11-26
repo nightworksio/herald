@@ -430,6 +430,7 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         ["releases: announced (post)"]
     );
     assert_eq!(heard_lines(Heard::Polled(Vec::new())), [] as [String; 0]);
+    assert_eq!(heard_lines(Heard::Stepped(Vec::new())), [] as [String; 0]);
     assert_eq!(
         heard_lines(Heard::Kept(Ok(herald_flows::Housekept::default()))),
         [] as [String; 0]
