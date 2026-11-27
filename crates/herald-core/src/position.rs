@@ -43,4 +43,16 @@ mod tests {
         assert_eq!(position(text, 11), (2, 3));
         assert_eq!(position(text, 99), (3, 2));
     }
+
+    #[test]
+    fn a_file_that_does_not_parse_is_told_by_its_place_alone() {
+        assert_eq!(
+            unparsed("members.toml", 3, Some(9)),
+            "members.toml cannot be read at line 3, column 9; fix it there"
+        );
+        assert_eq!(
+            unparsed("body.md", 2, None),
+            "body.md cannot be read at line 2; fix it there"
+        );
+    }
 }
