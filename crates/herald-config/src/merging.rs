@@ -60,7 +60,9 @@ pub(crate) struct MergeQueueFile {
     /// exactly that head and the base's head herald recorded, and the forge
     /// itself signed it; "never", the pull request leaves and a new gesture
     /// queues it; "approved", once one who holds `least` approved the new
-    /// head. "signed" where absent; herald's own queue alone.
+    /// head. Where absent, "signed" where herald can prove the forge signed
+    /// that head (github.com, or GitHub Enterprise Server and GHE.com with
+    /// `signer` set) and "never" elsewhere; herald's own queue alone.
     pub(crate) updated: Option<Updated>,
     /// The committer a GitHub Enterprise Server or GHE.com instance's web
     /// flow signs the commits it makes for, as its signature names it: the
@@ -169,6 +171,28 @@ impl MergeQueue {
     #[must_use]
     pub fn signs(forge: &str) -> bool {
         forge == GITHUB
+    }
+
+    /// Whether herald can prove that the forge `forge` itself signed the
+    /// head herald's own update made, with `signer` the committer the
+    /// config names: GitHub alone signs, and herald knows the committer it
+    /// signs for on github.com, or elsewhere where `signer` names it.
+    #[must_use]
+    pub fn proves_signed(forge: &Merging, signer: Option<&str>) -> bool {
+        Self::signs(forge.forge)
+            && (signer.is_some() || herald_wire::github::web_flow(&forge.api).is_some())
+    }
+
+    /// The `updated` a queue on `forge` with `signer` takes where the config
+    /// gives none: `"signed"` where herald can prove the forge signed the
+    /// head its own update made, and `"never"` elsewhere.
+    #[must_use]
+    pub fn updated_by_default(forge: &Merging, signer: Option<&str>) -> Updated {
+        if Self::proves_signed(forge, signer) {
+            Updated::Signed
+        } else {
+            Updated::Never
+        }
     }
 
     /// Why a queue on the forge `forge` refuses `signer`, where it does:

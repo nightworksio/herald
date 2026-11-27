@@ -40,8 +40,13 @@ pub(super) fn at_second(minute: u32, second: u32) -> Timestamp {
 }
 
 pub(super) fn reader(forge: Forge) -> ForgeMergeReader {
+    reader_at(forge, None)
+}
+
+pub(super) fn reader_at(forge: Forge, api: Option<&str>) -> ForgeMergeReader {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
+        api: api.map(ToOwned::to_owned),
         ..SourceOptions::default()
     };
     ForgeMergeReader {
@@ -117,8 +122,15 @@ pub(super) fn proved(
 }
 
 pub(super) fn branched(forge: Forge, answers: Vec<Response>) -> Result<Branched, Unpolled> {
+    branched_at((forge, None), answers)
+}
+
+pub(super) fn branched_at(
+    (forge, api): (Forge, Option<&str>),
+    answers: Vec<Response>,
+) -> Result<Branched, Unpolled> {
     let http = ScriptedHttp::new(answers);
-    let reader = reader(forge);
+    let reader = reader_at(forge, api);
     pollster::block_on(reader.branch(&http, "main"))
 }
 
@@ -151,6 +163,7 @@ pub(super) fn base(required: &[&str], whole: bool) -> Branched {
         head: "b1".to_owned(),
         required: required.iter().map(|name| (*name).to_owned()).collect(),
         queue: Some(false),
+        queued: herald_kinds::Queued::default(),
         whole,
     }
 }

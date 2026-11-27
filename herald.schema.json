@@ -4415,7 +4415,7 @@
           "$ref": "#/$defs/Lasting"
         },
         "updated": {
-          "description": "Whether a gesture vouches for the head herald's own update made from\nthe head it vouched for: \"signed\", where the new head's parents are\nexactly that head and the base's head herald recorded, and the forge\nitself signed it; \"never\", the pull request leaves and a new gesture\nqueues it; \"approved\", once one who holds `least` approved the new\nhead. \"signed\" where absent; herald's own queue alone.",
+          "description": "Whether a gesture vouches for the head herald's own update made from\nthe head it vouched for: \"signed\", where the new head's parents are\nexactly that head and the base's head herald recorded, and the forge\nitself signed it; \"never\", the pull request leaves and a new gesture\nqueues it; \"approved\", once one who holds `least` approved the new\nhead. Where absent, \"signed\" where herald can prove the forge signed\nthat head (github.com, or GitHub Enterprise Server and GHE.com with\n`signer` set) and \"never\" elsewhere; herald's own queue alone.",
           "$ref": "#/$defs/MergeUpdated"
         },
         "vouches": {

@@ -59,11 +59,7 @@ fn a_forge_s_queue_asks_what_becomes_of_a_pull_request_whose_gesture_s_maker_los
 
 #[test]
 fn an_enterprise_signer_is_asked_by_the_queue_s_own_api_and_kept_until_answered_none() {
-    let config = CONFIG.replace(
-        "repository = \"cli/cli\"\n",
-        "repository = \"cli/cli\"\napi = \"https://ghe.example/api/v3\"\n",
-    );
-    let setup = setup(&config);
+    let setup = setup(&enterprise());
     let world = World::default();
     let flags = [
         "--branch",
@@ -75,7 +71,7 @@ fn an_enterprise_signer_is_asked_by_the_queue_s_own_api_and_kept_until_answered_
         "--write-token",
         "HERALD_MERGER",
     ];
-    let answers = "\n\n\n\n\n\n\n\n\n\n\nnoreply@ghe.example\n0s\n\n\ny\n";
+    let answers = "\n\n\n\n\n\n\n\n\n\nsigned\nnoreply@ghe.example\n0s\n\n\ny\n";
     let (done, out) = wizard(&setup, &world, &flags, answers);
     assert_eq!(done, Ok(DONE), "{out}");
     let noted = out.find(UNSIGNED_HOST);
@@ -113,6 +109,30 @@ fn an_enterprise_signer_is_asked_by_the_queue_s_own_api_and_kept_until_answered_
 }
 
 #[test]
+fn an_enterprise_queue_given_a_signer_vouches_for_the_head_of_its_signed_update_by_default() {
+    let setup = setup(&enterprise());
+    let world = World::default();
+    let flags = [
+        "--branch",
+        "main",
+        "--runs",
+        "herald",
+        "--method",
+        "squash",
+        "--signer",
+        "noreply@ghe.example",
+        "--yes",
+    ];
+    let (done, out) = wizard(&setup, &world, &flags, "");
+    assert_eq!(done, Ok(DONE), "{out}");
+    let written = config_of(&setup);
+    assert!(
+        written.contains("updated = \"signed\"\nsigner = \"noreply@ghe.example\"\n"),
+        "{written}"
+    );
+}
+
+#[test]
 fn where_the_forge_signs_no_update_it_is_said_before_updated_is_asked_and_no_signer_is() {
     let forgejo = CONFIG.replace(
         "kind = \"github\"\nrepository = \"cli/cli\"",
@@ -129,6 +149,13 @@ fn where_the_forge_signs_no_update_it_is_said_before_updated_is_asked_and_no_sig
         out.contains("Forgejo's API cannot tell the instance's signature from an author's"),
         "{out}"
     );
+    let written = config_of(&setup);
+    assert!(written.contains("updated = \"never\"\n"), "{written}");
+    assert!(!written.contains("update_wait ="), "{written}");
+    assert!(!written.contains("signer ="), "{written}");
+    let signed = [&flags[..], &["--updated", "signed"]].concat();
+    let (done, out) = wizard(&setup, &world, &signed, "");
+    assert_eq!(done, Ok(DONE), "{out}");
     let written = config_of(&setup);
     assert!(
         written.contains("updated = \"signed\"\nupdate_wait = \"10s\"\n"),

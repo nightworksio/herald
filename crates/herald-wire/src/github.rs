@@ -69,6 +69,13 @@ pub fn web_flow(api: &str) -> Option<&'static str> {
     (api.trim_end_matches('/') == API).then_some(WEB_FLOW)
 }
 
+/// Whether the REST API at `api` is a GitHub Enterprise Server's, served
+/// under `/api/v3`, and not github.com's or a GHE.com tenant's.
+#[must_use]
+pub fn server(api: &str) -> bool {
+    api.trim_end_matches('/').ends_with("/v3")
+}
+
 /// `request` with the headers GitHub's REST API asks for, identified as
 /// herald's.
 #[must_use]
@@ -137,6 +144,18 @@ mod tests {
             ("https://ghe.example/api/v3", None),
         ] {
             assert_eq!(web_flow(rest), signer, "{rest}");
+        }
+    }
+
+    #[test]
+    fn a_server_alone_serves_its_api_under_v3() {
+        for (rest, served) in [
+            ("https://api.github.com", false),
+            ("https://api.acme.ghe.com", false),
+            ("https://ghe.example/api/v3", true),
+            ("https://ghe.example/api/v3/", true),
+        ] {
+            assert_eq!(server(rest), served, "{rest}");
         }
     }
 

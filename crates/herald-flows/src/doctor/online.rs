@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
-use herald_core::merging::Runs;
 use herald_core::{Listed, SourceName};
 use herald_keys::ed25519_of;
 use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted};
@@ -143,42 +142,7 @@ pub async fn online<H: Http, G: Signer>(
         .map(|(source, http)| (source, http as &dyn DynHttp))
         .collect();
     findings.extend(probed(&sources).await);
-    findings.extend(queued(&sources).await);
-    findings
-}
-
-/// What the forge of each merge queue it runs says of the queue's branch:
-/// whether it has a merge queue or merge train there (ADR-0087).
-pub(super) async fn queued(sources: &[(&PreparedSource, &dyn DynHttp)]) -> Findings {
-    let mut findings = Findings::default();
-    let asked = sources.iter().flat_map(|(source, http)| {
-        source
-            .merging
-            .iter()
-            .filter(|reading| reading.runs == Runs::Forge && !reading.queueless)
-            .map(move |reading| (reading, *http))
-    });
-    for (reading, http) in asked {
-        let (name, branch) = (reading.name.as_str(), reading.branch.as_str());
-        let what = format!("reading the merge queue \"{name}\"");
-        let key = format!("merge_queues.{name}");
-        match reading.reader.branch(http, branch).await {
-            Err(error) => findings.gaps.push(gap(&what, key, error.into_reason())),
-            Ok(branched) => match branched.queue {
-                Some(true) => findings.notes.push(format!(
-                    "The merge queue {name}: the forge has a merge queue or merge train on {branch}."
-                )),
-                Some(false) => findings.gaps.push(gap(
-                    &what,
-                    format!("{key}.runs"),
-                    format!("the forge has no merge queue or merge train on {branch}, so with runs = \"forge\" the queue does not start; turn one on, or give runs = \"herald\" to run herald's own"),
-                )),
-                None => findings.notes.push(format!(
-                    "The merge queue {name}: the forge would not say whether {branch} has a merge queue or merge train, as on a branch under classic protection; each pull request is handed to it all the same."
-                )),
-            },
-        }
-    }
+    findings.extend(super::merging::forge_said(&sources).await);
     findings
 }
 

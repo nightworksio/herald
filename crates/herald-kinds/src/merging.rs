@@ -83,9 +83,26 @@ pub struct Branched {
     /// Whether the forge has a merge queue or merge train on it; none
     /// where the forge would not say.
     pub queue: Option<bool>,
+    /// What the forge says of its merge queue or merge train on it beside
+    /// whether it has one.
+    pub queued: Queued,
     /// Whether every listing its required checks come from was read
     /// whole.
     pub whole: bool,
+}
+
+/// What a forge says of its own merge queue or merge train on a branch.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Queued {
+    /// Why herald hands no pull request to the forge's queue there: the
+    /// forge has none on the branch, for its tier, the repository's kind or
+    /// its settings, or its API takes no hand-off.
+    pub unhanded: Option<String>,
+    /// Whether the forge merges into the branch only through its queue,
+    /// refusing every other merge, herald's own among them.
+    pub only: bool,
+    /// The method the forge's queue merges by, where the forge names one.
+    pub method: Option<Method>,
 }
 
 /// A gesture that queued a pull request, as the forge records it.

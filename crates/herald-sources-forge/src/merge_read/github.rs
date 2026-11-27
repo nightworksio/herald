@@ -1,7 +1,8 @@
 //! A merge queue's reads on GitHub, GitHub Enterprise Server and GHE.com.
 
-use herald_core::merging::{Check, CheckState};
-use herald_kinds::{Branched, Entered, Holds, Proved, Unpolled};
+use herald_core::Visibility;
+use herald_core::merging::{Check, CheckState, Method};
+use herald_kinds::{Branched, Entered, Holds, Proved, Queued, Unpolled};
 use herald_ports::{DynHttp, Erased};
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -50,6 +51,33 @@ const NONE: &str = "0000000000000000000000000000000000000000";
 
 /// The rule of a ruleset that sends a branch's merges through its queue.
 const MERGE_QUEUE: &str = "merge_queue";
+
+/// GitHub's kind of an account that is an organization.
+const ORGANIZATION: &str = "Organization";
+
+/// The query listing the mutations GitHub's GraphQL API takes.
+const MUTATIONS: &str = "query { __type(name: \"Mutation\") { fields { name } } }";
+
+/// The mutation that hands a pull request to the merge queue.
+const ENQUEUE: &str = "enqueuePullRequest";
+
+/// What the listing of GitHub's GraphQL mutations is called in an error.
+const MUTATION_LIST: &str = "the mutations its GraphQL API takes";
+
+/// Why herald hands nothing to the merge queue of a personal repository.
+const PERSONAL: &str = "GitHub has merge queues on an organization's repositories alone, and this repository is a personal one";
+
+/// Why herald hands nothing to a private repository's merge queue on
+/// github.com where no ruleset requires one.
+const PRIVATE: &str = "no ruleset on the branch requires a merge queue, and on github.com a private repository has one only where its organization uses GitHub Enterprise Cloud";
+
+/// Why herald hands nothing to the merge queue where no ruleset requires
+/// one.
+const RULELESS: &str = "no ruleset on the branch requires a merge queue; add one that does";
+
+/// Why herald hands nothing to the merge queue of a server whose GraphQL
+/// API lacks the mutation that takes a hand-off.
+const UNENQUEUED: &str = "this GitHub Enterprise Server's GraphQL API has no enqueuePullRequest, so herald cannot hand a pull request to its merge queue";
 
 /// The rule of a ruleset that requires checks.
 const REQUIRED_CHECKS: &str = "required_status_checks";
@@ -239,9 +267,33 @@ struct Activity {
 }
 
 #[derive(Deserialize)]
+struct Owner {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct Repository {
     visibility: Option<String>,
     private: Option<bool>,
+    owner: Option<Owner>,
+}
+
+#[derive(Deserialize)]
+struct Field {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct Mutations {
+    #[serde(default)]
+    fields: Vec<Field>,
+}
+
+#[derive(Deserialize)]
+struct Introspected {
+    #[serde(rename = "__type")]
+    mutations: Option<Mutations>,
 }
 
 #[derive(Deserialize)]
@@ -281,6 +333,7 @@ struct Branch {
 struct Parameters {
     #[serde(default)]
     required_status_checks: Vec<Context>,
+    merge_method: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -375,9 +428,20 @@ async fn answered<T: DeserializeOwned>(
     variables.insert("name".to_owned(), name.into());
     variables.insert(key.to_owned(), value);
     let body = serde_json::json!({ "query": query, "variables": variables });
+    posted(reader, http, &body, what).await
+}
+
+/// The data of GitHub's GraphQL answer to `body`, read as `what`, where it
+/// answered with no error.
+async fn posted<T: DeserializeOwned>(
+    reader: &ForgeMergeReader,
+    http: &Erased<'_, dyn DynHttp + '_>,
+    body: &serde_json::Value,
+    what: &'static str,
+) -> Result<T, Unpolled> {
     let request = crate::forge::authorized(
         crate::Forge::GitHub,
-        crate::graphql::posted(&reader.graphql, &body, reader.origin.reading().parse),
+        crate::graphql::posted(&reader.graphql, body, reader.origin.reading().parse),
         reader.token.as_ref(),
     );
     let answered: Answered<T> = reader.needed(http, request, what).await?;
@@ -564,9 +628,11 @@ fn activity_pushes(activities: Vec<Activity>) -> Pushes {
 
 /// The base branch `branch`: the repository's visibility, the branch's
 /// head, the checks its protection and its rulesets require, and whether a
-/// ruleset sends its merges through GitHub's merge queue; none said of the
-/// queue where classic branch protection, which may hold one GitHub's REST
-/// API does not show, protects it.
+/// ruleset sends its merges through GitHub's merge queue, by which method;
+/// none said of the queue where classic branch protection, which may hold
+/// one GitHub's REST API does not show, protects a branch of an
+/// organization's repository. On a GitHub Enterprise Server with a merge
+/// queue on the branch, whether its GraphQL API takes `enqueuePullRequest`.
 pub(super) async fn branch(
     reader: &ForgeMergeReader,
     http: &Erased<'_, dyn DynHttp + '_>,
@@ -581,17 +647,73 @@ pub(super) async fn branch(
     let (rules, whole): (Vec<Rule>, bool) = reader
         .paged(http, &ask, (MOST_CHECKS, "a branch's rules"))
         .await?;
-    Ok(branched(repository, found, (rules, whole)))
+    let api = reader.origin.api();
+    let mut branched = branched(&repository, found, (rules, whole), api);
+    if branched.queue == Some(true) && herald_wire::github::server(api) {
+        let body = serde_json::json!({ "query": MUTATIONS });
+        let listed: Introspected = posted(reader, http, &body, MUTATION_LIST).await?;
+        let enqueues = listed
+            .mutations
+            .is_some_and(|mutations| mutations.fields.iter().any(|field| field.name == ENQUEUE));
+        if !enqueues {
+            branched.queued.unhanded = Some(UNENQUEUED.to_owned());
+        }
+    }
+    Ok(branched)
+}
+
+/// The method a merge queue rule's `merge_method` names.
+fn queue_method(named: &str) -> Option<Method> {
+    match named {
+        "MERGE" => Some(Method::Merge),
+        "SQUASH" => Some(Method::Squash),
+        "REBASE" => Some(Method::Rebase),
+        _ => None,
+    }
+}
+
+/// Why GitHub at `api` has no merge queue on a branch of `repository` no
+/// ruleset requires one on, as it is `visibility`.
+fn unqueued(repository: &Repository, visibility: Visibility, api: &str) -> &'static str {
+    let kind = repository
+        .owner
+        .as_ref()
+        .and_then(|owner| owner.kind.as_deref());
+    if kind.is_some_and(|kind| kind != ORGANIZATION) {
+        PERSONAL
+    } else if visibility != Visibility::Public
+        && api.trim_end_matches('/') == herald_wire::github::API
+    {
+        PRIVATE
+    } else {
+        RULELESS
+    }
 }
 
 /// What `repository`, its branch `found` and the `rules` on it say, `whole`
-/// where the rules were read whole.
-fn branched(repository: Repository, found: Branch, (rules, whole): (Vec<Rule>, bool)) -> Branched {
-    let visibility = repository.visibility.map_or_else(
-        || flagged(repository.private, None),
-        |name| visibility_named(&name),
-    );
-    let queued = rules.iter().any(|rule| rule.kind == MERGE_QUEUE);
+/// where the rules were read whole, on GitHub at `api`.
+fn branched(
+    repository: &Repository,
+    found: Branch,
+    (rules, whole): (Vec<Rule>, bool),
+    api: &str,
+) -> Branched {
+    let visibility = repository
+        .visibility
+        .as_deref()
+        .map_or_else(|| flagged(repository.private, None), visibility_named);
+    let rule = rules.iter().find(|rule| rule.kind == MERGE_QUEUE);
+    let only = rule.is_some();
+    let method = rule
+        .and_then(|rule| rule.parameters.as_ref())
+        .and_then(|parameters| parameters.merge_method.as_deref())
+        .and_then(queue_method);
+    let why = unqueued(repository, visibility, api);
+    let queue = if only {
+        Some(true)
+    } else {
+        (why == PERSONAL || !found.protected).then_some(false)
+    };
     let protected = found
         .protection
         .unwrap_or_default()
@@ -615,10 +737,11 @@ fn branched(repository: Repository, found: Branch, (rules, whole): (Vec<Rule>, b
         visibility,
         head: found.commit.sha,
         required,
-        queue: if queued {
-            Some(true)
-        } else {
-            (!found.protected).then_some(false)
+        queue,
+        queued: Queued {
+            unhanded: (queue == Some(false)).then(|| why.to_owned()),
+            only,
+            method,
         },
         whole,
     }

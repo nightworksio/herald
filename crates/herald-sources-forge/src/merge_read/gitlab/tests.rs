@@ -1,5 +1,5 @@
 use herald_core::Permission;
-use herald_core::merging::{CheckState, Enter};
+use herald_core::merging::{Check, CheckState, Enter};
 use serde_json::{Value, json};
 
 use super::super::tests::{
@@ -103,11 +103,16 @@ fn gitlab_s_own_notes_are_no_comment() {
 #[test]
 fn a_merge_request_is_proved_from_its_divergence_state_and_head_pipeline() {
     let answer = |diverged: u64, sha: &str, status: &str| {
-        vec![ok(&json!({
-            "detailed_merge_status": "mergeable",
-            "diverged_commits_count": diverged,
-            "head_pipeline": {"sha": sha, "status": status}
-        }))]
+        let job = json!([{"id": 90, "name": "test", "status": status}]);
+        vec![
+            ok(&json!({
+                "detailed_merge_status": "mergeable",
+                "diverged_commits_count": diverged,
+                "head_pipeline": {"id": 9, "sha": sha, "status": status}
+            })),
+            ok(&job),
+            ok(&job),
+        ]
     };
     let read = proved(
         Forge::GitLab,
@@ -126,17 +131,71 @@ fn a_merge_request_is_proved_from_its_divergence_state_and_head_pipeline() {
     )
     .unwrap();
     assert!(!stale.up_to_date);
-    assert_eq!(stale.checks, []);
+    assert_eq!(
+        stale.checks,
+        [Check {
+            name: "test".to_owned(),
+            state: CheckState::Failed,
+        }],
+        "a pipeline on another head counts for nothing, a status on this one for itself"
+    );
     assert_eq!(read.clean, None);
     for conflicts in [true, false] {
-        let answer = vec![ok(&json!({
-            "detailed_merge_status": "mergeable",
-            "diverged_commits_count": 2,
-            "has_conflicts": conflicts
-        }))];
+        let answer = vec![
+            ok(&json!({
+                "detailed_merge_status": "mergeable",
+                "diverged_commits_count": 2,
+                "has_conflicts": conflicts
+            })),
+            ok(&json!([])),
+        ];
         let read = proved(Forge::GitLab, answer, (&entry("h1"), &base(&[], true))).unwrap();
         assert_eq!(read.clean, Some(!conflicts));
     }
+}
+
+#[test]
+fn a_commit_status_outside_the_head_pipeline_is_a_check_of_its_own() {
+    let detailed = ok(&json!({
+        "detailed_merge_status": "mergeable",
+        "diverged_commits_count": 0,
+        "head_pipeline": {"id": 9, "sha": "h1", "status": "success"}
+    }));
+    let status = |id: u64, name: &str, (status, allowed): (&str, bool)| json!({"id": id, "name": name, "status": status, "allow_failure": allowed});
+    let inside = status(90, "test", ("failed", true));
+    let all = json!([
+        inside.clone(),
+        status(91, "ci/jenkins", ("failed", false)),
+        status(92, "lint", ("failed", true)),
+        status(93, "deploy", ("manual", true)),
+        status(94, "gate", ("manual", false)),
+        status(95, "scan", ("running", false)),
+    ]);
+    let answers = vec![detailed.clone(), ok(&all), ok(&json!([inside]))];
+    let read = proved(Forge::GitLab, answers, (&entry("h1"), &base(&[], true))).unwrap();
+    let said: Vec<(&str, CheckState)> = read
+        .checks
+        .iter()
+        .map(|check| (check.name.as_str(), check.state))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            ("pipeline", CheckState::Passed),
+            ("ci/jenkins", CheckState::Failed),
+            ("lint", CheckState::Passed),
+            ("deploy", CheckState::Passed),
+            ("gate", CheckState::Pending),
+            ("scan", CheckState::Pending),
+        ]
+    );
+    assert!(read.whole);
+    let full = pages(1, 100, |id| status(id as u64, "s", ("success", false)));
+    let mut answers = vec![detailed];
+    answers.extend(full);
+    answers.push(ok(&json!([])));
+    let partial = proved(Forge::GitLab, answers, (&entry("h1"), &base(&[], true))).unwrap();
+    assert!(!partial.whole);
 }
 
 #[test]
@@ -188,6 +247,33 @@ fn a_project_requiring_its_pipeline_requires_the_pipeline_check() {
     .unwrap();
     assert_eq!(bare.required, Vec::<String>::new());
     assert_eq!(bare.queue, None);
+}
+
+#[test]
+fn a_project_says_whether_its_trains_are_off_and_whether_it_merges_through_them_alone() {
+    let read = |project: Value| {
+        branched(
+            Forge::GitLab,
+            vec![ok(&project), ok(&json!({"commit": {"id": "b1"}}))],
+        )
+        .unwrap()
+        .queued
+    };
+    let off = read(json!({"visibility": "public", "merge_trains_enabled": false}));
+    assert_eq!(off.unhanded.as_deref(), Some(TRAINS_OFF));
+    assert!(!off.only);
+    for (enforcement, only) in [
+        ("enforce_for_all_users", true),
+        ("enforce_with_owner_override", true),
+        ("allow_bypass", false),
+    ] {
+        let on = json!({"visibility": "public", "merge_trains_enabled": true, "merge_train_enforcement": enforcement});
+        assert_eq!(read(on).only, only, "{enforcement}");
+        let trainless = json!({"visibility": "public", "merge_trains_enabled": false, "merge_train_enforcement": enforcement});
+        assert!(!read(trainless).only, "{enforcement}");
+    }
+    let on = read(json!({"visibility": "public", "merge_trains_enabled": true}));
+    assert_eq!(on, Queued::default());
 }
 
 #[test]

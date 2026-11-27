@@ -1036,6 +1036,7 @@ dependencies = [
  "herald-store-postgres",
  "herald-store-repo-variables",
  "herald-store-sqlite",
+ "herald-wire",
  "jiff",
  "schemars",
  "serde",

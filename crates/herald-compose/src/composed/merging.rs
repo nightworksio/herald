@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use herald_core::Printed;
 use herald_flows::{
-    Admission, Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues, served,
+    Admission, BranchSaid, Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues,
+    served,
 };
-use herald_kinds::Branched;
 use herald_ports::{Base, Keyring, Store, Timer};
 
 use super::{Composed, ServingOn, TIMEOUT_MS, Through};
@@ -40,7 +40,7 @@ impl<H: Host> Through<H> for Queues<'_> {
 struct Branch<'q>(&'q str, Printed);
 
 impl<H: Host> Through<H> for Branch<'_> {
-    type Done = Result<Branched, Option<String>>;
+    type Done = Result<BranchSaid, Option<String>>;
 
     async fn through<S: Store, K: Keyring>(
         self,
@@ -162,8 +162,9 @@ where
         }
     }
 
-    /// The base branch of the merge queue `name`, read now, or why it was
-    /// not, as `printed` prints failures; nothing is written and no write
+    /// The base branch of the merge queue `name`, read now, with the
+    /// methods its repository allows, or why the branch was not read, as
+    /// `printed` prints failures; nothing is written and no write
     /// credential is read (ADR-0087).
     ///
     /// # Errors
@@ -173,7 +174,7 @@ where
     pub async fn merge_branch(
         &self,
         (name, printed): (&str, Printed),
-    ) -> Result<Branched, Option<String>> {
+    ) -> Result<BranchSaid, Option<String>> {
         self.through(Admission::Once, self.started(), Branch(name, printed))
             .await
     }

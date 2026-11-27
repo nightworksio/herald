@@ -5,8 +5,14 @@ use std::collections::BTreeMap;
 
 use herald_config::Uses;
 use herald_core::Printed;
-use herald_flows::{Budget, Connected, Found, Ports, merge_branch, merge_queues, prepare};
+use herald_core::merging::Method;
+use herald_flows::{
+    BranchSaid, Budget, Connected, Found, Ports, merge_branch, merge_queues, prepare,
+};
+use herald_kinds::Methods;
+use herald_ports::Response;
 use herald_testing::{FakeClock, FakeSigner};
+use serde_json::json;
 
 use crate::harness::{NOON, Script, config, healthy, secrets};
 
@@ -18,6 +24,9 @@ const QUEUES: &str = "[sources.other]\nkind = \"github\"\nrepository = \"acme/ot
 /// a reason; each request's line; and whether each carried the other
 /// source's credential.
 type Read = (Vec<(String, String, bool)>, Vec<String>, Vec<bool>);
+
+/// The base branch of a queue as setup reads it, or why it was not read.
+type Said = Result<BranchSaid, Option<String>>;
 
 fn read(name: Option<&str>) -> Read {
     let config = config(QUEUES);
@@ -85,8 +94,9 @@ fn a_queue_named_is_read_alone_on_its_own_repository_with_its_own_source_s_crede
     assert_eq!(carried, vec![true; seen.len()]);
 }
 
-#[test]
-fn a_queue_s_base_branch_is_read_through_its_own_source_and_a_failure_said_where_printed() {
+/// The base branch of each queue `asked` names on [`QUEUES`], as setup
+/// reads it, every request answered by `script`.
+fn branches(script: &Script, asked: &[(&str, Printed)]) -> Vec<Said> {
     let config = config(QUEUES);
     let prepared = pollster::block_on(prepare(
         &config,
@@ -95,7 +105,6 @@ fn a_queue_s_base_branch_is_read_through_its_own_source_and_a_failure_said_where
         Uses::Polls,
     ))
     .unwrap();
-    let script = Script::keyed(BTreeMap::new());
     let connected: Connected<Script> = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
     let store = healthy();
@@ -105,9 +114,24 @@ fn a_queue_s_base_branch_is_read_through_its_own_source_and_a_failure_said_where
         signer: &FakeSigner,
         budget: Budget::UNBOUNDED,
     };
-    let flow = (&config, &connected, &ports);
-    let said = pollster::block_on(merge_branch(flow, ("c", Printed::Asked)));
-    assert!(matches!(said, Err(Some(_))), "{said:?}");
+    asked
+        .iter()
+        .map(|asked| pollster::block_on(merge_branch((&config, &connected, &ports), *asked)))
+        .collect()
+}
+
+#[test]
+fn a_queue_s_base_branch_is_read_through_its_own_source_and_a_failure_said_where_printed() {
+    let script = Script::keyed(BTreeMap::new());
+    let said = branches(
+        &script,
+        &[
+            ("c", Printed::Asked),
+            ("c", Printed::of(false, false)),
+            ("d", Printed::Asked),
+        ],
+    );
+    assert!(matches!(said[0], Err(Some(_))), "{said:?}");
     assert!(
         script
             .seen()
@@ -116,12 +140,56 @@ fn a_queue_s_base_branch_is_read_through_its_own_source_and_a_failure_said_where
         "{:?}",
         script.seen()
     );
-    let withheld = pollster::block_on(merge_branch(flow, ("c", Printed::of(false, false))));
-    assert_eq!(withheld, Err(None));
-    let unknown = pollster::block_on(merge_branch(flow, ("d", Printed::Asked)));
+    assert_eq!(said[1], Err(None));
     assert!(
-        matches!(unknown, Err(Some(ref why)) if why.contains("\"d\"")),
-        "{unknown:?}"
+        matches!(said[2], Err(Some(ref why)) if why.contains("\"d\"")),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn a_queue_s_base_branch_read_says_the_forge_s_queue_and_the_methods_its_repository_allows() {
+    let gate = "https://api.github.com/repos/nightworksio/php-mutation-gate";
+    let answers = [
+        (
+            "",
+            json!({"private": false, "owner": {"type": "Organization"},
+                "allow_merge_commit": false, "allow_squash_merge": true, "allow_rebase_merge": false}),
+        ),
+        (
+            "/branches/dev",
+            json!({"commit": {"sha": "b1"}, "protected": false}),
+        ),
+        (
+            "/rules/branches/dev?per_page=100&page=1",
+            json!([{"type": "merge_queue", "parameters": {"merge_method": "SQUASH"}}]),
+        ),
+    ];
+    let script = Script::keyed(
+        answers
+            .into_iter()
+            .map(|(path, body)| {
+                let answer = Response {
+                    status: 200,
+                    headers: Vec::new(),
+                    body: body.to_string().into_bytes(),
+                };
+                (format!("{gate}{path}"), answer)
+            })
+            .collect(),
+    );
+    let said = branches(&script, &[("c", Printed::Asked)]);
+    let Some(Ok(said)) = said.first() else {
+        panic!("{said:?}");
+    };
+    assert_eq!(said.branched.queue, Some(true));
+    assert_eq!(said.branched.queued.method, Some(Method::Squash));
+    assert_eq!(
+        said.methods,
+        Some(Methods {
+            allowed: vec![Method::Squash],
+            whole: true,
+        })
     );
 }
 

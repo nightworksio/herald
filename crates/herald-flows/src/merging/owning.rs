@@ -153,17 +153,20 @@ async fn moved(
 /// The head herald's own update of `fresh` moved it to, `back` where
 /// reading a lost answer back already read it, and else the first other
 /// head [`moved`] reads, each read within the run's budget in `ports`,
-/// where the queue's `updated` is `signed` and the forge itself made and
-/// signed that head with exactly `fresh`'s head and `base` as its parents,
-/// in that order: the one head the gesture can vouch for after the update;
-/// none otherwise.
+/// where the queue's `updated` is `signed`, herald can prove a signature
+/// on its forge, and the forge itself made and signed that head with
+/// exactly `fresh`'s head and `base` as its parents, in that order: the one
+/// head the gesture can vouch for after the update; none otherwise, with
+/// no read made where it can prove none.
 async fn made<S, C: Clock, G>(
     read: (&dyn MergeReader, &dyn DynHttp),
     (timer, ports): (&dyn DynTimer, &Ports<'_, S, C, G>),
     queue: &MergeQueue,
     ((fresh, base), back): ((&Entered, &str), Option<String>),
 ) -> Option<String> {
-    if queue.updated != Updated::Signed {
+    if queue.updated != Updated::Signed
+        || !MergeQueue::proves_signed(&queue.forge, queue.signer.as_deref())
+    {
         return None;
     }
     let erased = Erased(read.1);

@@ -61,20 +61,31 @@ pub enum Vouches {
 
 /// Whether a gesture vouches for the head herald's own update of the
 /// branch made from the head it vouched for.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 #[schemars(rename = "MergeUpdated")]
 pub enum Updated {
     /// It does where the new head's parents are exactly the head the step
     /// was taken on and the base's head herald recorded with it, and the
     /// forge itself signed it; never after a rebase.
-    #[default]
     Signed,
     /// It never does: the pull request leaves, and a new gesture queues it.
     Never,
     /// It does once one who holds the queue's least role approved the new
     /// head on the forge.
     Approved,
+}
+
+impl Updated {
+    /// The setting as the config writes it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Signed => "signed",
+            Self::Never => "never",
+            Self::Approved => "approved",
+        }
+    }
 }
 
 /// Who runs a branch's queue.

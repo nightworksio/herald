@@ -1,15 +1,113 @@
 //! What doctor says of each merge queue (ADR-0087): where it merges and
 //! through whose queue, how, how a branch is brought up to date, its write
 //! credential, where its steps are taken, what becomes of a pull request
-//! it handed over once its gesture's maker lost the role, and why one does
-//! not start.
+//! it handed over once its gesture's maker lost the role, why one does not
+//! start, and, online, what its forge says of its branch and the methods
+//! its repository allows.
 
 use herald_config::{Config, MergeQueue};
 use herald_core::Duration;
 use herald_core::merging::{AppliedBy, RoleLost, Runs, Updated, Vouches};
-use herald_kinds::Merging;
+use herald_kinds::{Branched, Merging};
+use herald_ports::DynHttp;
 
 use super::{Findings, Gap, Layer, gap, listed};
+use crate::prepare::{MergeReading, PreparedSource};
+
+/// What the forge of each merge queue says of the queue's branch and
+/// repository, asked through each source's `Http`: whether it has a merge
+/// queue or merge train there that herald can hand a pull request to, by
+/// which method, whether it lets a pull request merge there only through
+/// it, and whether the repository allows the queue's method.
+pub(super) async fn forge_said(sources: &[(&PreparedSource, &dyn DynHttp)]) -> Findings {
+    let mut findings = Findings::default();
+    let readings = sources
+        .iter()
+        .flat_map(|(source, http)| source.merging.iter().map(move |reading| (reading, *http)));
+    for (reading, http) in readings {
+        let name = reading.name.as_str();
+        let what = format!("reading the merge queue \"{name}\"");
+        let key = |key: &str| format!("merge_queues.{name}.{key}");
+        let methods = if reading.method.is_some() {
+            match reading.reader.methods(http).await {
+                Ok(methods) => Some(methods),
+                Err(error) => {
+                    findings
+                        .gaps
+                        .push(gap(&what, key("method"), error.into_reason()));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(methods) = &methods {
+            match crate::merging::allowed(reading.method, methods) {
+                Ok(method) => findings.notes.push(format!(
+                    "The merge queue {name}: the repository allows a merge by \"{}\".",
+                    method.name()
+                )),
+                Err(why) => findings.gaps.push(gap(&what, key("method"), why)),
+            }
+        }
+        if reading.queueless {
+            continue;
+        }
+        match reading.reader.branch(http, &reading.branch).await {
+            Err(error) => findings.gaps.push(gap(
+                &what,
+                format!("merge_queues.{name}"),
+                error.into_reason(),
+            )),
+            Ok(branched) => branch_said(reading, (&branched, methods.as_ref()), &mut findings),
+        }
+    }
+    findings
+}
+
+/// What doctor says of `branched`, the branch of the merge queue `reading`
+/// reads, in a repository allowing `methods` where they were read.
+fn branch_said(
+    reading: &MergeReading,
+    (branched, methods): (&Branched, Option<&herald_kinds::Methods>),
+    findings: &mut Findings,
+) {
+    let (name, branch) = (reading.name.as_str(), reading.branch.as_str());
+    let what = format!("reading the merge queue \"{name}\"");
+    if reading.runs == Runs::Herald {
+        if branched.queued.only {
+            findings.gaps.push(gap(
+                &what,
+                format!("merge_queues.{name}.runs"),
+                format!("the forge lets a pull request merge into {branch} only through its own merge queue or merge train, so it refuses herald's own merge; give runs = \"forge\" to hand each pull request to it"),
+            ));
+        }
+        return;
+    }
+    let asked = (reading.runs, reading.method, reading.forge);
+    let unhanded = crate::merging::unhanded(asked, branched, methods);
+    let handed = unhanded.is_empty();
+    for (key, why) in unhanded {
+        findings
+            .gaps
+            .push(gap(&what, format!("merge_queues.{name}.{key}"), why));
+    }
+    if !handed {
+        return;
+    }
+    findings.notes.push(match (branched.queue, branched.queued.method) {
+        (Some(true), Some(method)) => format!(
+            "The merge queue {name}: the forge has a merge queue or merge train on {branch}, merging by \"{}\".",
+            method.name()
+        ),
+        (Some(true), None) => format!(
+            "The merge queue {name}: the forge has a merge queue or merge train on {branch}."
+        ),
+        _ => format!(
+            "The merge queue {name}: the forge would not say whether {branch} has a merge queue or merge train, as on a branch under classic protection; each pull request is handed to it all the same."
+        ),
+    });
+}
 
 /// What `queue`, named `name`, does, as doctor says it.
 fn said(name: &str, queue: &MergeQueue) -> String {
@@ -67,8 +165,7 @@ pub fn unsigned(forge: &Merging, signer: Option<&str>) -> Option<&'static str> {
     if !MergeQueue::signs(forge.forge) {
         return Some(UNSIGNED_FORGE);
     }
-    (signer.is_none() && herald_wire::github::web_flow(&forge.api).is_none())
-        .then_some(UNSIGNED_HOST)
+    (!MergeQueue::proves_signed(forge, signer)).then_some(UNSIGNED_HOST)
 }
 
 /// Why `updated = "signed"` on herald's own queue `queue` can never let a

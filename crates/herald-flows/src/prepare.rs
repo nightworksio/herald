@@ -216,6 +216,10 @@ pub(crate) struct MergeReading {
     pub(crate) branch: String,
     /// Who runs it.
     pub(crate) runs: herald_core::merging::Runs,
+    /// How it merges, where it says.
+    pub(crate) method: Option<herald_core::merging::Method>,
+    /// Its forge, as a source's kind names it.
+    pub(crate) forge: &'static str,
     /// Whether its forge never has a merge queue of its own, which doctor
     /// says without asking.
     pub(crate) queueless: bool,
@@ -730,6 +734,8 @@ fn merge_readings(
                 name: queue.clone(),
                 branch: merging.branch.clone(),
                 runs: merging.runs,
+                method: merging.method,
+                forge: merging.forge.forge,
                 queueless: merging.forge.queueless.is_some(),
                 reader: source.merge_reader(&merging.forge, token.cloned())?,
             })

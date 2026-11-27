@@ -4,8 +4,8 @@ use herald_ports::Response;
 use serde_json::{Value, json};
 
 use super::super::tests::{
-    LABEL, approved_by, at, at_second, base, branched, entered, entered_least, entry, ok, pages,
-    proved, refused, stamp,
+    LABEL, approved_by, at, at_second, base, branched, branched_at, entered, entered_least, entry,
+    ok, pages, proved, refused, stamp,
 };
 use super::*;
 use crate::Forge;
@@ -337,6 +337,80 @@ fn a_branch_s_required_checks_come_from_its_protection_and_rulesets() {
     let checked = json!([{"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "c"}]}}]);
     let unqueued = branched(Forge::GitHub, answers(false, checked)).unwrap();
     assert_eq!(unqueued.queue, Some(false));
+}
+
+#[test]
+fn a_branch_says_why_github_hands_nothing_to_a_queue_and_by_which_method_its_queue_merges() {
+    let repository =
+        |kind: &str, private: bool| ok(&json!({"private": private, "owner": {"type": kind}}));
+    let found = |protected: bool| ok(&json!({"commit": {"sha": "b1"}, "protected": protected}));
+    let unruled = || ok(&json!([]));
+    let read = |at: Option<&str>, answers: Vec<Response>| {
+        branched_at((Forge::GitHub, at), answers).unwrap()
+    };
+    let personal = read(
+        None,
+        vec![repository("User", false), found(true), unruled()],
+    );
+    assert_eq!(personal.queue, Some(false));
+    assert_eq!(personal.queued.unhanded.as_deref(), Some(PERSONAL));
+    for (at, private, why) in [
+        (None, true, PRIVATE),
+        (None, false, RULELESS),
+        (Some("https://api.acme.ghe.com"), true, RULELESS),
+    ] {
+        let answers = vec![repository("Organization", private), found(false), unruled()];
+        assert_eq!(read(at, answers).queued.unhanded.as_deref(), Some(why));
+    }
+    let classic = read(
+        None,
+        vec![repository("Organization", true), found(true), unruled()],
+    );
+    assert_eq!((classic.queue, classic.queued.unhanded), (None, None));
+    let rule = |method: &str| {
+        ok(&json!([{"type": "merge_queue", "parameters": {"merge_method": method}}]))
+    };
+    for (named, method) in [
+        ("MERGE", Some(Method::Merge)),
+        ("SQUASH", Some(Method::Squash)),
+        ("REBASE", Some(Method::Rebase)),
+        ("OCTOPUS", None),
+    ] {
+        let queued = read(
+            None,
+            vec![repository("Organization", false), found(true), rule(named)],
+        );
+        assert_eq!(
+            queued.queued,
+            Queued {
+                unhanded: None,
+                only: true,
+                method,
+            }
+        );
+    }
+    let server = Some("https://ghe.example/api/v3");
+    let mutations = |names: &[&str]| {
+        let fields: Vec<Value> = names.iter().map(|name| json!({"name": name})).collect();
+        ok(&json!({"data": {"__type": {"fields": fields}}}))
+    };
+    let on_server = |listed: Response| {
+        branched_at(
+            (Forge::GitHub, server),
+            vec![
+                repository("Organization", true),
+                found(true),
+                rule("MERGE"),
+                listed,
+            ],
+        )
+    };
+    let takes = on_server(mutations(&["mergePullRequest", "enqueuePullRequest"])).unwrap();
+    assert_eq!(takes.queued.unhanded, None);
+    let lacks = on_server(mutations(&["mergePullRequest"])).unwrap();
+    assert_eq!(lacks.queued.unhanded.as_deref(), Some(UNENQUEUED));
+    assert_eq!(lacks.queue, Some(true));
+    assert!(on_server(ok(&json!({"errors": [{"message": "no"}]}))).is_err());
 }
 
 fn reviewed(login: &str, state: &str, commit: &str) -> Value {

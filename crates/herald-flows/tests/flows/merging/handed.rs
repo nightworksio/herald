@@ -678,7 +678,7 @@ fn a_queue_the_server_runs_or_without_a_forge_queue_takes_no_step() {
     let store = healthy();
     let nexts = run("", (&store, &queueless, &the_secrets()), true);
     assert!(
-        matches!(&nexts[..], [Next::Took(Took::Refused(why)), Next::Idle] if why.contains("no merge queue")),
+        matches!(&nexts[..], [Next::Took(Took::Refused(why)), Next::Idle] if why.contains("requires a merge queue")),
         "{nexts:?}"
     );
     assert!(!queueless.lines().contains(&GRAPHQL.to_owned()));
