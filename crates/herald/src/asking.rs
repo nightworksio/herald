@@ -1,4 +1,4 @@
-//! How `herald setup merge-queue` asks: each question answered by its flag
+//! How herald's wizards ask: each question answered by its flag
 //! where given, by its default under `--yes`, or by the operator, who is
 //! asked again where an answer is refused, up to [`MOST_REFUSED`] times.
 //! A refused answer is never repeated, as it may be a credential typed in
@@ -14,34 +14,35 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt as _};
 
 use crate::output::say;
 
-use super::MOST_REFUSED;
+/// The refused answers to one question after which a wizard stops.
+pub(crate) const MOST_REFUSED: u8 = 3;
 
 /// Why the wizard stopped where the answers ended.
 const UNANSWERED: &str =
     "the answers ended before every question was answered; nothing was written";
 
 /// What a list's answer says for none.
-pub(super) const NONE: &str = "none";
+pub(crate) const NONE: &str = "none";
 
 /// Why an empty answer to a question without a default is asked again.
 const NEEDED: &str = "this question has no default; give an answer";
 
 /// One question: what it asks, the flag that answers it, the answer given
 /// there, and the default.
-pub(super) struct Question<'q> {
+pub(crate) struct Question<'q> {
     /// What it asks.
-    pub(super) asked: &'q str,
+    pub(crate) asked: &'q str,
     /// The flag that answers it.
-    pub(super) flag: &'static str,
+    pub(crate) flag: &'static str,
     /// The flag's answer, where given.
-    pub(super) given: Option<&'q str>,
+    pub(crate) given: Option<&'q str>,
     /// The answer an empty line or `--yes` takes.
-    pub(super) default: Option<String>,
+    pub(crate) default: Option<String>,
 }
 
 /// The values a type of the config takes, each with its one-line
 /// description, as the config's schema lists them.
-pub(super) fn choices<T: JsonSchema>() -> Vec<(String, String)> {
+pub(crate) fn choices<T: JsonSchema>() -> Vec<(String, String)> {
     let schema = serde_json::to_value(schemars::schema_for!(T)).unwrap_or_default();
     let listed = schema
         .get("oneOf")
@@ -68,12 +69,12 @@ pub(super) fn choices<T: JsonSchema>() -> Vec<(String, String)> {
 }
 
 /// `text` read as the value of `T` the config writes so.
-pub(super) fn parsed<T: DeserializeOwned>(text: &str) -> Option<T> {
+pub(crate) fn parsed<T: DeserializeOwned>(text: &str) -> Option<T> {
     T::deserialize(StrDeserializer::<Unread>::new(text)).ok()
 }
 
 /// The name the config writes `T`'s default as.
-pub(super) fn default_name<T: JsonSchema + DeserializeOwned + Default + PartialEq>() -> String {
+pub(crate) fn default_name<T: JsonSchema + DeserializeOwned + Default + PartialEq>() -> String {
     choices::<T>()
         .into_iter()
         .map(|(name, _)| name)
@@ -82,18 +83,18 @@ pub(super) fn default_name<T: JsonSchema + DeserializeOwned + Default + PartialE
 }
 
 /// Where the answers come from and the questions go.
-pub(super) struct Asking<'a> {
+pub(crate) struct Asking<'a> {
     /// The operator's answers, a line each.
-    pub(super) answers: &'a mut (dyn AsyncBufRead + Send + Unpin),
+    pub(crate) answers: &'a mut (dyn AsyncBufRead + Send + Unpin),
     /// Where each question is printed.
-    pub(super) out: &'a mut dyn Write,
+    pub(crate) out: &'a mut dyn Write,
     /// Whether each question no flag answers takes its default unasked.
-    pub(super) yes: bool,
+    pub(crate) yes: bool,
 }
 
 impl Asking<'_> {
     /// `line` said to the operator.
-    pub(super) fn say(&mut self, line: &str) {
+    pub(crate) fn say(&mut self, line: &str) {
         say(self.out, line);
     }
 
@@ -107,7 +108,7 @@ impl Asking<'_> {
     }
 
     /// The answer to `question`, as `check` reads it.
-    pub(super) async fn answer<T>(
+    pub(crate) async fn answer<T>(
         &mut self,
         question: Question<'_>,
         check: impl Fn(&str) -> Result<T, String>,
@@ -152,7 +153,7 @@ impl Asking<'_> {
 
     /// The value of `T` `question` chooses, each choice said on its own
     /// line where the operator is asked.
-    pub(super) async fn choice<T: JsonSchema + DeserializeOwned>(
+    pub(crate) async fn choice<T: JsonSchema + DeserializeOwned>(
         &mut self,
         question: Question<'_>,
         offered: &[(String, String)],
@@ -180,7 +181,7 @@ impl Asking<'_> {
     /// The names `question` lists: its flags' where given, else a line
     /// each, ended by an empty line; `none` for none, and an empty first
     /// line for the default.
-    pub(super) async fn list(
+    pub(crate) async fn list(
         &mut self,
         question: Question<'_>,
         given: &[String],
@@ -220,7 +221,7 @@ impl Asking<'_> {
     }
 
     /// Whether the operator confirms `asked`, `--yes` confirming unasked.
-    pub(super) async fn confirmed(&mut self, asked: &str) -> bool {
+    pub(crate) async fn confirmed(&mut self, asked: &str) -> bool {
         if self.yes {
             return true;
         }

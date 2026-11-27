@@ -620,3 +620,18 @@ fn an_activitypub_route_is_refused_a_bad_domain_or_actor_what_it_cannot_do_and_a
         .replace("mentions = { subscribers = true }\n", "");
     assert!(load("herald.toml", &quiet, &nothing, &crate::common::kinds()).is_ok());
 }
+
+#[test]
+fn a_first_run_offers_each_destination_kind_that_names_a_way_in_and_no_other() {
+    let first_runs = crate::common::kinds().first_runs();
+    let kinds: Vec<&str> = first_runs.iter().map(|first_run| first_run.kind).collect();
+    assert_eq!(kinds, ["discord", "mastodon", "matrix", "slack"]);
+    for first_run in &first_runs {
+        assert!(!first_run.variants.is_empty(), "{}", first_run.kind);
+        assert!(!first_run.described.is_empty(), "{}", first_run.kind);
+    }
+    assert_eq!(
+        first_runs[0].described,
+        <herald_dest_discord::DiscordKind as herald_kinds::DestinationKind>::DESCRIPTION
+    );
+}

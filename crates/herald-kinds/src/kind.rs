@@ -1,7 +1,7 @@
 use herald_core::{Answering, Command};
 use jiff::SignedDuration;
 
-use crate::{DestinationConfig, Placement};
+use crate::{DestinationConfig, Placement, Variant};
 
 /// A mistake in a destination's table or a route's options: what to write
 /// instead, and the key under the table it is at, where it is at one.
@@ -96,6 +96,10 @@ pub trait DestinationKind: 'static {
     /// The keys a destination of it takes from `[federation]` where its
     /// table leaves them out.
     const INHERITS: &[Inherited] = &[];
+
+    /// The ways a destination of it is first reached, each with the
+    /// questions `herald init` asks; none where it is set up by hand alone.
+    const FIRST_RUN: &[Variant] = &[];
 
     /// Whether a route to it renders a template, converted to its dialect;
     /// false where each event goes as an envelope.

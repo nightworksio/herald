@@ -10,6 +10,7 @@
 
 mod audience;
 mod config;
+mod first_run;
 mod held;
 mod interact;
 mod interactions;

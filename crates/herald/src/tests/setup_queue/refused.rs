@@ -149,7 +149,7 @@ fn a_table_the_config_refuses_is_said_and_never_written() {
 
 #[test]
 fn a_question_refused_the_most_times_stops_the_wizard_and_one_fewer_does_not() {
-    let most = usize::from(crate::queue_setup::MOST_REFUSED);
+    let most = usize::from(crate::asking::MOST_REFUSED);
     let answered = |refusals: usize| {
         let setup = setup(CONFIG);
         let world = World::default();

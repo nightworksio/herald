@@ -25,6 +25,7 @@ use herald_sources_forge::Forge;
 
 mod announce;
 mod apps;
+mod asking;
 mod cli;
 mod connect;
 mod doctoring;

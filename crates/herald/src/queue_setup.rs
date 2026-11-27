@@ -21,12 +21,11 @@ use serde::de::DeserializeOwned;
 use tokio::io::AsyncBufRead;
 use toml_edit::{Item, TableLike, Value};
 
-use self::asking::{Asking, NONE, Question, choices, default_name};
 use self::forge::{forge_said, offered_methods};
 use self::table::{Keys, inline, listed, text};
 use super::{Connect, DONE, STOPPED};
+use crate::asking::{Asking, NONE, Question, choices, default_name};
 
-mod asking;
 mod credential;
 mod forge;
 mod table;
@@ -43,9 +42,6 @@ const FORGE_ONLY: &str =
 
 /// Why the keys of a signed update were given where `updated` is another.
 const SIGNED_ONLY: &str = "--signer and --update-wait hold where updated is signed alone; give --updated signed, or leave them out";
-
-/// The refused answers to one question after which the wizard stops.
-pub(crate) const MOST_REFUSED: u8 = 3;
 
 /// The re-runs on one head offered where a queue re-runs checks.
 const RETRY_TIMES: &str = "2";

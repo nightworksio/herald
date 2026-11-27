@@ -5,9 +5,9 @@ use std::num::NonZeroU64;
 
 use toml_edit::{Item, TableLike, Value};
 
-use super::asking::{Asking, NONE};
 use super::table::{Keys, inline};
 use super::{Answers, Sourced, asking_of, merged, question, was};
+use crate::asking::{Asking, NONE};
 use herald_config::Config;
 use herald_core::merging::Write;
 

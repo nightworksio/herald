@@ -10,6 +10,7 @@
 mod audience;
 mod config;
 mod discord;
+mod first_run;
 mod gateway;
 mod held;
 mod interact;
