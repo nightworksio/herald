@@ -17,7 +17,6 @@ mod merging;
 mod models;
 mod oidc;
 mod peers;
-mod position;
 mod presets;
 mod reference;
 mod samples;
@@ -29,7 +28,7 @@ pub use config::{
     Level, Log, LogFormat, Pages, RouteConfig, Run, Schedule, Server, Uses, Work,
 };
 pub use error::{ConfigError, Errors};
-pub use files::{Files, UNCONTAINED};
+pub use files::{Files, UNCONTAINED, Unread, Within};
 pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 pub use kinds::Kinds;
 pub use load::{expansion, load, load_with};

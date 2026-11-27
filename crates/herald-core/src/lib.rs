@@ -46,6 +46,7 @@ mod nudge;
 mod origin;
 mod pattern;
 mod pending;
+mod position;
 mod profile;
 mod published;
 mod queue;
@@ -144,6 +145,7 @@ pub use nudge::{
 pub use origin::{Origin, kind_name};
 pub use pattern::Pattern;
 pub use pending::{HeldEvent, Hold, LONGEST_HOLD, Pending};
+pub use position::{position, unparsed};
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,

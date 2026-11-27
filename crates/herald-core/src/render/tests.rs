@@ -503,6 +503,7 @@ fn a_project_template_names_a_member_by_its_repository_on_one_line() {
         named("{% if false %}x{% endif %}  "),
         Err(TemplateError {
             name: "project".to_owned(),
+            line: None,
             reason: "it names no project for group/tools/cli".to_owned()
         })
     );
@@ -584,6 +585,7 @@ fn an_actor_template_names_each_project_s_actor_on_one_line() {
         named("{% if false %}x{% endif %}"),
         Err(TemplateError {
             name: "actor".to_owned(),
+            line: None,
             reason: "it names no actor for Plugin.Sonarr".to_owned()
         })
     );

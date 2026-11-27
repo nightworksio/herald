@@ -1,6 +1,7 @@
 //! A member file: the list of repository names an owner source takes,
 //! read from TOML or JSON (ADR-0030).
 
+use herald_core::{position, unparsed};
 use serde_json::Value;
 
 /// The format a member file is written in, by its extension.
@@ -45,8 +46,12 @@ impl Format {
 /// array, or an entry has no `key` that is a string.
 pub fn names(path: &str, text: &str, tables: &[String], key: &str) -> Result<Vec<String>, String> {
     let document: Value = match Format::of(path)? {
-        Format::Toml => toml::from_str(text).map_err(|error| format!("{path}: {error}"))?,
-        Format::Json => serde_json::from_str(text).map_err(|error| format!("{path}: {error}"))?,
+        Format::Toml => toml::from_str(text).map_err(|error: toml::de::Error| {
+            let (line, column) = position(text, error.span().map_or(0, |span| span.start));
+            unparsed(path, line, Some(column))
+        })?,
+        Format::Json => serde_json::from_str(text)
+            .map_err(|error| unparsed(path, error.line(), Some(error.column())))?,
     };
     let arrays: Vec<(&str, &Value)> = if tables.is_empty() {
         vec![("the file", &document)]

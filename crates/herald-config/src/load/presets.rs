@@ -196,7 +196,7 @@ impl Region {
         let Some(file) = &self.file else {
             return (self.at.start, message);
         };
-        let (line, column) = crate::position::position(&self.text, at - self.start);
+        let (line, column) = herald_core::position(&self.text, at - self.start);
         (self.at.start, format!("{file}:{line}:{column}: {message}"))
     }
 }

@@ -1,6 +1,7 @@
 /// The line and column of the byte `offset` in `text`, each counted from one,
 /// the column in characters.
-pub(crate) fn position(text: &str, offset: usize) -> (usize, usize) {
+#[must_use]
+pub fn position(text: &str, offset: usize) -> (usize, usize) {
     let mut line = 1;
     let mut column = 1;
     for (index, character) in text.char_indices() {
@@ -15,6 +16,18 @@ pub(crate) fn position(text: &str, offset: usize) -> (usize, usize) {
         }
     }
     (line, column)
+}
+
+/// Why the file `file` could not be parsed at its `line` and, where told,
+/// `column`, named by them alone, so nothing it holds is shown.
+#[must_use]
+pub fn unparsed(file: &str, line: usize, column: Option<usize>) -> String {
+    match column {
+        Some(column) => {
+            format!("{file} cannot be read at line {line}, column {column}; fix it there")
+        }
+        None => format!("{file} cannot be read at line {line}; fix it there"),
+    }
 }
 
 #[cfg(test)]

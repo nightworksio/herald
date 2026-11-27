@@ -14,9 +14,9 @@ use herald_kinds::Fault;
 use crate::config::Config;
 use crate::error::{ConfigError, Errors};
 use crate::example::explained;
-use crate::files::Files;
+use crate::files::{Files, contained};
 use crate::kinds::{At, Kinds};
-use crate::position::position;
+use herald_core::position;
 use secrets::secret_keys;
 
 pub(crate) type Value<'i> = Spanned<DeValue<'i>>;
@@ -319,12 +319,12 @@ pub fn load_with(
     files: &dyn Files,
     kinds: &Kinds,
 ) -> Result<Config, Errors> {
-    let read = &|path: &str| files.read(path);
     let mut loader = Loader::new(file, text, kinds);
     let (root, syntax) = DeTable::parse_recoverable(text);
     let secret_keys = secret_keys(root.get_ref());
     let mut adopting = Vec::new();
     let (sections, expanded) = loader.expanding((root.into_inner(), &syntax), files, &mut adopting);
+    let read = &contained(files, file, loader.allowed(sections.files));
     loader.version(sections.version);
     loader.specs = loader.declared(sections.kinds);
     let (store, kept) = loader.store(sections.store).unzip();

@@ -175,7 +175,13 @@ fn a_member_file_beside_the_config_is_read_once_and_its_names_kept() {
         );
     }
     let unread = GitHubKind::read(GitHubKind::checked(filed("gone.toml")).unwrap(), &read);
-    assert_eq!(unread, Err(Fault::at("members.file", "no file gone.toml")));
+    assert_eq!(
+        unread,
+        Err(Fault::at(
+            "members.file",
+            "gone.toml could not be read: no file gone.toml"
+        ))
+    );
     let Err(fault) = GitHubKind::read(GitHubKind::checked(filed("bare.toml")).unwrap(), &read)
     else {
         panic!("a file without the tables named keeps the source out");

@@ -28,6 +28,24 @@ pub(crate) struct MarkersFile {
     pub(crate) key: SecretRef,
 }
 
+/// `[files]`: the directories beside its own whose files the config may
+/// name. A template's `file`, a source's `members.file`, a block list's
+/// `file` and `http.ca_file` are read only beside the config or in one of
+/// these, every link followed; a file elsewhere stops the load (ADR-0092
+/// decision 8).
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Files")]
+pub(crate) struct FilesFile {
+    /// The directories, each an absolute path, whose files a template's
+    /// `file`, a source's `members.file`, a block list's `file` and
+    /// `http.ca_file` may name beside the config's own directory; none
+    /// where absent. Every link is followed before a file is read.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>")]
+    pub(crate) allowed: Vec<Spanned<String>>,
+}
+
 /// A thread a route opens, and when housekeeping closes it.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

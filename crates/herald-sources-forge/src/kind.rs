@@ -46,6 +46,7 @@ impl ForgeSource {
     fn read(mut self, read: &dyn Fn(&str) -> Result<String, String>) -> Result<Self, Fault> {
         if let Some(Members::File { file }) = &self.options.members {
             let names = read(file)
+                .map_err(|why| format!("{file} could not be read: {why}"))
                 .and_then(|text| {
                     crate::members::names(file, &text, &self.options.tables, self.options.key())
                 })

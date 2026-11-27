@@ -41,6 +41,10 @@
       "description": "This herald among other instances: its domain, its keys, and what\nits ActivityPub actors take by default.",
       "$ref": "#/$defs/Federation"
     },
+    "files": {
+      "description": "The directories beside its own whose files the config may name: a\ntemplate's, a member list's, a block list's or a CA file elsewhere\nstops the load (ADR-0092 decision 8).",
+      "$ref": "#/$defs/Files"
+    },
     "github_apps": {
       "description": "The GitHub Apps sources read as, by name.",
       "type": "object",
@@ -2941,6 +2945,21 @@
         "stranger_rate": {
           "description": "How many requests to a source's inbox that no peer's key signs are\nkept in the audit: \"120/m\" where absent, at most \"480/m\"; the rest\nare only logged (ADR-0054).",
           "$ref": "#/$defs/Rate"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Files": {
+      "description": "`[files]`: the directories beside its own whose files the config may\nname. A template's `file`, a source's `members.file`, a block list's\n`file` and `http.ca_file` are read only beside the config or in one of\nthese, every link followed; a file elsewhere stops the load (ADR-0092\ndecision 8).",
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "description": "The directories, each an absolute path, whose files a template's\n`file`, a source's `members.file`, a block list's `file` and\n`http.ca_file` may name beside the config's own directory; none\nwhere absent. Every link is followed before a file is read.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

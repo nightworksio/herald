@@ -273,7 +273,8 @@ server cannot serve.
 `proxy` (`"environment"`, the default, which honours `HTTPS_PROXY` and
 `NO_PROXY` where the host does; `"none"`; or a proxy's URL), `ca_file`, a
 PEM file of certificate authorities trusted beside the Mozilla roots, such as
-a GitHub Enterprise Server's private CA, and `body` ("32MiB", at most
+a GitHub Enterprise Server's private CA, beside `herald.toml` or in a directory
+`[files] allowed` names, as every file the config names is, and `body` ("32MiB", at most
 "128MiB"), the most of a response herald reads. A proxy URL and `ca_file` are for the
 native binary, the image and Lambda; other hosts refuse them, naming why. None
 of it applies to the hosts herald reaches on others' behalf, which keep
