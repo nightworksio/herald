@@ -82,17 +82,11 @@ what is missing.
 
 ## Quick start
 
-Every key `herald.toml` takes is listed, with its type and what it sets, in
-the [settings reference](.docs/settings.md), generated from the schema.
+Every key `herald.toml` takes is listed, with its type and what it sets, in the [settings reference](.docs/settings.md), generated from the schema.
 
-The snippets below show the configuration that
-[ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md)
-and
-[ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md)
-fix. No release of herald exists yet, so the Action has no binary to download.
+The snippets below show the configuration that [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) and [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) fix. No release of herald exists yet, so the Action has no binary to download.
 
-`herald.toml`, herald's own, announcing its releases and pre-releases into
-the NightWorksIO Discord's `package-releases` announcement channel:
+`herald.toml`, herald's own, announcing its releases and pre-releases into the NightWorksIO Discord's `package-releases` announcement channel:
 
 ```toml
 #:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
@@ -540,35 +534,8 @@ its `match` and its members' overrides take.
 
 ### Presets
 
-A `[presets.<name>]` table adopts a preset: tables herald writes for it as
-the config loads, each named `<name>-` and then as the preset names it. A
-key the table gives wins over the preset's, and one the preset does not
-take is refused:
-
-```toml
-[presets.releases]
-use = "herald:announce-releases"
-destination = "discord"
-sources = ["herald"]
-channel = "1566184281406177531"
-prereleases = "exclude"
-```
-
-The settings reference lists each preset herald ships, its parameters and
-the tables it writes. A local preset is a file inside `herald.toml`'s
-directory, `use = "./presets/team.toml"`, reached through no link that leads
-outside it. It declares `version = 1`, writes `routes`, `templates`,
-`views`, `reports` and `rules` only, names no secret, and writes only the
-keys that pick and shape what herald announces: a route's `id`, `sources`,
-`kinds`, `prereleases`, `versions`, `match`, `area_paths`, `template`,
-`templates` and `group`, a template's `title` and `body`, and of views,
-reports and rules what they read and when. Every other key is refused with
-why: where a route posts, whom it calls on, what it does to its posts, what
-herald trusts of its place, a view's overviews and models and a rule's
-re-runs come from the adopting table. Only herald's native binary reads
-one. A
-mistake in a preset's tables is told at the line of the table that adopts
-it, and a local preset's with its own file, line and column.
+A `[presets.<name>]` table adopts a preset herald ships, or a local one beside `herald.toml`:
+routes, templates, views, reports and rules written as the config loads, overridden key by key ([`.docs/presets.md`](.docs/presets.md)).
 
 ### Releases, tags and pre-releases
 
