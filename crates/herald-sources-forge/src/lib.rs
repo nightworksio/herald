@@ -17,6 +17,7 @@ mod github;
 mod gitlab;
 mod graphql;
 mod hooks;
+mod hosts;
 mod issues;
 mod kind;
 mod limited;

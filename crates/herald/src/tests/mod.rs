@@ -14,6 +14,7 @@ mod first_run;
 mod followers;
 mod forges;
 mod housekeep;
+mod init;
 mod keygen;
 mod lambda;
 mod load;

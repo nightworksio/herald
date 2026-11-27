@@ -4,8 +4,15 @@ use super::world::*;
 use crate::*;
 
 #[test]
-fn init_prints_a_new_marker_secret_once_and_needs_no_config() {
-    let args = ["herald", "--config", "/nonexistent/herald.toml", "init"].map(ToOwned::to_owned);
+fn token_marker_prints_a_new_marker_secret_once_and_needs_no_config() {
+    let args = [
+        "herald",
+        "--config",
+        "/nonexistent/herald.toml",
+        "token",
+        "marker",
+    ]
+    .map(ToOwned::to_owned);
     let mut out = Vec::new();
     let code = pollster::block_on(crate::run(
         &args,
@@ -24,7 +31,7 @@ fn init_prints_a_new_marker_secret_once_and_needs_no_config() {
     assert_eq!(secret.len(), 64);
     assert!(out.contains("herald prints it only this once."), "{out}");
     let mut err = Vec::new();
-    assert_eq!(init(None, &mut Vec::new(), &mut err), STOPPED);
+    assert_eq!(marker(None, &mut Vec::new(), &mut err), STOPPED);
     assert_eq!(
         String::from_utf8(err).unwrap(),
         "the system's random generator failed, so no secret was made\n"

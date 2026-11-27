@@ -33,6 +33,7 @@ mod dry_run;
 mod edited;
 mod followers;
 mod health;
+mod init;
 mod keygen;
 mod lambda;
 mod merging;
@@ -120,7 +121,12 @@ async fn stopping(
         Err(code) => return code,
     };
     let reading = match cli.command {
-        Command::Init => return init(random_secret(), out, err),
+        Command::Init(asked) => {
+            let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
+            let done = init::initialising(&cli.config, &asked, (answers, out), random_secret);
+            return finished(done.await, err);
+        }
+        Command::Token(Tokens::Marker) => return marker(random_secret(), out, err),
         Command::Token(Tokens::New { app }) => return apps::token(&app, random_secret(), out, err),
         Command::Health { url, timeout } => {
             let listen = vars.get(LISTEN).map(String::as_str);
@@ -436,6 +442,18 @@ fn text(path: &str) -> Result<String, String> {
     )
 }
 
+/// `text` written to a new file at `path`, never over one that exists.
+fn created(path: &str, text: &str) -> Result<(), String> {
+    filed(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .and_then(|mut file| file.write_all(text.as_bytes())),
+        &format!("{path} could not be written"),
+    )
+}
+
 /// `text` written to the file at `path`.
 fn rewrite(path: &str, text: String) -> Result<(), String> {
     filed(
@@ -507,11 +525,11 @@ impl herald_config::Files for Beside<'_> {
     }
 }
 
-/// The secret `herald init` names for the marker key it prints.
+/// The secret `herald token marker` names for the marker key it prints.
 const MARKER_SECRET: &str = "HERALD_MARKER_SECRET";
 
 /// A new marker secret printed once, or why none could be made.
-fn init(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+fn marker(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let Some(secret) = secret else {
         say(
             err,
