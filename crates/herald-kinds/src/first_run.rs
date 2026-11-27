@@ -304,6 +304,36 @@ mod tests {
     }
 
     #[test]
+    fn a_secret_question_lands_on_the_destination_with_its_default_as_example() {
+        let built = std::hint::black_box(Ask::secret)("token", "The secret", "HERALD_SLACK_TOKEN");
+        assert_eq!(
+            (built.key, built.asked, built.example),
+            ("token", "The secret", "HERALD_SLACK_TOKEN")
+        );
+        assert_eq!(
+            built.answer,
+            Answer::Secret {
+                default: "HERALD_SLACK_TOKEN"
+            }
+        );
+        assert_eq!(built.lands, Lands::Destination);
+    }
+
+    #[test]
+    fn a_text_question_lands_where_it_is_told() {
+        let text = std::hint::black_box(Ask::text);
+        for lands in [Lands::Destination, Lands::Route] {
+            let built = text("channel", "The channel", "C0123456789", lands);
+            assert_eq!(
+                (built.key, built.asked, built.example),
+                ("channel", "The channel", "C0123456789")
+            );
+            assert_eq!(built.answer, Answer::Text);
+            assert_eq!(built.lands, lands);
+        }
+    }
+
+    #[test]
     fn a_choice_of_none_has_no_default_and_is_written() {
         let none = Answer::Choice { choices: &[] };
         assert_eq!(none.default(), None);
