@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use aho_corasick::{AhoCorasick, MatchKind};
 use jiff::{SignedDuration, Timestamp};
 
-use crate::{Clock, Request, Secret, SecretError, SecretText, Secrets, Segment};
+use crate::{Clock, REDACTED, Request, Secret, SecretError, SecretText, Secrets, Segment};
 
 /// Every secret value herald resolves or sends, shown as `«secret:NAME»`
 /// wherever herald writes: what a secret's resolving or a request's
@@ -252,15 +252,16 @@ impl Scrubber {
     }
 
     /// `text` with each value it holds of at least its shortest length
-    /// written as `«secret:NAME»`, the longest matched first, in one pass.
+    /// written as `«secret:NAME»`, the longest matched first, in one pass;
+    /// the whole text withheld where no matcher could be built of them.
     #[must_use]
     pub fn scrubbed(&self, text: &str) -> String {
         let mut hidden = self.hidden();
         hidden.prune();
-        match hidden.matcher() {
-            Some(matcher) => matcher.patterns.replace_all(text, &matcher.shown),
-            None => text.to_owned(),
-        }
+        let scrubbed = hidden
+            .matcher()
+            .map(|matcher| matcher.patterns.replace_all(text, &matcher.shown));
+        scrubbed.unwrap_or_else(|| format!("{REDACTED}unscrubbed»"))
     }
 }
 
