@@ -43,10 +43,10 @@ identity, and nothing wider:
 
 ```sh
 cosign verify ghcr.io/nightworksio/herald:0 \
-  --certificate-identity-regexp '^https://github\\.com/nightworksio/herald/\\.github/workflows/release\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+  --certificate-identity-regexp '^https://github\.com/nightworksio/herald/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 gh attestation verify oci://ghcr.io/nightworksio/herald:0 --repo nightworksio/herald \
-  --cert-identity-regex '^https://github\\.com/nightworksio/herald/\\.github/workflows/release\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+  --cert-identity-regex '^https://github\.com/nightworksio/herald/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 ```
 
 A pinned version is checked against its own tag: see
