@@ -11,8 +11,10 @@ minutes each, all at once, on a plan whose twenty concurrent jobs every
 repository of the organisation shares. Most nights, most crates have not
 changed since the night before. The user decided: the nightly run mutates
 only the crates changed since the last green nightly run, and every crate
-depending on one; the whole workspace is mutated weekly; and a scheduled
-run's shards run at most four at a time.
+depending on one; the whole workspace is mutated weekly; a scheduled
+run's shards run at most four at a time; and a run's shards are as many as
+its mutants take, so none runs past its limit and a small change takes
+few.
 
 ## Decision
 
@@ -52,11 +54,40 @@ run's shards run at most four at a time.
    mutate the rest of it. `mutants-compute` mutates `herald-wasi` and
    `herald-fastly` only where each is in the scope; the shards exclude
    both.
-6. **Shards, four at a time.** `mutants-scope` names the shards. A pull
-   request's diff is cut into twelve, all run at once. Every other run is
-   cut into thirty, so each shard ends well inside its 180 minutes; a
-   scheduled run's run four at a time (`max-parallel`), and any other
-   run's twelve at a time.
+6. **Shards, as many as the mutants take.** `mutants-scope` lists the
+   mutants the shards mutate, with `cargo mutants --list` and the shards'
+   own arguments, a pull request's narrowed to its diff, and cuts as many
+   shards as keep each inside its aim at the slowest rate seen, after four
+   minutes of setup:
+   - **Every run but a pull request's:** 8 seconds a mutant, a shard
+     aiming at 90 minutes, half its 180-minute limit, and at most 40
+     shards; a scheduled run's run four at a time (`max-parallel`), any
+     other's twelve.
+   - **A pull request:** 30 seconds a mutant, a shard aiming at 15
+     minutes, and at most 12 shards, all run at once; a small change runs
+     one.
+   Where the mutants cannot be listed, the run takes the most shards;
+   where none is listed, no shard runs and `mutants` passes.
+7. **Where the rates come from.** Each shard's seconds from
+   cargo-mutants' `Found` line to its summary, over its mutants, read from
+   the job logs:
+   - **Every run but a pull request's:** the scheduled runs 44891794888
+     (2026-11-21; 4.10 to 6.59 seconds a mutant), 45008931805 (2026-11-22;
+     4.51 to 7.62), 45393470118 (2026-11-24; 5.49 to 7.64, and one shard
+     cancelled at 180 minutes, so slower than 7.72), 45602562982
+     (2026-11-25; three shards 6.11 to 6.72, nine cancelled, slower than
+     7.18) and 45805054961 (2026-11-26; eleven shards cancelled, slower
+     than 7.17). The slowest, 7.72, rounds up to 8.
+   - **A pull request:** the 101 shards with a mutant of the pull request
+     runs 45530478612, 45557289174, 45800494724, 45852366772, 45859174772,
+     45869363167, 45870522580, 45908553090 and 45910907079. A shard takes
+     about 155 seconds of baseline and then its mutants; past 180 seconds
+     of baseline a shard, the slowest run's mutants, 45800494724's, took
+     30.3 seconds each, so 30.
+   - **Setup:** at most 0.8 minutes from a shard's start to cargo-mutants'
+     `Found` line, in every shard above, and a baseline build and test of
+     153 to 179 seconds in the shards whose baseline was read (shard 0 of
+     44891794888, 45910907079 and 45557289174), so four minutes.
 
 ## Alternatives considered
 

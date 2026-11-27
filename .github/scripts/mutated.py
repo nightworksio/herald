@@ -6,10 +6,14 @@ Where that run cannot be found, or a change outside the crates may reach a
 build or a test, the nightly run mutates the whole workspace too. A push to
 main mutates nothing. It runs on every event, and writes the scope to
 $GITHUB_OUTPUT: `shards` (the cargo-mutants arguments naming what the shards
-mutate, empty for nothing), `matrix` (the shards' indices, as JSON), and
-`wasm`, `wasi` and `fastly` (whether the runtime jobs mutate those
-crates)."""
+mutate, empty for nothing), `excluded` (the cargo-mutants arguments naming
+what they leave to the runtime jobs), `matrix` (the shards' indices, as
+JSON), and `wasm`, `wasi` and `fastly` (whether the runtime jobs mutate those
+crates). The shards are as many as the mutants listed take to keep each well
+inside its job's limit, at most a cap; where the mutants cannot be listed,
+the cap."""
 import json
+import math
 import os
 import pathlib
 import subprocess
@@ -21,10 +25,32 @@ WEEKLY = "17 2 * * 6"
 WORKFLOW = "ci.yml"
 MAIN = "refs/heads/main"
 RUNS_READ = 30
-SHARDS = 30
-PULL_REQUEST_SHARDS = 12
 RUNTIMES = ("herald-wasm", "herald-wasi", "herald-fastly")
 UNSHARDED = frozenset({"herald-wasi", "herald-fastly", "herald-spin"})
+EXCLUDED = ("crates/herald-wasm/src/js/**",) + tuple(f"crates/{name}/**" for name in sorted(UNSHARDED))
+EXCLUDING = tuple(argument for glob in EXCLUDED for argument in ("--exclude", glob))
+SETUP_SECONDS = 240
+
+
+class Cut(NamedTuple):
+    """How a run's mutants are cut into shards: the seconds a mutant takes
+    at the slowest seen, the minutes a shard aims to end in, and the most
+    shards."""
+    seconds_per_mutant: int
+    minutes: int
+    most: int
+
+    def shards(self, mutants: int | None) -> int:
+        """The shards `mutants` are cut into: the most where they are not
+        known, else as many as keep each inside its minutes, at least one."""
+        if mutants is None:
+            return self.most
+        held = (self.minutes * 60 - SETUP_SECONDS) // self.seconds_per_mutant
+        return max(1, min(self.most, math.ceil(mutants / held)))
+
+
+WHOLE_CUT = Cut(seconds_per_mutant=8, minutes=90, most=40)
+PULL_REQUEST_CUT = Cut(seconds_per_mutant=30, minutes=15, most=12)
 UNREAD_DIRECTORIES = (".docs/decisions/", ".github/", "fuzz/")
 READ_INSIDE = (".github/workflows/ci.yml", ".github/scripts/install-tool.sh", ".github/dogfood")
 UNREAD_FILES = frozenset({
@@ -40,17 +66,24 @@ class Scope(NamedTuple):
     whole: bool
     packages: frozenset[str]
     why: str
-    cut: int = SHARDS
+    cut: Cut = WHOLE_CUT
+    mutants: int | None = None
+
+    def mutated(self) -> list[str]:
+        """The cargo-mutants arguments naming what the shards mutate, none
+        for nothing."""
+        if self.whole:
+            return ["--workspace"]
+        return [argument for name in sorted(self.packages - UNSHARDED) for argument in ("--package", name)]
 
     def outputs(self) -> dict[str, str]:
         """The job outputs naming it."""
-        if self.whole:
-            shards = "--workspace"
-        else:
-            shards = " ".join(f"--package {name}" for name in sorted(self.packages - UNSHARDED))
+        shards = "" if self.mutants == 0 else " ".join(self.mutated())
         reached = {name.removeprefix("herald-"): self.whole or name in self.packages for name in RUNTIMES}
-        matrix = json.dumps(list(range(self.cut)), separators=(",", ":"))
-        return {"shards": shards, "matrix": matrix} | {name: str(value).lower() for name, value in reached.items()}
+        matrix = json.dumps(list(range(self.cut.shards(self.mutants))), separators=(",", ":"))
+        return {"shards": shards, "excluded": " ".join(EXCLUDING), "matrix": matrix} | {
+            name: str(value).lower() for name, value in reached.items()
+        }
 
 
 def whole(why: str) -> Scope:
@@ -142,7 +175,7 @@ def scope(event: str, schedule: str, ref: str) -> Scope:
     if event == "schedule" and schedule == WEEKLY:
         return whole("the weekly run mutates the whole workspace")
     if event == "pull_request":
-        return whole("a pull_request run mutates the whole workspace narrowed to its diff")._replace(cut=PULL_REQUEST_SHARDS)
+        return whole("a pull_request run mutates the whole workspace narrowed to its diff")._replace(cut=PULL_REQUEST_CUT)
     if event != "schedule" or schedule != NIGHTLY:
         return whole(f"a {event or 'called'} run mutates the whole workspace, a pull request's narrowed to its diff")
     repository = os.environ["GITHUB_REPOSITORY"]
@@ -155,8 +188,41 @@ def scope(event: str, schedule: str, ref: str) -> Scope:
     return nightly(last_green(runs, present), lambda green: run("git", "diff", "--name-only", green, "HEAD").splitlines(), metadata)
 
 
+def listed(arguments: list[str]) -> int | None:
+    """How many mutants cargo-mutants lists with `arguments`, or none where
+    it cannot list them."""
+    try:
+        return len(json.loads(run("cargo", "mutants", "--list", "--json", *arguments)))
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def counted(found: Scope, listing: Callable[[list[str]], int | None], diff: str | None) -> Scope:
+    """`found` with the mutants its shards mutate counted by `listing`, a
+    pull request's narrowed to the diff at the path `diff`."""
+    mutated = found.mutated()
+    if not mutated:
+        return found
+    narrowed = ["--in-diff", diff] if diff is not None else []
+    mutants = listing([*mutated, *EXCLUDING, *narrowed])
+    shards = found.cut.shards(mutants)
+    if mutants is None:
+        return found._replace(why=f"{found.why}; the mutants could not be listed, so they are cut into {shards} shards")
+    return found._replace(mutants=mutants, why=f"{found.why}; {mutants} mutants listed, cut into {shards} shards")
+
+
+def changes(base: str, into: pathlib.Path) -> str:
+    """The path `into`, holding the diff since the merge base of `base`."""
+    merged = run("git", "merge-base", base, "HEAD").strip()
+    into.write_text(run("git", "diff", merged, "HEAD"), encoding="utf-8")
+    return str(into)
+
+
 if __name__ == "__main__":
-    found = scope(os.environ.get("EVENT", ""), os.environ.get("SCHEDULE", ""), os.environ.get("REF", ""))
+    event = os.environ.get("EVENT", "")
+    found = scope(event, os.environ.get("SCHEDULE", ""), os.environ.get("REF", ""))
+    diff = changes(os.environ["BASE"], pathlib.Path(os.environ["RUNNER_TEMP"]) / "change.diff") if event == "pull_request" else None
+    found = counted(found, listed, diff)
     print(found.why)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for name, value in found.outputs().items():

@@ -38,7 +38,7 @@ pub(crate) async fn nudged<S: Store, C: Clock, G: Signer, H: Http>(
         Ok(read) => read,
         Err(stop) => return Some(Sweep::Stopped(stop)),
     };
-    let decided = decided_rows(flow, view, &read.pulls).await;
+    let decided = decided_rows(flow, view, &read.pulls).await.rows;
     let shown = grouped(&view.view, decided.clone(), herald_core::Beside::default());
     let source = SourceName::new(name);
     let mut announced = Vec::new();

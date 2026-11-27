@@ -344,7 +344,8 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
         }
         _ => None,
     };
-    let decided = decided_rows(flow, view, &pulls).await;
+    let settled = decided_rows(flow, view, &pulls).await;
+    let decided = settled.rows;
     let teams = joined(&config.teams, &read.teams);
     let load = view
         .load
@@ -355,7 +356,9 @@ pub async fn queue<S: Store, C: Clock, G: Signer, H: Http>(
         sees: printed.sees(),
     };
     let mut board = grouped(&view.view, decided, beside);
-    board.overviews = printed.overviews(read.overviews, &pulls);
+    let mut overviews = read.overviews;
+    overviews.unread.extend(settled.unread);
+    board.overviews = printed.overviews(overviews, &pulls);
     board.overviews.load = load;
     board.overviews.advisories = view
         .advisories
@@ -694,13 +697,15 @@ async fn begun<'r, S: Store, C: Clock, G: Signer, H: Http>(
         Err(stop) => return Some(Err(Sweep::Stopped(stop))),
     };
     let view = config.views.get(&report.view)?;
-    let read = match view_pulls(flow, (&report.view, view, None), reads).await {
+    let mut read = match view_pulls(flow, (&report.view, view, None), reads).await {
         Ok(read) => read,
         Err(stop) => return Some(Err(Sweep::Stopped(stop))),
     };
+    let settled = decided_rows(flow, view, &read.pulls).await;
+    read.overviews.unread.extend(settled.unread);
+    let decided = settled.rows;
     let strictest = read.strictest();
     let private = crate::poll::bounded(config, strictest);
-    let decided = decided_rows(flow, view, &read.pulls).await;
     let pending = record
         .as_ref()
         .filter(|record| record.value.seen.first() == Some(&identity))

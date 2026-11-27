@@ -1,14 +1,15 @@
 //! A view's tasks settle what its rules leave untold: the store's
 //! decision reused, the task's models asked in turn where none is kept,
-//! and unknown wherever no answer may be taken (ADR-0057).
+//! and unknown wherever no answer may be taken (ADR-0057), the board
+//! saying why wherever a decision could not be had.
 
 use herald_config::{Config, Uses, load};
 use herald_core::{Board, Reason, Slot, Turn};
-use herald_flows::{Connected, Ports, Stop, prepare, queue};
+use herald_flows::{Connected, Ports, Stop, prepare, queue, report};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use serde_json::json;
 
-use crate::harness::{Failing, Fault, NOON, Script, healthy};
+use crate::harness::{Failing, Fault, NOON, POSTED, Script, described, healthy};
 
 mod bound;
 
@@ -17,7 +18,21 @@ const JEV: &str = "https://api.typesafe.ai/v1/systemone";
 const LOCAL: &str = "http://127.0.0.1:11434/v1/chat/completions";
 
 fn config(local_private: bool, least: &str) -> Config {
-    let text = format!(
+    loaded(&text(local_private, least))
+}
+
+fn loaded(text: &str) -> Config {
+    load(
+        "herald.toml",
+        text,
+        &|_| Err("no file".to_owned()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+}
+
+fn text(local_private: bool, least: &str) -> String {
+    format!(
         r#"version = 1
 [store]
 kind = "sqlite"
@@ -46,14 +61,7 @@ options = {{ high = "it blocks a release", low = "it can wait" }}
 deciding = "forge"
 decide = {{ turn = "whose", priority = "urgency" }}
 "#
-    );
-    load(
-        "herald.toml",
-        &text,
-        &|_| Err("no file".to_owned()),
-        &crate::harness::kinds(),
     )
-    .unwrap()
 }
 
 /// A page of `o/open`, seen as `visibility`, with one pull request whose
@@ -118,6 +126,32 @@ fn decided(board: &Board) -> (Turn, Reason, Vec<(Slot, String)>) {
     )
 }
 
+/// The board's "could not be read" entries, as repository and reason.
+fn unread(board: &Board) -> Vec<(String, String)> {
+    board
+        .overviews
+        .unread
+        .iter()
+        .map(|unread| (unread.repository.clone(), unread.reason.clone()))
+        .collect()
+}
+
+/// The entries saying each of `tasks` decided nothing of `o/open` for `why`.
+fn unhad(tasks: &[&str], why: &str) -> Vec<(String, String)> {
+    tasks
+        .iter()
+        .map(|task| {
+            (
+                "o/open".to_owned(),
+                format!("task \"{task}\" decided nothing: {why}"),
+            )
+        })
+        .collect()
+}
+
+/// Why a task whose every model asked failed decided nothing.
+const UNANSWERED: &str = "no model it asked answered";
+
 #[test]
 fn an_untold_turn_is_asked_of_each_model_in_turn_and_reused_from_the_store() {
     let config = config(false, "least = 0.8");
@@ -170,6 +204,11 @@ fn a_sure_answer_among_the_options_moves_the_row_and_an_unsure_or_unknown_one_do
     ]);
     let board = read(&config, &healthy(), &unsure, true).unwrap();
     assert_eq!(decided(&board), (Turn::Unknown, Reason::Untold, Vec::new()));
+    assert_eq!(
+        unread(&board),
+        unhad(&["urgency"], UNANSWERED),
+        "an unsure answer is had; an unread one is said, never its words"
+    );
 }
 
 #[test]
@@ -178,6 +217,7 @@ fn a_model_that_cannot_be_reached_passes_the_question_to_the_next() {
     let script = Script::answering(&[(GRAPHQL, 200, &page("PUBLIC"))]);
     let board = read(&config, &healthy(), &script, true).unwrap();
     assert_eq!(decided(&board).2, Vec::new());
+    assert_eq!(unread(&board), unhad(&["urgency", "whose"], UNANSWERED));
     let asked: Vec<String> = script.seen().into_iter().skip(1).collect();
     assert_eq!(
         asked,
@@ -195,6 +235,7 @@ fn a_private_repository_is_shown_only_to_a_model_that_says_it_may_see_one() {
     let board = read(&config(false, ""), &healthy(), &closed, true).unwrap();
     assert_eq!(decided(&board), (Turn::Unknown, Reason::Untold, Vec::new()));
     assert_eq!(closed.seen().len(), 1, "no model was asked");
+    assert_eq!(unread(&board), Vec::new(), "no model may be asked");
     let allowed = Script::answering(&[
         (GRAPHQL, 200, &page("PRIVATE")),
         (LOCAL, 200, &local("whose", "waiting-on-review")),
@@ -215,17 +256,25 @@ fn nothing_is_asked_without_the_models_feature_a_store_keeping_decisions_or_a_re
     let unasked = Script::answering(&[(GRAPHQL, 200, &page("PUBLIC"))]);
     let board = read(&config, &healthy(), &unasked, false).unwrap();
     assert_eq!(decided(&board).2, Vec::new());
+    assert_eq!(unread(&board), Vec::new());
     assert_eq!(
         unasked.seen().len(),
         1,
         "a build without the feature asks no model"
     );
-    for fault in [Fault::KeepsNoDecisions, Fault::ReadsDecisions] {
+    for (fault, why) in [
+        (Fault::KeepsNoDecisions, "the store keeps no decisions"),
+        (
+            Fault::ReadsDecisions,
+            "the decision the store keeps could not be read",
+        ),
+    ] {
         let script = Script::answering(&[(GRAPHQL, 200, &page("PUBLIC"))]);
         let store = Failing { fault, ..healthy() };
         let board = read(&config, &store, &script, true).unwrap();
         assert_eq!(decided(&board).2, Vec::new(), "{fault:?}");
         assert_eq!(script.seen().len(), 1, "{fault:?}");
+        assert_eq!(unread(&board), unhad(&["urgency", "whose"], why));
     }
     let unkept = Script::answering(&[
         (GRAPHQL, 200, &page("PUBLIC")),
@@ -241,6 +290,13 @@ fn nothing_is_asked_without_the_models_feature_a_store_keeping_decisions_or_a_re
         decided(&board).2,
         Vec::new(),
         "an answer not kept is not taken"
+    );
+    assert_eq!(
+        unread(&board),
+        unhad(
+            &["urgency", "whose"],
+            "the answer could not be kept, so it is not taken"
+        )
     );
 }
 
@@ -278,6 +334,14 @@ fn a_task_is_asked_of_at_most_its_most_pull_requests_a_round() {
         .collect();
     assert_eq!(decided, [1, 0]);
     assert_eq!(script.seen().len(), 2, "the second was never asked");
+}
+
+#[test]
+fn a_decision_not_had_is_said_once_for_each_repository_and_reason() {
+    let script = Script::answering(&[(GRAPHQL, 200, &two())]);
+    let board = read(&config(false, ""), &healthy(), &script, true).unwrap();
+    assert_eq!(board.groups[0].rows.len(), 2);
+    assert_eq!(unread(&board), unhad(&["urgency", "whose"], UNANSWERED));
 }
 
 /// An `Http` counting each request it sends in `MADE`.
@@ -333,4 +397,65 @@ fn no_model_is_asked_once_the_host_s_requests_are_spent() {
     .unwrap();
     assert_eq!(decided(&board).2, Vec::new());
     assert_eq!(script.seen().len(), 1);
+    assert_eq!(unread(&board), Vec::new(), "no model may be asked");
+}
+
+/// A daily report of the view to one public route, its body each
+/// repository and reason the board could not read.
+const REPORTED: &str = r#"[destinations.discord]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[reports.daily]
+view = "queue"
+[run]
+routes = 1
+[[routes]]
+id = "public"
+sources = ["daily"]
+destination = "discord"
+channel = "1566200000000000100"
+template = "t"
+private = false
+[templates.t]
+title = "{{ view.name }}"
+body = "unread:{% for unread in view.overviews.unread %} {{ unread.repository }}: {{ unread.reason }}.{% endfor %}"
+"#;
+
+#[test]
+fn a_report_says_why_a_decision_was_not_had_to_a_route_that_may_see_the_repository_alone() {
+    let failed = |url: &'static str| (url, 503, "");
+    for (visibility, asked, said) in [
+        (
+            "PUBLIC",
+            vec![failed(JEV), failed(LOCAL), failed(LOCAL)],
+            vec![
+                "unread: o/open: task \"urgency\" decided nothing: no model it asked answered. o/open: task \"whose\" decided nothing: no model it asked answered.",
+            ],
+        ),
+        ("PRIVATE", vec![failed(LOCAL), failed(LOCAL)], Vec::new()),
+    ] {
+        let config = loaded(&format!("{}{REPORTED}", text(true, "")));
+        let script = Script::answering(&[(GRAPHQL, 200, &page(visibility))])
+            .then(&asked)
+            .then(&[POSTED]);
+        let secrets = FakeSecrets::default()
+            .with("HERALD_GITHUB_TOKEN", "ghp_x")
+            .with("HERALD_TYPESAFE_KEY", "ts_x")
+            .with("HERALD_DISCORD_TOKEN", "hunter2");
+        let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls))
+            .unwrap()
+            .asking(true);
+        let connected: Connected<Script> =
+            prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+        let clock = FakeClock::at(NOON);
+        let store = healthy();
+        let ports = Ports {
+            store: &store,
+            clock: &clock,
+            signer: &FakeSigner,
+            budget: herald_flows::Budget::UNBOUNDED,
+        };
+        pollster::block_on(report(&config, &connected, &ports, "r1"));
+        assert_eq!(described(&script), said, "{visibility}");
+    }
 }

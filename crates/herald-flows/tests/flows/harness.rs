@@ -882,3 +882,20 @@ pub(crate) fn housekept<S: herald_ports::Store, H: herald_ports::Http>(
         (retention, herald_config::Federation::KEEP_AUDIT),
     ))
 }
+
+/// The description of each post `script` saw made, in order.
+pub(crate) fn described(script: &Script) -> Vec<String> {
+    script
+        .seen()
+        .into_iter()
+        .zip(script.bodies())
+        .filter(|(line, _)| line.contains("/channels/"))
+        .map(|(_, body)| {
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            body["embeds"][0]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .replace('\\', "")
+        })
+        .collect()
+}
