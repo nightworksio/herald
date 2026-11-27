@@ -1,8 +1,12 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
+
+use jiff::Timestamp;
 
 use super::*;
-use crate::{Method, Request, Secret, SecretError, SecretText, Secrets};
+use crate::{Clock, Method, Request, Secret, SecretError, SecretText, Secrets};
 
 fn shortest(characters: usize) -> NonZeroUsize {
     NonZeroUsize::new(characters).unwrap_or(NonZeroUsize::MIN)
@@ -90,37 +94,84 @@ fn a_minted_token_a_request_carries_is_scrubbed_by_every_clone() {
     );
 }
 
+fn sending(value: &str) -> Request {
+    Request::new(Method::Get, SecretText::plain("https://api.example/"))
+        .bearer(Secret::new("minted", value))
+}
+
+/// A clock the test moves on, shared by every clone.
+#[derive(Clone, Default)]
+struct Moved(Arc<AtomicI64>);
+
+impl Moved {
+    fn on(&self, hours: i64) {
+        self.0.fetch_add(hours * 3600, Ordering::Relaxed);
+    }
+}
+
+impl Clock for Moved {
+    fn now(&self) -> Timestamp {
+        Timestamp::from_second(self.0.load(Ordering::Relaxed)).unwrap_or(Timestamp::UNIX_EPOCH)
+    }
+}
+
 #[test]
-fn a_value_sent_again_is_held_once_and_the_one_sent_longest_ago_is_forgotten_first() {
-    let scrubber = Scrubber::new(shortest(8));
-    let sending = |value: &str| {
-        Request::new(Method::Get, SecretText::plain("https://api.example/"))
-            .bearer(Secret::new("minted", value))
-    };
-    let oldest = installation_token("Oo1");
-    scrubber.sent(&sending(&oldest));
-    scrubber.sent(&sending(&oldest));
-    let kept = installation_token("Kk2");
-    scrubber.keep(&Secret::new("KEPT", kept.as_str()));
-    scrubber.sent(&sending(&kept));
+fn a_value_sent_and_then_kept_is_kept_and_never_forgotten() {
+    let clock = Moved::default();
+    let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
+    let token = installation_token("Ev1");
+    scrubber.sent(&sending(&token));
+    scrubber.keep(&Secret::new("KEPT", token.as_str()));
+    clock.on(48);
+    for index in 0..2048 {
+        scrubber.sent(&sending(&format!(
+            "{}{index:05}",
+            installation_token("Fl2")
+        )));
+    }
+    assert_eq!(scrubber.scrubbed(&token), "«secret:KEPT»");
+    scrubber.sent(&sending(&token));
+    assert_eq!(scrubber.scrubbed(&token), "«secret:KEPT»");
+}
+
+#[test]
+fn a_value_known_by_its_sending_is_held_until_a_day_after_it_was_last_sent() {
+    let clock = Moved::default();
+    let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
+    let used = installation_token("Us3");
+    let left = installation_token("Lf4");
+    scrubber.sent(&sending(&used));
+    scrubber.sent(&sending(&left));
+    scrubber.sent(&sending(&left));
     scrubber.sent(&Request::new(
         Method::Get,
         SecretText::secret(Secret::new("blank", " ")),
     ));
-    let values: Vec<String> = (1..Scrubber::SENT)
-        .map(|index| format!("{}{index:05}", installation_token("Nn3")))
-        .collect();
-    for value in &values {
-        scrubber.sent(&sending(value));
+    clock.on(23);
+    scrubber.sent(&sending(&used));
+    clock.on(1);
+    scrubber.sent(&sending(&installation_token("Nw5")));
+    assert_eq!(scrubber.scrubbed(&left), "«secret:minted»");
+    clock.on(1);
+    scrubber.sent(&sending(&installation_token("Nw6")));
+    assert_eq!(scrubber.scrubbed(&left), left);
+    assert_eq!(scrubber.scrubbed(&used), "«secret:minted»");
+    assert!(format!("{scrubber:?}").contains("timed: true"));
+}
+
+#[test]
+fn an_untimed_scrubber_forgets_no_value_however_many_are_sent() {
+    let scrubber = Scrubber::new(shortest(8));
+    let first = installation_token("Fs7");
+    scrubber.sent(&sending(&first));
+    for index in 0..2048 {
+        scrubber.sent(&sending(&format!(
+            "{}{index:05}",
+            installation_token("Mn8")
+        )));
     }
-    assert_eq!(scrubber.scrubbed(&oldest), "«secret:minted»");
-    assert_eq!(scrubber.scrubbed(&kept), "«secret:KEPT»");
-    let newest = installation_token("Nw4");
-    scrubber.sent(&sending(&newest));
-    assert_eq!(scrubber.scrubbed(&oldest), oldest);
-    assert_eq!(scrubber.scrubbed(&values[0]), "«secret:minted»");
-    assert_eq!(scrubber.scrubbed(&newest), "«secret:minted»");
-    assert_eq!(scrubber.scrubbed(&kept), "«secret:KEPT»");
+    assert_eq!(scrubber.scrubbed(&first), "«secret:minted»");
+    assert!(format!("{scrubber:?}").contains("timed: false"));
 }
 
 struct Named(BTreeMap<&'static str, String>);

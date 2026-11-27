@@ -42,8 +42,9 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
    secrets and every secret a request carries in its URL or a header, a
    token minted at run time among them, and everything herald writes passes
    through it, on every host: the log, the CLI's output and errors, and an
-   answer a server echoed back. A value known only by its sending is held
-   among the 1024 sent last.
+   answer a server echoed back. A secret read is held for as long as the
+   scrubber lives; a value known only by its sending is held until a day
+   after it was last sent, and a value sent and then read is held as read.
 6. **`[log] scrub_from` is the fewest characters a value holds to be
    scrubbed.** 8 where absent, as a shorter value would rewrite ordinary
    words. On GitHub Actions every secret is masked whatever its length.
@@ -56,6 +57,7 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
 |--------|-------------|
 | **Scrub only the secrets the config names** | A token minted at run time, or a value read from a file the config names, would reach the log whenever a server echoed it. |
 | **Register every secret as it is made, process-wide** | Every test in a process would share one scrubber, and a server would hold every value it ever made. |
+| **Hold the last values sent up to a count** | A busy server could push out a token that is still valid, and stop scrubbing it. |
 | **A fixed least length** | An operator holding a short credential could not have it scrubbed. |
 
 ## Consequences

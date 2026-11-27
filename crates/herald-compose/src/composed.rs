@@ -137,7 +137,7 @@ where
         }
         let scrubber = host
             .scrubber()
-            .unwrap_or_else(|| Scrubber::new(config.log.scrub_from));
+            .unwrap_or_else(|| Scrubber::new(config.log.scrub_from).timed(host.clock().clone()));
         let log = Log::of(&config.log, |name| host.var(name), scrubber.clone())?;
         let secrets = Kept::new(host.secrets(), &scrubber);
         let prepared = prepare(&config, &secrets, host.signer(), uses)

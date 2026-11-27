@@ -143,7 +143,7 @@ async fn stopping(
             .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
     );
     let hidden = hidden(&config, vars);
-    let scrubber = Scrubber::new(config.log.scrub_from);
+    let scrubber = Scrubber::new(config.log.scrub_from).timed(herald_environment::SystemClock);
     for secret in &hidden {
         scrubber.keep(secret);
     }
