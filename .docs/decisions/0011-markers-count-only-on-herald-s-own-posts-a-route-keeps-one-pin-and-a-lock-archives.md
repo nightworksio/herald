@@ -1,6 +1,6 @@
 # ADR-0011: Markers count only on herald's own posts, a route keeps one pin, and a lock archives
 
-**Status:** Accepted; how many pins the unpin step looks up extended by [ADR-0022](0022-a-read-back-that-fails-stops-the-step-and-pin-lookups-are-bounded.md)
+**Status:** Accepted; how many pins the unpin step looks up extended by [ADR-0022](0022-a-read-back-that-fails-stops-the-step-and-pin-lookups-are-bounded.md); the command that prints the marker secret, `herald init` in decision 3, superseded in part by [ADR-0091](0091-herald-init-writes-a-first-config-and-its-workflow-and-posts-one-test-message.md)
 **Date:** 2026-11-01
 
 ## Context

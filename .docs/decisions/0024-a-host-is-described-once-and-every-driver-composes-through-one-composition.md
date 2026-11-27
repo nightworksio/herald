@@ -1,6 +1,6 @@
 # ADR-0024: A host is described once, and every driver composes through one composition
 
-**Status:** Accepted
+**Status:** Accepted; decision 5's installer questions extended by [ADR-0091](0091-herald-init-writes-a-first-config-and-its-workflow-and-posts-one-test-message.md); the host offers extended with `Streams` by [ADR-0094](0094-an-email-destination-writes-one-mime-message-and-sends-it-by-smtp-or-a-provider-s-api.md)
 **Date:** 2026-11-13
 
 ## Context

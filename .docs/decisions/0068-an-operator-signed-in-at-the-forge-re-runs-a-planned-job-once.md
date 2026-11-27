@@ -1,6 +1,6 @@
 # ADR-0068: An operator signed in at the forge re-runs a planned job once
 
-**Status:** Accepted; private repositories' plans withheld unless the output is said private extended by [ADR-0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md)
+**Status:** Accepted; private repositories' plans withheld unless the output is said private extended by [ADR-0069](0069-herald-s-commands-withhold-private-repositories-rows-unless-their-output-is-said-private.md); decision 4's read-only sign-in superseded in part, for approving as the person, by [ADR-0098](0098-a-chat-user-acts-on-the-forge-only-as-the-person-the-operator-names-signed-in-at-the-forge-through-an-offer-bound-to-its-post.md)
 **Date:** 2026-11-20
 
 ## Context
