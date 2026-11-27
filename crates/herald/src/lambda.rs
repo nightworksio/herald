@@ -9,14 +9,13 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::io::Write;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_aws::{
     ACCESS_KEY_ID, Endpoint, REGION, SECRET_ACCESS_KEY, SESSION_TOKEN, Signing, configured, signed,
 };
-use herald_compose::{Composed, Host as _, Hosting, Left};
+use herald_compose::{Composed, Host as _, Hosting, Left, Told};
 use herald_config::{Config, Uses};
 use herald_core::media;
 use herald_environment::EnvSecrets;
@@ -26,7 +25,7 @@ use herald_server::Heard;
 use jiff::Timestamp;
 use serde_json::{Value, json};
 
-use super::output::say;
+use super::output::Logged;
 use super::serving::heard_lines;
 use super::stores::Native;
 use super::{Connect, Connection, STOPPED};
@@ -206,24 +205,21 @@ pub(crate) fn replied(reply: &Reply) -> Value {
 
 /// The function: herald composed on the native host, and the runtime API
 /// it takes invocations from.
-struct Function<'a> {
+struct Function<'a, 'o> {
     composed: Composed<'a, Native<'a>>,
     runtime: Connection,
     api: String,
     handing: Option<(Handing, Connection)>,
-    out: RefCell<&'a mut dyn Write>,
+    out: RefCell<&'a mut Logged<'o>>,
 }
 
-impl Function<'_> {
+impl Function<'_, '_> {
     fn heard(&self, heard: Heard) {
-        let mut out = self.out.borrow_mut();
-        for line in heard_lines(heard) {
-            say(&mut **out, &line);
-        }
+        self.out.borrow_mut().all(heard_lines(heard));
     }
 
-    fn log(&self, line: &str) {
-        say(&mut **self.out.borrow_mut(), line);
+    fn log(&self, told: &Told) {
+        self.out.borrow_mut().told(told);
     }
 
     /// Every invocation taken from the runtime API and answered, until the
@@ -237,16 +233,16 @@ impl Function<'_> {
             let invoked = match self.runtime.send(next).await {
                 Ok(invoked) if invoked.succeeded() => invoked,
                 Ok(invoked) => {
-                    self.log(&format!(
+                    self.log(&Told::error(format!(
                         "the runtime API answered {}; the function stops",
                         invoked.status
-                    ));
+                    )));
                     return STOPPED;
                 }
                 Err(error) => {
-                    self.log(&format!(
+                    self.log(&Told::error(format!(
                         "the runtime API could not be reached: {error}; the function stops"
-                    ));
+                    )));
                     return STOPPED;
                 }
             };
@@ -258,7 +254,7 @@ impl Function<'_> {
             let (path, body) = match self.invoked(&event).await {
                 Ok(answer) => ("response", answer),
                 Err(why) => {
-                    self.log(&why);
+                    self.log(&Told::error(why.as_str()));
                     (
                         "error",
                         json!({ "errorMessage": why, "errorType": "Unanswered" }),
@@ -275,7 +271,9 @@ impl Function<'_> {
             .header("Content-Type", SecretText::plain(media::JSON))
             .body(body.to_string().into_bytes());
             if let Err(error) = self.runtime.send(done).await {
-                self.log(&format!("the answer to {id} could not be given: {error}"));
+                self.log(&Told::error(format!(
+                    "the answer to {id} could not be given: {error}"
+                )));
             }
         }
     }
@@ -301,9 +299,7 @@ impl Function<'_> {
             if let Some(reason) = answered.refused {
                 self.heard(Heard::Refused(reason));
             }
-            for line in &answered.said {
-                self.log(line);
-            }
+            self.out.borrow_mut().all(answered.said);
             if let Some(left) = answered.left {
                 self.leave(left, &carried).await;
             }
@@ -330,21 +326,21 @@ impl Function<'_> {
             let now = self.composed.host().clock().now();
             let event = carried.handed().to_string().into_bytes();
             if event.len() > handing.most {
-                self.log(&format!(
+                self.log(&Told::warn(format!(
                     "the work could not be handed on, as its event of {} bytes is larger than the {} bytes {EVENT_MOST} lets an event carry; it is done now",
                     event.len(),
                     handing.most
-                ));
+                )));
             } else {
                 match http.send(handing.invocation(event, now)).await {
                     Ok(response) if response.succeeded() => return,
-                    Ok(response) => self.log(&format!(
+                    Ok(response) => self.log(&Told::warn(format!(
                         "the work could not be handed on, as Lambda answered {}; it is done now",
                         response.status
-                    )),
-                    Err(error) => self.log(&format!(
+                    ))),
+                    Err(error) => self.log(&Told::warn(format!(
                         "the work could not be handed on: {error}; it is done now"
-                    )),
+                    ))),
                 }
             }
         }
@@ -356,7 +352,7 @@ pub(crate) async fn lambda(
     config: Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let api = vars
         .get(RUNTIME_API)
@@ -384,9 +380,9 @@ pub(crate) async fn lambda(
         out: RefCell::new(out),
     };
     if let Some(unset) = unhanded {
-        function.log(&format!(
+        function.log(&Told::warn(format!(
             "{unset} is not set, so the work a request leaves is done before the next request is taken rather than handed to the function again"
-        ));
+        )));
     }
     Ok(Box::pin(function.run()).await)
 }

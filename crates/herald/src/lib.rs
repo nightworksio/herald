@@ -57,9 +57,11 @@ pub use signals::stopped;
 use announce::{Announce, Routed, announcing, announcing_from};
 use cli::{Cli, Command, Reading, RunForge, Running, Tokens};
 use doctoring::DoctorArgs;
+use herald_compose::Log;
 use herald_compose::told::{chored, polled_as, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Hosting};
-use output::{Scrubbing, hidden, masked, say, warned};
+use herald_ports::Scrubber;
+use output::{Logged, Scrubbing, hidden, masked, say, warned};
 use preview::previewing;
 use serving::serving;
 use stores::composed;
@@ -81,9 +83,6 @@ const LISTEN: &str = "HERALD_LISTEN";
 /// What bounds a request's whole time, in milliseconds, in place of the
 /// config's `[http] total`.
 const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
-/// The fewest characters of a value scrubbed from output: a shorter one
-/// would rewrite ordinary words, and is no credential.
-const SCRUBBED: usize = 8;
 
 /// `made`, its error worded as herald says it.
 fn worded<T>(made: Result<T, impl Display>) -> Result<T, String> {
@@ -143,23 +142,36 @@ async fn stopping(
             .clone()
             .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
     );
-    let connect = &within;
     let hidden = hidden(&config, vars);
+    let scrubber = Scrubber::new(config.log.scrub_from).timed(herald_environment::SystemClock);
+    for secret in &hidden {
+        scrubber.keep(secret);
+    }
+    let within = within.scrubbing(scrubber.clone());
+    let connect = &within;
     let json = doctored.is_some_and(|asked| asked.format == doctoring::Format::Json);
     masked(&hidden, vars, if json { &mut *err } else { &mut *out });
-    let out = &mut Scrubbing::new(out, &hidden);
-    let err = &mut Scrubbing::new(err, &hidden);
+    let out = &mut Scrubbing::new(out, scrubber.clone());
+    let err = &mut Scrubbing::new(err, scrubber.clone());
+    let log = match Log::of(&config.log, |name| var(vars, name), scrubber) {
+        Ok(log) => log.flagged(cli.log_level, cli.log_format),
+        Err(message) => {
+            say(err, &message);
+            return MISTAKEN;
+        }
+    };
     let run = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
         ControlFlow::Continue(run) => run,
         ControlFlow::Break(code) => return code,
     };
-    if let Some(layer) = doctoring::warning(&run, vars) {
-        warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
-    }
-    let code = finished(
-        Box::pin(ran(run, config, vars, connect, out, stop)).await,
-        err,
-    );
+    let done = {
+        let out = &mut Logged::new(out, &log);
+        if let Some(layer) = doctoring::warning(&run, vars) {
+            warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
+        }
+        Box::pin(ran(run, config, vars, connect, out, stop)).await
+    };
+    let code = ended(done, &mut Logged::new(err, &log));
     let _ = out.flush();
     let _ = err.flush();
     code
@@ -203,7 +215,7 @@ async fn ran(
     config: Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
     stop: Pin<Box<dyn Future<Output = Result<(), String>> + '_>>,
 ) -> Result<u8, String> {
     match run {
@@ -244,7 +256,7 @@ async fn ran(
         }
         Running::Lambda => Box::pin(lambda::lambda(config, vars, connect, out)).await,
         Running::Followers(asked) => {
-            followers::following(&config, vars, connect, &asked, out).await
+            followers::following(&config, vars, connect, &asked, out.out()).await
         }
         Running::Withdraw {
             names,
@@ -263,6 +275,22 @@ fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
         say(err, &message);
         STOPPED
     })
+}
+
+/// The code a run that tells what it did ends with, logging why where it
+/// stopped.
+fn ended(done: Result<u8, String>, err: &mut Logged<'_>) -> u8 {
+    done.unwrap_or_else(|message| {
+        err.told(&herald_compose::Told::error(message));
+        STOPPED
+    })
+}
+
+/// The variable `name`, where `vars` set it and it is not empty.
+fn var<'v>(vars: &'v BTreeMap<String, String>, name: &str) -> Option<&'v str> {
+    vars.get(name)
+        .map(String::as_str)
+        .filter(|value| !value.is_empty())
 }
 
 /// Answers a command that reads the config at `path` and finishes, breaking
@@ -459,7 +487,7 @@ async fn polling(
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     printed: Printed,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let composed = composed(
         config,
@@ -472,7 +500,7 @@ async fn polling(
     .await?;
     let swept = composed.poll().await;
     if swept.is_empty() {
-        say(out, "The config names no source to poll.");
+        out.info("The config names no source to poll.");
     }
     let mut code = DONE;
     for swept in &swept {
@@ -488,9 +516,7 @@ async fn polling(
         {
             code = STOPPED;
         }
-        for line in polled_as(swept, printed) {
-            say(out, &line);
-        }
+        out.all(polled_as(swept, printed));
     }
     Ok(code.max(pages::logged(&composed, out).await))
 }
@@ -499,7 +525,7 @@ async fn housekeeping(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let composed = composed(
         config,
@@ -512,17 +538,17 @@ async fn housekeeping(
     .await?;
     let kept = composed.housekeep().await.map_err(|stop| why(&stop))?;
     if kept.kept.is_empty() {
-        say(out, "No chore is due.");
+        out.info("No chore is due.");
     }
     let mut code = DONE;
     for chore in &kept.kept {
         if matches!(chore.outcome, Chored::Later(_)) {
             code = STOPPED;
         }
-        say(out, &chored(chore));
+        out.told(&chored(chore));
     }
     for path in &kept.skipped {
-        say(out, &skipped(path));
+        out.told(&skipped(path));
     }
     Ok(code)
 }

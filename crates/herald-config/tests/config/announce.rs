@@ -1,11 +1,11 @@
-//! `[announce]`, `[run]` and `[cli]`: how a run holds and keeps an
+//! `[announce]`, `[run]`, `[cli]` and `[log]`: how a run holds and keeps an
 //! announcement, how many routes and sources it goes through at once, and
 //! what herald's commands print, read with their defaults, and every value
 //! they cannot keep named by key.
 
 use std::num::NonZeroUsize;
 
-use herald_config::{Announce, Cli, Run, load};
+use herald_config::{Announce, Cli, Level, Log, LogFormat, Run, load};
 use jiff::SignedDuration;
 
 const EXAMPLE: &str = r#"version = 1
@@ -139,4 +139,62 @@ fn the_commands_withhold_private_rows_unless_the_cli_setting_says_their_output_i
         .to_string();
         assert!(error.contains(key), "{error}");
     }
+}
+
+#[test]
+fn the_log_s_level_format_and_least_scrubbed_length_are_read_and_a_mistake_named_by_its_key() {
+    let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
+    assert_eq!(config.log, Log::default());
+    assert_eq!(
+        Log::default(),
+        Log {
+            level: Level::Info,
+            format: LogFormat::Text,
+            scrub_from: NonZeroUsize::new(8).unwrap(),
+        }
+    );
+    let text = format!("{EXAMPLE}\n[log]\nlevel = \"warn\"\nformat = \"json\"\nscrub_from = 4\n");
+    let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
+    assert_eq!(
+        config.log,
+        Log {
+            level: Level::Warn,
+            format: LogFormat::Json,
+            scrub_from: NonZeroUsize::new(4).unwrap(),
+        }
+    );
+    let text = format!("{EXAMPLE}\n[log]\nlevel = \"error\"\n");
+    let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
+    assert_eq!(config.log.level, Level::Error);
+    for (written, key) in [
+        ("level = \"debug\"", "log.level"),
+        ("format = \"yaml\"", "log.format"),
+        ("scrub_from = 0", "log.scrub_from"),
+        ("colour = true", "colour"),
+    ] {
+        let error = load(
+            "herald.toml",
+            &format!("{EXAMPLE}\n[log]\n{written}\n"),
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains(key), "{error}");
+    }
+}
+
+#[test]
+fn a_level_and_a_format_are_named_as_the_config_writes_them() {
+    assert!(Level::Info < Level::Warn && Level::Warn < Level::Error);
+    for level in Level::ALL {
+        assert_eq!(Level::named(level.name()), Some(level));
+    }
+    assert_eq!(Level::ALL.map(Level::name), ["info", "warn", "error"]);
+    assert_eq!(Level::named("debug"), None);
+    for format in LogFormat::ALL {
+        assert_eq!(LogFormat::named(format.name()), Some(format));
+    }
+    assert_eq!(LogFormat::ALL.map(LogFormat::name), ["text", "json"]);
+    assert_eq!(LogFormat::named("yaml"), None);
 }

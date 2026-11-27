@@ -2,31 +2,52 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use herald_ports::{
-    Binding, DynInfer, Http, HttpError, Infer, InferError, Inference, Request, Response,
+    Binding, DynInfer, Http, HttpError, Infer, InferError, Inference, Request, Response, Scrubber,
 };
 
 use crate::host::Host;
 
 /// An `Http` that counts each request it sends on a count it shares with
 /// every other connection herald makes, so a host's limit on outbound
-/// requests is kept.
+/// requests is kept, and makes each secret a request carries known to the
+/// scrubber herald's log and output share, a token minted at run time
+/// among them (ADR-0089).
 #[derive(Debug, Clone)]
 pub struct Counted<H> {
     http: H,
     made: Arc<AtomicUsize>,
+    scrubber: Option<Scrubber>,
 }
 
 impl<H> Counted<H> {
     /// `http`, counting each request on `made`.
     #[must_use]
     pub(crate) const fn new(http: H, made: Arc<AtomicUsize>) -> Self {
-        Self { http, made }
+        Self {
+            http,
+            made,
+            scrubber: None,
+        }
+    }
+
+    /// `http`, counting each request on `made`, each secret it sends known
+    /// to `scrubber`.
+    #[must_use]
+    pub(crate) const fn scrubbed(http: H, made: Arc<AtomicUsize>, scrubber: Scrubber) -> Self {
+        Self {
+            http,
+            made,
+            scrubber: Some(scrubber),
+        }
     }
 }
 
 impl<H: Http> Http for Counted<H> {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
         self.made.fetch_add(1, Ordering::Relaxed);
+        if let Some(scrubber) = &self.scrubber {
+            scrubber.sent(&request);
+        }
         self.http.send(request).await
     }
 }

@@ -46,6 +46,10 @@ enum Unhad {
     Unanswered,
     /// The answer could not be kept, so it is not taken (ADR-0057).
     Unstored,
+    /// No model the task names may read the private repository's data.
+    Private,
+    /// The budget for deciding is spent.
+    Spent,
 }
 
 impl Unhad {
@@ -56,6 +60,8 @@ impl Unhad {
             Self::Unreadable => "the decision the store keeps could not be read",
             Self::Unanswered => "no model it asked answered",
             Self::Unstored => "the answer could not be kept, so it is not taken",
+            Self::Private => "no model may read this private repository",
+            Self::Spent => "the budget for deciding is spent",
         }
     }
 }
@@ -140,7 +146,7 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
         return Ok(Some(kept.answer));
     }
     let public = row.pull.visibility == Visibility::Public;
-    let models = task
+    let named: Vec<_> = task
         .models
         .iter()
         .filter_map(|named| {
@@ -148,11 +154,20 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
                 .models
                 .iter()
                 .find(|(model, _)| model.name == *named)
-                .filter(|(model, _)| public || model.private)
         })
-        .take_while(|_| ports.budget.allows(ports.clock.now(), 1).is_ok());
+        .collect();
+    let allowed: Vec<_> = named
+        .iter()
+        .filter(|(model, _)| public || model.private)
+        .collect();
+    if allowed.is_empty() && !named.is_empty() {
+        return Err(Unhad::Private);
+    }
     let mut unanswered = Ok(None);
-    for (model, asking) in models {
+    let within = allowed
+        .iter()
+        .take_while(|_| ports.budget.allows(ports.clock.now(), 1).is_ok());
+    for (model, asking) in within {
         unanswered = Err(Unhad::Unanswered);
         let questions = [*question];
         let Some(answer) = asked((model, asking), &input, &questions, ports.clock.now())
@@ -174,7 +189,7 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
             .map_err(|_| Unhad::Unstored)?;
         return Ok(Some(decision.answer));
     }
-    unanswered
+    unanswered.and_then(|none| allowed.is_empty().then_some(none).ok_or(Unhad::Spent))
 }
 
 /// What `model`, reached as `asking` says, answers `questions` of `input`

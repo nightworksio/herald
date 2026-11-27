@@ -32,7 +32,7 @@ pub struct Answer {
     /// The work to do once the reply is sent.
     pub left: Option<Left>,
     /// What a round it asked for did, in words.
-    pub said: Vec<String>,
+    pub said: Vec<crate::Told>,
 }
 
 impl From<Answered> for Answer {

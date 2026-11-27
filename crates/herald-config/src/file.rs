@@ -576,6 +576,30 @@ pub(crate) struct CliFile {
     pub(crate) private: Option<bool>,
 }
 
+/// `[log]`: what herald's log writes, and the secrets kept out of
+/// everything herald writes.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Log")]
+pub(crate) struct LogFile {
+    /// The least grave line herald's log writes: "info", every line, where
+    /// absent; "warn", what herald left undone, passed over or refused,
+    /// and what stopped or failed; or "error", what stopped or failed
+    /// alone. `HERALD_LOG_LEVEL` takes its place, and a command's
+    /// `--log-level` takes the place of both.
+    pub(crate) level: Option<crate::config::Level>,
+    /// How herald's log writes each line: "text", as words, where absent;
+    /// or "json", a JSON object a line holding its `level` and its
+    /// `message`. `HERALD_LOG_FORMAT` takes its place, and a command's
+    /// `--log-format` takes the place of both.
+    pub(crate) format: Option<crate::config::LogFormat>,
+    /// The fewest characters a secret's value holds to be written as
+    /// `«secret:NAME»` in everything herald writes: 8 where absent, as a
+    /// shorter value would rewrite ordinary words. On GitHub Actions every
+    /// secret is masked whatever its length.
+    pub(crate) scrub_from: Option<NonZeroUsize>,
+}
+
 /// `[run]`: how many routes and sources a run goes through at once.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

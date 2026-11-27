@@ -93,9 +93,9 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "unicode-segmentation",
             "url",
         ],
-        Layer::Ports => &["jiff", "zeroize"],
+        Layer::Ports => &["aho-corasick", "jiff", "zeroize"],
         Layer::Flows => &["futures-util", "jiff"],
-        Layer::Composition => &["async-lock", "jiff", "url"],
+        Layer::Composition => &["async-lock", "jiff", "serde_json", "url"],
         Layer::Testing => &["futures-util", "jiff", "serde", "serde_json"],
         Layer::Kits => &["base64", "hmac", "jiff", "serde", "serde_json", "sha2"],
         Layer::Sources => &[

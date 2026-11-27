@@ -98,3 +98,12 @@ fn a_config_without_sources_has_nothing_to_poll() {
         (DONE, "The config names no source to poll.\n", "")
     );
 }
+
+#[test]
+fn a_poll_at_the_error_level_writes_nothing_where_nothing_failed() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    forge(&world, (200, &["v1"]));
+    let quiet = herald(&setup, &world, &["poll", "--log-level", "error"]);
+    assert_eq!((quiet.code, quiet.out.as_str()), (DONE, ""));
+}

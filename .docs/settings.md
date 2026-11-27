@@ -758,6 +758,16 @@ The kinds of event the config declares beside those herald ships, by name; its a
 | `kinds.<name>.private` | boolean | Whether its events belong in private places only, so a route taking them must say whether its place is private (`[doctor] private_kinds`). |
 | `kinds.<name>.versioned` | boolean | Whether its events carry a version, as `attributes.version`, and may be pre-releases, as `attributes.prerelease`. |
 
+## `log`
+
+What herald's log writes, and the secrets kept out of everything herald writes.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `log.format` | [LogFormat](#logformat) | How herald's log writes each line: "text", as words, where absent; or "json", a JSON object a line holding its `level` and its `message`. `HERALD_LOG_FORMAT` takes its place, and a command's `--log-format` takes the place of both. |
+| `log.level` | [Level](#level) | The least grave line herald's log writes: "info", every line, where absent; "warn", what herald left undone, passed over or refused, and what stopped or failed; or "error", what stopped or failed alone. `HERALD_LOG_LEVEL` takes its place, and a command's `--log-level` takes the place of both. |
+| `log.scrub_from` | integer | The fewest characters a secret's value holds to be written as `«secret:NAME»` in everything herald writes: 8 where absent, as a shorter value would rewrite ordinary words. On GitHub Actions every secret is masked whatever its length. |
+
 ## `markers`
 
 The installation's marker key.
@@ -2461,6 +2471,10 @@ A length of time, none at all among them: a number and ms, s, m, h, d or w, as "
 
 What a route does with a Release whose tag it already announced.
 
+### Level
+
+How grave a line of herald's log is, the least grave first.
+
 ### LockLease
 
 How long the store's lock holds before it is taken as abandoned, "10m" by default and at most "40m".
@@ -2468,6 +2482,10 @@ How long the store's lock holds before it is taken as abandoned, "10m" by defaul
 ### LockPatience
 
 How many times a lock with no time to judge its age by is found held, unchanged, before it is taken as abandoned, 10 by default.
+
+### LogFormat
+
+How herald's log writes each line.
 
 ### MatrixVia
 

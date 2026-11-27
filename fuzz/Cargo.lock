@@ -254,6 +254,7 @@ dependencies = [
  "herald-store-repo-variables",
  "herald-store-sqlite",
  "jiff",
+ "serde_json",
  "url",
 ]
 
@@ -449,6 +450,7 @@ dependencies = [
 name = "herald-ports"
 version = "0.0.0"
 dependencies = [
+ "aho-corasick",
  "herald-core",
  "jiff",
  "zeroize",

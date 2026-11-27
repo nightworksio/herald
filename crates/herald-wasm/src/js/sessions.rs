@@ -2,7 +2,7 @@ use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 
-use herald_compose::{Composed, Left, SocketReach, told};
+use herald_compose::{Composed, Left, SocketReach, Told, told};
 use herald_core::DestinationName;
 use herald_flows::{Job, Place, Taker};
 use herald_ports::{Frame, HttpError, SecretText, Socket, Sockets, Timer};
@@ -105,13 +105,17 @@ impl Taker for JsTaker {
     fn fill(&self, place: Place, job: Job) {
         let composed = Rc::clone(&self.composed);
         spawn_local(async move {
-            for line in told::worked(&composed.work(Left::new(job, place)).await) {
+            let worked = told::worked(&composed.work(Left::new(job, place)).await);
+            for line in composed.log().lines(worked) {
                 log(&line);
             }
         });
     }
 
     fn report(&self, destination: &DestinationName, said: String) {
-        log(&format!("{}: {said}", destination.as_str()));
+        let told = Told::info(format!("{}: {said}", destination.as_str()));
+        if let Some(line) = self.composed.log().written(&told) {
+            log(&line);
+        }
     }
 }

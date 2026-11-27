@@ -114,7 +114,8 @@ impl Herald {
             let work = answered.left.map_or(JsValue::UNDEFINED, |left| {
                 let composed = Rc::clone(&composed);
                 future_to_promise(async move {
-                    Ok(strings(&told::worked(&composed.work(left).await)).into())
+                    let worked = told::worked(&composed.work(left).await);
+                    Ok(strings(&composed.log().lines(worked)).into())
                 })
                 .into()
             });
@@ -122,7 +123,8 @@ impl Herald {
             let refused = answered
                 .refused
                 .as_deref()
-                .map_or(JsValue::UNDEFINED, |reason| told::refused(reason).into());
+                .and_then(|reason| composed.log().written(&told::refused(reason)))
+                .map_or(JsValue::UNDEFINED, JsValue::from);
             Ok(object(&[
                 ("status", reply.status.into()),
                 ("kind", reply.kind.into()),
@@ -134,7 +136,7 @@ impl Herald {
                 ("headers", pair_array(&reply.headers).into()),
                 ("work", work),
                 ("refused", refused),
-                ("said", strings(&answered.said).into()),
+                ("said", strings(&composed.log().lines(answered.said)).into()),
             ]))
         })
     }
@@ -215,7 +217,7 @@ impl Herald {
         let composed = Rc::clone(&self.composed);
         future_to_promise(async move {
             let swept = composed.poll().await;
-            let said: Vec<String> = swept.iter().flat_map(told::polled).collect();
+            let said = composed.log().lines(swept.iter().flat_map(told::polled));
             Ok(strings(&said).into())
         })
     }
@@ -224,8 +226,9 @@ impl Herald {
     /// forgotten, settling to what it did, in words.
     pub fn housekeep(&self) -> Promise {
         let composed = Rc::clone(&self.composed);
-        future_to_promise(
-            async move { Ok(strings(&told::kept(&composed.housekeep().await)).into()) },
-        )
+        future_to_promise(async move {
+            let kept = told::kept(&composed.housekeep().await);
+            Ok(strings(&composed.log().lines(kept)).into())
+        })
     }
 }

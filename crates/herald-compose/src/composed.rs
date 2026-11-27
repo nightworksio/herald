@@ -12,7 +12,7 @@ use herald_flows::{
     report, unplaced, work,
 };
 use herald_kinds::{GITHUB_REPOSITORY, Opened};
-use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
+use herald_ports::{Base, Clock as _, Kept, Keyring, Scrubber, Sockets, Store, Timer};
 use herald_records::{Memory, MemoryKeyring, RecordStore};
 use jiff::{SignedDuration, Timestamp};
 
@@ -22,6 +22,7 @@ use crate::capped::Capped;
 use crate::counted::{Counted, binding};
 use crate::host::Host;
 use crate::hosting::Hosting;
+use crate::log::Log;
 use crate::records::{OpenedRecords, Opener, Served, reached};
 
 mod merging;
@@ -41,6 +42,7 @@ pub struct Composed<'o, H: Host + 'o> {
     connected: Connected<Counted<H::Http>>,
     public: Capped<Counted<H::Http>>,
     made: Arc<AtomicUsize>,
+    log: Log,
     after: Option<SignedDuration>,
     requests: Option<NonZeroUsize>,
     memory: MemoryKeyring,
@@ -133,14 +135,24 @@ where
                 work.spare_requests
             ));
         }
-        let prepared = prepare(&config, host.secrets(), host.signer(), uses)
+        let scrubber = host
+            .scrubber()
+            .unwrap_or_else(|| Scrubber::new(config.log.scrub_from).timed(host.clock().clone()));
+        let log = Log::of(&config.log, |name| host.var(name), scrubber.clone())?;
+        let secrets = Kept::new(host.secrets(), &scrubber);
+        let prepared = prepare(&config, &secrets, host.signer(), uses)
             .await
             .map_err(|error| error.to_string())?
             .asking(ASKS_MODELS)
             .in_repository(host.var(GITHUB_REPOSITORY));
         let records = match keeping {
             Keeping::Stored(hosting) => {
-                let opener = Opener::new(Arc::clone(&host), outbound.clone(), Arc::clone(&made));
+                let opener = Opener::new(
+                    Arc::clone(&host),
+                    outbound.clone(),
+                    Arc::clone(&made),
+                    scrubber.clone(),
+                );
                 reached(
                     Arc::new(opener),
                     &config.store,
@@ -153,7 +165,7 @@ where
                 OpenedRecords::new(Opened::Kept(Box::new(RecordStore::new(Memory::default()))))
             }
         };
-        let counted = |http| Counted::new(http, Arc::clone(&made));
+        let counted = |http| Counted::scrubbed(http, Arc::clone(&made), scrubber.clone());
         let connected = prepared
             .connect(|base| host.connect(base, &outbound).map(counted))?
             .bind(binding(&*host, &made))?;
@@ -170,6 +182,7 @@ where
             connected,
             public,
             made,
+            log,
             after,
             requests,
             memory,
@@ -190,6 +203,23 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     /// The config composed.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// What its log writes, and what scrubs every line herald writes
+    /// (ADR-0089).
+    pub const fn log(&self) -> &Log {
+        &self.log
+    }
+
+    /// The host's secrets, each one read known to the log's scrubber.
+    pub(crate) fn secrets(&self) -> Kept<'_, H::Secrets> {
+        Kept::new(self.host.secrets(), self.log.scrubber())
+    }
+
+    /// `http`, each request it sends counted with the run's others and each
+    /// secret it carries known to the log's scrubber.
+    pub(crate) fn counted(&self, http: H::Http) -> Counted<H::Http> {
+        Counted::scrubbed(http, Arc::clone(&self.made), self.log.scrubber().clone())
     }
 
     /// Every route, source and destination, connected.

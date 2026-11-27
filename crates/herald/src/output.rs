@@ -8,14 +8,15 @@ use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::RangeInclusive;
 
-use herald_config::Config;
+use herald_compose::{Log, Told};
+use herald_config::{Config, LogFormat};
 use herald_flows::{Gap, ROUND_SECRET};
-use herald_ports::Secret;
+use herald_ports::{Scrubber, Secret};
 use herald_store_actions_cache::RUNTIME_TOKEN;
 
 use super::doctoring::gapped;
 use super::lambda::CREDENTIALS;
-use super::{GITHUB_TOKEN, JOB_TOKEN, SCRUBBED};
+use super::{GITHUB_TOKEN, JOB_TOKEN};
 
 /// Every secret the run may resolve, by its name, and each line of a value
 /// that spans lines on its own as well.
@@ -39,46 +40,27 @@ pub(crate) fn hidden(config: &Config, vars: &BTreeMap<String, String>) -> Vec<Se
     hidden
 }
 
-/// A writer that writes each line with every secret the run may resolve
+/// A writer that writes each line with every secret its scrubber knows
 /// shown as `«secret:NAME»`, whatever handed the line to it: an answer a
-/// server echoed back included (ADR-0007).
+/// server echoed back, and a token minted as the run went, included
+/// (ADR-0007, ADR-0089).
 pub(crate) struct Scrubbing<'a> {
     inner: &'a mut dyn Write,
-    hidden: Vec<&'a Secret>,
+    scrubber: Scrubber,
     line: Vec<u8>,
 }
 
 impl<'a> Scrubbing<'a> {
-    pub(crate) fn new(inner: &'a mut dyn Write, hidden: &'a [Secret]) -> Self {
+    pub(crate) fn new(inner: &'a mut dyn Write, scrubber: Scrubber) -> Self {
         Self {
             inner,
-            hidden: hidden
-                .iter()
-                .filter(|secret| secret.expose().chars().count() >= SCRUBBED)
-                .collect(),
+            scrubber,
             line: Vec::new(),
         }
     }
 
-    /// `bytes` written with each secret shown by its name, the longest
-    /// value matched first, in one pass.
     fn emit(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        let text = String::from_utf8_lossy(bytes);
-        let mut scrubbed = String::with_capacity(text.len());
-        let mut rest = text.as_ref();
-        while let Some(first) = rest.chars().next() {
-            let found = self
-                .hidden
-                .iter()
-                .find(|secret| rest.starts_with(secret.expose()));
-            if let Some(secret) = found {
-                scrubbed.push_str(&secret.redacted());
-                rest = rest.get(secret.expose().len()..).unwrap_or_default();
-            } else {
-                scrubbed.push(first);
-                rest = rest.get(first.len_utf8()..).unwrap_or_default();
-            }
-        }
+        let scrubbed = self.scrubber.scrubbed(&String::from_utf8_lossy(bytes));
         self.inner.write_all(scrubbed.as_bytes())
     }
 }
@@ -106,6 +88,49 @@ impl Write for Scrubbing<'_> {
     }
 }
 
+/// What a run that tells what it did writes to, and the log it writes as
+/// (ADR-0089).
+pub(crate) struct Logged<'a> {
+    out: &'a mut dyn Write,
+    log: &'a Log,
+}
+
+impl<'a> Logged<'a> {
+    pub(crate) fn new(out: &'a mut dyn Write, log: &'a Log) -> Self {
+        Self { out, log }
+    }
+
+    /// `told`, as the log writes it.
+    pub(crate) fn told(&mut self, told: &Told) {
+        if let Some(crowded) = self.log.crowded() {
+            self.told(&crowded);
+        }
+        if let Some(line) = self.log.written(told) {
+            match self.log.format() {
+                LogFormat::Text => say(self.out, &line),
+                LogFormat::Json => say_json(self.out, &line),
+            }
+        }
+    }
+
+    /// What herald did, as the log writes it.
+    pub(crate) fn info(&mut self, text: impl Into<String>) {
+        self.told(&Told::info(text));
+    }
+
+    /// Each of `told`, as the log writes it.
+    pub(crate) fn all(&mut self, told: impl IntoIterator<Item = Told>) {
+        for told in told {
+            self.told(&told);
+        }
+    }
+
+    /// What a dry run prints its requests to, as they are.
+    pub(crate) fn out(&mut self) -> &mut dyn Write {
+        self.out
+    }
+}
+
 /// Whether the run is on GitHub Actions.
 pub(crate) fn on_actions(vars: &BTreeMap<String, String>) -> bool {
     vars.get("GITHUB_ACTIONS")
@@ -124,18 +149,19 @@ pub(crate) fn masked(hidden: &[Secret], vars: &BTreeMap<String, String>, out: &m
     }
 }
 
-/// Each gap as a warning, annotated on GitHub Actions.
-pub(crate) fn warned(gaps: &[Gap], vars: &BTreeMap<String, String>, out: &mut dyn Write) {
+/// Each gap as a warning, annotated on GitHub Actions and logged
+/// elsewhere.
+pub(crate) fn warned(gaps: &[Gap], vars: &BTreeMap<String, String>, out: &mut Logged<'_>) {
     let actions = on_actions(vars);
     for gap in gaps {
         let line = gapped(gap);
         if actions {
             say(
-                out,
+                out.out(),
                 &format!("::warning title=herald doctor::{}", escaped(&line)),
             );
         } else {
-            say(out, &format!("warning: {line}"));
+            out.told(&Told::warn(format!("warning: {line}")));
         }
     }
 }

@@ -49,7 +49,9 @@ fn a_plan_names_why_a_route_keeps_a_post_its_group_or_what_is_left_to_delete() {
 
 #[test]
 fn a_withdrawal_another_run_holds_or_that_stopped_ends_stopped() {
-    let mut out = Vec::new();
+    let mut written = Vec::new();
+    let log = herald_compose::Log::unconfigured(|_| None);
+    let out = &mut crate::output::Logged::new(&mut written, &log);
     let done = |outcome| Announced {
         route: RouteId::new("r"),
         outcome,
@@ -58,8 +60,8 @@ fn a_withdrawal_another_run_holds_or_that_stopped_ends_stopped() {
         by: "r0".to_owned(),
         until: jiff::Timestamp::UNIX_EPOCH,
     });
-    assert_eq!(reported(&identity(), &[held], &mut out), STOPPED);
+    assert_eq!(reported(&identity(), &[held], out), STOPPED);
     let skipped = done(Outcome::Skipped("kept".to_owned()));
-    assert_eq!(reported(&identity(), &[skipped], &mut out), DONE);
-    assert_eq!(reported(&identity(), &[], &mut out), STOPPED);
+    assert_eq!(reported(&identity(), &[skipped], out), DONE);
+    assert_eq!(reported(&identity(), &[], out), STOPPED);
 }

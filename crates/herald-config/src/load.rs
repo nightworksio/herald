@@ -331,7 +331,7 @@ pub fn load(
     let announce = loader.announce(sections.announce);
     let run = loader.run(sections.run);
     let doctor = loader.doctor(sections.doctor);
-    let cli = loader.cli(sections.cli);
+    let (cli, log) = (loader.cli(sections.cli), loader.log(sections.log));
     loader.guarded((&sources, &source_spans), &destinations, &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
@@ -365,6 +365,7 @@ pub fn load(
             run,
             doctor,
             cli,
+            log,
             kinds: std::mem::take(&mut loader.specs),
             secret_keys,
         },

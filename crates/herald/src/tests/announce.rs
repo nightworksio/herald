@@ -309,7 +309,8 @@ fn every_outcome_and_step_reads_as_a_line() {
             landed: Vec::new(),
             remaining: vec![Step::Post],
             reason,
-        }));
+        }))
+        .text;
         assert!(line.starts_with("r: stopped: "), "{line}");
     }
     let all = [

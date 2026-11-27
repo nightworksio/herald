@@ -142,7 +142,7 @@ fn posted(config: &Config, tried: &[Announced]) -> Findings {
             findings.gaps.push(Gap {
                 feature: format!("posting a test message on the route {id}"),
                 key: format!("routes[{index}]"),
-                why: told::report(announced),
+                why: told::report(announced).text,
                 first_layer: None,
             });
         }

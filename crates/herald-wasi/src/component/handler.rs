@@ -111,7 +111,7 @@ pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
         .and_then(|incoming| read(incoming, most))
     else {
         let refused = refusal(status::BAD_REQUEST, "its body could not be read");
-        log_lines(refused.refused.as_deref().map(told::refused));
+        log_lines(started.log(), refused.refused.as_deref().map(told::refused));
         respond(out, &refused.reply);
         return;
     };

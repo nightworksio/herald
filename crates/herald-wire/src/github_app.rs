@@ -400,7 +400,7 @@ async fn mint(
         repositories,
     } = read::<Answered>(MINTED, &answer.body)?;
     let minted = InstallationToken {
-        token: Secret::new(name, token),
+        token: Secret::expiring(name, token, expires_at),
         expires: expires_at,
         installation: found.id,
         app: found.app,

@@ -8,8 +8,8 @@ use crate::kinds::Kinds;
 
 use crate::file::{
     AnnounceFile, AppFile, CliFile, DoctorFile, FederationFile, GithubAppFile, HttpFile, KindFile,
-    MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile,
-    TemplateFile,
+    LogFile, MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile,
+    ServerFile, TemplateFile,
 };
 use crate::views::BOARD_KEYS;
 
@@ -360,6 +360,9 @@ struct FileSchema {
     doctor: Option<DoctorFile>,
     /// What herald's commands print.
     cli: Option<CliFile>,
+    /// What herald's log writes, and the secrets kept out of everything
+    /// herald writes.
+    log: Option<LogFile>,
 }
 
 /// The JSON Schema of `herald.toml` with `kinds`, as

@@ -1,4 +1,4 @@
-use herald_compose::{Artefact, Composed, HostRequest, Hosting, Left, told};
+use herald_compose::{Artefact, Composed, HostRequest, Hosting, Left, Log, Told, told};
 use herald_config::{Config, Uses, load};
 use herald_core::status;
 use herald_flows::{Reply, refusal, uncomposed};
@@ -54,8 +54,8 @@ async fn composed(
     clippy::print_stderr,
     reason = "the host keeps what a component writes to standard error as its log"
 )]
-pub(super) fn log_lines(lines: impl IntoIterator<Item = String>) {
-    for line in lines {
+pub(super) fn log_lines(log: &Log, told: impl IntoIterator<Item = Told>) {
+    for line in log.lines(told) {
         eprintln!("{line}");
     }
 }
@@ -74,7 +74,12 @@ impl Started {
         method: &str,
         target: &str,
     ) -> Result<Self, Reply> {
-        match composed(vars, method, target).await {
+        let unconfigured = Log::unconfigured(|name| {
+            vars.iter()
+                .find(|(key, value)| key == name && !value.is_empty())
+                .map(|(_, value)| value.as_str())
+        });
+        match composed(vars.clone(), method, target).await {
             Ok(Ok(composed)) => Ok(Self { composed }),
             Ok(Err(reply)) => Err(reply),
             Err(error) => {
@@ -82,10 +87,15 @@ impl Started {
                     status::SERVER_ERROR,
                     format!("herald could not start: {error}"),
                 );
-                log_lines(refused.refused.as_deref().map(told::refused));
+                log_lines(&unconfigured, refused.refused.as_deref().map(told::refused));
                 Err(refused.reply)
             }
         }
+    }
+
+    /// What its log writes.
+    pub(super) fn log(&self) -> &Log {
+        self.composed.log()
     }
 
     /// The most of a body that is read.
@@ -96,13 +106,17 @@ impl Started {
     /// The answer to `asked`, and the work it leaves.
     pub(super) async fn answered(&self, asked: &HostRequest) -> (Reply, Option<Left>) {
         let answer = self.composed.reached(asked).await;
-        log_lines(answer.refused.as_deref().map(told::refused));
-        log_lines(answer.said);
+        let log = self.composed.log();
+        log_lines(log, answer.refused.as_deref().map(told::refused));
+        log_lines(log, answer.said);
         (answer.reply, answer.left)
     }
 
     /// The work a request left, done.
     pub(super) async fn worked(&self, left: Left) {
-        log_lines(told::worked(&self.composed.work(left).await));
+        log_lines(
+            self.composed.log(),
+            told::worked(&self.composed.work(left).await),
+        );
     }
 }

@@ -8,7 +8,7 @@ use herald_flows::{Connected, unserved};
 use herald_kinds::{KvAt, Local, Opened, Opening, SqlAt};
 use herald_ports::{
     Base, Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Erased, Http, Keyring, Outbound,
-    Owned, RecordOptions, Signer, Store,
+    Owned, RecordOptions, Scrubber, Secret, SecretError, Secrets, Signer, Store,
 };
 
 use crate::counted::Counted;
@@ -57,19 +57,49 @@ pub trait Served {
 }
 
 /// A host, as the stores it opens see it: its connections bound by
-/// `outbound`, each request they send counted on `made`.
+/// `outbound`, each request they send counted on `made` and each secret
+/// it carries known to `scrubber`.
 pub struct Opener<H> {
     host: Arc<H>,
     outbound: Outbound,
     made: Arc<AtomicUsize>,
+    secrets: Read<H>,
+}
+
+/// A host's secrets, each one read known to `scrubber`.
+struct Read<H> {
+    host: Arc<H>,
+    scrubber: Scrubber,
+}
+
+impl<H: Host + Send> Secrets for Read<H> {
+    fn secret(&self, name: &str) -> impl Future<Output = Result<Secret, SecretError>> + Send {
+        let read = self.host.secrets().secret(name);
+        let scrubber = self.scrubber.clone();
+        async move {
+            let secret = read.await?;
+            scrubber.keep(&secret);
+            Ok(secret)
+        }
+    }
 }
 
 impl<H: Host> Opener<H> {
-    /// `host`, opening stores whose connections keep within `outbound` and
-    /// count each request on `made`.
+    /// `host`, opening stores whose connections keep within `outbound`,
+    /// count each request on `made` and make each secret it carries known
+    /// to `scrubber`.
     #[must_use]
-    pub const fn new(host: Arc<H>, outbound: Outbound, made: Arc<AtomicUsize>) -> Self {
+    pub fn new(
+        host: Arc<H>,
+        outbound: Outbound,
+        made: Arc<AtomicUsize>,
+        scrubber: Scrubber,
+    ) -> Self {
         Self {
+            secrets: Read {
+                host: Arc::clone(&host),
+                scrubber,
+            },
             host,
             outbound,
             made,
@@ -87,9 +117,10 @@ where
 {
     fn connect(&self, base: &str) -> Result<Owned<dyn DynHttp + Send>, String> {
         let http = self.host.connect(Base::At(base), &self.outbound)?;
-        Ok(Owned::new(Box::new(Counted::new(
+        Ok(Owned::new(Box::new(Counted::scrubbed(
             http,
             Arc::clone(&self.made),
+            self.secrets.scrubber.clone(),
         ))))
     }
 
@@ -98,7 +129,7 @@ where
     }
 
     fn secrets(&self) -> &dyn DynSecrets {
-        self.host.secrets()
+        &self.secrets
     }
 
     fn clock(&self) -> Owned<dyn Clock> {

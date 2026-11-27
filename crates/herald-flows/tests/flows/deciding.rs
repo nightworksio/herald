@@ -235,7 +235,20 @@ fn a_private_repository_is_shown_only_to_a_model_that_says_it_may_see_one() {
     let board = read(&config(false, ""), &healthy(), &closed, true).unwrap();
     assert_eq!(decided(&board), (Turn::Unknown, Reason::Untold, Vec::new()));
     assert_eq!(closed.seen().len(), 1, "no model was asked");
-    assert_eq!(unread(&board), Vec::new(), "no model may be asked");
+    assert_eq!(
+        unread(&board),
+        unhad(
+            &["urgency", "whose"],
+            "no model may read this private repository"
+        )
+    );
+    let unasking = Script::answering(&[(GRAPHQL, 200, &page("PRIVATE"))]);
+    let board = read(&config(false, ""), &healthy(), &unasking, false).unwrap();
+    assert_eq!(
+        unread(&board),
+        Vec::new(),
+        "a build that asks no model says nothing"
+    );
     let allowed = Script::answering(&[
         (GRAPHQL, 200, &page("PRIVATE")),
         (LOCAL, 200, &local("whose", "waiting-on-review")),
@@ -367,8 +380,9 @@ fn no_model_is_asked_once_the_host_s_requests_are_spent() {
     let secrets = FakeSecrets::default()
         .with("HERALD_GITHUB_TOKEN", "ghp_x")
         .with("HERALD_TYPESAFE_KEY", "ts_x");
-    let prepared =
-        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
+    let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls))
+        .unwrap()
+        .asking(true);
     let connected: Connected<Counting> = prepared
         .connect(|_| Ok::<_, ()>(Counting(script.clone())))
         .unwrap();
@@ -397,7 +411,10 @@ fn no_model_is_asked_once_the_host_s_requests_are_spent() {
     .unwrap();
     assert_eq!(decided(&board).2, Vec::new());
     assert_eq!(script.seen().len(), 1);
-    assert_eq!(unread(&board), Vec::new(), "no model may be asked");
+    assert_eq!(
+        unread(&board),
+        unhad(&["urgency", "whose"], "the budget for deciding is spent")
+    );
 }
 
 /// A daily report of the view to one public route, its body each
@@ -424,17 +441,24 @@ body = "unread:{% for unread in view.overviews.unread %} {{ unread.repository }}
 #[test]
 fn a_report_says_why_a_decision_was_not_had_to_a_route_that_may_see_the_repository_alone() {
     let failed = |url: &'static str| (url, 503, "");
-    for (visibility, asked, said) in [
+    for (visibility, local_private, asked, said) in [
         (
             "PUBLIC",
+            true,
             vec![failed(JEV), failed(LOCAL), failed(LOCAL)],
             vec![
                 "unread: o/open: task \"urgency\" decided nothing: no model it asked answered. o/open: task \"whose\" decided nothing: no model it asked answered.",
             ],
         ),
-        ("PRIVATE", vec![failed(LOCAL), failed(LOCAL)], Vec::new()),
+        (
+            "PRIVATE",
+            true,
+            vec![failed(LOCAL), failed(LOCAL)],
+            Vec::new(),
+        ),
+        ("PRIVATE", false, Vec::new(), Vec::new()),
     ] {
-        let config = loaded(&format!("{}{REPORTED}", text(true, "")));
+        let config = loaded(&format!("{}{REPORTED}", text(local_private, "")));
         let script = Script::answering(&[(GRAPHQL, 200, &page(visibility))])
             .then(&asked)
             .then(&[POSTED]);

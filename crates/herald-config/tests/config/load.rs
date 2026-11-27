@@ -162,7 +162,7 @@ fn every_mistake_is_reported_in_one_pass_in_file_order() {
             errors(text),
             [
                 "herald.toml:1:11 version: this herald reads version 1 of the config; write version = 1",
-                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"github_apps\", \"views\", \"merge_queues\", \"reports\", \"rules\", \"boards\", \"models\", \"tasks\", \"teams\", \"schedule\", \"server\", \"federation\", \"peers\", \"http\", \"render\", \"announce\", \"run\", \"doctor\", \"cli\"",
+                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"github_apps\", \"views\", \"merge_queues\", \"reports\", \"rules\", \"boards\", \"models\", \"tasks\", \"teams\", \"schedule\", \"server\", \"federation\", \"peers\", \"http\", \"render\", \"announce\", \"run\", \"doctor\", \"cli\", \"log\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"deno-kv\", \"fastly-kv\", \"dynamodb\", \"git-branch\", \"markers\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
                 "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"ghcr\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"oci\", \"feed\", \"herald\"",

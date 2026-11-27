@@ -1,6 +1,7 @@
 //! herald composed on a host made of fakes: every store kind reached
 //! through the host's ports, and requests and rounds served over it.
 
+mod logged;
 mod merging;
 mod pages;
 mod reports;
@@ -20,7 +21,9 @@ use herald_config::{Config, Uses, load};
 use herald_core::DestinationName;
 use herald_flows::{Admission, Did, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
 use herald_kinds::{Opening, StoreKind};
-use herald_ports::{Base, Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
+use herald_ports::{
+    Base, Changed, Frame, Http, HttpError, Outbound, Request, Response, Scrubber, Value,
+};
 use herald_testing::{
     FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
     ScriptedSql,
@@ -217,6 +220,7 @@ fn opener(host: &Arc<Hosting>) -> Arc<Opener<Hosting>> {
         Arc::clone(host),
         Outbound::default(),
         Arc::default(),
+        Scrubber::new(herald_config::Log::SCRUB_FROM),
     ))
 }
 

@@ -4,30 +4,29 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
-use std::io::Write;
 
-use herald_compose::{Host, Hosting, ServingOn, Through, told};
+use herald_compose::{Host, Hosting, ServingOn, Through, Told, told};
 use herald_config::{Config, Uses};
 use herald_flows::ROUND_SECRET;
 use herald_native::{NativeSockets, TokioTimer};
 use herald_ports::{Keyring, Secret, Store};
 use herald_server::{Heard, HostTimers, Limits, serve};
 
-use super::output::say;
+use super::output::Logged;
 use super::stores::composed;
 use super::{Connect, DONE, LISTEN, worded};
 
 /// A server's work: listening, and what it says of what it hears.
-struct Listening<'a, F> {
+struct Listening<'a, 'o, F> {
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
     timers: Option<HostTimers<'a>>,
     secret: Option<Secret>,
-    out: RefCell<&'a mut dyn Write>,
+    out: RefCell<&'a mut Logged<'o>>,
     stop: F,
 }
 
-impl<H: Host, F: Future<Output = Result<(), String>>> Through<H> for Listening<'_, F> {
+impl<H: Host, F: Future<Output = Result<(), String>>> Through<H> for Listening<'_, '_, F> {
     type Done = Result<u8, String>;
 
     async fn through<S: Store, K: Keyring>(
@@ -55,12 +54,7 @@ impl<H: Host, F: Future<Output = Result<(), String>>> Through<H> for Listening<'
             secret: self.secret.as_ref(),
         };
         let out = &self.out;
-        let heard = |heard: Heard| {
-            let mut out = out.borrow_mut();
-            for line in heard_lines(heard) {
-                say(&mut **out, &line);
-            }
-        };
+        let heard = |heard: Heard| out.borrow_mut().all(heard_lines(heard));
         let unheard = RefCell::new(None);
         let stop = async {
             if let Err(why) = self.stop.await {
@@ -120,17 +114,21 @@ pub(crate) fn timers(prefix: &str) -> Option<HostTimers<'_>> {
 }
 
 /// What a server says of what it heard.
-pub(crate) fn heard_lines(heard: Heard) -> Vec<String> {
+pub(crate) fn heard_lines(heard: Heard) -> Vec<Told> {
     match heard {
-        Heard::Listening(address) => vec![format!("herald serves on {address}")],
+        Heard::Listening(address) => vec![Told::info(format!("herald serves on {address}"))],
         Heard::Worked(worked) => told::worked(&worked),
         Heard::Unworked(job, released) => vec![told::unworked(&job, &released)],
         Heard::Polled(swept) => swept.iter().flat_map(told::polled).collect(),
         Heard::Stepped(read) => read.iter().flat_map(told::stepped).collect(),
         Heard::Kept(kept) => told::kept(&kept),
-        Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
+        Heard::Unaccepted(reason) => vec![Told::warn(format!(
+            "a connection could not be taken: {reason}"
+        ))],
         Heard::Refused(reason) => vec![told::refused(&reason)],
-        Heard::Session { destination, said } => vec![format!("{}: {said}", destination.as_str())],
+        Heard::Session { destination, said } => {
+            vec![Told::info(format!("{}: {said}", destination.as_str()))]
+        }
     }
 }
 
@@ -139,7 +137,7 @@ pub(crate) async fn serving(
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     listen: Option<&str>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
     stop: impl Future<Output = Result<(), String>>,
 ) -> Result<u8, String> {
     let azure = vars

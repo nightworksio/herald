@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use herald_kinds::{KvAt, SqlAt};
 use herald_ports::{
-    Base, Binding, Changed, Clock, DynInfer, Http, Kv, KvError, Outbound, Pair, Proxy, Secrets,
-    Signer, Sql, SqlError, Stamped, Statement, Verifier, Versionstamp,
+    Base, Binding, Changed, Clock, DynInfer, Http, Kv, KvError, Outbound, Pair, Proxy, Scrubber,
+    Secrets, Signer, Sql, SqlError, Stamped, Statement, Verifier, Versionstamp,
 };
 
 /// What a platform gives herald: its ports, its variables, and the
@@ -68,6 +68,13 @@ pub trait Host: Sync {
     /// A nonce no other run or job takes, which keeps each job's name for
     /// its leases its own (ADR-0005).
     fn nonce(&self) -> String;
+
+    /// The scrubber everything it writes shares, where it keeps one beside
+    /// herald's composition; herald composed on it keeps its own where it
+    /// keeps none (ADR-0089).
+    fn scrubber(&self) -> Option<Scrubber> {
+        None
+    }
 
     /// The model it runs beside herald through `binding` (ADR-0059).
     ///
