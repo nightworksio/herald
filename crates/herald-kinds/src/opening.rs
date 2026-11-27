@@ -3,6 +3,7 @@ use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 
+use herald_core::SecretRef;
 use herald_ports::{Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Owned, Secret};
 use jiff::SignedDuration;
 
@@ -57,6 +58,17 @@ pub trait Opening: Send + Sync {
                 .await
                 .map_err(|_| format!("{name} is not set; {why}"))
         })
+    }
+
+    /// The token in the secret `named`, or else in the run's own
+    /// [`GITHUB_TOKEN`], which the store needs as `why` says.
+    fn token<'a>(
+        &'a self,
+        named: Option<&'a SecretRef>,
+        why: &'a str,
+    ) -> Local<'a, Result<Secret, String>> {
+        let name = named.map_or(GITHUB_TOKEN, |named| named.secret.as_str());
+        self.secret(name, why)
     }
 
     /// The repository a store names, or else the one the run is for.

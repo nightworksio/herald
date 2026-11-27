@@ -1,12 +1,12 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_core::{status, unreserved};
-use herald_ports::{Http, Method, Request, Response, StoreError};
+use herald_ports::{Http, Method, Response, StoreError};
 use herald_records::{Blob, RecordBackend, Wrote};
 use herald_wire::forgejo::{self, FORGEJO};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::store::{BranchRecords, ForgejoBranch};
 
@@ -60,31 +60,33 @@ struct Listed {
 }
 
 impl ForgejoBranch {
-    fn request(&self, method: Method, path: &str) -> Request {
-        forgejo::request(
-            method,
-            format!("{}/repos/{}{path}", self.api, self.repository),
-            self.token.clone(),
-        )
-    }
-
-    fn contents(&self, method: Method, path: &str) -> Request {
-        self.request(method, &format!("/contents/{path}"))
-    }
-
-    async fn send<H: Http>(&self, http: &H, request: Request) -> Result<Response, StoreError> {
+    /// What Forgejo answers `method` on the repository's `path`, carrying
+    /// `body` where there is one.
+    async fn call<H: Http>(
+        &self,
+        http: &H,
+        (method, path): (Method, &str),
+        body: Option<&Value>,
+    ) -> Result<Response, StoreError> {
+        let url = format!("{}/repos/{}{path}", self.api, self.repository);
+        let request = forgejo::request(method, url, self.token.clone());
+        let request = match body {
+            Some(body) => request.body(body.to_string()),
+            None => request,
+        };
         http.send(request).await.map_err(StoreError::unavailable)
     }
 
-    /// What `request` answers, read as `T`; none where Forgejo found
+    /// What Forgejo answers a read of the repository's `path`, read as `T`
+    /// and named `what` where it cannot be; none where Forgejo found
     /// nothing there.
     async fn answer<H: Http, T: DeserializeOwned>(
         &self,
         http: &H,
-        request: Request,
+        path: &str,
         what: &str,
     ) -> Result<Option<T>, StoreError> {
-        let response = self.send(http, request).await?;
+        let response = self.call(http, (Method::Get, path), None).await?;
         if response.status == status::NOT_FOUND {
             return Ok(None);
         }
@@ -104,8 +106,9 @@ impl ForgejoBranch {
             .map(unreserved)
             .collect::<Vec<_>>()
             .join("/");
-        let request = self.request(Method::Get, &format!("/branches/{branch}"));
-        let branch: Option<Branch> = self.answer(http, request, &self.branch).await?;
+        let branch: Option<Branch> = self
+            .answer(http, &format!("/branches/{branch}"), &self.branch)
+            .await?;
         Ok(branch.map(|branch| branch.commit.id))
     }
 
@@ -120,12 +123,9 @@ impl ForgejoBranch {
         let mut entries = Vec::new();
         let mut total = 0;
         for page in 1.. {
-            let request = self.request(
-                Method::Get,
-                &format!("/git/trees/{sha}?page={page}&per_page={PER_PAGE}"),
-            );
+            let path = format!("/git/trees/{sha}?page={page}&per_page={PER_PAGE}");
             let tree = self
-                .answer::<H, Tree>(http, request, what)
+                .answer::<H, Tree>(http, &path, what)
                 .await?
                 .ok_or_else(|| StoreError::answered(FORGEJO, status::NOT_FOUND))?;
             total = tree.total_count;
@@ -168,11 +168,8 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
 
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let branch = &self.branch;
-        let request = branch.contents(
-            Method::Get,
-            &format!("{path}?ref={}", unreserved(&branch.branch)),
-        );
-        let Some(file) = branch.answer::<H, File>(&self.http, request, path).await? else {
+        let read = format!("/contents/{path}?ref={}", unreserved(&branch.branch));
+        let Some(file) = branch.answer::<H, File>(&self.http, &read, path).await? else {
             return Ok(None);
         };
         if file.kind != FILE {
@@ -253,8 +250,10 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
                 json!({ "message": message, "content": content, "branch": branch.branch, "sha": sha }),
             ),
         };
-        let request = branch.contents(method, path).body(body.to_string());
-        let response = branch.send(&self.http, request).await?;
+        let contents = format!("/contents/{path}");
+        let response = branch
+            .call(&self.http, (method, &contents), Some(&body))
+            .await?;
         match (replacing, response.status) {
             (_, _) if response.succeeded() => Ok(Wrote::Written),
             (None, status::UNPROCESSABLE) | (Some(_), status::CONFLICT | status::NOT_FOUND) => {
@@ -272,8 +271,10 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
             "sha": replacing,
             "branch": branch.branch,
         });
-        let request = branch.contents(Method::Delete, path).body(body.to_string());
-        let response = branch.send(&self.http, request).await?;
+        let contents = format!("/contents/{path}");
+        let response = branch
+            .call(&self.http, (Method::Delete, &contents), Some(&body))
+            .await?;
         match response.status {
             status::OK | status::NOT_FOUND => Ok(Wrote::Written),
             status::BAD_REQUEST => Ok(Wrote::Conflict),

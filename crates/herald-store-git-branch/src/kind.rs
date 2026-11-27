@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{GITHUB_TOKEN, Local, Opened, Opening, StoreConfig, StoreKind};
+use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind};
 use herald_ports::RecordOptions;
 
 use crate::{GitBranch, StoreOptions};
@@ -54,12 +54,11 @@ impl StoreConfig for StoreOptions {
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             let repository = opening.repository(self.repository.as_deref())?;
-            let name = self
-                .token
-                .as_ref()
-                .map_or(GITHUB_TOKEN, |token| token.secret.as_str());
             let token = opening
-                .secret(name, "the git-branch store needs a token that may push")
+                .token(
+                    self.token.as_ref(),
+                    "the git-branch store needs a token that may push",
+                )
                 .await?;
             let branch = GitBranch::new(
                 repository,

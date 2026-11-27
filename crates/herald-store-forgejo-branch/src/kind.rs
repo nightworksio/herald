@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{GITHUB_API_URL, GITHUB_TOKEN, Local, Opened, Opening, StoreConfig, StoreKind};
+use herald_kinds::{GITHUB_API_URL, Local, Opened, Opening, StoreConfig, StoreKind};
 use herald_ports::RecordOptions;
 use herald_wire::forgejo;
 
@@ -28,15 +28,29 @@ impl StoreKind for ForgejoBranchKind {
 }
 
 impl StoreOptions {
-    /// The API's base URL these options reach through `opening`.
-    fn reached<'a>(&'a self, opening: &'a dyn Opening) -> Result<&'a str, String> {
-        match (&self.api, &self.repository) {
-            (Some(api), _) => Ok(api),
-            (None, Some(_)) => Ok(forgejo::API),
+    /// The branch these options name, reached through `opening`: its
+    /// repository, API and token, each where given and else the run's own.
+    async fn branch(&self, opening: &dyn Opening) -> Result<ForgejoBranch, String> {
+        let repository = opening.repository(self.repository.as_deref())?;
+        let api = match (&self.api, &self.repository) {
+            (Some(api), _) => api.as_str(),
+            (None, Some(_)) => forgejo::API,
             (None, None) => opening.var(GITHUB_API_URL).ok_or_else(|| {
                 format!("{GITHUB_API_URL} is not set; give the store's api, or run herald in the repository's Forgejo Actions")
-            }),
-        }
+            })?,
+        };
+        let token = opening
+            .token(
+                self.token.as_ref(),
+                "the forgejo-branch store needs a token that may push",
+            )
+            .await?;
+        Ok(ForgejoBranch::new(
+            repository,
+            token,
+            self.branch.as_deref(),
+            api,
+        ))
     }
 }
 
@@ -45,12 +59,28 @@ impl StoreConfig for StoreOptions {
         ForgejoBranchKind::NAME
     }
 
-    fn key(&self) -> Option<&SecretRef> {
-        Some(&self.key)
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        options: RecordOptions,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let branch = self.branch(opening.as_ref()).await?;
+            let http = opening.connect(branch.api())?;
+            Ok(Opened::Kept(Box::new(branch.store(http).with(options))))
+        })
+    }
+
+    fn note(&self) -> Option<&'static str> {
+        Some(LISTED)
     }
 
     fn most_record(&self) -> Option<usize> {
         Some(MOST_RECORD)
+    }
+
+    fn key(&self) -> Option<&SecretRef> {
+        Some(&self.key)
     }
 
     fn named(&self) -> Vec<&str> {
@@ -58,31 +88,6 @@ impl StoreConfig for StoreOptions {
             .iter()
             .map(|named| named.secret.as_str())
             .collect()
-    }
-
-    fn note(&self) -> Option<&'static str> {
-        Some(LISTED)
-    }
-
-    fn open<'s, 'o: 's>(
-        &'s self,
-        opening: Arc<dyn Opening + 'o>,
-        options: RecordOptions,
-    ) -> Local<'s, Result<Opened<'o>, String>> {
-        Box::pin(async move {
-            let repository = opening.repository(self.repository.as_deref())?;
-            let api = self.reached(opening.as_ref())?;
-            let name = self
-                .token
-                .as_ref()
-                .map_or(GITHUB_TOKEN, |token| token.secret.as_str());
-            let token = opening
-                .secret(name, "the forgejo-branch store needs a token that may push")
-                .await?;
-            let branch = ForgejoBranch::new(repository, token, self.branch.as_deref(), api);
-            let http = opening.connect(branch.api())?;
-            Ok(Opened::Kept(Box::new(branch.store(http).with(options))))
-        })
     }
 }
 
