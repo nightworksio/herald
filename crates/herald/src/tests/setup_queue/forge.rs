@@ -4,25 +4,24 @@ use super::*;
 /// squash, and the repository allowing a squash, and a rebase where
 /// `rebases`.
 fn squashing(world: &World, rebases: bool) {
-    let answers = [
-        (
-            "/repos/cli/cli",
-            json!({"private": false, "owner": {"type": "Organization"},
-                "allow_merge_commit": false, "allow_squash_merge": true, "allow_rebase_merge": rebases}),
-        ),
-        (
-            "/repos/cli/cli/branches/main",
-            json!({"commit": {"sha": "b1"}, "protected": true}),
-        ),
-        (
-            "/repos/cli/cli/rules/branches/main?per_page=100&page=1",
-            json!([{"type": "merge_queue", "parameters": {"merge_method": "SQUASH"}}]),
-        ),
-    ];
-    let forge = &mut world.state.lock().unwrap().forge;
-    for (path, body) in answers {
-        forge.insert(path.to_owned(), (200, body.to_string()));
-    }
+    answered(
+        world,
+        [
+            (
+                "/repos/cli/cli",
+                json!({"private": false, "owner": {"type": "Organization"},
+                    "allow_merge_commit": false, "allow_squash_merge": true, "allow_rebase_merge": rebases}),
+            ),
+            (
+                "/repos/cli/cli/branches/main",
+                json!({"commit": {"sha": "b1"}, "protected": true}),
+            ),
+            (
+                "/repos/cli/cli/rules/branches/main?per_page=100&page=1",
+                json!([{"type": "merge_queue", "parameters": {"merge_method": "SQUASH"}}]),
+            ),
+        ],
+    );
 }
 
 #[test]
@@ -66,4 +65,48 @@ fn the_forge_s_queue_method_and_the_repository_s_methods_are_said_and_narrow_the
         Ok(DONE)
     );
     assert!(config_of(&setup).contains("method = \"repository\"\n"));
+}
+
+#[test]
+fn an_enterprise_server_whose_graphql_takes_no_enqueue_is_said_and_runs_herald_by_default() {
+    let setup = setup(&enterprise());
+    let world = World::default();
+    answered(
+        &world,
+        [
+            (
+                "/v3/repos/cli/cli",
+                json!({"private": false, "owner": {"type": "Organization"}}),
+            ),
+            (
+                "/v3/repos/cli/cli/branches/main",
+                json!({"commit": {"sha": "b1"}, "protected": false}),
+            ),
+            (
+                "/v3/repos/cli/cli/rules/branches/main?per_page=100&page=1",
+                json!([{"type": "merge_queue", "parameters": {}}]),
+            ),
+            (
+                "/graphql",
+                json!({"data": {"__type": {"fields": [{"name": "mergePullRequest"}]}}}),
+            ),
+        ],
+    );
+    let (done, out) = wizard(
+        &setup,
+        &world,
+        &[
+            "--branch", "main", "--source", "cli", "--method", "squash", "--yes",
+        ],
+        "",
+    );
+    assert_eq!(done, Ok(DONE), "{out}");
+    for said in [
+        "GraphQL API has no enqueuePullRequest",
+        "Without the forge's queue, herald's own runs it",
+    ] {
+        assert!(out.contains(said), "{said} in {out}");
+    }
+    let written = config_of(&setup);
+    assert!(written.contains("runs = \"herald\"\n"), "{written}");
 }

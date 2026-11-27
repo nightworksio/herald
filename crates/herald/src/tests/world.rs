@@ -321,6 +321,7 @@ impl Http for World {
             "https://gitlab.com/api/v4",
             "https://codeberg.org/api/v1",
             "https://github.com",
+            "https://ghe.example/api",
         ] {
             if let Some(path) = url.strip_prefix(base) {
                 return Ok(match state.forge.get(path) {

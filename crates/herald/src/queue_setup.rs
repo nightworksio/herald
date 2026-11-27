@@ -808,8 +808,12 @@ async fn updating(
     keys: &mut Keys,
 ) -> Result<(), String> {
     let was_signer = was(was_here, &["signer"]);
-    let signer = asked.signer.as_deref().or(was_signer.as_deref());
-    if let Some(why) = herald_flows::unsigned(merging, signer.filter(|signer| *signer != NONE)) {
+    let unasked = asked
+        .signer
+        .as_deref()
+        .or(was_signer.as_deref())
+        .filter(|signer| *signer != NONE);
+    if let Some(why) = herald_flows::unsigned(merging, unasked) {
         asking.say(&format!("{why}."));
     }
     let updated = (
@@ -817,7 +821,6 @@ async fn updating(
         "updated",
         asked.updated.as_deref(),
     );
-    let unasked = signer.filter(|signer| *signer != NONE);
     let default = was(was_here, &["updated"]).unwrap_or_else(|| {
         MergeQueue::updated_by_default(merging, unasked)
             .name()

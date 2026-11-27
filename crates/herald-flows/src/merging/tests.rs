@@ -1,4 +1,5 @@
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use herald_core::merging::{
     AppliedBy, Check, CheckState, Enter, Message, RoleLost, SKEW, Update, Vouches, WAIT,
@@ -24,6 +25,7 @@ pub(super) struct Fixed {
     pub(super) took: Option<Vec<TakenBack>>,
     pub(super) asked: Mutex<Vec<(Enter, Permission, Vouches, SignedDuration)>>,
     pub(super) methods: Option<herald_kinds::Methods>,
+    pub(super) methods_read: AtomicUsize,
 }
 
 impl Fixed {
@@ -46,6 +48,7 @@ impl Fixed {
             took: None,
             asked: Mutex::default(),
             methods: None,
+            methods_read: AtomicUsize::new(0),
         }
     }
 }
@@ -150,6 +153,7 @@ impl MergeReader for Fixed {
         &'a self,
         _: &'a dyn DynHttp,
     ) -> Boxed<'a, Result<herald_kinds::Methods, Unpolled>> {
+        self.methods_read.fetch_add(1, Ordering::Relaxed);
         let methods = self.methods.clone().ok_or_else(|| unasked("the methods"));
         Box::pin(async move { methods })
     }

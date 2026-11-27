@@ -29,21 +29,37 @@ fn ruled(world: &World, queued: bool) {
     } else {
         json!([])
     };
-    let answers = [
-        ("/repos/cli/cli", json!({"private": false})),
-        (
-            "/repos/cli/cli/branches/main",
-            json!({"commit": {"sha": "b1"}, "protected": false}),
-        ),
-        (
-            "/repos/cli/cli/rules/branches/main?per_page=100&page=1",
-            rules,
-        ),
-    ];
+    answered(
+        world,
+        [
+            ("/repos/cli/cli", json!({"private": false})),
+            (
+                "/repos/cli/cli/branches/main",
+                json!({"commit": {"sha": "b1"}, "protected": false}),
+            ),
+            (
+                "/repos/cli/cli/rules/branches/main?per_page=100&page=1",
+                rules,
+            ),
+        ],
+    );
+}
+
+/// The forge answering each of `answers`' paths with its body.
+fn answered<const N: usize>(world: &World, answers: [(&str, Value); N]) {
     let forge = &mut world.state.lock().unwrap().forge;
     for (path, body) in answers {
         forge.insert(path.to_owned(), (200, body.to_string()));
     }
+}
+
+/// [`CONFIG`] with its source on the GitHub Enterprise Server at
+/// ghe.example.
+fn enterprise() -> String {
+    CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"cli/cli\"\napi = \"https://ghe.example/api/v3\"\n",
+    )
 }
 
 /// `herald setup merge-queue` as `args` asks, the operator answering

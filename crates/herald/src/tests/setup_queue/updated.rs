@@ -59,11 +59,7 @@ fn a_forge_s_queue_asks_what_becomes_of_a_pull_request_whose_gesture_s_maker_los
 
 #[test]
 fn an_enterprise_signer_is_asked_by_the_queue_s_own_api_and_kept_until_answered_none() {
-    let config = CONFIG.replace(
-        "repository = \"cli/cli\"\n",
-        "repository = \"cli/cli\"\napi = \"https://ghe.example/api/v3\"\n",
-    );
-    let setup = setup(&config);
+    let setup = setup(&enterprise());
     let world = World::default();
     let flags = [
         "--branch",
@@ -110,6 +106,30 @@ fn an_enterprise_signer_is_asked_by_the_queue_s_own_api_and_kept_until_answered_
     assert_eq!(cleared, Ok(DONE), "{out}");
     assert!(out.contains(UNSIGNED_HOST), "{out}");
     assert!(!config_of(&setup).contains("signer ="));
+}
+
+#[test]
+fn an_enterprise_queue_given_a_signer_vouches_for_the_head_of_its_signed_update_by_default() {
+    let setup = setup(&enterprise());
+    let world = World::default();
+    let flags = [
+        "--branch",
+        "main",
+        "--runs",
+        "herald",
+        "--method",
+        "squash",
+        "--signer",
+        "noreply@ghe.example",
+        "--yes",
+    ];
+    let (done, out) = wizard(&setup, &world, &flags, "");
+    assert_eq!(done, Ok(DONE), "{out}");
+    let written = config_of(&setup);
+    assert!(
+        written.contains("updated = \"signed\"\nsigner = \"noreply@ghe.example\"\n"),
+        "{written}"
+    );
 }
 
 #[test]
