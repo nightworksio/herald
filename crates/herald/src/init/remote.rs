@@ -71,9 +71,16 @@ fn remote(url: &str) -> Option<Remote> {
     })
 }
 
+/// The `origin` remote of the repository that holds `directory`, where
+/// its git config names one herald reads.
+pub(crate) fn of(directory: &Path) -> Option<Remote> {
+    let text = std::fs::read_to_string(config_of(directory)?).ok()?;
+    origin(&text)
+}
+
 /// The git config of the repository that holds `directory`: the nearest
 /// `.git` at or above it, a directory or a worktree's file naming one.
-pub(crate) fn config_of(directory: &Path) -> Option<PathBuf> {
+fn config_of(directory: &Path) -> Option<PathBuf> {
     let directory = std::fs::canonicalize(directory).ok()?;
     directory.ancestors().find_map(|at| {
         let git = at.join(".git");
@@ -136,7 +143,7 @@ mod tests {
 
     #[test]
     fn only_origin_s_url_is_read() {
-        let text = "[remote \"upstream\"]\n\turl = https://github.com/up/app\n[branch \"main\"]\n\turl = x\n[remote \"origin\"]\n\tfetch = +refs/heads/*\n\turl = git@codeberg.org:me/app.git\n";
+        let text = "# kept by hand\n\n[remote \"upstream\"]\n\turl = https://github.com/up/app\n[branch \"main\"]\n\turl = x\n[remote \"origin\"]\n\tfetch = +refs/heads/*\n\turl = git@codeberg.org:me/app.git\n";
         assert_eq!(
             origin(text),
             Some(Remote {

@@ -91,9 +91,7 @@ pub(crate) async fn initialising(
         .parent()
         .filter(|directory| !directory.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let remote = remote::config_of(directory)
-        .and_then(|config| std::fs::read_to_string(config).ok())
-        .and_then(|text| remote::origin(&text));
+    let remote = remote::of(directory);
     let mut asking = Asking {
         answers,
         out,
@@ -307,23 +305,26 @@ async fn answered(
     asked: &Answers,
     asking: &mut Asking<'_>,
 ) -> Result<Vec<String>, String> {
+    let keys = variant
+        .asks
+        .iter()
+        .map(|ask| ask.key)
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut given = BTreeMap::new();
     for pair in &asked.with {
         let (key, answer) = pair
             .split_once('=')
-            .ok_or_else(|| format!("--with {pair}: give it as KEY=VALUE"))?;
-        if !variant.asks.iter().any(|ask| ask.key == key) {
-            let keys = variant
-                .asks
-                .iter()
-                .map(|ask| ask.key)
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(format!(
-                "--with {key}: the {} {} asks {keys}",
-                run.kind, variant.name
-            ));
-        }
+            .and_then(|(key, answer)| {
+                let known = variant.asks.iter().find(|ask| ask.key == key)?;
+                Some((known.key, answer))
+            })
+            .ok_or_else(|| {
+                format!(
+                    "--with: an unknown key or no KEY=VALUE; the {} {} asks {keys}",
+                    run.kind, variant.name
+                )
+            })?;
         if given.insert(key, answer).is_some() {
             return Err(format!("--with {key}: give it once"));
         }
@@ -388,14 +389,14 @@ async fn announced(
     for name in &names {
         let preset = offered
             .iter()
-            .find(|preset| preset.name == name)
+            .find(|preset| preset.name == name.as_str())
             .ok_or_else(|| {
                 let listed = offered
                     .iter()
                     .map(|preset| preset.name)
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("--announce {name}: a first run adopts {listed}")
+                format!("--announce: a preset a first run does not adopt; it adopts {listed}")
             })?;
         if !chosen.iter().any(|was| was.name == preset.name) {
             chosen.push(preset);

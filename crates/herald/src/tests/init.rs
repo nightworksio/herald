@@ -94,6 +94,15 @@ fn a_slack_webhook_on_github_keeps_its_records_in_the_actions_cache_under_a_key_
     assert!(out.contains("Store HERALD_SLACK_WEBHOOK as a repository secret (gh secret set HERALD_SLACK_WEBHOOK); https://github.com/nightworksio/herald/blob/main/.docs/first-run.md#slack-webhook says how to make it."), "{out}");
     assert!(out.contains("Store HERALD_STORE_KEY as a repository secret (gh secret set HERALD_STORE_KEY): it is the key below, which herald prints only this once."), "{out}");
     assert_eq!(out.matches(&key()).count(), 1, "{out}");
+    assert!(!out.contains("no store keeps"), "{out}");
+    for listed in [
+        "  github: ",
+        "  slack: ",
+        "  webhook: ",
+        "  herald:announce-releases: ",
+    ] {
+        assert!(!out.contains(listed), "{listed}\n{out}");
+    }
     assert!(
         out.contains(&format!("HERALD_STORE_KEY={}\n", key())),
         "{out}"
@@ -425,11 +434,11 @@ fn a_wrong_answer_given_as_a_flag_stops_with_why_and_writes_nothing() {
     for (args, why) in [
         (
             &["--chat", "slack", "--with", "room=x", "--yes"][..],
-            "--with room: the slack webhook asks webhook, domain",
+            "--with: an unknown key or no KEY=VALUE; the slack webhook asks webhook, domain",
         ),
         (
             &["--chat", "slack", "--with", "webhook", "--yes"][..],
-            "--with webhook: give it as KEY=VALUE",
+            "--with: an unknown key or no KEY=VALUE; the slack webhook asks webhook, domain",
         ),
         (
             &[
@@ -453,7 +462,7 @@ fn a_wrong_answer_given_as_a_flag_stops_with_why_and_writes_nothing() {
                 "herald:merge-queue-small-team",
                 "--yes",
             ][..],
-            "--announce herald:merge-queue-small-team: a first run adopts herald:announce-releases, herald:review-reminders, herald:security-alerts-private",
+            "--announce: a preset a first run does not adopt; it adopts herald:announce-releases, herald:review-reminders, herald:security-alerts-private",
         ),
         (
             &[
@@ -573,4 +582,60 @@ fn every_way_in_a_first_run_offers_has_its_section_in_the_guide() {
     for anchor in anchors {
         assert_eq!(guide.matches(&format!("{anchor}\n")).count(), 1, "{anchor}");
     }
+}
+
+/// A Slack webhook's URL, as a secret pasted in the wrong place is, built
+/// at run time.
+fn pasted() -> String {
+    format!(
+        "https://hooks.slack.com/services/T{}/B{}/{}",
+        "0".repeat(8),
+        "1".repeat(10),
+        "x".repeat(24)
+    )
+}
+
+#[test]
+fn no_refusal_echoes_what_was_given_on_the_command_line() {
+    let directory = tempfile::tempdir().unwrap();
+    git(directory.path(), "https://github.com/owner/app.git");
+    let secret = pasted();
+    for args in [
+        vec!["--with".to_owned(), format!("webhook:{secret}")],
+        vec!["--with".to_owned(), format!("{secret}=HERALD_X")],
+        vec!["--with".to_owned(), format!("webhook={secret}")],
+        vec!["--announce".to_owned(), secret.clone()],
+        vec!["--repository".to_owned(), secret.clone()],
+        vec!["--api".to_owned(), format!("http{}", &secret[5..])],
+        vec!["--forge".to_owned(), secret.clone()],
+        vec!["--variant".to_owned(), secret.clone()],
+        vec!["--store-token".to_owned(), secret.clone()],
+    ] {
+        let mut all = vec!["--chat", "slack", "--yes"];
+        all.extend(args.iter().map(String::as_str));
+        let (done, out) = init(directory.path(), &all, "", Some(key()));
+        let why = done.unwrap_err();
+        assert!(!why.contains(&secret[8..]), "{args:?}: {why}");
+        assert!(!out.contains(&secret[8..]), "{args:?}: {out}");
+        assert_eq!(written(directory.path()), None, "{args:?}");
+    }
+}
+
+#[test]
+fn a_credential_in_the_remote_s_url_is_never_said() {
+    let directory = tempfile::tempdir().unwrap();
+    let token = "y".repeat(40);
+    git(
+        directory.path(),
+        &format!("https://owner:{token}@github.com/owner/app.git"),
+    );
+    let (done, out) = init(
+        directory.path(),
+        &["--chat", "slack", "--yes"],
+        "",
+        Some(key()),
+    );
+    assert_eq!(done, Ok(crate::DONE), "{out}");
+    assert!(!out.contains(&token), "{out}");
+    assert!(!written(directory.path()).unwrap().contains(&token));
 }
