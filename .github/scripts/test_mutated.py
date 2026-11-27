@@ -185,6 +185,9 @@ class Counting(unittest.TestCase):
         found = mutated.counted(mutated.scope("pull_request", "", "refs/pull/1/merge"), listed, "/t/change.diff")
         self.assertEqual(found.outputs()["shards"], "")
         self.assertEqual(found.outputs()["wasm"], "true")
+        _, listed = self.listing(11)
+        found = mutated.counted(mutated.scope("pull_request", "", "refs/pull/1/merge"), listed, "/t/change.diff")
+        self.assertTrue(found.why.endswith("; 11 mutants listed, cut into 1 shard"), found.why)
 
     def test_mutants_that_cannot_be_listed_take_the_cap(self):
         _, listed = self.listing(None)

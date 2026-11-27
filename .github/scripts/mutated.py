@@ -206,9 +206,10 @@ def counted(found: Scope, listing: Callable[[list[str]], int | None], diff: str 
     narrowed = ["--in-diff", diff] if diff is not None else []
     mutants = listing([*mutated, *EXCLUDING, *narrowed])
     shards = found.cut.shards(mutants)
+    cut = f"{shards} shard" if shards == 1 else f"{shards} shards"
     if mutants is None:
-        return found._replace(why=f"{found.why}; the mutants could not be listed, so they are cut into {shards} shards")
-    return found._replace(mutants=mutants, why=f"{found.why}; {mutants} mutants listed, cut into {shards} shards")
+        return found._replace(why=f"{found.why}; the mutants could not be listed, so they are cut into {cut}")
+    return found._replace(mutants=mutants, why=f"{found.why}; {mutants} mutants listed, cut into {cut}")
 
 
 def changes(base: str, into: pathlib.Path) -> str:
