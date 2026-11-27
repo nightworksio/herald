@@ -60,7 +60,6 @@ use doctoring::DoctorArgs;
 use herald_compose::Log;
 use herald_compose::told::{chored, polled_as, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Hosting};
-use herald_ports::Scrubber;
 use output::{Logged, Scrubbing, hidden, masked, say, warned};
 use preview::previewing;
 use serving::serving;
@@ -143,7 +142,7 @@ async fn stopping(
             .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
     );
     let hidden = hidden(&config, vars);
-    let scrubber = Scrubber::new(config.log.scrub_from).timed(herald_environment::SystemClock);
+    let scrubber = config.log.scrubber().timed(herald_environment::SystemClock);
     for secret in &hidden {
         scrubber.keep(secret);
     }

@@ -6,6 +6,7 @@ use herald_core::{
     Sandbox, SecretRef, SourceName, Templates,
 };
 use herald_kinds::{ConfiguredStore, Destination, Placed, Registering, Source};
+use herald_ports::Scrubber;
 use jiff::SignedDuration;
 
 use crate::oidc::{Oidc, Replay};
@@ -520,6 +521,9 @@ pub struct Log {
     /// The fewest characters a secret's value holds to be written as
     /// `«secret:NAME»`.
     pub scrub_from: NonZeroUsize,
+    /// How many secret values the scrubber holds before the log says it
+    /// holds more: each is still held and scrubbed.
+    pub scrub_warn_past: NonZeroUsize,
 }
 
 impl Log {
@@ -527,6 +531,12 @@ impl Log {
     /// the config says nothing: a shorter value would rewrite ordinary
     /// words.
     pub const SCRUB_FROM: NonZeroUsize = NonZeroUsize::new(8).unwrap();
+
+    /// The scrubber it describes, knowing no secret yet.
+    #[must_use]
+    pub fn scrubber(&self) -> Scrubber {
+        Scrubber::new(self.scrub_from).crowded_past(self.scrub_warn_past)
+    }
 }
 
 impl Default for Log {
@@ -535,6 +545,7 @@ impl Default for Log {
             level: Level::default(),
             format: LogFormat::default(),
             scrub_from: Self::SCRUB_FROM,
+            scrub_warn_past: Scrubber::CROWDED,
         }
     }
 }

@@ -598,6 +598,11 @@ pub(crate) struct LogFile {
     /// shorter value would rewrite ordinary words. On GitHub Actions every
     /// secret is masked whatever its length.
     pub(crate) scrub_from: Option<NonZeroUsize>,
+    /// How many secret values herald holds to scrub before its log says,
+    /// once, that it holds more: 4096 where absent. Past it every value is
+    /// still held and scrubbed until it can no longer be valid; raise it
+    /// where a run sends that many secrets by design.
+    pub(crate) scrub_warn_past: Option<NonZeroUsize>,
 }
 
 /// `[run]`: how many routes and sources a run goes through at once.

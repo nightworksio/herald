@@ -118,7 +118,7 @@ impl Log {
             format: var(LOG_FORMAT)
                 .and_then(LogFormat::named)
                 .unwrap_or(config.format),
-            scrubber: Scrubber::new(config.scrub_from),
+            scrubber: config.scrubber(),
         }
     }
 
@@ -170,13 +170,13 @@ impl Log {
     }
 
     /// What the log says once, where its scrubber holds more values than
-    /// [`Scrubber::CROWDED`]: each is still scrubbed.
+    /// `[log] scrub_warn_past`: each is still scrubbed.
     #[must_use]
     pub fn crowded(&self) -> Option<Told> {
         self.scrubber.crowded().map(|held| {
             Told::warn(format!(
-                "herald holds {held} secret values to scrub, more than {}; each is still scrubbed until it can no longer be valid",
-                Scrubber::CROWDED
+                "herald holds {held} secret values to scrub, more than [log] scrub_warn_past, {}; each is still scrubbed until it can no longer be valid, and scrub_warn_past may be raised where a run sends this many",
+                self.scrubber.many()
             ))
         })
     }
