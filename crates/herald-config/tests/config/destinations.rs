@@ -520,7 +520,7 @@ fn a_shared_block_list_pinned_by_its_digest_blocks_its_domains() {
     let broken = "sp*m.example,suspend\n";
     let refused = listed(&herald_core::digest(broken), broken).unwrap_err();
     assert!(
-        refused.contains("blocks.csv: line 1 names \"sp*m.example\", which is not a domain"),
+        refused.contains("blocks.csv: line 1 names no domain; give each row a domain first"),
         "{refused}"
     );
 }

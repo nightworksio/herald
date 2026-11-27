@@ -9,6 +9,7 @@ mod apps;
 mod commands;
 mod doctor;
 mod doctoring;
+mod files;
 mod first_run;
 mod followers;
 mod forges;

@@ -22,6 +22,8 @@ mod federation;
 #[cfg(test)]
 mod feeds;
 #[cfg(test)]
+mod files;
+#[cfg(test)]
 mod github_apps;
 #[cfg(test)]
 mod grants;

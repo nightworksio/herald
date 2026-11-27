@@ -371,7 +371,10 @@ fn a_config_s_roots_are_trusted_beside_the_mozilla_roots() {
         pem: "-----BEGIN CERTIFICATE-----\n!!!!\n-----END CERTIFICATE-----\n".to_owned(),
     };
     let unread = trusted(Some(&unencoded)).unwrap_err();
-    assert!(unread.0.starts_with("unencoded.pem: "), "{unread}");
+    assert_eq!(
+        unread.0,
+        "unencoded.pem holds a PEM section herald cannot read"
+    );
     let outbound = Outbound {
         roots: Some(broken),
         ..Outbound::default()

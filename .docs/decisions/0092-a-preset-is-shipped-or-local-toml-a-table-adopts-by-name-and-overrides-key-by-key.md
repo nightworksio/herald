@@ -80,14 +80,7 @@ already ships named content under a `herald:` prefix: the templates
      trusts and what it does stays in `herald.toml`. A shipped `herald:`
      preset is herald's own data and is not read against this list;
    - a local preset does not `use` another preset.
-   - A template's `file`, a member list's `members.file` and an
-     ActivityPub `lists[].file` are read with the same containment: a
-     path inside the config's directory, every link followed. A config may
-     name further directories in `herald.toml` itself, absolute, each
-     canonicalised before the check, never from a preset or the
-     environment; a file elsewhere stops the load, the error naming the
-     file and that setting. A config that named a file outside its
-     directory stops loading until the directory is named.
+   - Every other file the config names is contained as decision 8 says.
 5. **Nothing is hidden.** `herald preset show <table>` prints the TOML a
    table expands to; `herald preset eject <table>` writes that expansion
    into `herald.toml` in place of the table, through `toml_edit`, after one
@@ -99,6 +92,36 @@ already ships named content under a `herald:` prefix: the templates
    from the same declarations.
 7. **This extends ADR-0006 decision 1**: one file, which a preset table
    expands as it loads.
+8. **Every file the config names lies beside it or in a directory
+   `[files] allowed` names.** A template's `file`, a source's
+   `members.file`, an ActivityPub `lists[].file` and `http.ca_file` are
+   read only where the path is a path of names under `herald.toml`'s
+   directory with no `..` step, or an absolute path inside a directory
+   `[files] allowed` lists. Each listed directory is absolute with no `..`
+   step. The list lives in `herald.toml` alone: a preset cannot write it,
+   and it has no environment variable or flag, so what a config may reach
+   is read in the one file a reviewer reads. herald's native binary and the
+   JavaScript hosts' `deploy/files.mjs` resolve every link of the file and
+   of the directory before the check, so a link inside the directory that
+   leads out of it is refused; Fastly's Config Store and a JavaScript object
+   of files hold names, not paths. A file elsewhere stops the load, and the
+   error names the file, its key and `[files] allowed` and nothing the file
+   holds; `herald doctor` names each such file. A config that named a file
+   outside its directory stops loading until the file is moved beside it or
+   its directory is listed.
+   - `http.ca_file` is held to the same rule: a PEM file that does not parse
+     is told by its reader with the offending line (rustls-pki-types 1.15.1,
+     `src/pem.rs`, `IllegalSectionStart`), so what it holds can reach an
+     error. A CA bundle in a system directory is reached by listing that
+     directory, and herald names a PEM section it cannot read by the file
+     alone.
+   - A store's `path`, the SQLite file or the Deno KV database, is herald's
+     own records, opened and written by herald, and no text of it reaches a
+     post or an error; it keeps its own rule.
+   - A file that does not parse is told by its file, line and, where the
+     parser tells one, column, never by what it holds: a member file's TOML
+     or JSON, a template file that does not compile (minijinja tells the
+     line alone), and a block list row that names no domain.
 
 ## Alternatives
 
@@ -106,6 +129,7 @@ already ships named content under a `herald:` prefix: the templates
 |--------|---------|
 | **A preset is only a wizard template written out in full** | A config of one line per preset would not get a later release's improved presets, and every adopter would carry tables they did not write. `eject` gives the written-out form to anyone who wants it. |
 | **Shipped presets only** | A team with several repositories repeats the same routes and templates; a local preset keeps them once, beside the config. |
+| **Files read from any path the config names** | Whoever may change `herald.toml` but not reach the host that runs herald could make herald post any file the process can read into a channel they read, and read some of it back from load errors. |
 | **A local preset with the full config's reach** | A preset file is reviewed less closely than `herald.toml`; secrets, hosts, privacy statements and acting rights in it would let a change to a shared file widen where herald writes or what it trusts. |
 
 ## Consequences
@@ -114,6 +138,8 @@ already ships named content under a `herald:` prefix: the templates
   `herald preset show`.
 - A local preset written for another config format stops the load, named.
 - Privacy statements, credentials and hosts live only in `herald.toml`.
+- A config naming a template, member list, block list or CA file outside its
+  directory lists that file's directory in `[files] allowed`.
 
 ## Related
 

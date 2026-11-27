@@ -3,6 +3,7 @@
 //! shape.
 
 use std::collections::BTreeSet;
+use std::path::{Component, Path};
 
 use herald_core::SecretRef;
 use herald_kinds::ConfiguredStore;
@@ -12,11 +13,12 @@ use toml::de::{DeTable, DeValue};
 
 use super::{Loader, Value, list};
 use crate::config::{Config, Schedule, Server};
-use crate::file::{HttpFile, MarkersFile, ScheduleFile, ServerFile};
+use crate::file::{FilesFile, HttpFile, MarkersFile, ScheduleFile, ServerFile};
 
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 30] = [
+const SECTIONS: [&str; 31] = [
     "version",
+    "files",
     "presets",
     "kinds",
     "store",
@@ -52,6 +54,7 @@ const SECTIONS: [&str; 30] = [
 #[derive(Default)]
 pub(super) struct Sections<'i> {
     pub(super) version: Option<Value<'i>>,
+    pub(super) files: Option<Value<'i>>,
     pub(super) presets: Option<Value<'i>>,
     pub(super) kinds: Option<Value<'i>>,
     pub(super) store: Option<Value<'i>>,
@@ -108,6 +111,7 @@ impl Loader<'_> {
         for (key, value) in root {
             let slot = match key.get_ref().as_ref() {
                 "version" => &mut sections.version,
+                "files" => &mut sections.files,
                 "presets" => &mut sections.presets,
                 "kinds" => &mut sections.kinds,
                 "store" => &mut sections.store,
@@ -175,6 +179,31 @@ impl Loader<'_> {
                 ),
             );
         }
+    }
+
+    /// The directories `[files] allowed` names, each absolute with no `..`
+    /// step.
+    pub(super) fn allowed(&mut self, value: Option<Value<'_>>) -> Vec<String> {
+        let file = value
+            .and_then(|value| self.typed::<FilesFile>(value, "files"))
+            .unwrap_or_default();
+        let mut allowed = Vec::new();
+        for directory in file.allowed {
+            let path = Path::new(directory.get_ref());
+            if path.is_absolute() && !path.components().any(|step| step == Component::ParentDir) {
+                allowed.push(directory.into_inner());
+            } else {
+                self.error(
+                    &directory.span(),
+                    "files.allowed",
+                    format!(
+                        "\"{}\" is no absolute directory; name each from the root, such as \"/etc/herald\", with no .. step",
+                        directory.get_ref()
+                    ),
+                );
+            }
+        }
+        allowed
     }
 
     /// The secret `[markers]` names as the marker key, where it names one.

@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use herald_core::{
     Context, Event, Form, Group, Kind, Sandbox, Showing, TemplateName, Templates, body_template,
-    group_template, thread_template, title_template,
+    group_template, thread_template, title_template, unparsed,
 };
 use toml::Spanned;
 
@@ -27,6 +27,8 @@ pub(super) struct Written {
     pub(super) body: Spanned<String>,
     pub(super) title_path: String,
     pub(super) body_path: String,
+    /// The file the body is read from, where it is.
+    pub(super) file: Option<String>,
 }
 
 impl Loader<'_> {
@@ -50,6 +52,7 @@ impl Loader<'_> {
             let Some(template) = self.typed::<TemplateFile>(value, &path) else {
                 continue;
             };
+            let file_name = template.file.as_ref().map(|file| file.get_ref().clone());
             let body = match (template.body, template.file) {
                 (Some(body), None) => Some((body, format!("{path}.body"))),
                 (None, Some(file)) => match read(file.get_ref()) {
@@ -84,6 +87,7 @@ impl Loader<'_> {
                         body,
                         title_path: format!("{path}.title"),
                         body_path,
+                        file: file_name,
                     },
                 );
             }
@@ -104,6 +108,7 @@ impl Loader<'_> {
                     body: Spanned::new(0..0, body.to_owned()),
                     title_path: format!("templates.{name}.title"),
                     body_path: name.to_owned(),
+                    file: None,
                 });
         }
         templates
@@ -133,6 +138,7 @@ impl Loader<'_> {
         sandbox: Sandbox,
     ) -> Option<Templates> {
         let mut sources: Vec<(String, String, Form, Range<usize>, String)> = Vec::new();
+        let mut files: BTreeMap<String, &str> = BTreeMap::new();
         for (name, written) in templates {
             sources.push((
                 title_template(name),
@@ -141,6 +147,9 @@ impl Loader<'_> {
                 written.title.span(),
                 written.title_path.clone(),
             ));
+            if let Some(file) = &written.file {
+                files.insert(body_template(name), file);
+            }
             sources.push((
                 body_template(name),
                 written.body.get_ref().clone(),
@@ -182,10 +191,14 @@ impl Loader<'_> {
                         .map_or((0..0, String::new()), |(_, _, _, span, path)| {
                             (span.clone(), path.clone())
                         });
+                    let reason = match files.get(&failure.name) {
+                        Some(file) => unparsed(file, failure.line.unwrap_or(1), None),
+                        None => failure.reason,
+                    };
                     self.error(
                         &span,
                         &path,
-                        format!("the template does not compile: {}", failure.reason),
+                        format!("the template does not compile: {reason}"),
                     );
                 }
                 None

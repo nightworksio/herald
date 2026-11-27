@@ -206,6 +206,7 @@ pub fn announce(
     };
     let template = route.template.as_ref().ok_or_else(|| TemplateError {
         name: route.id.as_str().to_owned(),
+        line: None,
         reason: UNTEMPLATED.to_owned(),
     })?;
     let title = templates.render_line(&title_template(template), &context)?;

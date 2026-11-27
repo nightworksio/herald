@@ -7,9 +7,9 @@ use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, CliFile, DoctorFile, FederationFile, GithubAppFile, HttpFile, KindFile,
-    LogFile, MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile,
-    ServerFile, TemplateFile,
+    AnnounceFile, AppFile, CliFile, DoctorFile, FederationFile, FilesFile, GithubAppFile, HttpFile,
+    KindFile, LogFile, MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile,
+    ScheduleFile, ServerFile, TemplateFile,
 };
 use crate::presets::SHIPPED;
 use crate::views::BOARD_KEYS;
@@ -329,6 +329,10 @@ pub(crate) fn routed<T: JsonSchema>(
 struct FileSchema {
     /// The version of the config: 1.
     version: VersionSchema,
+    /// The directories beside its own whose files the config may name: a
+    /// template's, a member list's, a block list's or a CA file elsewhere
+    /// stops the load (ADR-0092 decision 8).
+    files: Option<FilesFile>,
     /// The presets the config adopts, by name: each expanded into the
     /// tables it writes, each of them named `<name>-<table>` (ADR-0092).
     #[serde(default)]

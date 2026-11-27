@@ -700,6 +700,14 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.signed_for` | [Duration](#duration) | How long each response of herald's API, and each push it makes to a peer, stays signed, from when it is made: "5m" where absent, at most "20m". |
 | `federation.stranger_rate` | [Rate](#rate) | How many requests to a source's inbox that no peer's key signs are kept in the audit: "120/m" where absent, at most "480/m"; the rest are only logged (ADR-0054). |
 
+## `files`
+
+The directories beside its own whose files the config may name: a template's, a member list's, a block list's or a CA file elsewhere stops the load (ADR-0092 decision 8).
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `files.allowed` | array of string | The directories, each an absolute path, whose files a template's `file`, a source's `members.file`, a block list's `file` and `http.ca_file` may name beside the config's own directory; none where absent. Every link is followed before a file is read. |
+
 ## `github_apps`
 
 The GitHub Apps sources read as, by name.

@@ -182,10 +182,16 @@ pub(crate) fn trusting(
 pub(crate) fn trusted(roots: Option<&Roots>) -> Result<RootCertStore, BuildError> {
     let mut trusted: RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
     if let Some(roots) = roots {
-        let unread = |error: &dyn fmt::Display| BuildError(format!("{}: {error}", roots.file));
         for certificate in CertificateDer::pem_slice_iter(roots.pem.as_bytes()) {
-            let certificate = certificate.map_err(|error| unread(&error))?;
-            trusted.add(certificate).map_err(|error| unread(&error))?;
+            let certificate = certificate.map_err(|_| {
+                BuildError(format!(
+                    "{} holds a PEM section herald cannot read",
+                    roots.file
+                ))
+            })?;
+            trusted
+                .add(certificate)
+                .map_err(|error| BuildError(format!("{}: {error}", roots.file)))?;
         }
     }
     Ok(trusted)

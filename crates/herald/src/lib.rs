@@ -17,7 +17,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use clap::Parser as _;
-use herald_config::{Config, Uses, load_with};
+use herald_config::{Config, Unread, Uses, Within, load_with};
 use herald_core::Printed;
 use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
@@ -466,39 +466,45 @@ struct Beside<'a> {
     directory: &'a Path,
 }
 
-impl herald_config::Files for Beside<'_> {
-    fn read(&self, file: &str) -> Result<String, String> {
-        std::fs::read_to_string(self.directory.join(file)).map_err(|error| error.to_string())
-    }
-
-    fn read_inside(&self, file: &str) -> Result<String, String> {
-        let directory = if self.directory.as_os_str().is_empty() {
+impl Beside<'_> {
+    /// The config's directory, `.` where its path names none.
+    fn directory(&self) -> &Path {
+        if self.directory.as_os_str().is_empty() {
             Path::new(".")
         } else {
             self.directory
-        };
-        let directory = std::fs::canonicalize(directory).map_err(unread)?;
-        let resolved = std::fs::canonicalize(directory.join(file)).map_err(unread)?;
-        if !resolved.starts_with(&directory) {
-            return Err(format!(
-                "its links lead outside {}, the config's directory",
-                directory.display()
-            ));
         }
-        if !resolved.is_file() {
-            return Err("it is no file".to_owned());
-        }
-        std::fs::read_to_string(resolved).map_err(unread)
     }
 }
 
-/// Why a file could not be read, as the system says it.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "map_err hands each error over by value"
-)]
-fn unread(error: std::io::Error) -> String {
-    error.to_string()
+impl herald_config::Files for Beside<'_> {
+    fn read(&self, file: &str, within: Within<'_>) -> Result<String, Unread> {
+        let failed = |error: std::io::Error| Unread::Failed(error.to_string());
+        let base = match within {
+            Within::Beside => self.directory(),
+            Within::Allowed(directory) => Path::new(directory),
+        };
+        let base = std::fs::canonicalize(base).map_err(failed)?;
+        let resolved = std::fs::canonicalize(self.directory().join(file)).map_err(failed)?;
+        if !resolved.starts_with(&base) {
+            return Err(Unread::Outside);
+        }
+        if !resolved.is_file() {
+            return Err(Unread::Failed("it is no file".to_owned()));
+        }
+        std::fs::read_to_string(resolved).map_err(failed)
+    }
+
+    fn read_inside(&self, file: &str) -> Result<String, String> {
+        self.read(file, Within::Beside)
+            .map_err(|unread| match unread {
+                Unread::Outside => format!(
+                    "its links lead outside {}, the config's directory",
+                    self.directory().display()
+                ),
+                Unread::Failed(why) => why,
+            })
+    }
 }
 
 /// The secret `herald init` names for the marker key it prints.

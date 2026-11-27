@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use herald_config::{Config, Files, UNCONTAINED, load, load_with};
+use herald_config::{Config, Files, UNCONTAINED, Unread, Within, load, load_with};
 use herald_core::{Kind, Prereleases, SourceName};
 
 const EXAMPLE: &str = r#"version = 1
@@ -33,8 +33,8 @@ channel = "1566200000000000100"
 struct Beside(BTreeMap<&'static str, String>);
 
 impl Files for Beside {
-    fn read(&self, path: &str) -> Result<String, String> {
-        Err(format!("no file {path}"))
+    fn read(&self, path: &str, _: Within<'_>) -> Result<String, Unread> {
+        Err(Unread::Failed(format!("no file {path}")))
     }
 
     fn read_inside(&self, path: &str) -> Result<String, String> {

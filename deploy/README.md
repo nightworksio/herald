@@ -172,7 +172,8 @@ Run `node deploy/node/server.mjs` or `bun deploy/node/server.mjs` beside
 `herald.toml`. The server listens on `HERALD_LISTEN`, or where unset on
 the config's `[server] listen` (`127.0.0.1:8080` by default), and runs
 each round at the period the config's `[schedule]` names. `HERALD_CONFIG`
-names another config file; files it names are read beside it.
+names another config file; files it names are read beside it, or in a
+directory its `[files] allowed` names.
 
 - `sqlite` uses `node:sqlite` on Node 24 or newer, and `bun:sqlite` on Bun.
   The file is readable by its owner alone.

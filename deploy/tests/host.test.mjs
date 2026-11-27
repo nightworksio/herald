@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -121,14 +121,18 @@ test("Node listens where the config says, an IPv6 address too, and keeps an abso
   assert.ok((await stat(file)).isFile());
 });
 
-test("a config's files are read beside it, an absolute name as itself", async () => {
+test("a config's files are read inside the directory each must lie in, every link followed", async () => {
   const directory = await mkdtemp(join(tmpdir(), "herald-files-"));
   await writeFile(join(directory, "post.md"), "beside");
-  const elsewhere = join(await mkdtemp(join(tmpdir(), "herald-files-")), "away.md");
+  const away = await mkdtemp(join(tmpdir(), "herald-files-"));
+  const elsewhere = join(away, "away.md");
   await writeFile(elsewhere, "away");
+  await symlink(elsewhere, join(directory, "link.md"));
   const files = beside(join(directory, "herald.toml"));
   assert.equal(files("post.md"), "beside");
-  assert.equal(files(elsewhere), "away");
+  assert.equal(files(elsewhere), null);
+  assert.equal(files("link.md"), null);
+  assert.equal(files(elsewhere, away), "away");
   assert.equal(files("absent.md"), undefined);
 });
 

@@ -108,7 +108,7 @@ fn blocked_domains(csv: &str) -> Result<Vec<String>, String> {
         };
         if !crate::domain(&ascii) {
             return Err(format!(
-                "line {} names \"{domain}\", which is not a domain",
+                "line {} names no domain; give each row a domain first",
                 index + 1
             ));
         }
@@ -186,11 +186,11 @@ mod tests {
         assert_eq!(blocked_domains("domain,severity\n"), Ok(Vec::new()));
         assert_eq!(
             blocked_domains("ok.example\nsp*m.example,suspend\n"),
-            Err("line 2 names \"sp*m.example\", which is not a domain".to_owned())
+            Err("line 2 names no domain; give each row a domain first".to_owned())
         );
         assert_eq!(
             blocked_domains("https://spam.example/users/x\n"),
-            Err("line 1 names \"https://spam.example/users/x\", which is not a domain".to_owned())
+            Err("line 1 names no domain; give each row a domain first".to_owned())
         );
     }
 
@@ -224,7 +224,7 @@ mod tests {
         let broken = crate::digest("sp*m.example\n");
         assert_eq!(
             list("broken.csv", &broken).read(&read),
-            Err("broken.csv: line 1 names \"sp*m.example\", which is not a domain".to_owned())
+            Err("broken.csv: line 1 names no domain; give each row a domain first".to_owned())
         );
     }
 

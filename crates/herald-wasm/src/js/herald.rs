@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use herald_compose::{Artefact, Composed, Hosting, SocketReach, asked_query, public_address, told};
-use herald_config::{Server, Uses, load};
+use herald_config::{Files, Server, UNCONTAINED, Unread, Uses, Within, load_with};
 use herald_flows::{Admission, Inbound};
 use js_sys::{Function, Promise, Uint8Array};
 use send_wrapper::SendWrapper;
@@ -37,11 +37,45 @@ impl Herald {
     }
 }
 
+/// The files a JS host gives a config: an object of texts by name, or a
+/// function answering each name, and the directory it must lie in, with its
+/// text, `null` where its links lead outside that directory, or nothing.
+pub(super) struct Given<'a>(pub(super) &'a JsValue);
+
+impl Files for Given<'_> {
+    fn read(&self, name: &str, within: Within<'_>) -> Result<String, Unread> {
+        let read = match self.0.dyn_ref::<Function>() {
+            Some(reader) => {
+                let within = match within {
+                    Within::Beside => JsValue::UNDEFINED,
+                    Within::Allowed(directory) => JsValue::from_str(directory),
+                };
+                reader
+                    .call2(&JsValue::NULL, &JsValue::from_str(name), &within)
+                    .unwrap_or(JsValue::UNDEFINED)
+            }
+            None => member(self.0, name),
+        };
+        if read.is_null() {
+            return Err(Unread::Outside);
+        }
+        read.as_string().ok_or_else(|| {
+            Unread::Failed(format!("{name} is not among the files herald was given"))
+        })
+    }
+
+    fn read_inside(&self, _: &str) -> Result<String, String> {
+        Err(UNCONTAINED.to_owned())
+    }
+}
+
 #[wasm_bindgen]
 impl Herald {
-    /// herald composed on `host` from the config `config`, each template
-    /// file it names read from `files`, an object of texts by name or a
-    /// function answering each name with its text, serving as the host
+    /// herald composed on `host` from the config `config`, each file it
+    /// names read from `files`, an object of texts by name or a function
+    /// answering each name and the directory it must lie in (none for the
+    /// config's own) with its text, or `null` where its links lead outside
+    /// that directory, serving as the host
     /// named `hosting`: `worker`, `deno`, `node`, `vercel` or `netlify`.
     ///
     /// # Errors
@@ -56,15 +90,7 @@ impl Herald {
     ) -> Result<Herald, JsError> {
         let hosting =
             Hosting::running(&hosting, Artefact::Module).map_err(|error| JsError::new(&error))?;
-        let read = |name: &str| {
-            let read = match files.dyn_ref::<Function>() {
-                Some(reader) => reader.call1(&JsValue::NULL, &JsValue::from_str(name)).ok(),
-                None => Some(member(&files, name)),
-            };
-            read.and_then(|text| text.as_string())
-                .ok_or_else(|| format!("{name} is not among the files herald was given"))
-        };
-        let loaded = load(CONFIG, &config, &read, &herald_compose::kinds())
+        let loaded = load_with(CONFIG, &config, &Given(&files), &herald_compose::kinds())
             .map_err(|errors| JsError::new(&errors.to_string()))?;
         let composed = Composed::new(
             JsHost::new(host),

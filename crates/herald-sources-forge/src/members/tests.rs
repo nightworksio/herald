@@ -52,15 +52,13 @@ fn a_member_file_that_cannot_be_read_is_named_with_what_to_do() {
                 .to_owned()
         )
     );
-    assert!(
-        names("repos.toml", "[[", &tables(&["repo"]), "name")
-            .unwrap_err()
-            .starts_with("repos.toml: ")
+    assert_eq!(
+        names("repos.toml", "[[", &tables(&["repo"]), "name"),
+        Err("repos.toml cannot be read at line 1, column 3; fix it there".to_owned())
     );
-    assert!(
-        names("repos.json", "{", &[], "name")
-            .unwrap_err()
-            .starts_with("repos.json: ")
+    assert_eq!(
+        names("repos.json", "{", &[], "name"),
+        Err("repos.json cannot be read at line 1, column 1; fix it there".to_owned())
     );
     assert_eq!(
         names("repos.toml", "[[repo]]\nname = \"a\"\n", &[], "name"),

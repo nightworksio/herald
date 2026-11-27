@@ -1,15 +1,26 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { Herald, load } from "./host.mjs";
 
 const WASM = new URL("./pkg/herald_wasm_bg.wasm", import.meta.url);
 
 export function beside(config) {
   const directory = dirname(config);
-  return (name) => {
+  return (name, within = directory) => {
+    let base;
+    let file;
     try {
-      return readFileSync(resolve(directory, name), "utf8");
+      base = realpathSync(within);
+      file = realpathSync(resolve(directory, name));
+    } catch {
+      return undefined;
+    }
+    if (!file.startsWith(base.endsWith(sep) ? base : base + sep)) {
+      return null;
+    }
+    try {
+      return readFileSync(file, "utf8");
     } catch {
       return undefined;
     }

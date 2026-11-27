@@ -54,6 +54,9 @@ pub struct Context<'a> {
 pub struct TemplateError {
     /// The template's name.
     pub name: String,
+    /// The line of the template's source where it went wrong, where
+    /// minijinja tells.
+    pub line: Option<usize>,
     /// What went wrong, as minijinja says it.
     pub reason: String,
 }
@@ -156,6 +159,7 @@ impl Templates {
         if capped.passed {
             return Err(TemplateError {
                 name: name.to_owned(),
+                line: None,
                 reason: format!("its output passes the cap of {} bytes", self.output),
             });
         }
@@ -163,6 +167,7 @@ impl Templates {
             |error| match lacked(template.source(), &error, context.event) {
                 Some(attribute) => TemplateError {
                     name: name.to_owned(),
+                    line: None,
                     reason: format!(
                         "it prints event.attributes.{attribute}, which {} events do not carry",
                         context.event.kind()
@@ -270,6 +275,7 @@ impl Line {
         if capped.passed {
             return Err(TemplateError {
                 name: self.name.to_owned(),
+                line: None,
                 reason: format!("its output passes the cap of {} bytes", self.output),
             });
         }
@@ -281,6 +287,7 @@ impl Line {
         if named.is_empty() {
             return Err(TemplateError {
                 name: self.name.to_owned(),
+                line: None,
                 reason: format!("it names no {} for {subject}", self.name),
             });
         }
@@ -511,6 +518,7 @@ fn failure(name: &str, error: &minijinja::Error) -> TemplateError {
     };
     TemplateError {
         name: name.to_owned(),
+        line: error.line(),
         reason,
     }
 }

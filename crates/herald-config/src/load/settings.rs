@@ -71,7 +71,11 @@ impl Loader<'_> {
                     None
                 }
                 Err(error) => {
-                    self.error(&ca_file.span(), "http.ca_file", error);
+                    self.error(
+                        &ca_file.span(),
+                        "http.ca_file",
+                        format!("{} could not be read: {error}", ca_file.get_ref()),
+                    );
                     None
                 }
             });
