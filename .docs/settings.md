@@ -764,8 +764,8 @@ What herald's log writes, and the secrets kept out of everything herald writes.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `log.format` | [LogFormat](#logformat) | How herald's log writes each line: "text", as words, where absent; or "json", a JSON object a line holding its `level` and its `message`. `HERALD_LOG_FORMAT` takes its place, and a command's `--log-format` takes the place of both. |
-| `log.level` | [Level](#level) | The least grave line herald's log writes: "info", every line, where absent; "warn", what herald left undone, passed over or refused, and what stopped or failed; or "error", what stopped or failed alone. `HERALD_LOG_LEVEL` takes its place, and a command's `--log-level` takes the place of both. |
+| `log.format` | [LogFormat](#logformat) | How herald's log writes each line: "text", as words, where absent; or "json", a JSON object a line holding its `time` (RFC 3339, UTC), its `level` and its `message`. `HERALD_LOG_FORMAT` takes its place, and a command's `--log-format` takes the place of both. |
+| `log.level` | [Level](#level) | The least grave line herald's log writes: "debug", every line and what herald saw as it went, none carrying what a private repository holds; "info", every line but those, where absent; "warn", what herald left undone, passed over or refused, and what stopped or failed; or "error", what stopped or failed alone. `HERALD_LOG_LEVEL` takes its place, and a command's `--log-level` takes the place of both. |
 | `log.scrub_from` | integer | The fewest characters a secret's value holds to be written as `«secret:NAME»` in everything herald writes: 8 where absent, as a shorter value would rewrite ordinary words. On GitHub Actions every secret is masked whatever its length. |
 | `log.scrub_warn_past` | integer | How many secret values herald holds to scrub before its log says, once, that it holds more: 4096 where absent. Past it every value is still held and scrubbed until it can no longer be valid; raise it where a run sends that many secrets by design. |
 

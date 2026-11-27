@@ -449,6 +449,9 @@ pub struct Doctor {
 )]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
+    /// What herald saw as it went, to tell how a run came to what it did:
+    /// no line of it carries what a private repository holds.
+    Debug,
     /// What herald did.
     #[default]
     Info,
@@ -460,12 +463,13 @@ pub enum Level {
 
 impl Level {
     /// Every level, the least grave first.
-    pub const ALL: [Self; 3] = [Self::Info, Self::Warn, Self::Error];
+    pub const ALL: [Self; 4] = [Self::Debug, Self::Info, Self::Warn, Self::Error];
 
     /// Its name, as the config and the log write it.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Debug => "debug",
             Self::Info => "info",
             Self::Warn => "warn",
             Self::Error => "error",
@@ -486,7 +490,7 @@ pub enum LogFormat {
     /// As words, a line each.
     #[default]
     Text,
-    /// As a JSON object a line, its `level` and its `message`.
+    /// As a JSON object a line, its `time`, its `level` and its `message`.
     Json,
 }
 

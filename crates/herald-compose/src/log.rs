@@ -2,8 +2,10 @@
 //! JSON object, every secret herald resolved or sent scrubbed from it, on
 //! every host (ADR-0089).
 
+use std::sync::Arc;
+
 use herald_config::{Level, LogFormat};
-use herald_ports::Scrubber;
+use herald_ports::{Clock, Scrubber};
 
 /// The variable naming the least grave line the log writes, in place of
 /// the config's `[log] level`.
@@ -22,6 +24,13 @@ pub struct Told {
 }
 
 impl Told {
+    /// What herald saw as it went: no line of it carries what a private
+    /// repository holds.
+    #[must_use]
+    pub fn debug(text: impl Into<String>) -> Self {
+        Self::at(Level::Debug, text)
+    }
+
     /// What herald did.
     #[must_use]
     pub fn info(text: impl Into<String>) -> Self {
@@ -69,17 +78,29 @@ impl PartialEq<String> for Told {
 }
 
 /// How herald's log writes: the least grave line it writes, how it writes
-/// each, and what scrubs each.
-#[derive(Debug, Clone)]
+/// each, what scrubs each, and the clock a JSON line takes its time from.
+#[derive(Clone)]
 pub struct Log {
     level: Level,
     format: LogFormat,
     scrubber: Scrubber,
+    clock: Arc<dyn Clock + Send>,
+}
+
+impl std::fmt::Debug for Log {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Log")
+            .field("level", &self.level)
+            .field("format", &self.format)
+            .field("scrubber", &self.scrubber)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Log {
     /// The log `config` sets, [`LOG_LEVEL`] and [`LOG_FORMAT`] as `var`
-    /// reads them taking their places, each line scrubbed by `scrubber`.
+    /// reads them taking their places, each line scrubbed by `scrubber` and
+    /// a JSON line timed by `clock`.
     ///
     /// # Errors
     ///
@@ -88,6 +109,7 @@ impl Log {
         config: &herald_config::Log,
         var: impl Fn(&str) -> Option<&'v str>,
         scrubber: Scrubber,
+        clock: impl Clock + Send + 'static,
     ) -> Result<Self, String> {
         let named = |variable: &str, name: &str, takes: String| {
             format!("{variable} is \"{name}\"; {takes}")
@@ -102,14 +124,18 @@ impl Log {
             level: level.unwrap_or(config.level),
             format: format.unwrap_or(config.format),
             scrubber,
+            clock: Arc::new(clock),
         })
     }
 
     /// The log a host writes before a config is read: the level and
     /// format [`LOG_LEVEL`] and [`LOG_FORMAT`] name, where `var` reads one
-    /// each names, and else the defaults.
+    /// each names, and else the defaults, a JSON line timed by `clock`.
     #[must_use]
-    pub fn unconfigured<'v>(var: impl Fn(&str) -> Option<&'v str>) -> Self {
+    pub fn unconfigured<'v>(
+        var: impl Fn(&str) -> Option<&'v str>,
+        clock: impl Clock + Send + 'static,
+    ) -> Self {
         let config = herald_config::Log::default();
         Self {
             level: var(LOG_LEVEL)
@@ -119,6 +145,7 @@ impl Log {
                 .and_then(LogFormat::named)
                 .unwrap_or(config.format),
             scrubber: config.scrubber(),
+            clock: Arc::new(clock),
         }
     }
 
@@ -145,7 +172,9 @@ impl Log {
     }
 
     /// `told` as the log writes it, scrubbed; nothing where it is less
-    /// grave than the least grave line the log writes.
+    /// grave than the least grave line the log writes. A JSON line holds
+    /// its `time`, in RFC 3339 and UTC by the log's clock, its `level` and
+    /// its `message`.
     #[must_use]
     pub fn written(&self, told: &Told) -> Option<String> {
         (told.level >= self.level).then(|| {
@@ -153,7 +182,13 @@ impl Log {
             match self.format {
                 LogFormat::Text => text,
                 LogFormat::Json => {
-                    serde_json::json!({ "level": told.level.name(), "message": text }).to_string()
+                    let field = |value: String| serde_json::Value::String(value).to_string();
+                    format!(
+                        "{{\"time\":{},\"level\":{},\"message\":{}}}",
+                        field(self.clock.now().to_string()),
+                        field(told.level.name().to_owned()),
+                        field(text)
+                    )
                 }
             }
         })

@@ -24,6 +24,19 @@ const fn standing(remembered: &Remembered) -> Level {
     }
 }
 
+/// What a run read of `config`, as counts and the store's kind alone, so
+/// nothing a private repository holds is named.
+#[must_use]
+pub fn configured(config: &herald_config::Config) -> Told {
+    Told::debug(format!(
+        "herald read its config: sources {}, routes {}, destinations {}, store {}",
+        config.sources.len(),
+        config.routes.len(),
+        config.destinations.len(),
+        config.store.kind()
+    ))
+}
+
 /// What a report announced of its view's `pulls` open pull requests, its
 /// events named as `printed` says.
 fn reported(

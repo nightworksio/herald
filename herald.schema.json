@@ -3732,6 +3732,11 @@
       "description": "How grave a line of herald's log is, the least grave first.",
       "oneOf": [
         {
+          "description": "What herald saw as it went, to tell how a run came to what it did:\nno line of it carries what a private repository holds.",
+          "type": "string",
+          "const": "debug"
+        },
+        {
           "description": "What herald did.",
           "type": "string",
           "const": "info"
@@ -3787,11 +3792,11 @@
       "type": "object",
       "properties": {
         "format": {
-          "description": "How herald's log writes each line: \"text\", as words, where absent;\nor \"json\", a JSON object a line holding its `level` and its\n`message`. `HERALD_LOG_FORMAT` takes its place, and a command's\n`--log-format` takes the place of both.",
+          "description": "How herald's log writes each line: \"text\", as words, where absent;\nor \"json\", a JSON object a line holding its `time` (RFC 3339, UTC),\nits `level` and its `message`. `HERALD_LOG_FORMAT` takes its place, and a command's\n`--log-format` takes the place of both.",
           "$ref": "#/$defs/LogFormat"
         },
         "level": {
-          "description": "The least grave line herald's log writes: \"info\", every line, where\nabsent; \"warn\", what herald left undone, passed over or refused,\nand what stopped or failed; or \"error\", what stopped or failed\nalone. `HERALD_LOG_LEVEL` takes its place, and a command's\n`--log-level` takes the place of both.",
+          "description": "The least grave line herald's log writes: \"debug\", every line and\nwhat herald saw as it went, none carrying what a private repository\nholds; \"info\", every line but those, where absent; \"warn\", what\nherald left undone, passed over or refused, and what stopped or\nfailed; or \"error\", what stopped or failed alone. `HERALD_LOG_LEVEL`\ntakes its place, and a command's `--log-level` takes the place of\nboth.",
           "$ref": "#/$defs/Level"
         },
         "scrub_from": {
@@ -3818,7 +3823,7 @@
           "const": "text"
         },
         {
-          "description": "As a JSON object a line, its `level` and its `message`.",
+          "description": "As a JSON object a line, its `time`, its `level` and its `message`.",
           "type": "string",
           "const": "json"
         }

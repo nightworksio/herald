@@ -138,7 +138,12 @@ where
         let scrubber = host
             .scrubber()
             .unwrap_or_else(|| config.log.scrubber().timed(host.clock().clone()));
-        let log = Log::of(&config.log, |name| host.var(name), scrubber.clone())?;
+        let log = Log::of(
+            &config.log,
+            |name| host.var(name),
+            scrubber.clone(),
+            host.clock().clone(),
+        )?;
         let secrets = Kept::new(host.secrets(), &scrubber);
         let prepared = prepare(&config, &secrets, host.signer(), uses)
             .await

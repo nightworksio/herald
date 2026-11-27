@@ -100,6 +100,24 @@ fn a_config_without_sources_has_nothing_to_poll() {
 }
 
 #[test]
+fn a_poll_at_the_debug_level_first_says_what_it_read_as_counts_alone() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    forge(&world, (200, &["v1"]));
+    let debugged = herald(&setup, &world, &["poll", "--log-level", "debug"]);
+    assert_eq!(
+        debugged.out.lines().next(),
+        Some("herald read its config: sources 1, routes 1, destinations 1, store git-branch"),
+        "{}",
+        debugged.out
+    );
+    let world = World::default();
+    forge(&world, (200, &["v1"]));
+    let told = herald(&setup, &world, &["poll"]);
+    assert!(!told.out.contains("herald read its config"), "{}", told.out);
+}
+
+#[test]
 fn a_poll_at_the_error_level_writes_nothing_where_nothing_failed() {
     let setup = setup(CONFIG);
     let world = World::default();

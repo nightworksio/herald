@@ -19,15 +19,21 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
 
 ## Decision
 
-1. **Each line of the log has a level.** `info` is what herald did, `warn`
-   what it left undone, passed over or refused, and `error` what stopped or
-   failed.
+1. **Each line of the log has a level.** `debug` is what herald saw as it
+   went, `info` what herald did, `warn` what it left undone, passed over or
+   refused, and `error` what stopped or failed. No `debug` line carries
+   what a private repository holds, and each passes through the scrubber
+   as every line does; the CLI's runs say first, at `debug`, how many
+   sources, routes and destinations they read and which store they keep
+   their records in.
 2. **`[log] level` is the least grave line the log writes.** `info`, every
-   line, where absent. `HERALD_LOG_LEVEL` takes its place, and a command's
-   `--log-level` takes the place of both.
+   line but `debug` ones, where absent. `HERALD_LOG_LEVEL` takes its place,
+   and a command's `--log-level`, and the Action's `log-level` input, take
+   the place of both.
 3. **`[log] format` is how the log writes each line.** `text`, the words as
    herald writes them, where absent; `json`, a JSON object a line holding
-   its `level` and its `message`. `HERALD_LOG_FORMAT` takes its place, and
+   its `time`, in RFC 3339 and UTC by the host's clock, its `level` and its
+   `message`. `HERALD_LOG_FORMAT` takes its place, and
    a command's `--log-format` takes the place of both. A variable naming no
    level or format is a mistake the run stops on.
 4. **What the log is.** The lines `herald announce`, `poll`, `housekeep`,
@@ -70,7 +76,7 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
 ## Consequences
 
 - A log collector reads herald's lines as JSON where `[log] format` says so,
-  each with its level.
+  each with its time and its level.
 - `level = "warn"` leaves the log of a quiet run empty.
 - A short value is scrubbed only where `scrub_from` is lowered to it, at the
   cost of the words it rewrites.

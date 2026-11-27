@@ -50,7 +50,7 @@ fn a_plan_names_why_a_route_keeps_a_post_its_group_or_what_is_left_to_delete() {
 #[test]
 fn a_withdrawal_another_run_holds_or_that_stopped_ends_stopped() {
     let mut written = Vec::new();
-    let log = herald_compose::Log::unconfigured(|_| None);
+    let log = herald_compose::Log::unconfigured(|_| None, herald_environment::SystemClock);
     let out = &mut crate::output::Logged::new(&mut written, &log);
     let done = |outcome| Announced {
         route: RouteId::new("r"),
