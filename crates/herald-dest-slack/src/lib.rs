@@ -11,6 +11,7 @@
 mod audience;
 mod config;
 mod domain;
+mod first_run;
 mod held;
 mod interact;
 mod interactions;

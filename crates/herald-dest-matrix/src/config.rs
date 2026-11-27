@@ -174,6 +174,8 @@ impl DestinationKind for MatrixKind {
     type Options = DestinationOptions;
     type Route = RouteOptions;
 
+    const FIRST_RUN: &[herald_kinds::Variant] = crate::first_run::VARIANTS;
+
     fn checked(
         options: DestinationOptions,
         _read: &dyn Fn(&str) -> Result<String, String>,

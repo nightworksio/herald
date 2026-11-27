@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use std::ops::Range;
 
 use herald_kinds::{
-    ConfiguredStore, Destination, DestinationKind, Fault, Inherited, Offer, Placed, Placing,
-    Source, SourceKind, StoreKind,
+    ConfiguredStore, Destination, DestinationKind, Fault, FirstRun, Inherited, Offer, Placed,
+    Placing, Source, SourceKind, StoreKind,
 };
 use jiff::SignedDuration;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
@@ -46,6 +46,16 @@ impl Kinds {
     #[must_use]
     pub fn destination_kinds(&self) -> Vec<&'static str> {
         self.destinations.iter().map(|kind| kind.name()).collect()
+    }
+
+    /// Every destination kind a first run may choose, in the order they
+    /// are given: each that names a way it is first reached.
+    #[must_use]
+    pub fn first_runs(&self) -> Vec<FirstRun> {
+        self.destinations
+            .iter()
+            .filter_map(|kind| kind.first_run())
+            .collect()
     }
 
     pub(crate) fn destination_named(&self, name: &str) -> Option<&dyn Kinded> {
@@ -160,6 +170,8 @@ pub(crate) trait Kinded: Send + Sync {
 
     fn inherits(&self) -> &'static [Inherited];
 
+    fn first_run(&self) -> Option<FirstRun>;
+
     fn renders(&self) -> bool;
 
     fn parse(
@@ -200,6 +212,14 @@ where
 
     fn inherits(&self) -> &'static [Inherited] {
         K::INHERITS
+    }
+
+    fn first_run(&self) -> Option<FirstRun> {
+        (!K::FIRST_RUN.is_empty()).then_some(FirstRun {
+            kind: K::NAME,
+            described: K::DESCRIPTION,
+            variants: K::FIRST_RUN,
+        })
     }
 
     fn renders(&self) -> bool {

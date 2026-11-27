@@ -11,9 +11,9 @@ use herald_core::merging::{Method, Runs};
 use herald_flows::BranchSaid;
 use herald_kinds::Source;
 
-use super::asking::{Asking, choices, parsed};
 use super::{asking_of, merged};
 use crate::Connect;
+use crate::asking::{Asking, choices, parsed};
 use crate::stores::composed;
 
 /// The methods offered on `source` in `repository`: each the config takes

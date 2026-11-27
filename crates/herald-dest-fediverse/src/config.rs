@@ -182,6 +182,8 @@ impl DestinationKind for MastodonKind {
     type Options = DestinationOptions;
     type Route = RouteOptions;
 
+    const FIRST_RUN: &[herald_kinds::Variant] = crate::first_run::VARIANTS;
+
     fn placed(
         _options: &DestinationOptions,
         route: &RouteOptions,

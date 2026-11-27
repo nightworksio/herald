@@ -10,6 +10,7 @@ mod activitypub;
 mod actor;
 mod audience;
 mod config;
+mod first_run;
 mod markers;
 mod mastodon;
 mod mastodon_reach;
