@@ -639,3 +639,40 @@ fn a_credential_in_the_remote_s_url_is_never_said() {
     assert!(!out.contains(&token), "{out}");
     assert!(!written(directory.path()).unwrap().contains(&token));
 }
+
+#[test]
+fn the_cli_runs_init_and_says_why_it_stopped_on_standard_error() {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("herald.toml").display().to_string();
+    let run = |extra: &[&str]| {
+        let mut args = vec!["herald", "--config", &config, "init", "--yes", "--print"];
+        args.extend(extra);
+        let args = args.into_iter().map(ToOwned::to_owned).collect::<Vec<_>>();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = on_tokio(crate::run(
+            &args,
+            &std::collections::BTreeMap::new(),
+            &crate::Connector::new(&|_, _| Err(String::new()), &|_, _| Err(String::new())),
+            &mut out,
+            &mut err,
+        ));
+        (
+            code,
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
+    };
+    let (code, out, err) = run(&[
+        "--forge",
+        "github",
+        "--repository",
+        "owner/app",
+        "--chat",
+        "slack",
+    ]);
+    assert_eq!(code, crate::DONE, "{err}");
+    assert!(out.ends_with(&format!("{SCHEMA}{SLACK_WEBHOOK}")), "{out}");
+    let (code, _, err) = run(&["--forge", "teams"]);
+    assert_eq!(code, crate::STOPPED);
+    assert_eq!(err, "--forge: answer one of github, gitlab, forgejo\n");
+}
