@@ -63,12 +63,14 @@ impl Inbound {
         covered: 16,
         document: 262_144,
     };
-    /// The widest bounds a config may set: four times the default.
+    /// The widest bounds a config may set: four times the default, and a
+    /// key's document no more than the default, which a config may only
+    /// lower (ADR-0007).
     pub const MOST: Self = Self {
         replay_window: SignedDuration::from_mins(20),
         signatures: Self::DEFAULT.signatures * 4,
         covered: Self::DEFAULT.covered * 4,
-        document: Self::DEFAULT.document * 4,
+        document: Self::DEFAULT.document,
     };
 }
 

@@ -1326,7 +1326,7 @@ How `herald server` listens, and what it takes on at once.
 | `server.jobs` | integer | How many pieces of work it does at once, each an announcement, an activity or a command a request leaves; 8 where absent. |
 | `server.keys` | table | The keys inbound activities are checked with. |
 | `server.keys.cache` | [KeyCache](#keycache) | Where they are kept: "memory", the default, or "store". |
-| `server.keys.document` | [Size](#size) | The most of a key's or an actor's document read; "256KiB" where absent, and at most "1MiB". |
+| `server.keys.document` | [Size](#size) | The most of a key's or an actor's document read; "256KiB" where absent, and at most that: a setting may only lower it. |
 | `server.keys.most` | integer | The most kept in memory, the one used longest ago forgotten first; 1024 where absent. |
 | `server.keys.refresh_after` | [Duration](#duration) | How long a key is used before its document is read again; 1h where absent. |
 | `server.keys.reread_after` | [Duration](#duration) | How long after a key is read an activity that does not hold under it is refused rather than having it read again; 1m where absent. |

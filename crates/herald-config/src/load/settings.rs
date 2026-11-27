@@ -301,14 +301,29 @@ impl Loader<'_> {
                 &most.signatures.to_string(),
             ),
             covered,
-            document: self.most(
-                document.map(|document| (document.span(), document.into_inner().0)),
-                defaults.document,
-                most.document,
-                "server.keys.document",
-                &Size::written(most.document),
-            ),
+            document: self.document(document),
         }
+    }
+
+    /// `[server.keys] document`, which may only lower the bound ADR-0007
+    /// holds a key's document to.
+    fn document(&mut self, document: Option<Spanned<Size>>) -> usize {
+        let most = Inbound::MOST.document;
+        let Some(document) = document else {
+            return Inbound::DEFAULT.document;
+        };
+        let given = document.get_ref().0;
+        if given > most {
+            self.error(
+                &document.span(),
+                "server.keys.document",
+                format!(
+                    "make it at most {}; a key's document is read no further than that, and a setting may only lower it",
+                    Size::written(most)
+                ),
+            );
+        }
+        given
     }
 
     /// `[server] held`, where a connection is held at least as long as it
