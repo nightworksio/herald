@@ -473,9 +473,8 @@ impl herald_config::Files for Beside<'_> {
         } else {
             self.directory
         };
-        let directory = std::fs::canonicalize(directory).map_err(|error| error.to_string())?;
-        let resolved =
-            std::fs::canonicalize(directory.join(file)).map_err(|error| error.to_string())?;
+        let directory = std::fs::canonicalize(directory).map_err(unread)?;
+        let resolved = std::fs::canonicalize(directory.join(file)).map_err(unread)?;
         if !resolved.starts_with(&directory) {
             return Err(format!(
                 "its links lead outside {}, the config's directory",
@@ -485,8 +484,17 @@ impl herald_config::Files for Beside<'_> {
         if !resolved.is_file() {
             return Err("it is no file".to_owned());
         }
-        std::fs::read_to_string(resolved).map_err(|error| error.to_string())
+        std::fs::read_to_string(resolved).map_err(unread)
     }
+}
+
+/// Why a file could not be read, as the system says it.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "map_err hands each error over by value"
+)]
+fn unread(error: std::io::Error) -> String {
+    error.to_string()
 }
 
 /// The secret `herald init` names for the marker key it prints.

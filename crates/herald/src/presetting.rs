@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 
 use tokio::io::AsyncBufRead;
-use toml_edit::{ArrayOfTables, DocumentMut, Item, Table};
+use toml_edit::{ArrayOfTables, Item, Table};
 
 use crate::asking::Asking;
 use crate::cli::Presetting;
@@ -28,7 +28,7 @@ pub(crate) async fn presetting(
         return Ok(DONE);
     };
     let ejected = ejected(&text, name, &expanded)?;
-    crate::loaded(path, &ejected).map_err(|why| format!("{why}\nNothing was written."))?;
+    crate::loaded(path, &ejected)?;
     if *print {
         let _ = write!(out, "{ejected}");
         return Ok(DONE);
@@ -61,14 +61,14 @@ fn expanded(path: &str, text: &str, name: &str) -> Result<String, String> {
     let directory = Path::new(path).parent().unwrap_or(Path::new(""));
     let tables = herald_config::expansion(path, text, &Beside { directory }, name)
         .map_err(|errors| errors.to_string())?;
-    toml::to_string(&tables).map_err(|error| error.to_string())
+    Ok(tables.to_string())
 }
 
 /// The config `text` with `[presets.<name>]` taken out and the tables it
 /// expanded to, `expanded`, written in its place.
 fn ejected(text: &str, name: &str, expanded: &str) -> Result<String, String> {
-    let mut document: DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
-    let tables: DocumentMut = expanded.parse().map_err(|error| format!("{error}"))?;
+    let mut document = crate::edited::document(text)?;
+    let tables = crate::edited::document(expanded)?;
     let emptied = document
         .get_mut("presets")
         .and_then(Item::as_table_like_mut)

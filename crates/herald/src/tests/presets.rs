@@ -261,3 +261,10 @@ fn a_config_named_without_a_directory_reads_its_preset_from_the_working_director
     let read = beside.read_inside("Cargo.toml").unwrap();
     assert!(read.contains("name = \"herald\""), "{read}");
 }
+
+#[test]
+fn a_local_preset_that_does_not_exist_is_refused_with_why() {
+    let directory = tempfile::tempdir().unwrap();
+    let error = loaded(directory.path(), "./absent.toml").unwrap_err();
+    assert!(error.contains("No such file"), "{error}");
+}
