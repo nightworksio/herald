@@ -1,6 +1,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
+use herald_config::{Files as _, UNCONTAINED, Unread, Within};
 use herald_ports::{
     Algorithm, Base, Binding, Clock as _, CryptoError, Frame, Http as _, HttpError, InferError,
     Inference, Kv as _, Method, Outbound, Request, Sealing, Secret, SecretError, SecretText,
@@ -16,7 +17,7 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::bindings::{HostObject, SocketsObject};
 use super::crypto::{WebSigner, WebVerifier};
-use super::herald::Herald;
+use super::herald::{Given, Herald};
 use super::host::{JsHost, sql_at};
 use super::sessions::{JsSockets, JsTaker, JsTimer};
 use super::{bytes, member, object, pair_array, pairs, strings, strings_of};
@@ -750,4 +751,57 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     assert!(taker.place().is_some());
     let held = JsFuture::from(composed.hold(sockets())).await.unwrap();
     assert!(held.is_undefined());
+}
+
+#[wasm_bindgen(inline_js = r#"
+export function reader() {
+  return (name, within) => {
+    if (name === "out.md") return null;
+    if (name !== "post.md") return undefined;
+    return within === undefined ? "beside" : `in ${within}`;
+  };
+}
+export function given() {
+  return { "post.md": "listed" };
+}
+"#)]
+extern "C" {
+    fn reader() -> JsValue;
+    fn given() -> JsValue;
+}
+
+#[wasm_bindgen_test]
+fn a_reader_is_asked_for_each_file_within_its_directory_and_null_is_a_file_outside_it() {
+    let reader = reader();
+    let files = Given(&reader);
+    assert_eq!(
+        files.read("post.md", Within::Beside),
+        Ok("beside".to_owned())
+    );
+    assert_eq!(
+        files.read("post.md", Within::Allowed("/etc/herald")),
+        Ok("in /etc/herald".to_owned())
+    );
+    assert_eq!(files.read("out.md", Within::Beside), Err(Unread::Outside));
+    assert_eq!(
+        files.read("absent.md", Within::Beside),
+        Err(Unread::Failed(
+            "absent.md is not among the files herald was given".to_owned()
+        ))
+    );
+    assert_eq!(files.read_inside("post.md"), Err(UNCONTAINED.to_owned()));
+}
+
+#[wasm_bindgen_test]
+fn an_object_of_files_gives_each_by_name() {
+    let given = given();
+    let files = Given(&given);
+    assert_eq!(
+        files.read("post.md", Within::Beside),
+        Ok("listed".to_owned())
+    );
+    assert!(matches!(
+        files.read("absent.md", Within::Beside),
+        Err(Unread::Failed(_))
+    ));
 }

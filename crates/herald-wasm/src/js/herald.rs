@@ -40,7 +40,7 @@ impl Herald {
 /// The files a JS host gives a config: an object of texts by name, or a
 /// function answering each name, and the directory it must lie in, with its
 /// text, `null` where its links lead outside that directory, or nothing.
-struct Given<'a>(&'a JsValue);
+pub(super) struct Given<'a>(pub(super) &'a JsValue);
 
 impl Files for Given<'_> {
     fn read(&self, name: &str, within: Within<'_>) -> Result<String, Unread> {
