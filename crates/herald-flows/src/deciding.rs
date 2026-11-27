@@ -164,10 +164,10 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
         return Err(Unhad::Private);
     }
     let mut unanswered = Ok(None);
-    for (model, asking) in allowed {
-        if ports.budget.allows(ports.clock.now(), 1).is_err() {
-            return unanswered.and(Err(Unhad::Spent));
-        }
+    let within = allowed
+        .iter()
+        .take_while(|_| ports.budget.allows(ports.clock.now(), 1).is_ok());
+    for (model, asking) in within {
         unanswered = Err(Unhad::Unanswered);
         let questions = [*question];
         let Some(answer) = asked((model, asking), &input, &questions, ports.clock.now())
@@ -189,7 +189,7 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
             .map_err(|_| Unhad::Unstored)?;
         return Ok(Some(decision.answer));
     }
-    unanswered
+    unanswered.and_then(|none| allowed.is_empty().then_some(none).ok_or(Unhad::Spent))
 }
 
 /// What `model`, reached as `asking` says, answers `questions` of `input`

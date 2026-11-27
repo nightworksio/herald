@@ -258,10 +258,10 @@ impl Scrubber {
     pub fn scrubbed(&self, text: &str) -> String {
         let mut hidden = self.hidden();
         hidden.prune();
-        let scrubbed = hidden
-            .matcher()
-            .map(|matcher| matcher.patterns.replace_all(text, &matcher.shown));
-        scrubbed.unwrap_or_else(|| format!("{REDACTED}unscrubbed»"))
+        let unscrubbed = format!("{REDACTED}unscrubbed»");
+        hidden.matcher().map_or(unscrubbed, |matcher| {
+            matcher.patterns.replace_all(text, &matcher.shown)
+        })
     }
 }
 
