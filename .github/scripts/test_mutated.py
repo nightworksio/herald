@@ -135,12 +135,12 @@ class Scope(unittest.TestCase):
 
 class Cutting(unittest.TestCase):
     def test_a_shard_holds_as_many_mutants_as_end_inside_its_minutes_at_the_slowest_rate(self):
-        for cut, held in [(mutated.WHOLE_CUT, 645), (mutated.PULL_REQUEST_CUT, 22)]:
+        for cut, held in [(mutated.WHOLE_CUT, 430), (mutated.PULL_REQUEST_CUT, 22)]:
             self.assertEqual(cut.shards(1), 1)
             self.assertEqual(cut.shards(held), 1)
             self.assertEqual(cut.shards(held + 1), 2)
             self.assertLessEqual(held * cut.seconds_per_mutant + mutated.SETUP_SECONDS, cut.minutes * 60)
-        self.assertEqual(mutated.WHOLE_CUT.shards(18053), 28)
+        self.assertEqual(mutated.WHOLE_CUT.shards(10000), 24)
         self.assertEqual(mutated.PULL_REQUEST_CUT.shards(137), 7)
 
     def test_the_shards_are_capped_and_unknown_mutants_take_the_cap(self):

@@ -59,7 +59,7 @@ few.
    own arguments, a pull request's narrowed to its diff, and cuts as many
    shards as keep each inside its aim at the slowest rate seen, after four
    minutes of setup:
-   - **Every run but a pull request's:** 8 seconds a mutant, a shard
+   - **Every run but a pull request's:** 12 seconds a mutant, a shard
      aiming at 90 minutes, half its 180-minute limit, and at most 40
      shards; a scheduled run's run four at a time (`max-parallel`), any
      other's twelve.
