@@ -51,28 +51,38 @@ fn doctor_names_the_stores_each_host_keeps_records_in() {
             ("node", None),
             (
                 "worker",
-                unserved("d1, durable-object, dynamodb, git-branch, markers or repo-variables")
+                unserved(
+                    "d1, durable-object, dynamodb, git-branch, forgejo-branch, markers or repo-variables"
+                )
             ),
             (
                 "deno",
-                unserved("deno-kv, dynamodb, git-branch, markers or repo-variables")
+                unserved(
+                    "deno-kv, dynamodb, git-branch, forgejo-branch, markers or repo-variables"
+                )
             ),
             (
                 "vercel",
-                unserved("postgres, dynamodb, git-branch, markers or repo-variables")
+                unserved(
+                    "postgres, dynamodb, git-branch, forgejo-branch, markers or repo-variables"
+                )
             ),
             (
                 "netlify",
-                unserved("postgres, dynamodb, git-branch, markers or repo-variables")
+                unserved(
+                    "postgres, dynamodb, git-branch, forgejo-branch, markers or repo-variables"
+                )
             ),
             (
                 "wasi",
-                unserved("dynamodb, git-branch, markers or repo-variables")
+                unserved("dynamodb, git-branch, forgejo-branch, markers or repo-variables")
             ),
             ("spin", None),
             (
                 "fastly",
-                unserved("fastly-kv, dynamodb, git-branch, markers or repo-variables")
+                unserved(
+                    "fastly-kv, dynamodb, git-branch, forgejo-branch, markers or repo-variables"
+                )
             ),
         ]
     );
@@ -102,7 +112,7 @@ fn doctor_names_what_the_config_leaves_to_chance() {
         (
             STOPPED,
             format!(
-                "{READS}{DERIVED}store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them. The serverless layer is the first that serves it.
+                "{READS}{DERIVED}store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, forgejo-branch, markers, actions-cache or repo-variables; set [store] kind to one of them. The serverless layer is the first that serves it.
 "
             )
         )

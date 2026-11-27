@@ -250,7 +250,13 @@ fn a_host_keeps_records_in_every_store_kind_whose_need_it_offers() {
     use herald_kinds::Offer;
 
     let kinds = crate::common::kinds();
-    let http = ["dynamodb", "git-branch", "markers", "repo-variables"];
+    let http = [
+        "dynamodb",
+        "git-branch",
+        "forgejo-branch",
+        "markers",
+        "repo-variables",
+    ];
     assert_eq!(
         kinds.store_kinds_offered(|offer| offer == Offer::Http),
         http
@@ -261,6 +267,7 @@ fn a_host_keeps_records_in_every_store_kind_whose_need_it_offers() {
             "sqlite",
             "dynamodb",
             "git-branch",
+            "forgejo-branch",
             "markers",
             "repo-variables"
         ]

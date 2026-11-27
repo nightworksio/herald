@@ -49,6 +49,7 @@ herald-store-deno-kv = { path = "crates/herald-store-deno-kv" }
 herald-store-dynamodb = { path = "crates/herald-store-dynamodb" }
 herald-store-durable-object = { path = "crates/herald-store-durable-object" }
 herald-store-fastly-kv = { path = "crates/herald-store-fastly-kv" }
+herald-store-forgejo-branch = { path = "crates/herald-store-forgejo-branch" }
 herald-store-git-branch = { path = "crates/herald-store-git-branch" }
 herald-store-markers = { path = "crates/herald-store-markers" }
 herald-store-postgres = { path = "crates/herald-store-postgres" }

@@ -1,6 +1,7 @@
 //! herald composed on a host made of fakes: every store kind reached
 //! through the host's ports, and requests and rounds served over it.
 
+mod forgejo;
 mod logged;
 mod merging;
 mod pages;
@@ -194,9 +195,14 @@ impl Taker for Untaken {
 /// The store table `store`, with the key a store in a shared repository
 /// seals its records with.
 fn sealed(store: &str) -> String {
-    let shared = ["git-branch", "repo-variables", "actions-cache"]
-        .iter()
-        .any(|kind| store.starts_with(&format!("kind = \"{kind}\"")));
+    let shared = [
+        "git-branch",
+        "forgejo-branch",
+        "repo-variables",
+        "actions-cache",
+    ]
+    .iter()
+    .any(|kind| store.starts_with(&format!("kind = \"{kind}\"")));
     if shared {
         format!("{store}\nkey = {{ secret = \"HERALD_STORE_KEY\" }}")
     } else {
@@ -278,6 +284,7 @@ fn each_store_is_reached_through_what_the_host_offers() {
         ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kept"),
         ("kind = \"fastly-kv\"", "kept"),
         ("kind = \"git-branch\"", "kept"),
+        ("kind = \"forgejo-branch\"\nrepository = \"o/r\"", "kept"),
         (
             "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }",
             "kept",

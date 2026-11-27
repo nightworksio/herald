@@ -407,7 +407,13 @@ mod tests {
 
     use super::*;
 
-    const HTTP: [&str; 4] = ["dynamodb", "git-branch", "markers", "repo-variables"];
+    const HTTP: [&str; 5] = [
+        "dynamodb",
+        "git-branch",
+        "forgejo-branch",
+        "markers",
+        "repo-variables",
+    ];
 
     fn with(offered: &[&'static str]) -> Vec<&'static str> {
         offered.iter().copied().chain(HTTP).collect()
@@ -543,6 +549,7 @@ mod tests {
                     "postgres",
                     "dynamodb",
                     "git-branch",
+                    "forgejo-branch",
                     "markers",
                     "actions-cache",
                     "repo-variables",

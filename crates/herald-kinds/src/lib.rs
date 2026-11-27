@@ -35,7 +35,9 @@ pub use merging::{
     Answered, Branched, Done, EnterAsked, Entered, Gesture, Holds, Marked, Merge, MergeAsked,
     MergeReader, MergeWriter, Merging, Methods, Proved, Queued, TakenBack, Unmerged, WriteWith,
 };
-pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening, SqlAt, unopened};
+pub use opening::{
+    GITHUB_API_URL, GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening, SqlAt, unopened,
+};
 pub use placement::{Placed, Placement};
 pub use pulling::{Instance, Origin, Peering, PublicKey, Pull, Pulling, Receive, Trust, Unpulled};
 pub use pushing::{IdTokens, Peered, Presented, Proving, Pushed, Pushing};

@@ -3,6 +3,7 @@ use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 
+use herald_core::SecretRef;
 use herald_ports::{Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Owned, Secret};
 use jiff::SignedDuration;
 
@@ -12,6 +13,10 @@ pub const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 /// The variable naming the repository a run is for, as GitHub Actions sets
 /// it.
 pub const GITHUB_REPOSITORY: &str = "GITHUB_REPOSITORY";
+
+/// The variable naming the base URL of the API of the forge a run is on,
+/// as GitHub Actions and Forgejo Actions set it.
+pub const GITHUB_API_URL: &str = "GITHUB_API_URL";
 
 /// A future a store opens through: it may hold what only the host's own
 /// thread may, as a WebAssembly host's databases do.
@@ -53,6 +58,17 @@ pub trait Opening: Send + Sync {
                 .await
                 .map_err(|_| format!("{name} is not set; {why}"))
         })
+    }
+
+    /// The token in the secret `named`, or else in the run's own
+    /// [`GITHUB_TOKEN`], which the store needs as `why` says.
+    fn token<'a>(
+        &'a self,
+        named: Option<&'a SecretRef>,
+        why: &'a str,
+    ) -> Local<'a, Result<Secret, String>> {
+        let name = named.map_or(GITHUB_TOKEN, |named| named.secret.as_str());
+        self.secret(name, why)
     }
 
     /// The repository a store names, or else the one the run is for.

@@ -2,7 +2,7 @@ use crate::forge::Api;
 
 /// Codeberg's, the Forgejo most projects are on.
 pub(crate) const API: Api = Api {
-    url: "https://codeberg.org/api/v1",
+    url: herald_wire::forgejo::API,
     page: "limit",
     tagged: "/releases/tags/",
     event: "Forgejo's release event",

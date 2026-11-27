@@ -300,9 +300,9 @@ first.
 
 `[run]` sets how many routes an event is announced to at once, `routes` (4),
 and how many sources a poll reads at once, `sources` (4). 1 goes one after
-another in the file's order. On the `git-branch`, `repo-variables`,
-`actions-cache` and `markers` stores, which write one record at a time,
-routes and sources always go one at a time.
+another in the file's order. On the `git-branch`, `forgejo-branch`,
+`repo-variables`, `actions-cache` and `markers` stores, which write one record
+at a time, routes and sources always go one at a time.
 
 Each source sets how a poll reads it: `backfill`, how many of the newest
 releases, versions or entries the first poll announces, none where absent;

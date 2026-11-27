@@ -23,7 +23,7 @@ fn doctor_prints_its_findings_as_json_with_the_first_layer_of_each_gap() {
         json!([{
             "feature": "keeping records in d1",
             "key": "store.kind",
-            "why": "this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them",
+            "why": "this herald keeps records in sqlite, postgres, dynamodb, git-branch, forgejo-branch, markers, actions-cache or repo-variables; set [store] kind to one of them",
             "first_layer": "serverless",
         }])
     );
