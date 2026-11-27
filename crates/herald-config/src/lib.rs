@@ -24,7 +24,7 @@ mod views;
 
 pub use config::{
     Announce, App, Cli, Config, Doctor, Federation, GithubApp, Guard, HeldSessions, KeyCache,
-    Pages, RouteConfig, Run, Schedule, Server, Uses, Work,
+    Level, Log, LogFormat, Pages, RouteConfig, Run, Schedule, Server, Uses, Work,
 };
 pub use error::{ConfigError, Errors};
 pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};

@@ -286,6 +286,17 @@ of it applies to the hosts herald reaches on others' behalf, which keep
 ADR-0007's 5 and 10 seconds at most, read no more than "32MiB", go through no
 proxy and trust the Mozilla roots alone.
 
+`[log]` sets herald's log on every host: `level`, the least grave line it
+writes (`"info"`, the default, `"warn"` or `"error"`), and `format`, how it
+writes each line (`"text"`, the default, or `"json"`, an object a line with
+its `level` and its `message`). `HERALD_LOG_LEVEL` and `HERALD_LOG_FORMAT`
+take their places, and `--log-level` and `--log-format`, or the Action's
+`log-level` and `log-format`, take the place of both. Every secret herald
+resolves or sends, a token minted as it runs among them, is written as
+`«secret:NAME»` wherever herald writes; `scrub_from` (8) is the fewest
+characters a value holds to be scrubbed
+([ADR-0089](.docs/decisions/0089-herald-s-log-takes-a-level-and-a-format-and-every-secret-herald-resolves-or-sends-is-scrubbed.md)).
+
 `[server.inbound]` sets what a signed request may carry and still be
 checked: `replay_window` ("5m"), `signatures` (4) and `covered` (16, the
 headers one ActivityPub signature may name). `[render]` sets how far a

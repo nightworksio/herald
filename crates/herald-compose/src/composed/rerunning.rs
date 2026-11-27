@@ -1,8 +1,6 @@
 //! `herald rerun` through a composed herald: a rule's plans listed, or
 //! applied by an operator signed in at the forge (ADR-0068).
 
-use std::sync::Arc;
-
 use herald_flows::{
     Admission, Applying, PlansAsked, RerunApplied, RerunPlans, SigningIn, Stop, rerun_apply,
     rerun_plans,
@@ -91,10 +89,11 @@ where
         let connect = |base: Base<'_>| {
             self.host
                 .connect(base, &outbound)
-                .map(|http| Counted::new(http, Arc::clone(&self.made)))
+                .map(|http| self.counted(http))
         };
+        let secrets = self.secrets();
         let applying = Applying {
-            secrets: self.host.secrets(),
+            secrets: &secrets,
             connect: &connect,
             timer,
             told,

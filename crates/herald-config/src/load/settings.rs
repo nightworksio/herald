@@ -11,10 +11,10 @@ use jiff::SignedDuration;
 use toml::Spanned;
 
 use super::{Loader, Value};
-use crate::config::{Announce, Cli, Doctor, HeldSessions, KeyCache, Run, Server, Work};
+use crate::config::{Announce, Cli, Doctor, HeldSessions, KeyCache, Log, Run, Server, Work};
 use crate::file::{
-    AnnounceFile, CliFile, DoctorFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile,
-    ServerFile, SessionsFile, WorkFile,
+    AnnounceFile, CliFile, DoctorFile, HttpFile, InboundFile, KeyCacheFile, LogFile, RenderFile,
+    RunFile, ServerFile, SessionsFile, WorkFile,
 };
 
 impl Loader<'_> {
@@ -378,6 +378,16 @@ impl Loader<'_> {
             .and_then(|value| self.typed::<CliFile>(value, "cli"))
             .map_or_else(Cli::default, |file| Cli {
                 private: file.private.unwrap_or_default(),
+            })
+    }
+
+    pub(super) fn log(&mut self, value: Option<Value<'_>>) -> Log {
+        value
+            .and_then(|value| self.typed::<LogFile>(value, "log"))
+            .map_or_else(Log::default, |file| Log {
+                level: file.level.unwrap_or_default(),
+                format: file.format.unwrap_or_default(),
+                scrub_from: file.scrub_from.unwrap_or(Log::SCRUB_FROM),
             })
     }
 

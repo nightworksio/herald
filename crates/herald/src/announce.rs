@@ -3,10 +3,9 @@
 //! that takes it.
 
 use std::collections::BTreeMap;
-use std::io::Write;
 
 use herald_compose::told::{report, why};
-use herald_compose::{Composed, Host, Hosting, ServingOn, Through};
+use herald_compose::{Composed, Host, Hosting, ServingOn, Through, Told};
 use herald_config::{Config, Uses};
 use herald_core::{Event, Printed, RouteId, Signal, SourceName};
 use herald_flows::{Fresh, Outcome, Stop, Within, announce_within, held_or_announced};
@@ -16,7 +15,7 @@ use herald_sources_forge::{
 };
 
 use super::dry_run::Dry;
-use super::output::say;
+use super::output::Logged;
 use super::release::{Ci, event_file, evented, project, pushed, tagged, variable};
 use super::stores::{Native, composed};
 use super::{Connect, Connection, Connector, DONE, STOPPED, place, waiting};
@@ -39,7 +38,7 @@ pub(super) async fn announcing_from(
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     asked: Announce<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let forge = asked.forge;
     let ci = Ci::of(forge);
@@ -123,7 +122,7 @@ async fn released(
     tag: Option<&str>,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<Option<Event>, String> {
     let repository = options.repository.as_deref().unwrap_or_default();
     let signals = options.signals_of(repository.rsplit('/').next().unwrap_or(repository));
@@ -141,7 +140,7 @@ async fn released(
     });
     match (forge, tag) {
         (Forge::GitLab, None) => {
-            say(out, "The pipeline is not for a tag; nothing to announce.");
+            out.info("The pipeline is not for a tag; nothing to announce.");
             Ok(None)
         }
         (Forge::GitLab, Some(tag)) => {
@@ -159,10 +158,7 @@ async fn released(
         }
         (_, Some(tag)) => tagged(options, (forge, &signals), tag, None, vars, connect, out).await,
         (_, None) if !signals.takes(Signal::Release) => {
-            say(
-                out,
-                "The source announces no releases of the repository; nothing to announce.",
-            );
+            out.info("The source announces no releases of the repository; nothing to announce.");
             Ok(None)
         }
         (_, None) => evented((forge, signals.prerelease), vars, out),
@@ -175,24 +171,18 @@ fn ran(
     options: &SourceOptions,
     (forge, signals): (Forge, &Signals),
     (name, vars): (&str, &BTreeMap<String, String>),
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<Option<Event>, String> {
     if !signals.takes(Signal::Run) {
-        say(
-            out,
-            &format!(
+        out.info(format!(
                 "The run's event is {name}, and the source announces no runs of the repository; nothing to announce."
-            ),
-        );
+            ));
         return Ok(None);
     }
     let payload = event_file(vars)?;
     let ran = ci_run((forge, options), (name, &payload)).map_err(|error| error.to_string())?;
     if ran.is_none() {
-        say(
-            out,
-            "The run is not one the source's runs announce; nothing to announce.",
-        );
+        out.info("The run is not one the source's runs announce; nothing to announce.");
     }
     Ok(ran)
 }
@@ -204,22 +194,16 @@ fn milestoned(
     options: &SourceOptions,
     (forge, signals): (Forge, &Signals),
     vars: &BTreeMap<String, String>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<Option<Event>, String> {
     if !signals.takes(Signal::Milestone) {
-        say(
-            out,
-            "The run's event is milestone, and the source announces no milestones of the repository; nothing to announce.",
-        );
+        out.info("The run's event is milestone, and the source announces no milestones of the repository; nothing to announce.");
         return Ok(None);
     }
     let payload = event_file(vars)?;
     let event = ci_milestone((forge, options), &payload).map_err(|error| error.to_string())?;
     if event.is_none() {
-        say(
-            out,
-            "The milestone is not one the source's milestones announce; nothing to announce.",
-        );
+        out.info("The milestone is not one the source's milestones announce; nothing to announce.");
     }
     Ok(event)
 }
@@ -243,7 +227,7 @@ pub(super) async fn announcing(
     connect: Connect<'_>,
     routed: Routed<'_>,
     (dry_run, printed): (bool, Printed),
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let dry = Dry::default();
     let reaching = |_: Base<'_>, _: &Outbound| Ok(Connection::new(dry.clone()));
@@ -264,7 +248,7 @@ pub(super) async fn announcing(
     };
     let announced = composed.run(Announcing(routed)).await;
     if dry_run {
-        dry.print(out);
+        dry.print(out.out());
         return Ok(reported(announced, printed, out));
     }
     let code = reported(announced, printed, out);
@@ -273,29 +257,28 @@ pub(super) async fn announcing(
 
 /// The code `announced` ends a run with, each announcement reported, its
 /// event named as `printed` says.
-fn reported(told: Vec<Result<Fresh, Stop>>, printed: Printed, out: &mut dyn Write) -> u8 {
+fn reported(told: Vec<Result<Fresh, Stop>>, printed: Printed, out: &mut Logged<'_>) -> u8 {
     let mut code = DONE;
     for fresh in told {
         let fresh = match fresh {
             Ok(fresh) => fresh,
             Err(stop) => {
-                say(out, &format!("stopped: {}", why(&stop)));
+                out.told(&Told::error(format!("stopped: {}", why(&stop))));
                 code = STOPPED;
                 continue;
             }
         };
         if let Some(due) = fresh.held {
             let version = fresh.event.named_in(printed);
-            say(
-                out,
-                &format!("The tag {version} is held for its Release until {due}."),
-            );
+            out.info(format!(
+                "The tag {version} is held for its Release until {due}."
+            ));
         }
         for announced in fresh.announced {
             if matches!(announced.outcome, Outcome::Stopped { .. }) {
                 code = STOPPED;
             }
-            say(out, &report(&announced));
+            out.told(&report(&announced));
         }
     }
     code

@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use herald_native::{ConnectError, NativeHttp, PublicHttp};
-use herald_ports::{Base, Http, HttpError, Outbound, Request, Response};
+use herald_ports::{Base, Http, HttpError, Outbound, Request, Response, Scrubber};
 
 use crate::worded;
 
@@ -49,11 +49,27 @@ type Waiting<'a> = &'a (dyn Fn(&str, &Outbound) -> Result<Connection, String> + 
 
 /// What makes connections: to a base URL's origin, each request bounded in
 /// time, and to Lambda's runtime API, which holds a request open until an
-/// invocation arrives.
+/// invocation arrives; each secret a request carries made known to the
+/// scrubber the run's output shares, where it has one (ADR-0089).
 pub struct Connector<'a> {
     reaching: Making<'a>,
     waiting: Waiting<'a>,
     outbound: Outbound,
+    scrubber: Option<Scrubber>,
+}
+
+/// A connection that makes each secret a request carries known to
+/// `scrubber` before it sends it.
+struct Scrubbed {
+    connection: Connection,
+    scrubber: Scrubber,
+}
+
+impl Http for Scrubbed {
+    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
+        self.scrubber.sent(&request);
+        self.connection.send(request)
+    }
 }
 
 impl<'a> Connector<'a> {
@@ -65,6 +81,7 @@ impl<'a> Connector<'a> {
             reaching,
             waiting,
             outbound: Outbound::STANDARD,
+            scrubber: None,
         }
     }
 
@@ -75,6 +92,34 @@ impl<'a> Connector<'a> {
             reaching: self.reaching,
             waiting: self.waiting,
             outbound,
+            scrubber: self.scrubber.clone(),
+        }
+    }
+
+    /// The same connections, each secret a request carries made known to
+    /// `scrubber`.
+    #[must_use]
+    pub fn scrubbing(self, scrubber: Scrubber) -> Self {
+        Self {
+            scrubber: Some(scrubber),
+            ..self
+        }
+    }
+
+    /// The scrubber the run's output shares, where it has one.
+    #[must_use]
+    pub fn scrubber(&self) -> Option<Scrubber> {
+        self.scrubber.clone()
+    }
+
+    /// `connection`, scrubbed as the connector says.
+    fn scrubbed(&self, connection: Connection) -> Connection {
+        match &self.scrubber {
+            Some(scrubber) => Connection::new(Scrubbed {
+                connection,
+                scrubber: scrubber.clone(),
+            }),
+            None => connection,
         }
     }
 
@@ -97,11 +142,11 @@ impl<'a> Connector<'a> {
         base: Base<'_>,
         outbound: &Outbound,
     ) -> Result<Connection, String> {
-        (self.reaching)(base, outbound)
+        (self.reaching)(base, outbound).map(|connection| self.scrubbed(connection))
     }
 
     pub(crate) fn wait(&self, base: &str) -> Result<Connection, String> {
-        (self.waiting)(base, &self.outbound)
+        (self.waiting)(base, &self.outbound).map(|connection| self.scrubbed(connection))
     }
 }
 

@@ -328,7 +328,11 @@ fn the_server_says_each_step_it_took_and_nothing_of_a_queue_it_took_none_in() {
     let said = stepped(&taken);
     assert_eq!(said.len(), 4, "{said:?}");
     assert_eq!(said[0], "app-main: o/r into main, run by herald");
-    assert!(said[1].ends_with("handed to the forge's queue, which took it"));
-    assert!(said[2].ends_with("merging it: the forge took it"));
-    assert!(said[3].ends_with("taken out of the forge's queue"));
+    assert!(
+        said[1]
+            .text
+            .ends_with("handed to the forge's queue, which took it")
+    );
+    assert!(said[2].text.ends_with("merging it: the forge took it"));
+    assert!(said[3].text.ends_with("taken out of the forge's queue"));
 }

@@ -1,6 +1,6 @@
 # ADR-0007: Secrets stay out of argv, templates and logs, every inbound request is verified before it is parsed, and the supply chain is pinned and signed
 
-**Status:** Accepted
+**Status:** Accepted; what the scrubber knows, and the least length it scrubs, superseded in part by [ADR-0089](0089-herald-s-log-takes-a-level-and-a-format-and-every-secret-herald-resolves-or-sends-is-scrubbed.md)
 **Date:** 2026-10-31
 
 ## Context
@@ -154,3 +154,4 @@ attestation proves which workflow, at which commit, built the binary.
 - [ADR-0006](0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md): secret references and the template sandbox
 - [ADR-0008](0008-every-line-is-covered-and-no-mutant-survives.md): fuzzing and the CI that runs these checks
 - [ADR-0009](0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md): how releases are signed and verified
+- [ADR-0089](0089-herald-s-log-takes-a-level-and-a-format-and-every-secret-herald-resolves-or-sends-is-scrubbed.md): every secret herald resolves or sends scrubbed, and the least length a setting

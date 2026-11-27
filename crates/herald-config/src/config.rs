@@ -64,6 +64,9 @@ pub struct Config {
     pub doctor: Doctor,
     /// What herald's commands print.
     pub cli: Cli,
+    /// What herald's log writes, and the secrets kept out of everything
+    /// herald writes.
+    pub log: Log,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
     /// This herald among other instances.
@@ -428,6 +431,112 @@ pub struct Doctor {
     /// What it does with a route that takes a private kind's events and
     /// says nothing of whether its place is private.
     pub private_kinds: Guard,
+}
+
+/// How grave a line of herald's log is, the least grave first.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    /// What herald did.
+    #[default]
+    Info,
+    /// What herald left undone, passed over or refused.
+    Warn,
+    /// What stopped or failed.
+    Error,
+}
+
+impl Level {
+    /// Every level, the least grave first.
+    pub const ALL: [Self; 3] = [Self::Info, Self::Warn, Self::Error];
+
+    /// Its name, as the config and the log write it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warn => "warn",
+            Self::Error => "error",
+        }
+    }
+
+    /// The level named `name`.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|level| level.name() == name)
+    }
+}
+
+/// How herald's log writes each line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    /// As words, a line each.
+    #[default]
+    Text,
+    /// As a JSON object a line, its `level` and its `message`.
+    Json,
+}
+
+impl LogFormat {
+    /// Every format.
+    pub const ALL: [Self; 2] = [Self::Text, Self::Json];
+
+    /// Its name, as the config writes it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Json => "json",
+        }
+    }
+
+    /// The format named `name`.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|format| format.name() == name)
+    }
+}
+
+/// What herald's log writes, and the secrets kept out of everything
+/// herald writes (ADR-0089).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Log {
+    /// The least grave line it writes.
+    pub level: Level,
+    /// How it writes each line.
+    pub format: LogFormat,
+    /// The fewest characters a secret's value holds to be written as
+    /// `«secret:NAME»`.
+    pub scrub_from: NonZeroUsize,
+}
+
+impl Log {
+    /// The fewest characters a secret's value holds to be scrubbed where
+    /// the config says nothing: a shorter value would rewrite ordinary
+    /// words.
+    pub const SCRUB_FROM: NonZeroUsize = NonZeroUsize::new(8).unwrap();
+}
+
+impl Default for Log {
+    fn default() -> Self {
+        Self {
+            level: Level::default(),
+            format: LogFormat::default(),
+            scrub_from: Self::SCRUB_FROM,
+        }
+    }
 }
 
 /// What herald's commands print.

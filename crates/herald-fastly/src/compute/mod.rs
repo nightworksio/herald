@@ -11,7 +11,7 @@ use fastly::{Request, Response};
 use herald_core::status;
 use std::io::Read as _;
 
-use herald_compose::{Composed, HostRequest, Hosting, told};
+use herald_compose::{Composed, Host as _, HostRequest, Hosting, Log, Told, told};
 use herald_config::{Config, Uses, load};
 use herald_flows::{Answered, Reply, refusal, uncomposed};
 use host::{FastlyHost, STORE};
@@ -23,8 +23,8 @@ const CONFIG: &str = "herald.toml";
     clippy::print_stderr,
     reason = "the host keeps what a component writes to standard error as its log"
 )]
-fn log_lines(lines: impl IntoIterator<Item = String>) {
-    for line in lines {
+fn log_lines(log: &Log, told: impl IntoIterator<Item = Told>) {
+    for line in log.lines(told) {
         eprintln!("{line}");
     }
 }
@@ -94,9 +94,9 @@ fn send(reply: Reply, head: bool) {
     response.send_to_client();
 }
 
-/// Sends the refusal `answered`, and logs its reason.
-fn refused(answered: Answered) {
-    log_lines(answered.refused.as_deref().map(told::refused));
+/// Sends the refusal `answered`, and logs its reason on `log`.
+fn refused(log: &Log, answered: Answered) {
+    log_lines(log, answered.refused.as_deref().map(told::refused));
     send(answered.reply, false);
 }
 
@@ -118,28 +118,37 @@ pub(crate) fn serve() {
             return;
         }
         Err(error) => {
-            refused(refusal(
-                status::SERVER_ERROR,
-                format!("herald could not start: {error}"),
-            ));
+            let host = FastlyHost::new();
+            let log = Log::unconfigured(|name| host.var(name));
+            refused(
+                &log,
+                refusal(
+                    status::SERVER_ERROR,
+                    format!("herald could not start: {error}"),
+                ),
+            );
             return;
         }
     };
     let asked = match asked(request, composed.config().server.body) {
         Ok(asked) => asked,
         Err(error) => {
-            refused(refusal(
-                status::BAD_REQUEST,
-                format!("its body could not be read: {error}"),
-            ));
+            refused(
+                composed.log(),
+                refusal(
+                    status::BAD_REQUEST,
+                    format!("its body could not be read: {error}"),
+                ),
+            );
             return;
         }
     };
     let answer = pollster::block_on(composed.reached(&asked));
-    log_lines(answer.refused.as_deref().map(told::refused));
-    log_lines(answer.said);
+    let log = composed.log();
+    log_lines(log, answer.refused.as_deref().map(told::refused));
+    log_lines(log, answer.said);
     send(answer.reply, is_head);
     if let Some(left) = answer.left {
-        log_lines(told::worked(&pollster::block_on(composed.work(left))));
+        log_lines(log, told::worked(&pollster::block_on(composed.work(left))));
     }
 }

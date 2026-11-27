@@ -20,7 +20,9 @@ use herald_config::{Config, Uses, load};
 use herald_core::DestinationName;
 use herald_flows::{Admission, Did, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
 use herald_kinds::{Opening, StoreKind};
-use herald_ports::{Base, Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
+use herald_ports::{
+    Base, Changed, Frame, Http, HttpError, Outbound, Request, Response, Scrubber, Value,
+};
 use herald_testing::{
     FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
     ScriptedSql,
@@ -217,6 +219,7 @@ fn opener(host: &Arc<Hosting>) -> Arc<Opener<Hosting>> {
         Arc::clone(host),
         Outbound::default(),
         Arc::default(),
+        Scrubber::new(herald_config::Log::SCRUB_FROM),
     ))
 }
 
@@ -965,4 +968,49 @@ fn a_herald_reads_only_the_secrets_its_run_uses() {
             .interacting(&DestinationName::new("chat"))
             .is_some()
     }));
+}
+
+#[test]
+fn a_composed_herald_logs_at_the_level_its_host_names_scrubbing_each_secret_it_read() {
+    let token = format!("ghs_{}", "Ab9".repeat(12));
+    let host = |level: &str| Hosting {
+        vars: BTreeMap::from([(herald_compose::LOG_LEVEL.to_owned(), level.to_owned())]),
+        secrets: FakeSecrets::default().with("HERALD_ROUND_SECRET", &token),
+        ..Hosting::default()
+    };
+    let composed = pollster::block_on(Composed::new(
+        host("warn"),
+        config("kind = \"deno-kv\""),
+        NODE,
+        Uses::Serves,
+        "test",
+    ))
+    .unwrap();
+    let round = asked(
+        "POST",
+        "/herald/round/poll",
+        Some(&format!("Bearer {token}")),
+    );
+    assert_eq!(
+        pollster::block_on(composed.reached(&round)).reply.status,
+        200
+    );
+    assert_eq!(
+        composed.log().lines([
+            herald_compose::Told::info("polled"),
+            herald_compose::Told::warn(format!("echoed {token}")),
+        ]),
+        ["echoed «secret:HERALD_ROUND_SECRET»"]
+    );
+    let refused = pollster::block_on(Composed::new(
+        host("loud"),
+        config("kind = \"deno-kv\""),
+        NODE,
+        Uses::Serves,
+        "test",
+    ));
+    assert_eq!(
+        refused.err(),
+        Some("HERALD_LOG_LEVEL is \"loud\"; it takes info, warn, error".to_owned())
+    );
 }

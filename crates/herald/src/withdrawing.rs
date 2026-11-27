@@ -2,16 +2,15 @@
 //! remove (ADR-0048).
 
 use std::collections::BTreeMap;
-use std::io::Write;
 
 use herald_compose::told::{steps, why, withdrew};
-use herald_compose::{Host, Hosting, ServingOn, Through};
+use herald_compose::{Host, Hosting, ServingOn, Through, Told};
 use herald_config::{Config, Uses};
 use herald_core::{Identity, RouteId};
 use herald_flows::{Announced, Outcome, Stop, Withdrawable, withdraw, withdrawable};
 use herald_ports::{Keyring, Store};
 
-use super::output::say;
+use super::output::Logged;
 use super::stores::composed;
 use super::{Connect, DONE, STOPPED, place};
 
@@ -86,7 +85,7 @@ pub(crate) async fn withdrawing(
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     asked: Asked,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let composed = composed(
         config,
@@ -106,12 +105,12 @@ pub(crate) async fn withdrawing(
         }
         Done::Planned(Ok(planned)) => {
             for line in planned.iter().flat_map(|route| plan(&identity, route)) {
-                say(out, &line);
+                out.info(line);
             }
             DONE
         }
         Done::Planned(Err(stop)) => {
-            say(out, &format!("nothing was read: {}", why(&stop)));
+            out.told(&Told::error(format!("nothing was read: {}", why(&stop))));
             STOPPED
         }
     })
@@ -119,9 +118,9 @@ pub(crate) async fn withdrawing(
 
 /// What each route did withdrawing `identity`, and the code it ends with:
 /// one where a route stopped, or no route is named.
-fn reported(identity: &Identity, withdrawn: &[Announced], out: &mut dyn Write) -> u8 {
+fn reported(identity: &Identity, withdrawn: &[Announced], out: &mut Logged<'_>) -> u8 {
     if withdrawn.is_empty() {
-        say(out, "The config names no such route.");
+        out.info("The config names no such route.");
         return STOPPED;
     }
     let mut code = DONE;
@@ -132,7 +131,7 @@ fn reported(identity: &Identity, withdrawn: &[Announced], out: &mut dyn Write) -
         ) {
             code = STOPPED;
         }
-        say(out, &withdrew(identity, announced));
+        out.told(&withdrew(identity, announced));
     }
     code
 }

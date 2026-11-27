@@ -11,7 +11,7 @@ use herald_environment::SystemClock;
 use herald_ports::Clock as _;
 use tokio::io::{AsyncRead, AsyncReadExt as _};
 
-use super::output::say;
+use super::output::{Logged, say};
 use super::{Connect, DONE, Routed, STOPPED, announcing};
 
 /// An app's event to announce, as the CLI names it.
@@ -63,7 +63,7 @@ pub(crate) async fn announcing_event(
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     written: Written<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<u8, String> {
     let app = written.app;
     let Some(named) = config.apps.get(app) else {

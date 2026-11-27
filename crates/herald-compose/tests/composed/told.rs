@@ -1,6 +1,7 @@
 //! What a run did, in the words every driver says it.
 
-use herald_compose::told;
+use herald_compose::{Told, told};
+use herald_config::Level;
 use herald_core::{
     Asked, Chore, Command, DestinationName, Draft, Event, Identity, Key, Place, Printed, RouteId,
     Schedule, SourceName, Step, Visibility,
@@ -28,7 +29,7 @@ fn announced(outcome: Outcome) -> Announced {
     }
 }
 
-fn swept(outcome: Sweep) -> Vec<String> {
+fn swept(outcome: Sweep) -> Vec<Told> {
     told::polled(&Swept {
         source: SourceName::new("gate"),
         member: None,
@@ -684,5 +685,153 @@ fn the_steps_of_a_source_s_merge_queues_say_what_they_did_and_one_left_undone_sa
             "app:",
             "  not read; herald merge-queue --private prints why"
         ]
+    );
+}
+
+fn levels(told: &[Told]) -> Vec<Level> {
+    told.iter().map(|told| told.level).collect()
+}
+
+#[test]
+fn a_poll_s_line_has_the_level_of_what_it_found() {
+    let polled = |cursor| Sweep::Polled {
+        first: false,
+        found: 1,
+        announced: Vec::new(),
+        cursor,
+    };
+    for (outcome, level) in [
+        (Sweep::Unchanged, Level::Info),
+        (Sweep::Unkept("down".to_owned()), Level::Warn),
+        (Sweep::Refused("upstream".to_owned()), Level::Warn),
+        (Sweep::Ahead("upstream".to_owned()), Level::Warn),
+        (Sweep::Stopped(refused()), Level::Error),
+        (polled(Remembered::Advanced), Level::Info),
+        (polled(Remembered::Kept), Level::Warn),
+        (polled(Remembered::Failed(refused())), Level::Error),
+        (
+            Sweep::Listed {
+                members: 1,
+                joined: Vec::new(),
+                left: Vec::new(),
+            },
+            Level::Info,
+        ),
+        (
+            Sweep::Reported {
+                pulls: 1,
+                announced: Vec::new(),
+                cursor: Remembered::Kept,
+            },
+            Level::Warn,
+        ),
+    ] {
+        assert_eq!(levels(&swept(outcome)), [level]);
+    }
+}
+
+#[test]
+fn an_announcement_and_a_chore_have_the_level_of_what_became_of_them() {
+    for (outcome, level) in [
+        (
+            Outcome::Sent {
+                steps: vec![Step::Post],
+            },
+            Level::Info,
+        ),
+        (Outcome::AlreadyAnnounced, Level::Info),
+        (Outcome::Sealed { stopped: false }, Level::Info),
+        (Outcome::Sealed { stopped: true }, Level::Error),
+        (Outcome::Skipped("filtered".to_owned()), Level::Info),
+        (
+            Outcome::Stopped {
+                landed: Vec::new(),
+                remaining: vec![Step::Post],
+                reason: refused(),
+            },
+            Level::Error,
+        ),
+    ] {
+        assert_eq!(told::report(&announced(outcome.clone())).level, level);
+        assert_eq!(
+            told::withdrew(&Identity::new("1.0.0"), &announced(outcome)).level,
+            level
+        );
+    }
+    assert_eq!(
+        [
+            told::chored(&kept(Chored::Done)).level,
+            told::chored(&kept(Chored::Dropped("gone".to_owned()))).level,
+            told::chored(&kept(Chored::Later(refused()))).level,
+        ],
+        [Level::Info, Level::Warn, Level::Error]
+    );
+}
+
+#[test]
+fn a_job_s_lines_have_the_level_of_what_it_did() {
+    assert_eq!(told::refused("unsigned").level, Level::Warn);
+    assert_eq!(told::skipped("a/b").level, Level::Warn);
+    assert_eq!(levels(&told::kept(&Err(refused()))), [Level::Error]);
+    assert_eq!(
+        levels(&told::worked(&did(Did::Folded(Err("down".to_owned()))))),
+        [Level::Error]
+    );
+    assert_eq!(
+        levels(&told::worked(&did(Did::Folded(Ok(1))))),
+        [Level::Info]
+    );
+    assert_eq!(
+        levels(&told::worked(&did(Did::Followed(Ok(Followed::Ignored(
+            "unsigned".to_owned()
+        )))))),
+        [Level::Warn]
+    );
+    assert_eq!(
+        levels(&told::worked(&did(Did::Followed(Err(FollowError::Store(
+            "down".to_owned()
+        )))))),
+        [Level::Error]
+    );
+    assert_eq!(
+        levels(&told::worked(&did(Did::Followed(Ok(Followed::Undone {
+            follower: "ana".to_owned(),
+            actor: "gate".to_owned(),
+        }))))),
+        [Level::Info]
+    );
+    let unreleased = Worked {
+        did: Did::Interacted(Vec::new()),
+        unreleased: Some("down".to_owned()),
+    };
+    assert_eq!(levels(&told::worked(&unreleased)), [Level::Warn]);
+    let asked = Asked {
+        destination: DestinationName::new("chat"),
+        place: Place::new("100"),
+        user: "ana".to_owned(),
+        command: Command::Latest,
+        project: None,
+        share: false,
+        toggles: false,
+        member: None,
+    };
+    let answer = |trouble: Option<&str>| Answer {
+        said: "1.0.0".to_owned(),
+        public: false,
+        trouble: trouble.map(ToOwned::to_owned),
+    };
+    let interacted = [
+        (Some("down"), Ok(())),
+        (None, Err("unsent".to_owned())),
+        (None, Ok(())),
+    ]
+    .map(|(trouble, sent)| Interacted {
+        asked: asked.clone(),
+        answer: answer(trouble),
+        sent,
+    });
+    assert_eq!(
+        levels(&told::worked(&did(Did::Interacted(interacted.to_vec())))),
+        [Level::Error, Level::Error, Level::Info]
     );
 }

@@ -114,10 +114,13 @@ labels, reviewers, whether it is a draft or a bot's, and the state and
 reason the rules gave it, as one JSON value it is told is untrusted. An
 answer off the options, too unsure, late or unreadable reads as unknown.
 Where a decision cannot be had, because the store keeps no decisions or
-cannot read or keep one, or no model asked answered, the board's
-`view.overviews.unread` names the repository with the task and why, once
-per repository and reason; never a credential or a model's words. An
-answer that cannot be kept is not taken.
+cannot read or keep one, no model asked answered, no model the task names
+may read the private repository ("no model may read this private
+repository"), or the budget for deciding is spent ("the budget for
+deciding is spent"), the board's `view.overviews.unread` names the
+repository with the task and why, once per repository and reason, seen
+only where the repository may be; never a credential or a model's words.
+An answer that cannot be kept is not taken.
 A decision never by itself merges, labels or writes anything.
 
 ## What is kept

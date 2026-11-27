@@ -2,7 +2,6 @@
 //! or asked of the forge by its tag.
 
 use std::collections::BTreeMap;
-use std::io::Write;
 
 use herald_compose::GITHUB_TOKEN;
 use herald_core::{Event, PrereleaseRule, Signal};
@@ -13,7 +12,7 @@ use herald_sources_forge::{
     Forge, Origin, Repository, Signals, SourceOptions, Token, tag_event_of,
 };
 
-use super::output::say;
+use super::output::Logged;
 use super::{Connect, JOB_TOKEN};
 
 /// The variables a forge's CI names a run's repository, API and token in.
@@ -73,14 +72,13 @@ pub(super) fn event_file(vars: &BTreeMap<String, String>) -> Result<Vec<u8>, Str
 pub(super) fn evented(
     (forge, rule): (Forge, PrereleaseRule),
     vars: &BTreeMap<String, String>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<Option<Event>, String> {
     let event_name = variable(vars, "GITHUB_EVENT_NAME")?;
     if event_name != "release" {
-        say(
-            out,
-            &format!("The run's event is {event_name}, not a release; nothing to announce."),
-        );
+        out.info(format!(
+            "The run's event is {event_name}, not a release; nothing to announce."
+        ));
         return Ok(None);
     }
     let payload = event_file(vars)?;
@@ -88,10 +86,7 @@ pub(super) fn evented(
         .event(&payload, rule)
         .map_err(|error| error.to_string())?;
     if event.is_none() {
-        say(
-            out,
-            "The release is not published, or is a draft; nothing to announce.",
-        );
+        out.info("The release is not published, or is a draft; nothing to announce.");
     }
     Ok(event)
 }
@@ -118,7 +113,7 @@ pub(super) async fn tagged(
     known: Option<Repository>,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    out: &mut dyn Write,
+    out: &mut Logged<'_>,
 ) -> Result<Option<Event>, String> {
     let secrets = EnvSecrets::from_vars(vars.clone());
     let token = match &options.token {
@@ -169,10 +164,9 @@ pub(super) async fn tagged(
         .release(&repository, &answer, rule)
         .map_err(|error| error.to_string())?;
     if event.is_none() {
-        say(
-            out,
-            &format!("The release {tag} is a draft; nothing to announce."),
-        );
+        out.info(format!(
+            "The release {tag} is a draft; nothing to announce."
+        ));
     }
     Ok(event)
 }

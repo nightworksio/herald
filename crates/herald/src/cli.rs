@@ -26,6 +26,14 @@ pub(crate) struct Cli {
         default_value = "herald.toml"
     )]
     pub(crate) config: String,
+    /// The least grave line the log writes: info, warn or error; in place
+    /// of `HERALD_LOG_LEVEL` and the config's `[log] level`.
+    #[arg(long, global = true, value_parser = herald_compose::log_level)]
+    pub(crate) log_level: Option<herald_config::Level>,
+    /// How the log writes each line: text or json; in place of
+    /// `HERALD_LOG_FORMAT` and the config's `[log] format`.
+    #[arg(long, global = true, value_parser = herald_compose::log_format)]
+    pub(crate) log_format: Option<herald_config::LogFormat>,
     #[command(subcommand)]
     pub(crate) command: Command,
 }

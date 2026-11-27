@@ -33,6 +33,10 @@ impl<'a> Native<'a> {
 }
 
 impl Host for Native<'_> {
+    fn scrubber(&self) -> Option<herald_ports::Scrubber> {
+        self.connect.scrubber()
+    }
+
     type Http = Connection;
     type Secrets = EnvSecrets;
     type Clock = SystemClock;

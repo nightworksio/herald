@@ -81,7 +81,7 @@ impl<H: Host> Composed<'_, H> {
     /// `round` run, where `authorization` holds the round secret the host
     /// keeps as [`ROUND_SECRET`].
     pub(crate) async fn round(&self, round: Round, authorization: Option<&str>) -> Answer {
-        let secret = self.host().secrets().secret(ROUND_SECRET).await.ok();
+        let secret = self.secrets().secret(ROUND_SECRET).await.ok();
         if !Round::allowed(authorization, secret.as_ref()) {
             return refusal(status::UNAUTHORIZED, round::unasked()).into();
         }

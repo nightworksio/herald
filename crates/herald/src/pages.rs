@@ -2,19 +2,18 @@
 //! a feed, its files also written to the directory `[federation.pages]
 //! artifact` names (ADR-0060).
 
-use std::io::Write;
 use std::path::Path;
 
 use herald_compose::told::why;
-use herald_compose::{Composed, Host};
+use herald_compose::{Composed, Host, Told};
 use herald_flows::Publishing;
 
-use crate::output::say;
+use crate::output::Logged;
 use crate::{DONE, STOPPED};
 
 /// The static signed log written where it is due, said on `out`, and the
 /// code it ends with: one where it was due and could not be written.
-pub(crate) async fn logged<H: Host>(composed: &Composed<'_, H>, out: &mut dyn Write) -> u8 {
+pub(crate) async fn logged<H: Host>(composed: &Composed<'_, H>, out: &mut Logged<'_>) -> u8 {
     let artifact = composed
         .config()
         .federation
@@ -24,10 +23,9 @@ pub(crate) async fn logged<H: Host>(composed: &Composed<'_, H>, out: &mut dyn Wr
     match composed.publish().await {
         Ok(None) => DONE,
         Ok(Some(Publishing::Current(sequence))) => {
-            say(
-                out,
-                &format!("The static log stands at {sequence}; no feed changed."),
-            );
+            out.info(format!(
+                "The static log stands at {sequence}; no feed changed."
+            ));
             DONE
         }
         Ok(Some(Publishing::Written {
@@ -38,26 +36,22 @@ pub(crate) async fn logged<H: Host>(composed: &Composed<'_, H>, out: &mut dyn Wr
             if let Some(directory) = artifact
                 && let Err(why) = filled(Path::new(directory), &files)
             {
-                say(
-                    out,
-                    &format!("The static log was not written to {directory}: {why}"),
-                );
+                out.told(&Told::error(format!(
+                    "The static log was not written to {directory}: {why}"
+                )));
                 return STOPPED;
             }
-            say(
-                out,
-                &format!(
+            out.info(format!(
                     "The static log was written under {sequence}: {} files, {changed} written or removed on its branch.",
                     files.len()
-                ),
-            );
+                ));
             DONE
         }
         Err(stop) => {
-            say(
-                out,
-                &format!("The static log was not written: {}", why(&stop)),
-            );
+            out.told(&Told::error(format!(
+                "The static log was not written: {}",
+                why(&stop)
+            )));
             STOPPED
         }
     }

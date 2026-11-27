@@ -26,6 +26,12 @@ inputs:
   tag:
     description: A release of the run's repository to announce, by its tag, where the run's event is not that release.
     default: ""
+  log-level:
+    description: The least grave line the log writes, info, warn or error; HERALD_LOG_LEVEL, then the config's [log] level, where not given.
+    default: ""
+  log-format:
+    description: How the log writes each line, text or json; HERALD_LOG_FORMAT, then the config's [log] format, where not given.
+    default: ""
 
 runs:
   using: composite
@@ -178,6 +184,8 @@ runs:
         COMMAND: ${{ inputs.command }}
         CONFIG: ${{ inputs.config }}
         TAG: ${{ inputs.tag }}
+        LOG_LEVEL: ${{ inputs.log-level }}
+        LOG_FORMAT: ${{ inputs.log-format }}
       run: |
         case "$COMMAND" in
           announce) set -- announce --from github ${TAG:+--release "$TAG"} ;;
@@ -185,4 +193,4 @@ runs:
           housekeep) set -- housekeep ;;
           *) echo "::error::herald's command input is announce, poll or housekeep"; exit 1 ;;
         esac
-        "$HERALD" --config "$CONFIG" "$@"
+        "$HERALD" --config "$CONFIG" ${LOG_LEVEL:+--log-level "$LOG_LEVEL"} ${LOG_FORMAT:+--log-format "$LOG_FORMAT"} "$@"

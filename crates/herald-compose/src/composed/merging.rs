@@ -3,8 +3,6 @@
 //! pull request due handed to the forge's queue with the queue's own write
 //! credential (ADR-0087).
 
-use std::sync::Arc;
-
 use herald_core::Printed;
 use herald_flows::{
     Admission, BranchSaid, Handing, MergeQueueRead, Stop, merge_apply, merge_branch, merge_queues,
@@ -118,8 +116,9 @@ where
         timer: &T,
     ) -> Result<Vec<MergeQueueRead>, Stop> {
         let connect = self.connecting();
+        let secrets = self.secrets();
         let handing = Handing {
-            secrets: self.host.secrets(),
+            secrets: &secrets,
             connect: &connect,
             timer,
         };
@@ -142,8 +141,9 @@ where
             return self.run(work).await;
         }
         let connect = self.connecting();
+        let secrets = self.secrets();
         let handing = Handing {
-            secrets: self.host.secrets(),
+            secrets: &secrets,
             connect: &connect,
             timer,
         };
@@ -158,7 +158,7 @@ where
         move |base: Base<'_>| {
             self.host
                 .connect(base, &outbound)
-                .map(|http| Counted::new(http, Arc::clone(&self.made)))
+                .map(|http| self.counted(http))
         }
     }
 

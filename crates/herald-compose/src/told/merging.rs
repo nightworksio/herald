@@ -7,6 +7,8 @@ use herald_flows::{
     Acted, Cancel, Cancels, Found, Judged, MergeQueueRead, Next, Took, TookOut, Undo,
 };
 
+use crate::Told;
+
 /// What prints what `herald server` withholds.
 const SERVER_HINT: &str = "herald merge-queue --private prints";
 
@@ -15,10 +17,15 @@ const SERVER_HINT: &str = "herald merge-queue --private prints";
 /// of the forge's queue, or why the queue was not read; nothing where it
 /// took no step.
 #[must_use]
-pub fn stepped(read: &MergeQueueRead) -> Vec<String> {
+pub fn stepped(read: &MergeQueueRead) -> Vec<Told> {
     let entries = match &read.found {
         Found::Entries(entries) => entries,
-        Found::Unread(_) => return queue_lines(read, SERVER_HINT),
+        Found::Unread(_) => {
+            return queue_lines(read, SERVER_HINT)
+                .into_iter()
+                .map(Told::warn)
+                .collect();
+        }
         Found::Withheld(_) => return Vec::new(),
     };
     let mut said: Vec<String> = entries
@@ -35,11 +42,12 @@ pub fn stepped(read: &MergeQueueRead) -> Vec<String> {
         );
     }
     if said.is_empty() {
-        return said;
+        return Vec::new();
     }
-    let mut lines = vec![heading(read)];
-    lines.append(&mut said);
-    lines
+    std::iter::once(heading(read))
+        .chain(said)
+        .map(Told::info)
+        .collect()
 }
 
 /// The line naming `read`'s queue, its repository, branch and who runs it.
