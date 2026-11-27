@@ -26,7 +26,7 @@ pub enum Public {
     Rsa,
 }
 
-pub use herald_core::der::{PRIVATE_KEY, PUBLIC_KEY, pem, private_key};
+pub use herald_core::der::{PRIVATE_KEY, PUBLIC_KEY, armour, pem, private_key};
 
 /// The bytes of a JSON Web Key's base64url member.
 #[must_use]

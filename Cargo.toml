@@ -69,6 +69,7 @@ jsonschema = { version = "0.61", default-features = false }
 jiff = { version = "1.0", default-features = false, features = ["std", "serde"] }
 pollster = "1"
 ring = "0.17"
+aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys", "prebuilt-nasm"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rusqlite = { version = "0.43", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

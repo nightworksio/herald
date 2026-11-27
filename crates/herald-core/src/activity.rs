@@ -11,9 +11,6 @@ use crate::inbound::Addressed;
 pub const SIGNED: &str = "(request-target) host date digest content-type";
 /// The media type an activity is sent and served as.
 pub const ACTIVITY_JSON: &str = "application/activity+json";
-/// The widest line of a PEM body.
-const PEM_LINE: usize = 64;
-
 /// `body`'s SHA-256, in base64, as `Digest: SHA-256=<it>` carries it.
 #[must_use]
 pub(crate) fn body_sha256(body: &[u8]) -> String {
@@ -63,16 +60,9 @@ pub fn signature_header(key_id: &str, signature: &[u8]) -> Option<String> {
 /// `publicKeyPem` publishes it.
 #[must_use]
 pub fn public_pem(der: &[u8]) -> String {
-    let body = STANDARD.encode(der);
-    let lines: Vec<&str> = body
-        .as_bytes()
-        .chunks(PEM_LINE)
-        .filter_map(|line| std::str::from_utf8(line).ok())
-        .collect();
-    format!(
-        "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----\n",
-        lines.join("\n")
-    )
+    let mut pem = String::new();
+    crate::der::armour(der, crate::der::PUBLIC_KEY, &mut pem);
+    pem
 }
 
 #[cfg(test)]
@@ -115,6 +105,6 @@ mod tests {
         assert_eq!(lines[2].len(), 32);
         assert_eq!(lines[3], "-----END PUBLIC KEY-----");
         assert!(pem.ends_with("-----\n"));
-        assert_eq!(public_pem(&[]).lines().count(), 3);
+        assert_eq!(public_pem(&[]).lines().count(), 2);
     }
 }

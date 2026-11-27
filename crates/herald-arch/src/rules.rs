@@ -155,6 +155,9 @@ pub fn violations(workspace: &Workspace) -> Vec<Violation> {
                     from: package.name.clone(),
                 });
             }
+            if dependency.name == package.name && dependency.kind == Kind::Dev {
+                continue;
+            }
             let from = package.name.clone();
             let to = dependency.name.clone();
             if workspace.has(&dependency.name) {
@@ -294,6 +297,19 @@ mod tests {
         ]));
         let (from, to) = edge_of("herald-core", "herald-ports");
         assert_eq!(found, [Violation::Later { from, to }]);
+    }
+
+    #[test]
+    fn a_crate_s_tests_may_name_the_crate_itself_with_more_features() {
+        let own = |kind| {
+            violations(&workspace(&[Spec {
+                dependencies: &[("herald-dest-slack", kind)],
+                ..crate_named("herald-dest-slack")
+            }]))
+        };
+        assert_eq!(own(Kind::Dev), []);
+        let (from, to) = edge_of("herald-dest-slack", "herald-dest-slack");
+        assert_eq!(own(Kind::Normal), [Violation::Sibling { from, to }]);
     }
 
     #[test]

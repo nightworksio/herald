@@ -56,8 +56,55 @@ pub(crate) enum Command {
         #[arg(long, default_value_t = 5000)]
         timeout: u64,
     },
+    /// Commands on herald's ActivityPub actors.
+    #[command(subcommand)]
+    Activitypub(Activitypub),
     #[command(flatten)]
     Read(Reading),
+}
+
+/// The commands on herald's ActivityPub actors.
+#[derive(Debug, Subcommand)]
+pub(crate) enum Activitypub {
+    /// Write a new RSA key for the actors to FILE, as PKCS#8 PEM readable by
+    /// its owner alone where the system has file modes (on Windows, FILE
+    /// takes its folder's permissions), and print its public key; no part
+    /// of the private key is printed. Store FILE's contents as the secret
+    /// the destination's `key` names.
+    Keygen {
+        /// The file the private key is written to.
+        file: std::path::PathBuf,
+        /// How many bits the key's modulus holds.
+        #[arg(long, value_enum, default_value_t = KeyBits::B2048)]
+        bits: KeyBits,
+        /// Replace FILE where it exists.
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+/// How many bits a new RSA key's modulus holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum KeyBits {
+    /// 2048, as Mastodon's own keys are.
+    #[value(name = "2048")]
+    B2048,
+    /// 3072.
+    #[value(name = "3072")]
+    B3072,
+    /// 4096.
+    #[value(name = "4096")]
+    B4096,
+}
+
+impl From<KeyBits> for herald_crypto::keygen::Bits {
+    fn from(bits: KeyBits) -> Self {
+        match bits {
+            KeyBits::B2048 => Self::Rsa2048,
+            KeyBits::B3072 => Self::Rsa3072,
+            KeyBits::B4096 => Self::Rsa4096,
+        }
+    }
 }
 
 /// What the operator says of a living post's possibly orphaned parts.

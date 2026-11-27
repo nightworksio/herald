@@ -83,7 +83,7 @@ impl fmt::Display for PrepareError {
                 secret,
             } => write!(
                 f,
-                "the destination \"{destination}\" signs with {secret}, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM; make one with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`"
+                "the destination \"{destination}\" signs with {secret}, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM; make one with `herald activitypub keygen <file>`"
             ),
         }
     }
