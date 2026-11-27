@@ -33,6 +33,7 @@ mod dry_run;
 mod edited;
 mod followers;
 mod health;
+mod keygen;
 mod lambda;
 mod merging;
 mod orphaning;
@@ -56,7 +57,7 @@ pub use doctoring::schema as doctor_schema;
 pub use signals::stopped;
 
 use announce::{Announce, Routed, announcing, announcing_from};
-use cli::{Cli, Command, Reading, RunForge, Running, Tokens};
+use cli::{Activitypub, Cli, Command, Reading, RunForge, Running, Tokens};
 use doctoring::DoctorArgs;
 use herald_compose::Log;
 use herald_compose::told::{chored, polled_as, skipped, why};
@@ -125,6 +126,9 @@ async fn stopping(
             let configured = || read(&cli.config).ok().map(|config| config.server.listen);
             let url = health::url(url, listen, configured);
             return health::health(&url, Duration::from_millis(timeout), out, err).await;
+        }
+        Command::Activitypub(Activitypub::Keygen { file, bits, force }) => {
+            return keygen::keygen(&file, (bits.into(), force), random_secret(), out, err);
         }
         Command::Read(reading) => reading,
     };

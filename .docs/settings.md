@@ -602,7 +602,7 @@ herald's own ActivityPub actors, on its domain.
 | `destinations.<name>.followers` | table | How many may follow each actor, in all and from any one server; a follow past either is answered with a `Reject`; `[federation]`'s where unset. |
 | `destinations.<name>.followers.most` | integer | The most followers one actor keeps; no limit where unset. |
 | `destinations.<name>.followers.per_domain` | integer | The most followers one actor keeps from any one server; no limit where unset. |
-| `destinations.<name>.key` | table | The secret holding the actors' RSA private key, as PKCS#8 PEM, such as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` writes; `[federation] actor_key` where unset. |
+| `destinations.<name>.key` | table | The secret holding the actors' RSA private key, as PKCS#8 PEM, such as `herald activitypub keygen` writes; `[federation] actor_key` where unset. |
 | `destinations.<name>.key.secret` | string | The secret's name. |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.lists` | array of tables | Shared block lists, each a file of Mastodon's domain block CSV pinned by its SHA-256, whose domains are blocked beside `block`'s; `[federation]`'s where unset. |

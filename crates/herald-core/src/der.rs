@@ -32,6 +32,25 @@ const PKCS8_HEAD: usize = 26;
 /// PKCS#1 key: its version, algorithm and `OCTET STRING` header.
 const PKCS8_BETWEEN: u16 = 22;
 
+/// The DER bytes one line of a PEM block holds: 64 characters of base64.
+const PEM_LINE: usize = 48;
+
+/// The PEM block of `der` labelled `label`, written onto `out` a line at a
+/// time with no copy of its own, so a private key's block can be written
+/// into a buffer its owner zeroes.
+pub fn armour(der: &[u8], label: &str, out: &mut String) {
+    out.push_str("-----BEGIN ");
+    out.push_str(label);
+    out.push_str("-----\n");
+    for line in der.chunks(PEM_LINE) {
+        STANDARD.encode_string(line, out);
+        out.push('\n');
+    }
+    out.push_str("-----END ");
+    out.push_str(label);
+    out.push_str("-----\n");
+}
+
 /// The DER `text` holds as one PEM block labelled `label`, and nothing
 /// around it, decoded four characters at a time into a buffer allocated
 /// once, so no other copy of a private key is left on the heap.
@@ -117,6 +136,24 @@ mod tests {
     /// `body` between a PEM `BEGIN` line of `begin` and an `END` line of `end`.
     fn armoured(begin: &str, body: &str, end: &str) -> String {
         format!("-----BEGIN {begin}-----\n{body}\n-----END {end}-----\n")
+    }
+
+    #[test]
+    fn a_block_is_armoured_a_line_of_sixty_four_characters_at_a_time_and_read_back() {
+        let der: Vec<u8> = (0..=99).collect();
+        let mut block = String::new();
+        armour(&der, PRIVATE_KEY, &mut block);
+        let lines: Vec<&str> = block.lines().collect();
+        assert_eq!(lines.first(), Some(&"-----BEGIN PRIVATE KEY-----"));
+        assert_eq!(lines.last(), Some(&"-----END PRIVATE KEY-----"));
+        assert_eq!(
+            lines[1..lines.len() - 1]
+                .iter()
+                .map(|line| line.len())
+                .collect::<Vec<_>>(),
+            [64, 64, 8]
+        );
+        assert_eq!(pem(&block, PRIVATE_KEY), Some(der));
     }
 
     #[test]

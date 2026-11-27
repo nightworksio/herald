@@ -13,6 +13,7 @@ mod first_run;
 mod followers;
 mod forges;
 mod housekeep;
+mod keygen;
 mod lambda;
 mod load;
 mod merge_queue;

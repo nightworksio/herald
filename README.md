@@ -191,10 +191,10 @@ template = "package-release"
 ```
 
 The actor signs with an RSA private key of 2048 to 8192 bits in a PKCS#8
-PEM. Make one with:
+PEM. Make one (`--bits` 3072 or 4096 for more) in a file its owner reads:
 
 ```sh
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out herald-activitypub.pem
+herald activitypub keygen herald-activitypub.pem
 ```
 
 The destination's `deliveries` (8) sets how many of an announcement's

@@ -30,7 +30,7 @@ herald-dest-matrix.workspace = true
 herald-dest-slack.workspace = true
 herald-flows.workspace = true
 herald-kinds.workspace = true
-herald-crypto.workspace = true
+herald-crypto = { workspace = true, features = ["keygen"] }
 herald-environment.workspace = true
 herald-native.workspace = true
 herald-peers.workspace = true

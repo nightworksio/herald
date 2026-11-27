@@ -341,7 +341,7 @@ fn an_actor_whose_key_cannot_sign_stops_every_run_before_it_starts() {
     );
     assert_eq!(
         unkeyed.to_string(),
-        "the destination \"fedi\" signs with BAD, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM; make one with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`"
+        "the destination \"fedi\" signs with BAD, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM; make one with `herald activitypub keygen <file>`"
     );
 }
 

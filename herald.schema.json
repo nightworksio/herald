@@ -2356,7 +2356,7 @@
               "$ref": "#/$defs/FollowerCaps"
             },
             "key": {
-              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`\nwrites; `[federation] actor_key` where unset.",
+              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `herald activitypub keygen` writes; `[federation] actor_key` where\nunset.",
               "$ref": "#/$defs/SecretRef"
             },
             "kind": {

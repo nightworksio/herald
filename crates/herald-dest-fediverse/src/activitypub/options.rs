@@ -19,8 +19,8 @@ pub struct ActorOptions {
     #[schemars(example = "herald.example")]
     pub domain: String,
     /// The secret holding the actors' RSA private key, as PKCS#8 PEM, such
-    /// as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`
-    /// writes; `[federation] actor_key` where unset.
+    /// as `herald activitypub keygen` writes; `[federation] actor_key` where
+    /// unset.
     pub key: SecretRef,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.

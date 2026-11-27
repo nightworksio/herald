@@ -1,5 +1,10 @@
 //! herald's signing and verifying on ring (ADR-0007), for each driver that
-//! compiles it: the native binary, the WASI component and Fastly Compute.
+//! compiles it: the native binary, the WASI component and Fastly Compute;
+//! and, where the `keygen` feature is on, as the native CLI builds it, new
+//! RSA keys on AWS-LC.
+
+#[cfg(feature = "keygen")]
+pub mod keygen;
 
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
