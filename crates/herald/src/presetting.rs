@@ -79,28 +79,26 @@ fn ejected(text: &str, name: &str, expanded: &str) -> Result<String, String> {
         }
     }
     for (section, item) in tables.iter() {
-        match item {
-            Item::ArrayOfTables(written) => {
-                let routes = document
-                    .entry(section)
-                    .or_insert_with(|| Item::ArrayOfTables(ArrayOfTables::new()));
-                if let Some(routes) = routes.as_array_of_tables_mut() {
-                    written.iter().for_each(|route| routes.push(route.clone()));
-                }
+        let into = document.entry(section).or_insert_with(|| {
+            if item.is_array_of_tables() {
+                Item::ArrayOfTables(ArrayOfTables::new())
+            } else {
+                let mut named = Table::new();
+                named.set_implicit(true);
+                Item::Table(named)
             }
-            Item::Table(written) => {
-                let named = document.entry(section).or_insert_with(|| {
-                    let mut named = Table::new();
-                    named.set_implicit(true);
-                    Item::Table(named)
-                });
-                if let Some(named) = named.as_table_like_mut() {
-                    for (key, table) in written {
-                        named.insert(key, table.clone());
-                    }
-                }
+        });
+        if let (Item::ArrayOfTables(written), Some(routes)) = (item, into.as_array_of_tables_mut())
+        {
+            written.iter().for_each(|route| routes.push(route.clone()));
+        } else if let (Some(written), Some(named)) = (item.as_table(), into.as_table_like_mut()) {
+            for (key, table) in written {
+                named.insert(key, table.clone());
             }
-            _ => {}
+        } else {
+            return Err(format!(
+                "the config writes {section} inline, where eject adds tables; write it as [[{section}]] or [{section}.<name>] tables first"
+            ));
         }
     }
     Ok(document.to_string())

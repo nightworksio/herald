@@ -197,3 +197,67 @@ fn eject_writes_nothing_unless_confirmed_and_prints_the_config_under_print() {
     );
     assert_eq!(fs::read_to_string(&path).unwrap(), was);
 }
+
+#[test]
+fn eject_keeps_every_other_preset_the_config_adopts() {
+    let directory = adopted();
+    let path = directory.path().join("herald.toml");
+    let text = fs::read_to_string(&path).unwrap().replace(
+        "[presets.team]",
+        "[presets.more]\nuse = \"./presets/team.toml\"\ndestination = \"discord\"\nsources = [\"app\"]\nchannel = \"1566200000000000101\"\n\n[presets.team]",
+    );
+    fs::write(&path, text).unwrap();
+    let (done, out) = presetting(directory.path(), &eject(false, true), b"");
+    assert_eq!(done, Ok(crate::DONE), "{out}");
+    assert!(
+        out.contains("[presets.more]") && !out.contains("[presets.team]"),
+        "{out}"
+    );
+}
+
+#[test]
+fn eject_refuses_a_section_the_config_writes_inline() {
+    let directory = adopted();
+    let path = directory.path().join("herald.toml");
+    let mut text = fs::read_to_string(&path).unwrap();
+    text.push_str(
+        "\n[templates]\nown = { title = \"{{ event.project }}\", body = \"{{ event.body }}\" }\n",
+    );
+    text = text.replace(
+        "version = 1\n",
+        "version = 1\nroutes = [{ id = \"own\", sources = [\"app\"], destination = \"discord\", channel = \"1566200000000000102\", template = \"own\" }]\n",
+    );
+    fs::write(&path, text).unwrap();
+    let (done, out) = presetting(directory.path(), &eject(true, false), b"");
+    assert_eq!(
+        done,
+        Err("the config writes routes inline, where eject adds tables; write it as [[routes]] or [routes.<name>] tables first".to_owned()),
+        "{out}"
+    );
+}
+
+#[test]
+fn herald_preset_show_reads_the_config_it_is_given() {
+    let directory = adopted();
+    let setup = super::world::Setup {
+        directory,
+        vars: std::collections::BTreeMap::new(),
+    };
+    let run = super::world::herald(
+        &setup,
+        &super::world::World::default(),
+        &["preset", "show", "team"],
+    );
+    assert_eq!(run.code, crate::DONE, "{}", run.err);
+    assert!(run.out.contains("[templates.team-notes]"), "{}", run.out);
+}
+
+#[test]
+fn a_config_named_without_a_directory_reads_its_preset_from_the_working_directory() {
+    use herald_config::Files as _;
+    let beside = crate::Beside {
+        directory: Path::new(""),
+    };
+    let read = beside.read_inside("Cargo.toml").unwrap();
+    assert!(read.contains("name = \"herald\""), "{read}");
+}

@@ -303,9 +303,7 @@ impl Loader<'_> {
         let mut expanded = Expanded::default();
         for adopted in adopting {
             let path = format!("presets.{}", adopted.name);
-            let Some(mut tables) = self.tables(adopted, &path) else {
-                continue;
-            };
+            let mut tables = self.tables(adopted, &path);
             tables.renamed(&adopted.name);
             self.given(adopted, &mut tables, &path);
             for (section, name, _) in &tables.named {
@@ -340,7 +338,7 @@ impl Loader<'_> {
 
     /// The tables `adopted`'s preset writes, read as a region past
     /// `herald.toml`'s text, a local preset's checked.
-    fn tables<'a>(&mut self, adopted: &'a Adopting<'a>, path: &str) -> Option<Tables<'a>> {
+    fn tables<'a>(&mut self, adopted: &'a Adopting<'a>, path: &str) -> Tables<'a> {
         let (text, file) = match &adopted.preset {
             Adopted::Shipped(preset) => (preset.tables, None),
             Adopted::Local { file, text } => (text.as_str(), Some(file.clone())),
@@ -366,18 +364,11 @@ impl Loader<'_> {
             let at = error.span().unwrap_or(0..0);
             self.error(&(at.start + start..at.end + start), path, error.message());
         }
-        let root_span = root.span();
-        let DeValue::Table(mut root) = shifted(
-            Spanned::new(root_span, DeValue::Table(root.into_inner())),
-            start,
-        )
-        .into_inner() else {
-            return None;
-        };
+        let mut root = shifted_table(root.into_inner(), start);
         if matches!(adopted.preset, Adopted::Local { .. }) {
             self.local(&mut root, (start, path));
         }
-        Some(self.split(root, path))
+        self.split(root, path)
     }
 
     /// `root`, a local preset's tables read from `start`, with its
@@ -422,18 +413,20 @@ impl Loader<'_> {
         }
         for (section, value) in root.iter_mut() {
             let section = section.get_ref().to_string();
-            for table in tables_of(&section, value.get_mut()) {
-                self.refused(&section, table, path);
+            for writable in WRITABLE
+                .iter()
+                .filter(|writable| writable.section == section)
+            {
+                for table in tables_of(&section, value.get_mut()) {
+                    self.refused(writable, table, path);
+                }
             }
         }
     }
 
-    /// `table`, of a local preset's `section`, with every key it may not
-    /// write refused and taken out.
-    fn refused(&mut self, section: &str, table: &mut DeTable<'_>, path: &str) {
-        let Some(writable) = WRITABLE.iter().find(|writable| writable.section == section) else {
-            return;
-        };
+    /// `table`, of the section of a local preset `writable` gives the keys
+    /// of, with every key it may not write refused and taken out.
+    fn refused(&mut self, writable: &Writable, table: &mut DeTable<'_>, path: &str) {
         let named: Vec<(String, Range<usize>, String)> = table
             .iter()
             .filter_map(|(key, value)| {
@@ -730,24 +723,26 @@ fn each_name(value: &mut DeValue<'_>, each: &mut dyn FnMut(&mut Cow<'_, str>)) {
 
 /// `value` with every span within it moved on by `by`.
 fn shifted(value: Value<'_>, by: usize) -> Value<'_> {
-    let moved = |span: Range<usize>| span.start + by..span.end + by;
-    let span = moved(value.span());
+    let span = value.span().start + by..value.span().end + by;
     let inner = match value.into_inner() {
-        DeValue::Table(table) => DeValue::Table(
-            table
-                .into_iter()
-                .map(|(key, child)| {
-                    let at = moved(key.span());
-                    (Spanned::new(at, key.into_inner()), shifted(child, by))
-                })
-                .collect(),
-        ),
+        DeValue::Table(table) => DeValue::Table(shifted_table(table, by)),
         DeValue::Array(items) => {
             DeValue::Array(items.into_iter().map(|item| shifted(item, by)).collect())
         }
         other => other,
     };
     Spanned::new(span, inner)
+}
+
+/// `table` with every span in it moved on by `by`.
+fn shifted_table(table: DeTable<'_>, by: usize) -> DeTable<'_> {
+    table
+        .into_iter()
+        .map(|(key, child)| {
+            let at = key.span().start + by..key.span().end + by;
+            (Spanned::new(at, key.into_inner()), shifted(child, by))
+        })
+        .collect()
 }
 
 /// The tables the config `text`, read from the file named `file`, expands

@@ -631,3 +631,31 @@ fn the_expansion_of_a_table_the_config_does_not_adopt_is_refused() {
         .to_string();
     assert!(errors.contains("give the preset it adopts"), "{errors}");
 }
+
+#[test]
+fn a_preset_table_and_its_use_are_of_their_shapes() {
+    let scalar = errors(&with("[presets]\nreleases = 3\n"));
+    assert!(scalar.contains("presets.releases"), "{scalar}");
+    let used = errors(&with("[presets.releases]\nuse = 3\n"));
+    assert!(used.contains("presets.releases.use"), "{used}");
+}
+
+#[test]
+fn a_local_preset_s_routes_and_named_tables_are_tables() {
+    let route = local(&with(ADOPT_TEAM), "version = 1\nroutes = [1]\n").unwrap_err();
+    assert!(
+        route.contains("a route is a table; write [[routes]]"),
+        "{route}"
+    );
+    let template = local(&with(ADOPT_TEAM), "version = 1\n[templates]\nnotes = 3\n").unwrap_err();
+    assert!(
+        template.contains("templates.notes is a table; write [templates.notes]"),
+        "{template}"
+    );
+    let named = local(
+        &with(ADOPT_TEAM),
+        &TEAM.replace("template = \"notes\"", "template = 3"),
+    )
+    .unwrap_err();
+    assert!(named.contains("presets.team"), "{named}");
+}
