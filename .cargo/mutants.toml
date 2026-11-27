@@ -66,4 +66,8 @@ exclude_re = [
     "herald-dest-discord/src/audience\\.rs:\\d+:\\d+: replace \\| with \\^ in viewing$",
     # Skipping index * 1 routes in place of index + 1 adds only a route paired with itself, whose two surfaces always agree, so no note is ever added.
     "herald-flows/src/doctor/views\\.rs:\\d+:\\d+: replace \\+ with \\* in advised_notes$",
+    # A preset's text is placed past the end of the one before it, and each mistake in it is found by the region holding its start; a region's end read as its start times its length only widens the gap before the next, which no offset falls in.
+    "herald-config/src/load/presets\\.rs:\\d+:24: replace \\+ with \\* in Loader<'_>::tables$",
+    # A moved span's end, moved by a product in place of a sum, still lies past every span within it, and a mistake is placed by its span's start, so nothing told changes.
+    "herald-config/src/load/presets\\.rs:\\d+:31: replace \\+ with \\* in moved$",
 ]

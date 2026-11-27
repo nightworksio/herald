@@ -659,3 +659,64 @@ fn a_local_preset_s_routes_and_named_tables_are_tables() {
     .unwrap_err();
     assert!(named.contains("presets.team"), "{named}");
 }
+
+#[test]
+fn a_syntax_mistake_is_told_in_the_file_that_makes_it() {
+    let preset = local(
+        &with(ADOPT_TEAM),
+        &TEAM.replace("kinds = [\"release\"]", "kinds = [\"release\""),
+    )
+    .unwrap_err();
+    assert!(
+        preset.contains("presets.team: ./team.toml:6:1: missing comma between array elements"),
+        "{preset}"
+    );
+    let text = format!("{}broken =", with(ADOPT_TEAM));
+    let config = local(&text, TEAM).unwrap_err();
+    let told = format!(
+        "herald.toml:{}:9 string values must be quoted",
+        text.lines().count()
+    );
+    assert!(config.contains(&told), "{told}: {config}");
+    assert!(!config.contains("./team.toml:"), "{config}");
+}
+
+#[test]
+fn a_parameter_lands_in_the_tables_its_preset_names() {
+    let config = loaded(&with(&format!(
+        "{RELEASES}title = \"{{{{ event.project }}}} is out\"\n"
+    )));
+    assert_eq!(config.routes.len(), 1);
+}
+
+#[test]
+fn a_mistake_in_a_second_local_preset_is_told_in_its_own_file() {
+    let text = with(&format!(
+        "{ADOPT_TEAM}\n[presets.more]\nuse = \"./more.toml\"\ndestination = \"discord\"\nsources = [\"app\"]\nchannel = \"1566200000000000101\"\n"
+    ));
+    let files = Beside(BTreeMap::from([
+        ("./more.toml", TEAM.to_owned()),
+        (
+            "./team.toml",
+            TEAM.replace("kinds = [\"release\"]", "kinds = [\"release\""),
+        ),
+    ]));
+    let error = load_with("herald.toml", &text, &files, &crate::common::kinds())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("presets.team: ./team.toml:6:1:"), "{error}");
+    assert!(!error.contains("./more.toml:"), "{error}");
+}
+
+#[test]
+fn a_mistake_in_a_local_preset_s_value_names_its_key() {
+    let error = local(
+        &with(ADOPT_TEAM),
+        &TEAM.replace("title = \"{{ event.project }}\"", "title = 3"),
+    )
+    .unwrap_err();
+    assert!(
+        error.contains("presets.team.title: ./team.toml:9:9: invalid type"),
+        "{error}"
+    );
+}

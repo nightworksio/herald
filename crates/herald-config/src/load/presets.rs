@@ -362,7 +362,7 @@ impl Loader<'_> {
         let (root, syntax) = DeTable::parse_recoverable(text);
         for error in &syntax {
             let at = error.span().unwrap_or(0..0);
-            self.error(&(at.start + start..at.end + start), path, error.message());
+            self.error(&moved(&at, start), path, error.message());
         }
         let mut root = shifted_table(root.into_inner(), start);
         if matches!(adopted.preset, Adopted::Local { .. }) {
@@ -723,7 +723,7 @@ fn each_name(value: &mut DeValue<'_>, each: &mut dyn FnMut(&mut Cow<'_, str>)) {
 
 /// `value` with every span within it moved on by `by`.
 fn shifted(value: Value<'_>, by: usize) -> Value<'_> {
-    let span = value.span().start + by..value.span().end + by;
+    let span = moved(&value.span(), by);
     let inner = match value.into_inner() {
         DeValue::Table(table) => DeValue::Table(shifted_table(table, by)),
         DeValue::Array(items) => {
@@ -734,12 +734,17 @@ fn shifted(value: Value<'_>, by: usize) -> Value<'_> {
     Spanned::new(span, inner)
 }
 
+/// `span` moved on by `by`.
+const fn moved(span: &Range<usize>, by: usize) -> Range<usize> {
+    span.start + by..span.end + by
+}
+
 /// `table` with every span in it moved on by `by`.
 fn shifted_table(table: DeTable<'_>, by: usize) -> DeTable<'_> {
     table
         .into_iter()
         .map(|(key, child)| {
-            let at = key.span().start + by..key.span().end + by;
+            let at = moved(&key.span(), by);
             (Spanned::new(at, key.into_inner()), shifted(child, by))
         })
         .collect()
