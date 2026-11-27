@@ -4,14 +4,17 @@
 //! unknown where none answers among its options sure enough, where no
 //! model may see a private repository's data, or where the store keeps no
 //! decisions (ADR-0057); and each pull request's last leaving of herald's
-//! own queue the store keeps, on its row (ADR-0087).
+//! own queue the store keeps, on its row (ADR-0087). Where a decision
+//! cannot be had, the board's "could not be read" list says why, once per
+//! repository and reason.
 
 use std::collections::BTreeMap;
 
 use herald_aws::{Endpoint, Signing, signed};
 use herald_config::{Config, Task, ViewConfig};
 use herald_core::{
-    Answer, Decided, Key, Pull, Question, Row, Visibility, decided, pull_identity, rows, state,
+    Answer, Decided, Key, Pull, Question, Row, Unread, Visibility, decided, pull_identity, rows,
+    state,
 };
 use herald_models::{Asked, Model, bedrock};
 use herald_ports::{Clock, Decisions, Http, Request, Signer, Store};
@@ -21,16 +24,54 @@ use crate::announce::Ports;
 use crate::merging::with_left;
 use crate::prepare::{Asking, Connected, PreparedModel};
 
+/// The rows a view shows, each slot its tasks decide settled where an
+/// answer may be taken, and why each decision that could not be had was
+/// not, once per repository and reason.
+pub(crate) struct Settled {
+    /// The rows.
+    pub(crate) rows: Vec<Row>,
+    /// Why a task decided nothing of a repository's rows.
+    pub(crate) unread: Vec<Unread>,
+}
+
+/// Why a task's decision of a row could not be had; never a credential or
+/// a model's words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Unhad {
+    /// The store keeps no decisions.
+    Unkept,
+    /// The decision the store keeps could not be read.
+    Unreadable,
+    /// Each model asked failed or gave no answer.
+    Unanswered,
+    /// The answer could not be kept, so it is not taken (ADR-0057).
+    Unstored,
+}
+
+impl Unhad {
+    /// Why, as the board says it.
+    const fn why(self) -> &'static str {
+        match self {
+            Self::Unkept => "the store keeps no decisions",
+            Self::Unreadable => "the decision the store keeps could not be read",
+            Self::Unanswered => "no model it asked answered",
+            Self::Unstored => "the answer could not be kept, so it is not taken",
+        }
+    }
+}
+
 /// The rows `view` shows of `pulls` now, each with its last leaving of
 /// herald's own queue where the store keeps one, each slot its tasks
-/// decide settled where an answer may be taken.
+/// decide settled where an answer may be taken, and why a decision could
+/// not be had.
 pub(crate) async fn decided_rows<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     view: &ViewConfig,
     pulls: &[Pull],
-) -> Vec<Row> {
+) -> Settled {
     let pulls = with_left((config, ports.store.actions()), view, pulls).await;
     let mut shown = rows(&view.view, &pulls, ports.clock.now());
+    let mut unhad: BTreeMap<(String, String), Visibility> = BTreeMap::new();
     let tasks = view
         .decide
         .iter()
@@ -46,33 +87,57 @@ pub(crate) async fn decided_rows<S: Store, C: Clock, G: Signer, H: Http>(
             .filter(|row| slot.asks(row))
             .take(task.most);
         for row in asked {
-            let Some(answer) = answered((connected, ports), (name, task, &question), row).await
-            else {
-                continue;
-            };
-            if let Some(choice) = answer.settled(&question, task.least) {
-                decided(row, slot, (name, choice));
+            match answered((connected, ports), (name, task, &question), row).await {
+                Ok(Some(answer)) => {
+                    if let Some(choice) = answer.settled(&question, task.least) {
+                        decided(row, slot, (name, choice));
+                    }
+                }
+                Ok(None) => {}
+                Err(why) => {
+                    let reason = format!("task \"{name}\" decided nothing: {}", why.why());
+                    let seen = row.pull.visibility;
+                    unhad
+                        .entry((row.pull.repository.clone(), reason))
+                        .and_modify(|visibility| *visibility = visibility.stricter(seen))
+                        .or_insert(seen);
+                }
             }
         }
     }
-    shown
+    Settled {
+        rows: shown,
+        unread: unhad
+            .into_iter()
+            .map(|((repository, reason), visibility)| Unread {
+                repository,
+                visibility,
+                reason,
+            })
+            .collect(),
+    }
 }
 
 /// What a model answered task `name` of `row`: the decision the store
 /// keeps for it, or else the first of the task's models allowed to see it
-/// that answers, kept before it is taken; none where the store keeps no
-/// decisions, cannot be read or written, or no model answers.
+/// that answers, kept before it is taken; none where no model may be
+/// asked.
+///
+/// # Errors
+///
+/// Why none was had: the store keeps no decisions, or cannot read or
+/// write them, or no model asked answers.
 async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
     (connected, ports): (&Connected<H>, &Ports<'_, S, C, G>),
     (name, task, question): (&str, &Task, &Question<'_>),
     row: &Row,
-) -> Option<Answer> {
-    let store = ports.store.decisions()?;
+) -> Result<Option<Answer>, Unhad> {
+    let store = ports.store.decisions().ok_or(Unhad::Unkept)?;
     let subject = pull_identity(&row.pull);
     let input = state(row);
     let key = Key::decided(name, &subject, &input);
-    if let Some(kept) = store.decision(&key).await.ok()? {
-        return Some(kept.answer);
+    if let Some(kept) = store.decision(&key).await.map_err(|_| Unhad::Unreadable)? {
+        return Ok(Some(kept.answer));
     }
     let public = row.pull.visibility == Visibility::Public;
     let models = task
@@ -86,7 +151,9 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
                 .filter(|(model, _)| public || model.private)
         })
         .take_while(|_| ports.budget.allows(ports.clock.now(), 1).is_ok());
+    let mut unanswered = Ok(None);
     for (model, asking) in models {
+        unanswered = Err(Unhad::Unanswered);
         let questions = [*question];
         let Some(answer) = asked((model, asking), &input, &questions, ports.clock.now())
             .await
@@ -101,10 +168,13 @@ async fn answered<S: Store, C: Clock, G: Signer, H: Http>(
             answer,
             at: ports.clock.now(),
         };
-        store.put_decision(&decision).await.ok()?;
-        return Some(decision.answer);
+        store
+            .put_decision(&decision)
+            .await
+            .map_err(|_| Unhad::Unstored)?;
+        return Ok(Some(decision.answer));
     }
-    None
+    unanswered
 }
 
 /// What `model`, reached as `asking` says, answers `questions` of `input`

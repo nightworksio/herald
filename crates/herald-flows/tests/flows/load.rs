@@ -8,7 +8,7 @@ use herald_flows::{Connected, Ports, prepare, report};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use serde_json::json;
 
-use crate::harness::{NOON, POSTED, Script, healthy};
+use crate::harness::{NOON, POSTED, Script, described, healthy};
 
 const GRAPHQL: &str = "https://api.github.com/graphql";
 const TEAM: (&str, u16, &str) = (
@@ -124,29 +124,12 @@ fn a_public_route_is_shown_the_load_of_the_public_rows_alone() {
     };
     let swept = pollster::block_on(report(&config, &connected, &ports, "r1"));
     assert_eq!(swept.len(), 1, "{swept:?}");
-    let bodies = posted(&script);
+    let bodies = described(&script);
     assert_eq!(bodies.len(), 2, "{bodies:?}");
     assert_eq!(
         bodies,
         ["load: o/reviewers=2 o/secret-team=1", "load: o/reviewers=1"]
     );
-}
-
-/// The description of each post `script` saw made, in order.
-fn posted(script: &Script) -> Vec<String> {
-    script
-        .seen()
-        .into_iter()
-        .zip(script.bodies())
-        .filter(|(line, _)| line.contains("/channels/"))
-        .map(|(_, body)| {
-            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-            body["embeds"][0]["description"]
-                .as_str()
-                .unwrap_or_default()
-                .replace('\\', "")
-        })
-        .collect()
 }
 
 /// [`TEXT`] with each source reading its forge's teams, and no config team
@@ -205,7 +188,7 @@ fn swept(
         budget: herald_flows::Budget::UNBOUNDED,
     };
     let swept = pollster::block_on(report(config, &connected, &ports, "r1"));
-    (script.seen(), posted(&script), format!("{swept:?}"))
+    (script.seen(), described(&script), format!("{swept:?}"))
 }
 
 const TEAMS: &str = "https://api.github.com/orgs/o/teams?per_page=100&page=1";
@@ -317,7 +300,7 @@ fn routes_shown_the_same_rows_are_parted_so_the_private_one_alone_is_shown_a_for
     };
     pollster::block_on(report(&config, &connected, &ports, "r1"));
     assert_eq!(
-        posted(&script),
+        described(&script),
         ["load: o/reviewers=1 o/secret-team=1", "load: o/reviewers=1"],
         "{:?}",
         script.seen()

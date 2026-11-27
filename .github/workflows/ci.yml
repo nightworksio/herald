@@ -399,15 +399,17 @@ jobs:
   # the crates changed since the last green scheduled run on main and their
   # dependents; the weekly run, a run started by hand and a release's gate
   # the whole workspace; a push to main nothing, its pull request having
-  # mutated its diff (ADR-0008, ADR-0070).
+  # mutated its diff; and into how many shards, by the mutants it lists
+  # (ADR-0008, ADR-0070).
   mutants-scope:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read
     outputs:
       shards: ${{ steps.scope.outputs.shards }}
+      excluded: ${{ steps.scope.outputs.excluded }}
       matrix: ${{ steps.scope.outputs.matrix }}
       wasm: ${{ steps.scope.outputs.wasm }}
       wasi: ${{ steps.scope.outputs.wasi }}
@@ -418,9 +420,11 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - run: .github/scripts/install-tool.sh cargo-mutants
       - id: scope
         env:
           EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
           REF: ${{ github.ref }}
           SCHEDULE: ${{ github.event.schedule }}
           GH_TOKEN: ${{ github.token }}
@@ -461,15 +465,17 @@ jobs:
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ strategy.job-total }}
           MUTATED: ${{ needs.mutants-scope.outputs.shards }}
+          EXCLUDED: ${{ needs.mutants-scope.outputs.excluded }}
         run: |
           set -euo pipefail
           read -r -a mutated <<< "$MUTATED"
+          read -r -a excluded <<< "$EXCLUDED"
           scope=()
           if [ "$EVENT" = "pull_request" ]; then
             git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
             scope=(--in-diff "${RUNNER_TEMP}/change.diff")
           fi
-          cargo mutants "${mutated[@]}" --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin --exclude 'crates/herald-wasm/src/js/**' --exclude 'crates/herald-wasi/**' --exclude 'crates/herald-fastly/**' --exclude 'crates/herald-spin/**' "${scope[@]}"
+          cargo mutants "${mutated[@]}" --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin "${excluded[@]}" "${scope[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
