@@ -1,6 +1,6 @@
 # ADR-0004: Each destination gets its own dialect, limits and features, described as data
 
-**Status:** Accepted; decision 8 superseded in part by [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md), and the interactions of decisions 4 to 6 by [ADR-0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md); extended by [ADR-0036](0036-a-route-announces-each-project-as-an-actor-of-its-own.md)
+**Status:** Accepted; decision 8 superseded in part by [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md), and the interactions of decisions 4 to 6 by [ADR-0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md); extended by [ADR-0036](0036-a-route-announces-each-project-as-an-actor-of-its-own.md); a Teams dialect extended by [ADR-0093](0093-a-teams-destination-posts-by-workflow-webhook-or-as-a-bot-in-every-cloud-and-the-bot-takes-commands.md); an email dialect extended by [ADR-0094](0094-an-email-destination-writes-one-mime-message-and-sends-it-by-smtp-or-a-provider-s-api.md)
 **Date:** 2026-10-31
 
 ## Context

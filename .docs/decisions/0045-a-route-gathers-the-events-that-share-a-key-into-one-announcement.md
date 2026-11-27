@@ -1,6 +1,6 @@
 # ADR-0045: A route gathers the events that share a key into one announcement
 
-**Status:** Accepted
+**Status:** Accepted; `group.until = "calm"` extended by [ADR-0096](0096-a-route-holds-what-comes-in-its-quiet-hours-and-announces-it-as-one-when-they-end.md)
 **Date:** 2026-11-17
 
 ## Context

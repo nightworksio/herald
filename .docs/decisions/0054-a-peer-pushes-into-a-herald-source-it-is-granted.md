@@ -1,6 +1,6 @@
 # ADR-0054: A peer pushes into a herald source it is granted
 
-**Status:** Accepted; extended by [ADR-0064](0064-a-ci-run-s-id-token-is-its-credential.md), under which a CI run pushes with its ID token as the name an app stands for
+**Status:** Accepted; extended by [ADR-0064](0064-a-ci-run-s-id-token-is-its-credential.md), under which a CI run pushes with its ID token as the name an app stands for; decision 5's audit model extended by [ADR-0099](0099-herald-keeps-what-it-did-with-each-event-never-what-the-event-said-and-shows-it-to-the-operator-alone.md)
 **Date:** 2026-11-18
 
 ## Context

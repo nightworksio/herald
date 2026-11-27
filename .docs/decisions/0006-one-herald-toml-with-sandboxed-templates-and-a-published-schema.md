@@ -1,6 +1,6 @@
 # ADR-0006: One `herald.toml`, with sandboxed templates and a published JSON Schema, validated before anything posts
 
-**Status:** Accepted
+**Status:** Accepted; decision 1's one file extended with preset tables by [ADR-0092](0092-a-preset-is-shipped-or-local-toml-a-table-adopts-by-name-and-overrides-key-by-key.md)
 **Date:** 2026-10-31
 
 ## Context

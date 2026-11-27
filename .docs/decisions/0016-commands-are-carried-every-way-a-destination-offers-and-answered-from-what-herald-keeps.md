@@ -1,6 +1,6 @@
 # ADR-0016: Commands are carried every way a destination offers, and answered from what herald keeps
 
-**Status:** Accepted; extended by [ADR-0025](0025-routes-and-sources-go-at-once-within-limits-and-a-session-keeps-where-it-stands.md)
+**Status:** Accepted; extended by [ADR-0025](0025-routes-and-sources-go-at-once-within-limits-and-a-session-keeps-where-it-stands.md); buttons that act on the forge extended by [ADR-0098](0098-a-chat-user-acts-on-the-forge-only-as-the-person-the-operator-names-signed-in-at-the-forge-through-an-offer-bound-to-its-post.md)
 **Date:** 2026-11-05
 
 ## Context

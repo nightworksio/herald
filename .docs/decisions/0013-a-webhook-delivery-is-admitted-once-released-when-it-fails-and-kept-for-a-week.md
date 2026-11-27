@@ -1,6 +1,6 @@
 # ADR-0013: A webhook delivery is admitted once, released when it fails, and kept for a week
 
-**Status:** Accepted
+**Status:** Accepted; refused inbound requests recorded, extended by [ADR-0099](0099-herald-keeps-what-it-did-with-each-event-never-what-the-event-said-and-shows-it-to-the-operator-alone.md)
 **Date:** 2026-11-01
 
 ## Context

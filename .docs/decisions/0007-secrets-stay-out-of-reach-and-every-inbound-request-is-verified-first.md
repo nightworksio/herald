@@ -1,6 +1,6 @@
 # ADR-0007: Secrets stay out of argv, templates and logs, every inbound request is verified before it is parsed, and the supply chain is pinned and signed
 
-**Status:** Accepted; what the scrubber knows, and the least length it scrubs, superseded in part by [ADR-0089](0089-herald-s-log-takes-a-level-and-a-format-and-every-secret-herald-resolves-or-sends-is-scrubbed.md)
+**Status:** Accepted; what the scrubber knows, and the least length it scrubs, superseded in part by [ADR-0089](0089-herald-s-log-takes-a-level-and-a-format-and-every-secret-herald-resolves-or-sends-is-scrubbed.md); decision 3's inbound table extended with the Teams bot by [ADR-0093](0093-a-teams-destination-posts-by-workflow-webhook-or-as-a-bot-in-every-cloud-and-the-bot-takes-commands.md); the signed supply chain extended by [ADR-0101](0101-every-release-file-carries-a-github-attestation-and-an-sbom-built-and-attested-in-a-reusable-workflow.md)
 **Date:** 2026-10-31
 
 ## Context

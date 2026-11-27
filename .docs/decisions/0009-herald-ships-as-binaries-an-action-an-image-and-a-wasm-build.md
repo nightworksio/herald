@@ -1,6 +1,6 @@
 # ADR-0009: herald ships as signed binaries, an Action, an image and a wasm build, from GitHub alone until 1.0
 
-**Status:** Accepted; decision 2 superseded in part by [ADR-0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md)
+**Status:** Accepted; decision 2 superseded in part by [ADR-0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md); its signed outputs extended with bundles and SBOMs by [ADR-0101](0101-every-release-file-carries-a-github-attestation-and-an-sbom-built-and-attested-in-a-reusable-workflow.md)
 **Date:** 2026-10-31
 
 ## Context

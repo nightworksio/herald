@@ -1,6 +1,6 @@
 # ADR-0087: a pull request a writer queues goes to its forge's merge queue, or herald's own proves it on its base and merges it
 
-**Status:** Accepted
+**Status:** Accepted; decision 3's gestures extended with the chat gesture by [ADR-0098](0098-a-chat-user-acts-on-the-forge-only-as-the-person-the-operator-names-signed-in-at-the-forge-through-an-offer-bound-to-its-post.md)
 **Date:** 2026-11-24
 
 ## Context
