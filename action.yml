@@ -27,7 +27,7 @@ inputs:
     description: A release of the run's repository to announce, by its tag, where the run's event is not that release.
     default: ""
   log-level:
-    description: The least grave line the log writes, info, warn or error; HERALD_LOG_LEVEL, then the config's [log] level, where not given.
+    description: The least grave line the log writes, debug, info, warn or error; HERALD_LOG_LEVEL, then the config's [log] level, where not given.
     default: ""
   log-format:
     description: How the log writes each line, text or json; HERALD_LOG_FORMAT, then the config's [log] format, where not given.

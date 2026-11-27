@@ -153,7 +153,12 @@ async fn stopping(
     masked(&hidden, vars, if json { &mut *err } else { &mut *out });
     let out = &mut Scrubbing::new(out, scrubber.clone());
     let err = &mut Scrubbing::new(err, scrubber.clone());
-    let log = match Log::of(&config.log, |name| var(vars, name), scrubber) {
+    let log = match Log::of(
+        &config.log,
+        |name| var(vars, name),
+        scrubber,
+        herald_environment::SystemClock,
+    ) {
         Ok(log) => log.flagged(cli.log_level, cli.log_format),
         Err(message) => {
             say(err, &message);
@@ -166,6 +171,7 @@ async fn stopping(
     };
     let done = {
         let out = &mut Logged::new(out, &log);
+        out.told(&herald_compose::told::configured(&config));
         if let Some(layer) = doctoring::warning(&run, vars) {
             warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
         }

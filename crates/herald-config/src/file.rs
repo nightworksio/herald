@@ -582,15 +582,17 @@ pub(crate) struct CliFile {
 #[serde(deny_unknown_fields)]
 #[serde(rename = "Log")]
 pub(crate) struct LogFile {
-    /// The least grave line herald's log writes: "info", every line, where
-    /// absent; "warn", what herald left undone, passed over or refused,
-    /// and what stopped or failed; or "error", what stopped or failed
-    /// alone. `HERALD_LOG_LEVEL` takes its place, and a command's
-    /// `--log-level` takes the place of both.
+    /// The least grave line herald's log writes: "debug", every line and
+    /// what herald saw as it went, none carrying what a private repository
+    /// holds; "info", every line but those, where absent; "warn", what
+    /// herald left undone, passed over or refused, and what stopped or
+    /// failed; or "error", what stopped or failed alone. `HERALD_LOG_LEVEL`
+    /// takes its place, and a command's `--log-level` takes the place of
+    /// both.
     pub(crate) level: Option<crate::config::Level>,
     /// How herald's log writes each line: "text", as words, where absent;
-    /// or "json", a JSON object a line holding its `level` and its
-    /// `message`. `HERALD_LOG_FORMAT` takes its place, and a command's
+    /// or "json", a JSON object a line holding its `time` (RFC 3339, UTC),
+    /// its `level` and its `message`. `HERALD_LOG_FORMAT` takes its place, and a command's
     /// `--log-format` takes the place of both.
     pub(crate) format: Option<crate::config::LogFormat>,
     /// The fewest characters a secret's value holds to be written as

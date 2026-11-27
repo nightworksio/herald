@@ -241,7 +241,7 @@ fn a_log_variable_naming_no_level_stops_the_run_before_it_starts() {
     assert_eq!(run.code, MISTAKEN);
     assert_eq!(
         run.err,
-        "HERALD_LOG_LEVEL is \"loud\"; it takes info, warn, error\n"
+        "HERALD_LOG_LEVEL is \"loud\"; it takes debug, info, warn, error\n"
     );
     let flagged = herald(
         &setup,
@@ -250,7 +250,7 @@ fn a_log_variable_naming_no_level_stops_the_run_before_it_starts() {
     );
     assert_eq!(flagged.code, MISTAKEN);
     assert!(
-        flagged.err.contains("it takes info, warn, error"),
+        flagged.err.contains("it takes debug, info, warn, error"),
         "{}",
         flagged.err
     );
@@ -262,7 +262,13 @@ fn a_run_s_log_says_once_where_it_holds_more_secret_values_than_many() {
     for index in 0..=Scrubber::CROWDED.get() {
         scrubber.keep(&Secret::new("MANY", format!("value-{index:08}")));
     }
-    let log = herald_compose::Log::of(&herald_config::Log::default(), |_| None, scrubber).unwrap();
+    let log = herald_compose::Log::of(
+        &herald_config::Log::default(),
+        |_| None,
+        scrubber,
+        herald_environment::SystemClock,
+    )
+    .unwrap();
     let mut written = Vec::new();
     let out = &mut output::Logged::new(&mut written, &log);
     out.info("polled");

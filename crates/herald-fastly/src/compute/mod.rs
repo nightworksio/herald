@@ -119,7 +119,7 @@ pub(crate) fn serve() {
         }
         Err(error) => {
             let host = FastlyHost::new();
-            let log = Log::unconfigured(|name| host.var(name));
+            let log = Log::unconfigured(|name| host.var(name), *host.clock());
             refused(
                 &log,
                 refusal(

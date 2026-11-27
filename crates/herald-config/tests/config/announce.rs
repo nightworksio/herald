@@ -172,7 +172,7 @@ fn the_log_s_settings_are_read_and_a_mistake_named_by_its_key() {
     let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
     assert_eq!(config.log.level, Level::Error);
     for (written, key) in [
-        ("level = \"debug\"", "log.level"),
+        ("level = \"trace\"", "log.level"),
         ("format = \"yaml\"", "log.format"),
         ("scrub_from = 0", "log.scrub_from"),
         ("scrub_warn_past = 0", "log.scrub_warn_past"),
@@ -192,12 +192,15 @@ fn the_log_s_settings_are_read_and_a_mistake_named_by_its_key() {
 
 #[test]
 fn a_level_and_a_format_are_named_as_the_config_writes_them() {
-    assert!(Level::Info < Level::Warn && Level::Warn < Level::Error);
+    assert!(Level::Debug < Level::Info && Level::Info < Level::Warn && Level::Warn < Level::Error);
     for level in Level::ALL {
         assert_eq!(Level::named(level.name()), Some(level));
     }
-    assert_eq!(Level::ALL.map(Level::name), ["info", "warn", "error"]);
-    assert_eq!(Level::named("debug"), None);
+    assert_eq!(
+        Level::ALL.map(Level::name),
+        ["debug", "info", "warn", "error"]
+    );
+    assert_eq!(Level::named("trace"), None);
     for format in LogFormat::ALL {
         assert_eq!(LogFormat::named(format.name()), Some(format));
     }

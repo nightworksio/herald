@@ -48,6 +48,6 @@ fn a_composed_herald_logs_at_the_level_its_host_names_scrubbing_each_secret_it_r
     ));
     assert_eq!(
         refused.err(),
-        Some("HERALD_LOG_LEVEL is \"loud\"; it takes info, warn, error".to_owned())
+        Some("HERALD_LOG_LEVEL is \"loud\"; it takes debug, info, warn, error".to_owned())
     );
 }

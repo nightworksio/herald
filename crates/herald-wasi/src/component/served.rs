@@ -1,6 +1,7 @@
 use herald_compose::{Artefact, Composed, HostRequest, Hosting, Left, Log, Told, told};
 use herald_config::{Config, Uses, load};
 use herald_core::status;
+use herald_environment::SystemClock;
 use herald_flows::{Reply, refusal, uncomposed};
 
 use super::host::WasiHost;
@@ -74,11 +75,14 @@ impl Started {
         method: &str,
         target: &str,
     ) -> Result<Self, Reply> {
-        let unconfigured = Log::unconfigured(|name| {
-            vars.iter()
-                .find(|(key, value)| key == name && !value.is_empty())
-                .map(|(_, value)| value.as_str())
-        });
+        let unconfigured = Log::unconfigured(
+            |name| {
+                vars.iter()
+                    .find(|(key, value)| key == name && !value.is_empty())
+                    .map(|(_, value)| value.as_str())
+            },
+            SystemClock,
+        );
         match composed(vars.clone(), method, target).await {
             Ok(Ok(composed)) => Ok(Self { composed }),
             Ok(Err(reply)) => Err(reply),
