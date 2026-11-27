@@ -894,6 +894,63 @@ The presets the config adopts, by name: each expanded into the tables it writes,
 | `presets.<name>.title` | string | The template of each announcement's title. |
 | `presets.<name>.use` | string | The preset it adopts. |
 
+### `presets.<name>`: `herald:review-reminders`: Each open pull request waiting on review past each of its stages, nudged at 09:00 on weekdays to its destination
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>` | table | `herald:review-reminders`: Each open pull request waiting on review past each of its stages, nudged at 09:00 on weekdays to its destination. |
+| `presets.<name>.at` | string | The wall-clock time, as "HH:MM", it nudges at. |
+| `presets.<name>.days` | array of [Day](#day) | The days it nudges on. |
+| `presets.<name>.destination` | string | The destination its routes announce to, as `[destinations]` names it. |
+| `presets.<name>.sources` | array of string | The sources whose open pull requests it watches, as `[sources]` names them; every forge source where not given. |
+| `presets.<name>.stages` | array of [Duration](#duration) | How long a pull request waits on review, since anyone last acted on it, before each nudge. |
+| `presets.<name>.use` | string | The preset it adopts. |
+| `presets.<name>.zone` | string | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam". |
+
+### `presets.<name>`: `herald:merge-queue-small-team`: A merge queue on one base branch, which a writer enters a pull request into by a label or a comment
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>` | table | `herald:merge-queue-small-team`: A merge queue on one base branch, which a writer enters a pull request into by a label or a comment. |
+| `presets.<name>.branch` | string | The base branch it merges into, such as `main`. |
+
+### `presets.<name>.enter`: A label of this name added to the pull request
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>.enter` | table | A label of this name added to the pull request. |
+| `presets.<name>.enter.label` | string |  |
+
+### `presets.<name>.enter`: A comment on the pull request whose whole body, trimmed, is this command
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>.enter` | table | A comment on the pull request whose whole body, trimmed, is this command. |
+| `presets.<name>.enter.comment` | string |  |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>.method` | [Method](#method) | How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method. |
+| `presets.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue. |
+| `presets.<name>.source` | string | The source whose repository it merges in, of kind `github`, `gitlab` or `forgejo`, as `[sources]` names it. |
+| `presets.<name>.use` | string | The preset it adopts. |
+| `presets.<name>.write` | table | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`. |
+| `presets.<name>.write.app` | string | The GitHub App the writes are made as, by the name of its `[github_apps.<name>]` table, in place of `token`: an App other than the one the source reads as, installed with the permissions its writes need alone. |
+| `presets.<name>.write.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
+| `presets.<name>.write.token` | table | A token that may make the writes, other than the one the source reads with. |
+| `presets.<name>.write.token.secret` | string | The secret's name. |
+
+### `presets.<name>`: `herald:security-alerts-private`: Each security alert of its sources, announced to its destination, which its route states is private
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>` | table | `herald:security-alerts-private`: Each security alert of its sources, announced to its destination, which its route states is private. |
+| `presets.<name>.body` | string | The template of each announcement's body. |
+| `presets.<name>.destination` | string | The destination its routes announce to, as `[destinations]` names it. |
+| `presets.<name>.sources` | array of string | The sources whose events its routes take, as `[sources]` names them. |
+| `presets.<name>.title` | string | The template of each announcement's title. |
+| `presets.<name>.use` | string | The preset it adopts. |
+
 ### `presets.<name>`: A local preset: a file inside herald.toml's directory, of version 1, writing routes, templates, views, reports and rules only
 
 | Setting | Type | What it sets |
@@ -2776,9 +2833,9 @@ Each release of its sources, announced once to its destination with its notes.
 |---|---|---|
 | `destination` | always | The destination its routes announce to, as `[destinations]` names it. |
 | `sources` | always | The sources whose events its routes take, as `[sources]` names them. |
-| `prereleases` | or as written below | Which pre-releases it announces: `include`, `exclude` or `only`. |
-| `title` | or as written below | The template of each announcement's title. |
-| `body` | or as written below | The template of each announcement's body. |
+| `prereleases` | optional | Which pre-releases it announces: `include`, `exclude` or `only`. |
+| `title` | optional | The template of each announcement's title. |
+| `body` | optional | The template of each announcement's body. |
 
 ```toml
 [[routes]]
@@ -2790,4 +2847,74 @@ template = "release"
 [templates.release]
 title = "{{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}"
 body = "{{ event.body }}"
+```
+
+### `herald:review-reminders`
+
+Each open pull request waiting on review past each of its stages, nudged at 09:00 on weekdays to its destination.
+
+| Parameter | Given | What it sets |
+|---|---|---|
+| `destination` | always | The destination its routes announce to, as `[destinations]` names it. |
+| `sources` | optional | The sources whose open pull requests it watches, as `[sources]` names them; every forge source where not given. |
+| `stages` | optional | How long a pull request waits on review, since anyone last acted on it, before each nudge. |
+| `at` | optional | The wall-clock time, as "HH:MM", it nudges at. |
+| `days` | optional | The days it nudges on. |
+| `zone` | optional | The IANA time zone `at` and `days` are read in, such as "Europe/Amsterdam". |
+
+```toml
+[[routes]]
+id = "reminders"
+sources = ["reviews"]
+template = "herald:nudge"
+
+[views.reviews]
+states = ["waiting-on-review"]
+
+[rules.reviews]
+view = "reviews"
+stages = ["2d", "7d"]
+at = "09:00"
+days = ["mon", "tue", "wed", "thu", "fri"]
+zone = "UTC"
+```
+
+### `herald:merge-queue-small-team`
+
+A merge queue on one base branch, which a writer enters a pull request into by a label or a comment.
+
+| Parameter | Given | What it sets |
+|---|---|---|
+| `source` | always | The source whose repository it merges in, of kind `github`, `gitlab` or `forgejo`, as `[sources]` names it. |
+| `branch` | always | The base branch it merges into, such as `main`. |
+| `method` | always | How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method. |
+| `write` | always | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`. |
+| `runs` | optional | Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue. |
+| `enter` | optional | The gesture that enters a pull request: `{ label = "herald:merge" }` where not given, or another label or a comment's command. |
+
+```toml
+[merge_queues.queue]
+```
+
+### `herald:security-alerts-private`
+
+Each security alert of its sources, announced to its destination, which its route states is private.
+
+| Parameter | Given | What it sets |
+|---|---|---|
+| `destination` | always | The destination its routes announce to, as `[destinations]` names it. |
+| `sources` | always | The sources whose events its routes take, as `[sources]` names them. |
+| `title` | optional | The template of each announcement's title. |
+| `body` | optional | The template of each announcement's body. |
+
+```toml
+[[routes]]
+id = "alerts"
+kinds = ["alert"]
+private = true
+template = "alert"
+
+[templates.alert]
+title = "{{ event.project }}: {{ event.title }}"
+body = "{% if event.attributes.severity %}Severity: {{ event.attributes.severity }}.{% endif %}"
 ```

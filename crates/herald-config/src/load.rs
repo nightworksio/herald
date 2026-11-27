@@ -345,7 +345,8 @@ pub fn load_with(
     let tasks = loader.tasks(sections.tasks, &models);
     let teams = loader.teams(sections.teams);
     let views = loader.views(sections.views, expanded.views, &sources, &tasks);
-    let (merge_queues, queue_spans) = loader.merge_queues(sections.merge_queues, &sources);
+    let (merge_queues, queue_spans) =
+        loader.merge_queues(sections.merge_queues, expanded.merge_queues, &sources);
     let (boarded, boards) = loader.boards(sections.boards, (expanded.reports, expanded.routes));
     let named = listed.keys().map(String::as_str).collect();
     let reports = loader.reports(sections.reports, boarded, &views, (&sources, &named));
@@ -375,8 +376,7 @@ pub fn load_with(
     let http = loader.http_section(sections.http, read);
     loader.outlasted(&destinations, &http);
     loader.waited(&destinations);
-    let announce = loader.announce(sections.announce);
-    let run = loader.run(sections.run);
+    let (announce, run) = (loader.announce(sections.announce), loader.run(sections.run));
     let doctor = loader.doctor(sections.doctor);
     let (cli, log) = (loader.cli(sections.cli), loader.log(sections.log));
     loader.guarded((&sources, &source_spans), &destinations, &routes, doctor);

@@ -29,7 +29,8 @@ pub struct Parameter {
     /// What it sets.
     pub described: &'static str,
     /// Whether the adopting table must give it; one it need not give takes
-    /// the value the preset's tables write.
+    /// the value the preset's tables write, or where they write none, the
+    /// value the key takes where absent.
     pub required: bool,
     /// The tables of the preset it is written into.
     pub lands: Lands,
@@ -44,6 +45,12 @@ pub enum Lands {
     Routes,
     /// Each of its templates.
     Templates,
+    /// Each of its views.
+    Views,
+    /// Each of its rules.
+    Rules,
+    /// Each of its merge queues.
+    MergeQueues,
 }
 
 impl Lands {
@@ -53,6 +60,9 @@ impl Lands {
         match self {
             Self::Routes => "routes",
             Self::Templates => "templates",
+            Self::Views => "views",
+            Self::Rules => "rules",
+            Self::MergeQueues => "merge_queues",
         }
     }
 }
@@ -61,7 +71,12 @@ impl Lands {
 pub const SHIPPED_PREFIX: &str = "herald:";
 
 /// The presets herald ships, by name.
-pub const SHIPPED: &[Preset] = &[ANNOUNCE_RELEASES];
+pub const SHIPPED: &[Preset] = &[
+    ANNOUNCE_RELEASES,
+    REVIEW_REMINDERS,
+    MERGE_QUEUE_SMALL_TEAM,
+    SECURITY_ALERTS_PRIVATE,
+];
 
 /// The preset shipped as `name`, where herald ships one.
 #[must_use]
@@ -81,6 +96,30 @@ fn prereleases(generator: &mut SchemaGenerator) -> Schema {
     generator.subschema_for::<herald_core::Prereleases>()
 }
 
+fn lengths(generator: &mut SchemaGenerator) -> Schema {
+    generator.subschema_for::<Vec<herald_core::Duration>>()
+}
+
+fn days(generator: &mut SchemaGenerator) -> Schema {
+    generator.subschema_for::<Vec<crate::views::DayFile>>()
+}
+
+fn runs(generator: &mut SchemaGenerator) -> Schema {
+    generator.subschema_for::<herald_core::merging::Runs>()
+}
+
+fn method(generator: &mut SchemaGenerator) -> Schema {
+    generator.subschema_for::<herald_core::merging::Method>()
+}
+
+fn enter(generator: &mut SchemaGenerator) -> Schema {
+    generator.subschema_for::<herald_core::merging::Enter>()
+}
+
+fn write(generator: &mut SchemaGenerator) -> Schema {
+    generator.subschema_for::<herald_core::merging::Write>()
+}
+
 const DESTINATION: Parameter = Parameter {
     key: "destination",
     described: "The destination its routes announce to, as `[destinations]` names it.",
@@ -97,6 +136,22 @@ const SOURCES: Parameter = Parameter {
     schema: names,
 };
 
+const TITLE: Parameter = Parameter {
+    key: "title",
+    described: "The template of each announcement's title.",
+    required: false,
+    lands: Lands::Templates,
+    schema: name,
+};
+
+const BODY: Parameter = Parameter {
+    key: "body",
+    described: "The template of each announcement's body.",
+    required: false,
+    lands: Lands::Templates,
+    schema: name,
+};
+
 const ANNOUNCE_RELEASES: Preset = Preset {
     name: "herald:announce-releases",
     described: "Each release of its sources, announced once to its destination with its notes.",
@@ -110,20 +165,8 @@ const ANNOUNCE_RELEASES: Preset = Preset {
             lands: Lands::Routes,
             schema: prereleases,
         },
-        Parameter {
-            key: "title",
-            described: "The template of each announcement's title.",
-            required: false,
-            lands: Lands::Templates,
-            schema: name,
-        },
-        Parameter {
-            key: "body",
-            described: "The template of each announcement's body.",
-            required: false,
-            lands: Lands::Templates,
-            schema: name,
-        },
+        TITLE,
+        BODY,
     ],
     tables: r#"[[routes]]
 id = "releases"
@@ -134,6 +177,130 @@ template = "release"
 [templates.release]
 title = "{{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}"
 body = "{{ event.body }}"
+"#,
+};
+
+const REVIEW_REMINDERS: Preset = Preset {
+    name: "herald:review-reminders",
+    described: "Each open pull request waiting on review past each of its stages, nudged at 09:00 on weekdays to its destination.",
+    parameters: &[
+        DESTINATION,
+        Parameter {
+            key: "sources",
+            described: "The sources whose open pull requests it watches, as `[sources]` names them; every forge source where not given.",
+            required: false,
+            lands: Lands::Views,
+            schema: names,
+        },
+        Parameter {
+            key: "stages",
+            described: "How long a pull request waits on review, since anyone last acted on it, before each nudge.",
+            required: false,
+            lands: Lands::Rules,
+            schema: lengths,
+        },
+        Parameter {
+            key: "at",
+            described: "The wall-clock time, as \"HH:MM\", it nudges at.",
+            required: false,
+            lands: Lands::Rules,
+            schema: name,
+        },
+        Parameter {
+            key: "days",
+            described: "The days it nudges on.",
+            required: false,
+            lands: Lands::Rules,
+            schema: days,
+        },
+        Parameter {
+            key: "zone",
+            described: "The IANA time zone `at` and `days` are read in, such as \"Europe/Amsterdam\".",
+            required: false,
+            lands: Lands::Rules,
+            schema: name,
+        },
+    ],
+    tables: r#"[[routes]]
+id = "reminders"
+sources = ["reviews"]
+template = "herald:nudge"
+
+[views.reviews]
+states = ["waiting-on-review"]
+
+[rules.reviews]
+view = "reviews"
+stages = ["2d", "7d"]
+at = "09:00"
+days = ["mon", "tue", "wed", "thu", "fri"]
+zone = "UTC"
+"#,
+};
+
+const MERGE_QUEUE_SMALL_TEAM: Preset = Preset {
+    name: "herald:merge-queue-small-team",
+    described: "A merge queue on one base branch, which a writer enters a pull request into by a label or a comment.",
+    parameters: &[
+        Parameter {
+            key: "source",
+            described: "The source whose repository it merges in, of kind `github`, `gitlab` or `forgejo`, as `[sources]` names it.",
+            required: true,
+            lands: Lands::MergeQueues,
+            schema: name,
+        },
+        Parameter {
+            key: "branch",
+            described: "The base branch it merges into, such as `main`.",
+            required: true,
+            lands: Lands::MergeQueues,
+            schema: name,
+        },
+        Parameter {
+            key: "method",
+            described: "How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method.",
+            required: true,
+            lands: Lands::MergeQueues,
+            schema: method,
+        },
+        Parameter {
+            key: "write",
+            described: "The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = \"NAME\" } }` or `{ app = \"<github_apps name>\" }`.",
+            required: true,
+            lands: Lands::MergeQueues,
+            schema: write,
+        },
+        Parameter {
+            key: "runs",
+            described: "Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue.",
+            required: false,
+            lands: Lands::MergeQueues,
+            schema: runs,
+        },
+        Parameter {
+            key: "enter",
+            described: "The gesture that enters a pull request: `{ label = \"herald:merge\" }` where not given, or another label or a comment's command.",
+            required: false,
+            lands: Lands::MergeQueues,
+            schema: enter,
+        },
+    ],
+    tables: "[merge_queues.queue]\n",
+};
+
+const SECURITY_ALERTS_PRIVATE: Preset = Preset {
+    name: "herald:security-alerts-private",
+    described: "Each security alert of its sources, announced to its destination, which its route states is private.",
+    parameters: &[DESTINATION, SOURCES, TITLE, BODY],
+    tables: r#"[[routes]]
+id = "alerts"
+kinds = ["alert"]
+private = true
+template = "alert"
+
+[templates.alert]
+title = "{{ event.project }}: {{ event.title }}"
+body = "{% if event.attributes.severity %}Severity: {{ event.attributes.severity }}.{% endif %}"
 "#,
 };
 
@@ -153,7 +320,7 @@ pub(crate) fn reference() -> String {
             let given = if parameter.required {
                 "always"
             } else {
-                "or as written below"
+                "optional"
             };
             let _ = writeln!(
                 out,
@@ -164,4 +331,26 @@ pub(crate) fn reference() -> String {
         let _ = write!(out, "\n```toml\n{}```\n", preset.tables);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MERGE_QUEUE_SMALL_TEAM, Parameter};
+
+    #[test]
+    fn the_merge_queue_s_gesture_is_said_to_be_the_label_a_queue_takes_where_none_is_given() {
+        let enter: &Parameter = MERGE_QUEUE_SMALL_TEAM
+            .parameters
+            .iter()
+            .find(|parameter| parameter.key == "enter")
+            .unwrap();
+        assert!(
+            enter.described.contains(&format!(
+                "{{ label = \"{}\" }}",
+                herald_core::merging::ENTER_LABEL
+            )),
+            "{}",
+            enter.described
+        );
+    }
 }

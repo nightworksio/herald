@@ -5252,6 +5252,131 @@
           ]
         },
         {
+          "description": "`herald:review-reminders`: Each open pull request waiting on review past each of its stages, nudged at 09:00 on weekdays to its destination.",
+          "type": "object",
+          "properties": {
+            "at": {
+              "description": "The wall-clock time, as \"HH:MM\", it nudges at.",
+              "type": "string"
+            },
+            "days": {
+              "description": "The days it nudges on.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination its routes announce to, as `[destinations]` names it.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "The sources whose open pull requests it watches, as `[sources]` names them; every forge source where not given.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "stages": {
+              "description": "How long a pull request waits on review, since anyone last acted on it, before each nudge.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Duration"
+              }
+            },
+            "use": {
+              "description": "The preset it adopts.",
+              "type": "string",
+              "const": "herald:review-reminders"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as \"Europe/Amsterdam\".",
+              "type": "string"
+            }
+          },
+          "required": [
+            "use",
+            "destination"
+          ]
+        },
+        {
+          "description": "`herald:merge-queue-small-team`: A merge queue on one base branch, which a writer enters a pull request into by a label or a comment.",
+          "type": "object",
+          "properties": {
+            "branch": {
+              "description": "The base branch it merges into, such as `main`.",
+              "type": "string"
+            },
+            "enter": {
+              "description": "The gesture that enters a pull request: `{ label = \"herald:merge\" }` where not given, or another label or a comment's command.",
+              "$ref": "#/$defs/Enter"
+            },
+            "method": {
+              "description": "How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method.",
+              "$ref": "#/$defs/Method"
+            },
+            "runs": {
+              "description": "Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue.",
+              "$ref": "#/$defs/MergeRuns"
+            },
+            "source": {
+              "description": "The source whose repository it merges in, of kind `github`, `gitlab` or `forgejo`, as `[sources]` names it.",
+              "type": "string"
+            },
+            "use": {
+              "description": "The preset it adopts.",
+              "type": "string",
+              "const": "herald:merge-queue-small-team"
+            },
+            "write": {
+              "description": "The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = \"NAME\" } }` or `{ app = \"<github_apps name>\" }`.",
+              "$ref": "#/$defs/Write"
+            }
+          },
+          "required": [
+            "use",
+            "source",
+            "branch",
+            "method",
+            "write"
+          ]
+        },
+        {
+          "description": "`herald:security-alerts-private`: Each security alert of its sources, announced to its destination, which its route states is private.",
+          "type": "object",
+          "properties": {
+            "body": {
+              "description": "The template of each announcement's body.",
+              "type": "string"
+            },
+            "destination": {
+              "description": "The destination its routes announce to, as `[destinations]` names it.",
+              "type": "string"
+            },
+            "sources": {
+              "description": "The sources whose events its routes take, as `[sources]` names them.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "title": {
+              "description": "The template of each announcement's title.",
+              "type": "string"
+            },
+            "use": {
+              "description": "The preset it adopts.",
+              "type": "string",
+              "const": "herald:security-alerts-private"
+            }
+          },
+          "required": [
+            "use",
+            "destination",
+            "sources"
+          ]
+        },
+        {
           "description": "A local preset: a file inside herald.toml's directory, of version 1, writing routes, templates, views, reports and rules only.",
           "type": "object",
           "properties": {

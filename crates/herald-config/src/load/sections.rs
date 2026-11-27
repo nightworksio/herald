@@ -89,7 +89,7 @@ pub(super) struct Sections<'i> {
 impl Sections<'_> {
     /// Each of the sections whose tables are named, with the names its
     /// table writes.
-    pub(super) fn names(&self) -> [(&'static str, BTreeSet<String>); 4] {
+    pub(super) fn names(&self) -> [(&'static str, BTreeSet<String>); 5] {
         let names = |value: &Option<Value<'_>>| match value.as_ref().map(Spanned::get_ref) {
             Some(DeValue::Table(table)) => {
                 table.keys().map(|key| key.get_ref().to_string()).collect()
@@ -101,6 +101,7 @@ impl Sections<'_> {
             ("views", names(&self.views)),
             ("reports", names(&self.reports)),
             ("rules", names(&self.rules)),
+            ("merge_queues", names(&self.merge_queues)),
         ]
     }
 }
