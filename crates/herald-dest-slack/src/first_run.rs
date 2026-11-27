@@ -20,15 +20,11 @@ pub(crate) const VARIANTS: &[Variant] = &[
         described: "an incoming webhook's URL: it posts only, where the webhook was made",
         reads_back: false,
         asks: &[
-            Ask {
-                key: "webhook",
-                asked: "The secret that holds the webhook's URL",
-                example: "HERALD_SLACK_WEBHOOK",
-                answer: Answer::Secret {
-                    default: "HERALD_SLACK_WEBHOOK",
-                },
-                lands: Lands::Destination,
-            },
+            Ask::secret(
+                "webhook",
+                "The secret that holds the webhook's URL",
+                "HERALD_SLACK_WEBHOOK",
+            ),
             DOMAIN,
         ],
     },
@@ -37,23 +33,18 @@ pub(crate) const VARIANTS: &[Variant] = &[
         described: "a bot token (xoxb-…): it threads, pins and reads its posts back",
         reads_back: true,
         asks: &[
-            Ask {
-                key: "token",
-                asked: "The secret that holds the bot token",
-                example: "HERALD_SLACK_TOKEN",
-                answer: Answer::Secret {
-                    default: "HERALD_SLACK_TOKEN",
-                },
-                lands: Lands::Destination,
-            },
+            Ask::secret(
+                "token",
+                "The secret that holds the bot token",
+                "HERALD_SLACK_TOKEN",
+            ),
             DOMAIN,
-            Ask {
-                key: "channel",
-                asked: "The id of the channel the bot has joined",
-                example: "C0123456789",
-                answer: Answer::Text,
-                lands: Lands::Route,
-            },
+            Ask::text(
+                "channel",
+                "The id of the channel the bot has joined",
+                "C0123456789",
+                Lands::Route,
+            ),
         ],
     },
 ];

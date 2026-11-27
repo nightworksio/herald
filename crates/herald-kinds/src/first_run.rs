@@ -84,6 +84,38 @@ pub struct Ask {
     pub lands: Lands,
 }
 
+impl Ask {
+    /// A question asking for the name of the secret that holds the
+    /// destination's credential, `default` the recommended name.
+    #[must_use]
+    pub const fn secret(key: &'static str, asked: &'static str, default: &'static str) -> Self {
+        Self {
+            key,
+            asked,
+            example: default,
+            answer: Answer::Secret { default },
+            lands: Lands::Destination,
+        }
+    }
+
+    /// A question asking for text written as given, such as `example`.
+    #[must_use]
+    pub const fn text(
+        key: &'static str,
+        asked: &'static str,
+        example: &'static str,
+        lands: Lands,
+    ) -> Self {
+        Self {
+            key,
+            asked,
+            example,
+            answer: Answer::Text,
+            lands,
+        }
+    }
+}
+
 /// What a question takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
