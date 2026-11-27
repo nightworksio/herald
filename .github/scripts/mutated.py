@@ -49,7 +49,7 @@ class Cut(NamedTuple):
         return max(1, min(self.most, math.ceil(mutants / held)))
 
 
-WHOLE_CUT = Cut(seconds_per_mutant=8, minutes=90, most=40)
+WHOLE_CUT = Cut(seconds_per_mutant=12, minutes=90, most=40)
 PULL_REQUEST_CUT = Cut(seconds_per_mutant=30, minutes=15, most=12)
 UNREAD_DIRECTORIES = (".docs/decisions/", ".github/", "fuzz/")
 READ_INSIDE = (".github/workflows/ci.yml", ".github/scripts/install-tool.sh", ".github/dogfood")
