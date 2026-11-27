@@ -69,14 +69,15 @@ fn expanded(path: &str, text: &str, name: &str) -> Result<String, String> {
 fn ejected(text: &str, name: &str, expanded: &str) -> Result<String, String> {
     let mut document: DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
     let tables: DocumentMut = expanded.parse().map_err(|error| format!("{error}"))?;
-    if let Some(presets) = document
+    let emptied = document
         .get_mut("presets")
         .and_then(Item::as_table_like_mut)
-    {
-        presets.remove(name);
-        if presets.is_empty() {
-            document.remove("presets");
-        }
+        .is_some_and(|presets| {
+            presets.remove(name);
+            presets.is_empty()
+        });
+    if emptied {
+        document.remove("presets");
     }
     for (section, item) in tables.iter() {
         let into = document.entry(section).or_insert_with(|| {
