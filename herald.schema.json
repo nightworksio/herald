@@ -3640,7 +3640,7 @@
           "$ref": "#/$defs/KeyCache"
         },
         "document": {
-          "description": "The most of a key's or an actor's document read; \"256KiB\" where\nabsent, and at most \"1MiB\".",
+          "description": "The most of a key's or an actor's document read; \"256KiB\" where\nabsent, and at most that: a setting may only lower it.",
           "$ref": "#/$defs/Size"
         },
         "most": {

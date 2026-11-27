@@ -642,7 +642,7 @@ pub(crate) struct KeysFile {
     /// 1024 where absent.
     pub(crate) most: Option<NonZeroUsize>,
     /// The most of a key's or an actor's document read; "256KiB" where
-    /// absent, and at most "1MiB".
+    /// absent, and at most that: a setting may only lower it.
     #[schemars(with = "Option<Size>")]
     pub(crate) document: Option<Spanned<Size>>,
 }

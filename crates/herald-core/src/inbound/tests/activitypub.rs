@@ -552,7 +552,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
             replay_window: SignedDuration::from_mins(20),
             signatures: 16,
             covered: 64,
-            document: 1_048_576,
+            document: 262_144,
         }
     );
 }
