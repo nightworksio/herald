@@ -180,6 +180,10 @@ pub(crate) enum Reading {
     /// trusted, or stop trusting one.
     #[command(subcommand)]
     Peer(Peering),
+    /// Print the tables a `[presets.<name>]` table expands to, or write
+    /// them into the config in its place (ADR-0092).
+    #[command(subcommand)]
+    Preset(Presetting),
     /// Render each route's templates as its destination would show them,
     /// against a sample event or a release event's file.
     Preview {
@@ -280,6 +284,28 @@ pub(crate) enum SettingUp {
     /// question for each key, each with its default chosen; it starts no
     /// queue (ADR-0087).
     MergeQueue(Box<crate::queue_setup::Answers>),
+}
+
+/// What `herald preset` does with a `[presets.<name>]` table.
+#[derive(Debug, Subcommand)]
+pub(crate) enum Presetting {
+    /// Print the tables it expands to, as herald.toml would write them.
+    Show {
+        /// The table, as `[presets.<name>]` names it.
+        name: String,
+    },
+    /// Write the tables it expands to into the config in its place, once
+    /// confirmed and the config they make read back whole.
+    Eject {
+        /// The table, as `[presets.<name>]` names it.
+        name: String,
+        /// Write without asking.
+        #[arg(long)]
+        yes: bool,
+        /// Print the config as it would be written, and write nothing.
+        #[arg(long)]
+        print: bool,
+    },
 }
 
 /// The commands that set a destination up to take commands.

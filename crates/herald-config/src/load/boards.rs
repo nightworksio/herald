@@ -18,13 +18,13 @@ pub(super) type BoardRoute<'i> = (String, Value<'i>);
 impl Loader<'_> {
     /// Each board of `[boards]`: its report, and its living route, whose
     /// id is the board's name, whose one source is its report, and which
-    /// renders `herald:queue` where it names no template.
+    /// renders `herald:queue` where it names no template; each after
+    /// `reports` and `routes`, which presets wrote.
     pub(super) fn boards<'i>(
         &mut self,
         value: Option<Value<'i>>,
+        (mut reports, mut routes): (Vec<Boarded<'i>>, Vec<BoardRoute<'i>>),
     ) -> (Vec<Boarded<'i>>, Vec<BoardRoute<'i>>) {
-        let mut reports = Vec::new();
-        let mut routes = Vec::new();
         for (name, value) in self.named(value, "boards") {
             let path = format!("boards.{name}");
             let span = value.span();

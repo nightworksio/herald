@@ -10,6 +10,7 @@ use herald_core::{
 };
 use toml::Spanned;
 
+use super::presets::Part;
 use super::route::Read;
 use super::{Loader, Value};
 use crate::file::TemplateFile;
@@ -24,6 +25,7 @@ use crate::views::{
 pub(super) struct Written {
     pub(super) title: Spanned<String>,
     pub(super) body: Spanned<String>,
+    pub(super) title_path: String,
     pub(super) body_path: String,
 }
 
@@ -31,11 +33,11 @@ impl Loader<'_> {
     pub(super) fn templates(
         &mut self,
         value: Option<Value<'_>>,
+        expanded: Vec<Part<'_>>,
         read: &dyn Fn(&str) -> Result<String, String>,
     ) -> BTreeMap<TemplateName, Written> {
         let mut templates = BTreeMap::new();
-        for (name, value) in self.named(value, "templates") {
-            let path = format!("templates.{name}");
+        for (path, name, value) in self.sectioned(value, "templates", expanded) {
             let span = value.span();
             if name == RECALL_TEMPLATE {
                 self.error(
@@ -80,6 +82,7 @@ impl Loader<'_> {
                     Written {
                         title: template.title,
                         body,
+                        title_path: format!("{path}.title"),
                         body_path,
                     },
                 );
@@ -99,6 +102,7 @@ impl Loader<'_> {
                 .or_insert_with(|| Written {
                     title: Spanned::new(0..0, title.to_owned()),
                     body: Spanned::new(0..0, body.to_owned()),
+                    title_path: format!("templates.{name}.title"),
                     body_path: name.to_owned(),
                 });
         }
@@ -130,13 +134,12 @@ impl Loader<'_> {
     ) -> Option<Templates> {
         let mut sources: Vec<(String, String, Form, Range<usize>, String)> = Vec::new();
         for (name, written) in templates {
-            let path = format!("templates.{}", name.as_str());
             sources.push((
                 title_template(name),
                 written.title.get_ref().clone(),
                 Form::Line,
                 written.title.span(),
-                format!("{path}.title"),
+                written.title_path.clone(),
             ));
             sources.push((
                 body_template(name),
@@ -195,13 +198,12 @@ impl Loader<'_> {
             return;
         };
         let route = &read.config.route;
-        let template_path = format!("templates.{}", rendered.template.as_str());
         let limits = read.config.profile.limits;
         let mut parts = vec![
             (
                 title_template(&rendered.template),
                 rendered.title_span.clone(),
-                format!("{template_path}.title"),
+                rendered.title_path.clone(),
                 Some(limits.title),
             ),
             (

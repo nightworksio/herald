@@ -52,12 +52,33 @@ already ships named content under a `herald:` prefix: the templates
      read with the reading herald's own schema: a key that herald does not
      know is an error naming the preset file, its line and the key;
    - it may hold `routes`, `templates`, `views`, `reports` and `rules`
-     only. It may not hold a secret reference, a destination, a source, a
-     store, a host or API base, `private`, `vouch_unchecked`, a merge
-     queue, a person or a route's `act`; each of these is refused with the
-     key and the line. The adopting table in `herald.toml` may give any
-     of them, so what herald trusts and where it writes stays in
-     `herald.toml`;
+     only, and no secret reference anywhere: no destination, source,
+     store, host or API base, merge queue or person;
+   - of each table it writes only the keys that pick and shape what
+     herald announces from what `herald.toml` already lets it read, and
+     where `herald.toml` already lets it post. A route: `id`, `sources`,
+     `kinds`, `prereleases`, `versions`, `match`, `area_paths`,
+     `template`, `templates` and `group`. A template: `title` and `body`.
+     A view: what it reads and how (`sources`, `states`, `bots`,
+     `repositories`, `authors`, `labels`, `areas`, `stale`, `stale_only`,
+     `group_by`, `bumps`, `rules`, `release`, `flaky`, `deciding`,
+     `conflicts`, `queue`, `mode`, `reconcile`, `most_open`, `most_pulls`,
+     `broken_at`). A report: its view and window (`view`, `every`, `at`,
+     `days`, `zone`). A rule: its view, window, `stages`, `most`,
+     `dequeued` and `release`;
+   - every other key is refused with the key, the line and why: where a
+     route posts (`destination`, `crosspost`, `thread`, `living` and each
+     destination kind's own route options, such as `channel`, so a new
+     kind opens nothing), whom it calls on (`mentions`), what it does to
+     its posts (`pin`, `edits`, `withdraw`, `late_release`), what herald
+     trusts of its place (`private`, `vouch_unchecked`), acting (`act`),
+     a template's `file`, a view's overviews of advisories, members and
+     teams and its `decide`, which hands pull requests to a model, and a
+     rule's `flaky` re-runs. A key a new herald adds to these tables is
+     refused until it is allowed. The adopting table in `herald.toml`
+     gives any of them, so where herald writes, whom it reaches, what it
+     trusts and what it does stays in `herald.toml`. A shipped `herald:`
+     preset is herald's own data and is not read against this list;
    - a local preset does not `use` another preset.
 5. **Nothing is hidden.** `herald preset show <table>` prints the TOML a
    table expands to; `herald preset eject <table>` writes that expansion

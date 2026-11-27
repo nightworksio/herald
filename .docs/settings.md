@@ -870,6 +870,29 @@ The other heralds this one trusts, by name.
 | `peers.<name>.rotation` | [Rotation](#rotation) | Whether a new key set the peer signs with a pinned key replaces the pinned keys: `manual` (the operator pins each new key) where absent, or `signed`. |
 | `peers.<name>.url` | string | Where the peer is served, such as `https://herald.example`: `https://`, its domain, and the path its endpoints are under where they are not at the root. Its discovery document is `/.well-known/herald` under it. |
 
+## `presets`
+
+The presets the config adopts, by name: each expanded into the tables it writes, each of them named `<name>-<table>` (ADR-0092).
+
+### `presets.<name>`: `herald:announce-releases`: Each release of its sources, announced once to its destination with its notes
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>` | table | `herald:announce-releases`: Each release of its sources, announced once to its destination with its notes. |
+| `presets.<name>.body` | string | The template of each announcement's body. |
+| `presets.<name>.destination` | string | The destination its routes announce to, as `[destinations]` names it. |
+| `presets.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it announces: `include`, `exclude` or `only`. |
+| `presets.<name>.sources` | array of string | The sources whose events its routes take, as `[sources]` names them. |
+| `presets.<name>.title` | string | The template of each announcement's title. |
+| `presets.<name>.use` | string | The preset it adopts. |
+
+### `presets.<name>`: A local preset: a file inside herald.toml's directory, of version 1, writing routes, templates, views, reports and rules only
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `presets.<name>` | table | A local preset: a file inside herald.toml's directory, of version 1, writing routes, templates, views, reports and rules only. |
+| `presets.<name>.use` | string | The file, named from herald.toml's directory as `./<path>`. |
+
 ## `render`
 
 How far a template may go as it renders.
@@ -2732,3 +2755,31 @@ What a route does with an announcement whose release the forge deleted (ADR-0048
 ### Zones
 
 A source's `areas` as the schema shows it.
+
+## Shipped presets
+
+Each preset herald ships, the parameters a `[presets.<name>]` table gives it, and the tables it expands to, each named `<name>-` and then as written here.
+
+### `herald:announce-releases`
+
+Each release of its sources, announced once to its destination with its notes.
+
+| Parameter | Given | What it sets |
+|---|---|---|
+| `destination` | always | The destination its routes announce to, as `[destinations]` names it. |
+| `sources` | always | The sources whose events its routes take, as `[sources]` names them. |
+| `prereleases` | or as written below | Which pre-releases it announces: `include`, `exclude` or `only`. |
+| `title` | or as written below | The template of each announcement's title. |
+| `body` | or as written below | The template of each announcement's body. |
+
+```toml
+[[routes]]
+id = "releases"
+kinds = ["release"]
+prereleases = "include"
+template = "release"
+
+[templates.release]
+title = "{{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}"
+body = "{{ event.body }}"
+```

@@ -20,6 +20,7 @@ mod milestones;
 mod pages;
 mod peers;
 mod poll;
+mod presets;
 mod queue;
 mod release;
 mod rerun;

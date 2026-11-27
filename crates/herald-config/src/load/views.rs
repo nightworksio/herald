@@ -22,6 +22,7 @@ use jiff::civil::Time;
 use toml::Spanned;
 
 use super::boards::Boarded;
+use super::presets::Part;
 use super::{Loader, Value, list};
 use crate::models::Task;
 use crate::views::{
@@ -578,6 +579,7 @@ impl Loader<'_> {
     pub(super) fn views(
         &mut self,
         value: Option<Value<'_>>,
+        expanded: Vec<Part<'_>>,
         sources: &BTreeMap<SourceName, Source>,
         tasks: &BTreeMap<String, Task>,
     ) -> BTreeMap<String, ViewConfig> {
@@ -598,8 +600,7 @@ impl Loader<'_> {
                 load: None,
             },
         )]);
-        for (name, value) in self.named(value, "views") {
-            let path = format!("views.{name}");
+        for (path, name, value) in self.sectioned(value, "views", expanded) {
             let span = value.span();
             if let Some(file) = self.typed::<ViewFile>(value, &path) {
                 let view = self.view(file, (&path, &span), (sources, tasks));
@@ -743,12 +744,7 @@ impl Loader<'_> {
         views: &BTreeMap<String, ViewConfig>,
         (sources, apps): (&BTreeMap<SourceName, Source>, &BTreeSet<&str>),
     ) -> BTreeMap<String, Report> {
-        let written: Vec<Boarded<'_>> = self
-            .named(value, "reports")
-            .into_iter()
-            .map(|(name, value)| (format!("reports.{name}"), name, value))
-            .chain(boarded)
-            .collect();
+        let written = self.sectioned(value, "reports", boarded);
         let mut reports = BTreeMap::new();
         let mut named: Vec<String> = Vec::new();
         for (path, name, value) in written {
@@ -866,20 +862,19 @@ impl Loader<'_> {
         })
     }
 
-    /// Each rule of `[rules]`, watching one of `views`, its name one no
+    /// Each rule of `written`, as `[rules]` and presets write them, watching one of `views`, its name one no
     /// source of `sources`, no app of `apps`, no report of `reports` and no
     /// other rule has.
     pub(super) fn rules(
         &mut self,
-        value: Option<Value<'_>>,
+        written: Vec<Part<'_>>,
         views: &BTreeMap<String, ViewConfig>,
         (sources, apps): (&BTreeMap<SourceName, Source>, &BTreeSet<&str>),
         reports: &BTreeMap<String, Report>,
     ) -> BTreeMap<String, Rule> {
         let mut rules = BTreeMap::new();
         let mut named: Vec<String> = reports.keys().cloned().collect();
-        for (name, value) in self.named(value, "rules") {
-            let path = format!("rules.{name}");
+        for (path, name, value) in written {
             let span = value.span();
             let Some((own, at, watch)) = self.parted(value, &path, &RULE_KEYS) else {
                 continue;
