@@ -13,6 +13,10 @@ pub const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 /// it.
 pub const GITHUB_REPOSITORY: &str = "GITHUB_REPOSITORY";
 
+/// The variable naming the base URL of the API of the forge a run is on,
+/// as GitHub Actions and Forgejo Actions set it.
+pub const GITHUB_API_URL: &str = "GITHUB_API_URL";
+
 /// A future a store opens through: it may hold what only the host's own
 /// thread may, as a WebAssembly host's databases do.
 pub type Local<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;

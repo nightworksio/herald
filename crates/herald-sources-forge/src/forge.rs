@@ -634,10 +634,9 @@ pub(crate) fn authorized(forge: Forge, request: Request, token: Option<&Token>) 
         (Forge::GitLab, Some(Token::Run(token))) => {
             request.header("JOB-TOKEN", SecretText::secret(token.clone()))
         }
-        (Forge::Forgejo, Some(Token::Named(token) | Token::Run(token))) => request.header(
-            "Authorization",
-            SecretText::plain("token ").then_secret(token.clone()),
-        ),
+        (Forge::Forgejo, Some(Token::Named(token) | Token::Run(token))) => {
+            herald_wire::forgejo::authorized(request, token.clone())
+        }
         (Forge::GitHub | Forge::GitLab, Some(Token::Named(token) | Token::Run(token))) => {
             request.bearer(token.clone())
         }

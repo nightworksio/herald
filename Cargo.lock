@@ -995,6 +995,7 @@ dependencies = [
  "herald-store-durable-object",
  "herald-store-dynamodb",
  "herald-store-fastly-kv",
+ "herald-store-forgejo-branch",
  "herald-store-git-branch",
  "herald-store-markers",
  "herald-store-postgres",
@@ -1032,6 +1033,7 @@ dependencies = [
  "herald-store-durable-object",
  "herald-store-dynamodb",
  "herald-store-fastly-kv",
+ "herald-store-forgejo-branch",
  "herald-store-git-branch",
  "herald-store-markers",
  "herald-store-postgres",
@@ -1218,6 +1220,7 @@ dependencies = [
  "herald-store-durable-object",
  "herald-store-dynamodb",
  "herald-store-fastly-kv",
+ "herald-store-forgejo-branch",
  "herald-store-git-branch",
  "herald-store-markers",
  "herald-store-postgres",
@@ -1519,6 +1522,23 @@ dependencies = [
  "herald-ports",
  "herald-records",
  "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-forgejo-branch"
+version = "0.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "herald-core",
+ "herald-kinds",
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "herald-wire",
+ "pollster",
  "schemars",
  "serde",
  "serde_json",

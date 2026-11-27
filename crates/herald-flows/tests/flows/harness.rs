@@ -845,6 +845,7 @@ pub fn kinds() -> herald_config::Kinds {
         .store::<herald_store_fastly_kv::FastlyKvKind>()
         .store::<herald_store_dynamodb::DynamodbKind>()
         .store::<herald_store_git_branch::GitBranchKind>()
+        .store::<herald_store_forgejo_branch::ForgejoBranchKind>()
         .store::<herald_store_markers::MarkersKind>()
         .store::<herald_store_actions_cache::ActionsCacheKind>()
         .store::<herald_store_repo_variables::RepoVariablesKind>()

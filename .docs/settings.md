@@ -2130,6 +2130,27 @@ One file per record on a `herald-state` branch.
 | `store.token` | table | The secret holding a token that may push to the branch; `GITHUB_TOKEN` where absent. |
 | `store.token.secret` | string | The secret's name. |
 
+### `store` of kind `forgejo-branch`
+
+One file per record on a `herald-state` branch of a Forgejo repository.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `store.api` | string | The API's base URL, such as a Forgejo's `https://forge.example/api/v1`. Where absent, it is the run's own, as Forgejo Actions sets `GITHUB_API_URL`, when the store names no repository, and Codeberg's when it names one. |
+| `store.attempts` | [Attempts](#attempts) | How many times a write that lost a race to an unrelated write is tried. |
+| `store.branch` | string | The branch the records are kept on; `herald-state` where absent. herald's first write makes it in an empty repository; in one that holds other branches it is made once, with no history, such as with `git switch --orphan herald-state`. |
+| `store.keep_decisions` | [Keep](#keep) | How long what a model answered a task is kept, and reused while the pull request it decided of is unchanged; "30d" where absent. |
+| `store.keep_deliveries` | [Duration](#duration) | How long a webhook delivery's id is kept after it was admitted, so a replay of it is refused (ADR-0013); "7d" where absent, and at least "3d", longer than any sender goes on retrying a delivery. |
+| `store.keep_ledger` | [Keep](#keep) | How long a ledger entry, and where each of its deliveries to a follower's inbox stands, is kept after a run last claimed it; "90d" where absent. |
+| `store.keep_notes` | [Keep](#keep) | How long a Note herald's ActivityPub actors published is kept, and served by its id; "forever" where absent. |
+| `store.keep_pulls` | [Keep](#keep) | How long a pull request kept mode keeps is kept after it closed; "30d" where absent (ADR-0061). |
+| `store.key` | table | The secret holding the key every record is sealed with, such as `HERALD_STORE_KEY`: whoever can write the repository could otherwise forge records herald trusts (ADR-0005). |
+| `store.key.secret` | string | The secret's name. |
+| `store.kind` | string |  |
+| `store.repository` | string | The repository, as `owner/name`; the run's own where absent. |
+| `store.token` | table | The secret holding a token that may push to the branch; `GITHUB_TOKEN`, as Forgejo Actions sets it, where absent. |
+| `store.token.secret` | string | The secret's name. |
+
 ### `store` of kind `markers`
 
 The destinations' own posts.

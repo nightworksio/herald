@@ -1,9 +1,10 @@
 //! What every herald source shares (ADR-0001, ADR-0003): reading a bounded
 //! JSON answer, checking an answer's status, the error that names what was
-//! read, and the requests GitHub's REST API takes, which its stores share
-//! too.
+//! read, and the requests GitHub's REST API and Forgejo's API take, which
+//! their stores share too.
 
 mod error;
+pub mod forgejo;
 pub mod git;
 pub mod github;
 pub mod github_app;

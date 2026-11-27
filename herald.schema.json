@@ -8886,6 +8886,65 @@
           ]
         },
         {
+          "description": "One file per record on a `herald-state` branch of a Forgejo repository.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The API's base URL, such as a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the run's own,\nas Forgejo Actions sets `GITHUB_API_URL`, when the store names no\nrepository, and Codeberg's when it names one.",
+              "type": "string"
+            },
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
+            "branch": {
+              "description": "The branch the records are kept on; `herald-state` where absent.\nherald's first write makes it in an empty repository; in one that\nholds other branches it is made once, with no history, such as with\n`git switch --orphan herald-state`.",
+              "type": "string"
+            },
+            "keep_decisions": {
+              "description": "How long what a model answered a task is kept, and reused while\nthe pull request it decided of is unchanged; \"30d\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "$ref": "#/$defs/Duration"
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_pulls": {
+              "description": "How long a pull request kept mode keeps is kept after it closed;\n\"30d\" where absent (ADR-0061).",
+              "$ref": "#/$defs/Keep"
+            },
+            "key": {
+              "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "kind": {
+              "type": "string",
+              "const": "forgejo-branch"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`; the run's own where absent.",
+              "type": "string"
+            },
+            "token": {
+              "description": "The secret holding a token that may push to the branch;\n`GITHUB_TOKEN`, as Forgejo Actions sets it, where absent.",
+              "$ref": "#/$defs/SecretRef"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "key"
+          ]
+        },
+        {
           "description": "The destinations' own posts.",
           "type": "object",
           "properties": {

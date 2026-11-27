@@ -194,9 +194,14 @@ impl Taker for Untaken {
 /// The store table `store`, with the key a store in a shared repository
 /// seals its records with.
 fn sealed(store: &str) -> String {
-    let shared = ["git-branch", "repo-variables", "actions-cache"]
-        .iter()
-        .any(|kind| store.starts_with(&format!("kind = \"{kind}\"")));
+    let shared = [
+        "git-branch",
+        "forgejo-branch",
+        "repo-variables",
+        "actions-cache",
+    ]
+    .iter()
+    .any(|kind| store.starts_with(&format!("kind = \"{kind}\"")));
     if shared {
         format!("{store}\nkey = {{ secret = \"HERALD_STORE_KEY\" }}")
     } else {
@@ -278,6 +283,7 @@ fn each_store_is_reached_through_what_the_host_offers() {
         ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kept"),
         ("kind = \"fastly-kv\"", "kept"),
         ("kind = \"git-branch\"", "kept"),
+        ("kind = \"forgejo-branch\"\nrepository = \"o/r\"", "kept"),
         (
             "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }",
             "kept",
@@ -332,6 +338,34 @@ fn a_store_the_host_cannot_open_or_reach_says_which_and_why() {
         kept(&unreached, "kind = \"git-branch\""),
         Err("https://api.github.com is out of reach".to_owned())
     );
+    assert_eq!(
+        kept(
+            &unreached,
+            "kind = \"forgejo-branch\"\nrepository = \"o/r\""
+        ),
+        Err("https://codeberg.org/api/v1 is out of reach".to_owned())
+    );
+    assert_eq!(
+        kept(
+            &unreached,
+            "kind = \"forgejo-branch\"\nrepository = \"o/r\"\napi = \"https://forge.example/api/v1/\""
+        ),
+        Err("https://forge.example/api/v1 is out of reach".to_owned())
+    );
+    assert_eq!(
+        kept(&unreached, "kind = \"forgejo-branch\""),
+        Err("GITHUB_API_URL is not set; give the store's api, or run herald in the repository's Forgejo Actions".to_owned())
+    );
+    let mut forgejo = github();
+    forgejo.unreached = true;
+    forgejo.vars.insert(
+        "GITHUB_API_URL".to_owned(),
+        "https://forge.example/api/v1".to_owned(),
+    );
+    assert_eq!(
+        kept(&Arc::new(forgejo), "kind = \"forgejo-branch\""),
+        Err("https://forge.example/api/v1 is out of reach".to_owned())
+    );
     let keyless = Arc::new(Hosting {
         secrets: FakeSecrets::default().with("GITHUB_TOKEN", "t"),
         ..github()
@@ -354,6 +388,13 @@ fn a_store_the_host_cannot_open_or_reach_says_which_and_why() {
     assert_eq!(
         kept(&bare, "kind = \"git-branch\"\nrepository = \"cli/cli\""),
         Err("GITHUB_TOKEN is not set; the git-branch store needs a token that may push".to_owned())
+    );
+    assert_eq!(
+        kept(&bare, "kind = \"forgejo-branch\"\nrepository = \"o/r\""),
+        Err(
+            "GITHUB_TOKEN is not set; the forgejo-branch store needs a token that may push"
+                .to_owned()
+        )
     );
     assert_eq!(
             kept(&bare, "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }"),

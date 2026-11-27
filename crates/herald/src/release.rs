@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use herald_compose::GITHUB_TOKEN;
 use herald_core::{Event, PrereleaseRule, Signal};
 use herald_environment::EnvSecrets;
-use herald_kinds::Unpolled;
+use herald_kinds::{GITHUB_API_URL, GITHUB_REPOSITORY, Unpolled};
 use herald_ports::{Http, Secrets};
 use herald_sources_forge::{
     Forge, Origin, Repository, Signals, SourceOptions, Token, tag_event_of,
@@ -29,8 +29,8 @@ impl Ci {
     pub(super) const fn of(forge: Forge) -> Self {
         match forge {
             Forge::GitHub | Forge::Forgejo => Self {
-                repository: "GITHUB_REPOSITORY",
-                api: "GITHUB_API_URL",
+                repository: GITHUB_REPOSITORY,
+                api: GITHUB_API_URL,
                 token: GITHUB_TOKEN,
             },
             Forge::GitLab => Self {
