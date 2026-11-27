@@ -274,3 +274,47 @@ fn a_run_s_log_says_once_where_it_holds_more_secret_values_than_many() {
         "{written}"
     );
 }
+
+#[test]
+fn a_secret_given_in_a_file_is_scrubbed_where_a_server_echoes_it() {
+    let token = format!("{}.{}", "Nz".repeat(12), "fL9".repeat(10));
+    let mut setup = setup(CONFIG);
+    let file = setup.directory.path().join("discord-token");
+    std::fs::write(&file, &token).unwrap();
+    setup.vars.remove("HERALD_DISCORD_TOKEN");
+    setup.vars.insert(
+        "HERALD_DISCORD_TOKEN_FILE".to_owned(),
+        file.display().to_string(),
+    );
+    let world = World::default();
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            401,
+            &format!(r#"{{"code":0,"message":"401: Unauthorized for Bot {token}"}}"#),
+        )],
+    );
+    let run = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(run.code, STOPPED, "{}", run.out);
+    let written = format!("{}{}", run.out, run.err);
+    assert!(!written.contains(&token), "{written}");
+    assert!(
+        written.contains("Bot «secret:HERALD_DISCORD_TOKEN»"),
+        "{written}"
+    );
+}
+
+#[test]
+fn herald_composed_natively_scrubs_with_the_run_s_own_scrubber() {
+    use herald_compose::Host as _;
+    let run = Scrubber::new(herald_config::Log::SCRUB_FROM);
+    let token = format!("{}{}", "Sh4".repeat(8), "rd".repeat(6));
+    run.keep(&Secret::new("HERALD_SHARED", token.as_str()));
+    let connect = NATIVE.scrubbing(run);
+    let vars = BTreeMap::new();
+    let native = stores::Native::new(&vars, &connect);
+    let shared = native.scrubber().map(|scrubber| scrubber.scrubbed(&token));
+    assert_eq!(shared.as_deref(), Some("«secret:HERALD_SHARED»"));
+    assert!(stores::Native::new(&vars, &NATIVE).scrubber().is_none());
+}

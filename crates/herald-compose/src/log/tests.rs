@@ -125,6 +125,8 @@ fn a_line_keeps_its_level_as_it_is_reworded_and_reads_as_its_words() {
     assert_eq!(told, Told::at(Level::Warn, "source: refused"));
     assert_eq!(told, "source: refused");
     assert_ne!(told, "refused");
+    assert_eq!(told, "source: refused".to_owned());
+    assert_ne!(told, "refused".to_owned());
 }
 
 #[test]

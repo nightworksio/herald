@@ -307,3 +307,22 @@ fn a_text_is_scrubbed_in_one_pass_and_a_value_held_later_is_matched_too() {
     scrubber.sent(&sending(&second));
     assert_eq!(scrubber.scrubbed(&second), "«secret:SECOND»");
 }
+
+#[test]
+fn a_scrubber_crowded_again_after_its_expired_values_went_says_so_again() {
+    let clock = Moved::default();
+    let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
+    let early = installation_token("Ea1");
+    scrubber.sent(&minted(&early, Timestamp::UNIX_EPOCH));
+    for index in 0..Scrubber::CROWDED {
+        scrubber.sent(&sending(&format!(
+            "{}{index:05}",
+            installation_token("Ag2")
+        )));
+    }
+    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED + 1));
+    clock.on(2);
+    scrubber.sent(&sending(&installation_token("Ag3")));
+    assert_eq!(scrubber.scrubbed(&early), early);
+    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED + 1));
+}
