@@ -720,3 +720,226 @@ fn a_mistake_in_a_local_preset_s_value_names_its_key() {
         "{error}"
     );
 }
+
+const REMINDERS: &str = r#"[presets.reviews]
+use = "herald:review-reminders"
+destination = "discord"
+channel = "1566200000000000200"
+"#;
+
+#[test]
+fn review_reminders_are_a_rule_over_a_view_of_pulls_waiting_on_review_and_a_route_of_its_nudges() {
+    let config = loaded(&with(&format!("{REMINDERS}sources = [\"app\"]\n")));
+    let [route] = config.routes.as_slice() else {
+        panic!("one route: {:?}", config.routes.len());
+    };
+    assert_eq!(route.route.id.as_str(), "reviews-reminders");
+    assert_eq!(route.route.destination.as_str(), "discord");
+    assert_eq!(
+        route.route.filter.sources,
+        [SourceName::new("reviews-reviews")]
+    );
+    assert_eq!(
+        route
+            .route
+            .template
+            .as_ref()
+            .map(herald_core::TemplateName::as_str),
+        Some("herald:nudge")
+    );
+    let view = &config.views["reviews-reviews"];
+    assert_eq!(view.sources, [SourceName::new("app")]);
+    assert_eq!(view.view.states, [herald_core::Turn::WaitingOnReview]);
+    let rule = &config.rules["reviews-reviews"];
+    assert_eq!(rule.watch.view, "reviews-reviews");
+    assert_eq!(rule.watch.schedule.at, jiff::civil::time(9, 0, 0, 0));
+    assert_eq!(rule.watch.schedule.days.len(), 5);
+    assert!(
+        !rule
+            .watch
+            .schedule
+            .days
+            .contains(&jiff::civil::Weekday::Saturday)
+    );
+    assert_eq!(rule.watch.schedule.zone, jiff::tz::TimeZone::UTC);
+    let stages: Vec<i64> = rule
+        .stages
+        .as_ref()
+        .unwrap()
+        .as_slice()
+        .iter()
+        .map(jiff::SignedDuration::as_hours)
+        .collect();
+    assert_eq!(stages, [48, 168]);
+}
+
+#[test]
+fn review_reminders_given_no_sources_watch_every_forge_source_and_take_their_window_from_the_table()
+{
+    let config = loaded(&with(&format!(
+        "{REMINDERS}at = \"08:30\"\ndays = [\"sat\"]\nzone = \"Europe/Amsterdam\"\nstages = [\"1d\"]\n"
+    )));
+    assert_eq!(
+        config.views["reviews-reviews"].sources,
+        [SourceName::new("app")]
+    );
+    let schedule = &config.rules["reviews-reviews"].watch.schedule;
+    assert_eq!(schedule.at, jiff::civil::time(8, 30, 0, 0));
+    assert_eq!(schedule.days, [jiff::civil::Weekday::Saturday]);
+    assert_eq!(
+        schedule.zone,
+        jiff::tz::TimeZone::get("Europe/Amsterdam").unwrap()
+    );
+    assert_eq!(
+        config.rules["reviews-reviews"]
+            .stages
+            .as_ref()
+            .unwrap()
+            .as_slice()
+            .len(),
+        1
+    );
+}
+
+const QUEUE: &str = r#"[presets.queue]
+use = "herald:merge-queue-small-team"
+source = "app"
+branch = "main"
+method = "squash"
+write = { token = { secret = "HERALD_MERGE_TOKEN" } }
+"#;
+
+#[test]
+fn a_small_team_s_merge_queue_is_one_queue_named_for_the_adopting_table_entered_by_herald_s_label()
+{
+    let config = loaded(&with(QUEUE));
+    let [(name, queue)] = config.merge_queues.iter().collect::<Vec<_>>()[..] else {
+        panic!("one queue: {:?}", config.merge_queues.keys());
+    };
+    assert_eq!(name, "queue-queue");
+    assert_eq!(queue.source, SourceName::new("app"));
+    assert_eq!(queue.branch, "main");
+    assert_eq!(queue.method, Some(herald_core::merging::Method::Squash));
+    assert_eq!(queue.runs, herald_core::merging::Runs::Forge);
+    assert_eq!(
+        queue.enter,
+        herald_core::merging::Enter::Label(herald_core::merging::ENTER_LABEL.to_owned())
+    );
+    assert_eq!(
+        queue
+            .write
+            .as_ref()
+            .and_then(|write| write.token.as_ref())
+            .map(|token| token.secret.as_str()),
+        Some("HERALD_MERGE_TOKEN")
+    );
+    assert_eq!(config.routes.len(), 0);
+}
+
+#[test]
+fn a_small_team_s_merge_queue_takes_who_runs_it_and_its_gesture_from_the_table() {
+    let config = loaded(&with(&format!(
+        "{QUEUE}runs = \"herald\"\nenter = {{ comment = \"/merge\" }}\n"
+    )));
+    let queue = &config.merge_queues["queue-queue"];
+    assert_eq!(queue.runs, herald_core::merging::Runs::Herald);
+    assert_eq!(
+        queue.enter,
+        herald_core::merging::Enter::Comment("/merge".to_owned())
+    );
+}
+
+#[test]
+fn a_merge_queue_a_preset_makes_is_held_to_every_rule_a_written_one_is() {
+    let text = with(&format!(
+        "{QUEUE}\n[merge_queues.mine]\nsource = \"app\"\nbranch = \"main\"\n"
+    ));
+    let twice = errors(&text);
+    assert!(
+        twice.contains("merges into main of nightworksio/app already; give one table per branch"),
+        "{twice}"
+    );
+    let unknown = errors(&with(
+        &QUEUE.replace("source = \"app\"", "source = \"nowhere\""),
+    ));
+    let line = line_of(&with(QUEUE), "[presets.queue]");
+    assert!(
+        unknown.contains("presets.queue.source: \"nowhere\" is no source")
+            && unknown.contains(&format!("herald.toml:{}:", line + 2)),
+        "{unknown}"
+    );
+    let missing = errors(&with(&QUEUE.replace("method = \"squash\"\n", "")));
+    assert!(
+        missing.contains("presets.queue: give method: How it merges"),
+        "{missing}"
+    );
+}
+
+#[test]
+fn a_merge_queue_a_preset_makes_may_not_be_named_by_another() {
+    let errors = errors(&with(&format!(
+        "{QUEUE}\n[merge_queues.queue-queue]\nsource = \"app\"\nbranch = \"next\"\n"
+    )));
+    assert!(
+        errors.contains(
+            "presets.queue: it makes [merge_queues.queue-queue], which another table names"
+        ),
+        "{errors}"
+    );
+}
+
+#[test]
+fn a_local_preset_writes_no_merge_queue() {
+    let file = "version = 1\n\n[merge_queues.q]\nsource = \"app\"\nbranch = \"main\"\n";
+    let errors = local(&with("[presets.team]\nuse = \"./team.toml\"\n"), file).unwrap_err();
+    assert!(
+        errors.contains("presets.team.merge_queues: ./team.toml:3:2: a local preset writes"),
+        "{errors}"
+    );
+}
+
+#[test]
+fn the_expansion_of_a_merge_queue_preset_is_its_queue_as_given() {
+    let tables = herald_config::expansion("herald.toml", &with(QUEUE), &nothing, "queue").unwrap();
+    let queue = &tables["merge_queues"]["queue-queue"];
+    assert_eq!(queue["source"].as_str(), Some("app"));
+    assert_eq!(queue["method"].as_str(), Some("squash"));
+    assert_eq!(
+        queue["write"]["token"]["secret"].as_str(),
+        Some("HERALD_MERGE_TOKEN")
+    );
+    assert_eq!(tables.len(), 1);
+}
+
+const ALERTS: &str = r#"[presets.security]
+use = "herald:security-alerts-private"
+destination = "discord"
+sources = ["alerting"]
+channel = "1566200000000000500"
+"#;
+
+const ALERTING: &str = r#"[sources.alerting]
+kind = "github"
+repository = "nightworksio/app"
+signals = ["release", "alert"]
+"#;
+
+#[test]
+fn security_alerts_go_to_one_route_the_preset_states_is_private() {
+    let config = loaded(&with(&format!("{ALERTING}\n{ALERTS}")));
+    let [route] = config.routes.as_slice() else {
+        panic!("one route: {:?}", config.routes.len());
+    };
+    assert_eq!(route.route.id.as_str(), "security-alerts");
+    assert_eq!(route.route.filter.kinds, [Kind::ALERT]);
+    assert_eq!(route.route.filter.sources, [SourceName::new("alerting")]);
+    assert!(route.private);
+    assert_eq!(
+        route
+            .route
+            .template
+            .as_ref()
+            .map(herald_core::TemplateName::as_str),
+        Some("security-alert")
+    );
+}

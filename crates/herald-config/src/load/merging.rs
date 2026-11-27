@@ -9,6 +9,7 @@ use herald_core::SourceName;
 use herald_core::merging::{Enter, Message, Runs, SKEW, UPDATE_WAIT, WAIT, Write};
 use herald_kinds::{MergeAsked, Source};
 
+use super::presets::Part;
 use super::{Loader, Value, list};
 use crate::merging::{MergeQueue, MergeQueueFile};
 
@@ -81,18 +82,18 @@ fn herald_keys(file: &MergeQueueFile) -> Vec<&'static str> {
 }
 
 impl Loader<'_> {
-    /// The merge queues `value` gives, each on a source of `sources`, with
-    /// where each is written.
+    /// The merge queues `value` gives, and then each of `expanded`, each
+    /// on a source of `sources`, with where each is written.
     pub(super) fn merge_queues(
         &mut self,
         value: Option<Value<'_>>,
+        expanded: Vec<Part<'_>>,
         sources: &BTreeMap<SourceName, Source>,
     ) -> (BTreeMap<String, MergeQueue>, BTreeMap<String, Range<usize>>) {
         let mut queues = BTreeMap::new();
         let mut spans = BTreeMap::new();
         let mut branches: BTreeMap<(String, String, String), String> = BTreeMap::new();
-        for (name, value) in self.named(value, "merge_queues") {
-            let path = format!("merge_queues.{name}");
+        for (path, name, value) in self.sectioned(value, "merge_queues", expanded) {
             let span = value.span();
             let Some(file) = self.typed::<MergeQueueFile>(value, &path) else {
                 continue;

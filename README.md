@@ -536,7 +536,7 @@ its `match` and its members' overrides take.
 ### Presets
 
 A `[presets.<name>]` table adopts a preset herald ships, or a local one beside `herald.toml`:
-routes, templates, views, reports and rules written as the config loads, overridden key by key ([`.docs/presets.md`](.docs/presets.md)).
+the tables it stands for, written as the config loads and overridden key by key ([`.docs/presets.md`](.docs/presets.md)).
 
 ### Releases, tags and pre-releases
 

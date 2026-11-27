@@ -28,6 +28,7 @@ pub(super) struct Expanded<'i> {
     pub(super) views: Vec<Part<'i>>,
     pub(super) reports: Vec<Part<'i>>,
     pub(super) rules: Vec<Part<'i>>,
+    pub(super) merge_queues: Vec<Part<'i>>,
 }
 
 /// A `[presets.*]` table: its name, where it is written, the preset it
@@ -49,7 +50,7 @@ enum Adopted {
 const LOCAL_SECTIONS: [&str; 5] = ["routes", "templates", "views", "reports", "rules"];
 
 /// The sections a preset's tables are named in, as a table of tables.
-const NAMED_SECTIONS: [&str; 4] = ["templates", "views", "reports", "rules"];
+const NAMED_SECTIONS: [&str; 5] = ["templates", "views", "reports", "rules", "merge_queues"];
 
 /// What a local preset may write of one section's tables: the keys that
 /// pick and shape what herald announces from what `herald.toml` already
@@ -329,7 +330,8 @@ impl Loader<'_> {
                     "templates" => expanded.templates.push(part),
                     "views" => expanded.views.push(part),
                     "reports" => expanded.reports.push(part),
-                    _ => expanded.rules.push(part),
+                    "rules" => expanded.rules.push(part),
+                    _ => expanded.merge_queues.push(part),
                 }
             }
         }
@@ -798,6 +800,7 @@ pub fn expansion(
         ("views", expanded.views),
         ("reports", expanded.reports),
         ("rules", expanded.rules),
+        ("merge_queues", expanded.merge_queues),
     ];
     for (section, parts) in named {
         for (at, part, value) in parts {

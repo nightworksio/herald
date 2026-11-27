@@ -15,8 +15,17 @@ channel = "1566184281406177531"
 prereleases = "exclude"
 ```
 
-The [settings reference](settings.md#presets) lists each preset herald
-ships, its parameters and the tables it writes. `herald preset show <name>`
+herald ships four:
+
+| Preset | What it writes |
+|--------|----------------|
+| `herald:announce-releases` | a route announcing each release of its sources, and its template |
+| `herald:review-reminders` | a view of the open pull requests waiting on review, a rule nudging each past `2d` and `7d` at 09:00 UTC on weekdays, and a route of its nudges |
+| `herald:merge-queue-small-team` | a [merge queue](merging.md) on one branch, entered by the label `herald:merge` |
+| `herald:security-alerts-private` | a route of its sources' [alerts](alerts.md) to a place it states is private, `private = true`, and its template |
+
+The [settings reference](settings.md#presets) lists each one's parameters
+and the tables it writes. `herald preset show <name>`
 prints the tables a preset writes, and `herald preset eject <name>` writes
 them into `herald.toml` in place of the `[presets.<name>]` table.
 
