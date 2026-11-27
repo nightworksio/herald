@@ -48,6 +48,8 @@ mod pages;
 #[cfg(test)]
 mod peers;
 #[cfg(test)]
+mod presets;
+#[cfg(test)]
 mod pulls;
 #[cfg(test)]
 mod pushes;

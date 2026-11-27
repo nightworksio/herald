@@ -92,7 +92,13 @@ with only what both the user and the App may do, for 8 hours by default
      permissions are those two; the pull request is open, its head is the
      offer's, and the
      presser is not its author; the presser's role holds `write`.
-   - On GitLab and Forgejo, Approve is the review page.
+   - On GitLab, approving as the person uses GitLab's equivalent: a token
+     that acts as the person for the one approval, of a scope and lifetime
+     comparable to GitHub's user access token used once and dropped. Which
+     GitLab token that is is established from GitLab's documentation
+     before it is built; where none is that narrow, nothing wider is
+     built and the owner chooses. Off by default, as on GitHub.
+   - On Forgejo, Approve is the review page.
 8. **Replay and double presses.** The offer moves from offered to pressed
    by compare-and-set; a second press is told it is in hand; ADR-0068's
    record per job and head stays the last guard.

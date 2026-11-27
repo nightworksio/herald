@@ -29,6 +29,7 @@ pub fn reference(schema: &str) -> String {
         written.table(&rows);
     }
     written.types();
+    written.out.push_str(&crate::presets::reference());
     written.out
 }
 
@@ -290,6 +291,8 @@ mod tests {
         assert!(!written.contains("tree.child"), "{written}");
         assert!(!written.contains("### `held`"), "{written}");
         assert!(!written.contains("\n\n\n"), "{written}");
-        assert!(reference("not json").ends_with("## Types\n"));
+        assert!(
+            reference("not json").ends_with(&format!("## Types\n{}", crate::presets::reference()))
+        );
     }
 }

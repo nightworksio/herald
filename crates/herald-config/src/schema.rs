@@ -11,6 +11,7 @@ use crate::file::{
     LogFile, MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile,
     ServerFile, TemplateFile,
 };
+use crate::presets::SHIPPED;
 use crate::views::BOARD_KEYS;
 
 /// `version`: the one version of the config this herald reads.
@@ -75,6 +76,67 @@ impl JsonSchema for RouteSchema {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         Schema::default()
+    }
+}
+
+/// A table adopting a preset: one of the shipped presets with its
+/// parameters, or a local preset's file, either with any key its tables
+/// write.
+struct PresetSchema;
+
+impl JsonSchema for PresetSchema {
+    fn schema_name() -> Cow<'static, str> {
+        "Preset".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mut variants: Vec<serde_json::Value> = SHIPPED
+            .iter()
+            .map(|preset| {
+                let mut properties = serde_json::Map::new();
+                properties.insert(
+                    "use".to_owned(),
+                    serde_json::json!({ "description": "The preset it adopts.", "type": "string", "const": preset.name }),
+                );
+                for parameter in preset.parameters {
+                    properties.insert(
+                        parameter.key.to_owned(),
+                        described(&(parameter.schema)(generator), parameter.described).to_value(),
+                    );
+                }
+                let required: Vec<&str> = std::iter::once("use")
+                    .chain(
+                        preset
+                            .parameters
+                            .iter()
+                            .filter(|parameter| parameter.required)
+                            .map(|parameter| parameter.key),
+                    )
+                    .collect();
+                serde_json::json!({
+                    "description": format!("`{}`: {}", preset.name, preset.described),
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                })
+            })
+            .collect();
+        variants.push(serde_json::json!({
+            "description": "A local preset: a file inside herald.toml's directory, of version 1, writing routes, templates, views, reports and rules only.",
+            "type": "object",
+            "properties": {
+                "use": {
+                    "description": "The file, named from herald.toml's directory as `./<path>`.",
+                    "type": "string",
+                    "pattern": "^\\./",
+                },
+            },
+            "required": ["use"],
+        }));
+        schemars::json_schema!({
+            "description": "A table adopting a preset by `use`, given its parameters and any key its tables write.",
+            "oneOf": variants,
+        })
     }
 }
 
@@ -267,6 +329,14 @@ pub(crate) fn routed<T: JsonSchema>(
 struct FileSchema {
     /// The version of the config: 1.
     version: VersionSchema,
+    /// The presets the config adopts, by name: each expanded into the
+    /// tables it writes, each of them named `<name>-<table>` (ADR-0092).
+    #[serde(default)]
+    #[expect(
+        clippy::zero_sized_map_values,
+        reason = "only the schema's derive reads the map, and the presets' schemas take the value's place"
+    )]
+    presets: BTreeMap<String, PresetSchema>,
     /// The kinds of event the config declares beside those herald ships, by
     /// name; its apps may announce them.
     #[serde(default)]

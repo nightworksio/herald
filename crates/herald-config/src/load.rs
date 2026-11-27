@@ -14,6 +14,7 @@ use herald_kinds::Fault;
 use crate::config::Config;
 use crate::error::{ConfigError, Errors};
 use crate::example::explained;
+use crate::files::Files;
 use crate::kinds::{At, Kinds};
 use crate::position::position;
 use secrets::secret_keys;
@@ -59,6 +60,7 @@ pub(crate) struct Loader<'t> {
     kinds: &'t Kinds,
     specs: KindSpecs,
     errors: Vec<ConfigError>,
+    regions: Vec<presets::Region>,
 }
 
 impl<'t> Loader<'t> {
@@ -71,18 +73,24 @@ impl<'t> Loader<'t> {
             kinds,
             specs: KindSpecs::default(),
             errors: Vec::new(),
+            regions: Vec::new(),
         }
     }
 }
 
 impl Loader<'_> {
     fn error(&mut self, span: &Range<usize>, path: &str, message: impl Into<String>) {
-        let (line, column) = position(self.text, span.start);
+        let message = message.into();
+        let (at, message) = match self.regions.iter().find(|region| region.holds(span.start)) {
+            Some(region) => region.told(span.start, message),
+            None => (span.start, message),
+        };
+        let (line, column) = position(self.text, at);
         self.errors.push(ConfigError {
             line,
             column,
             path: path.to_owned(),
-            message: message.into(),
+            message,
         });
     }
 
@@ -249,6 +257,28 @@ impl Loader<'_> {
             .collect()
     }
 
+    /// Each table of the section `section`, as where it is written, its
+    /// name and its keys, and then each of `expanded`.
+    fn sectioned<'i>(
+        &mut self,
+        value: Option<Value<'i>>,
+        section: &str,
+        expanded: Vec<presets::Part<'i>>,
+    ) -> Vec<presets::Part<'i>> {
+        self.named(value, section)
+            .into_iter()
+            .map(|(name, value)| (format!("{section}.{name}"), name, value))
+            .chain(expanded)
+            .collect()
+    }
+
+    /// Each of `syntax`, the mistakes the file's TOML makes.
+    fn syntax(&mut self, syntax: &[toml::de::Error]) {
+        for error in syntax {
+            self.error(&error.span().unwrap_or(0..0), "", error.message());
+        }
+    }
+
     /// Every mistake found, in the order the file writes them.
     fn failed(self) -> Errors {
         let mut errors = self.errors;
@@ -261,7 +291,8 @@ impl Loader<'_> {
 }
 
 /// The config `text` holds, read from the file named `file`, with each
-/// template file and shared block list read through `read`.
+/// template file, member file and shared block list read through `read`;
+/// a local preset is not read (ADR-0092 decision 4).
 ///
 /// # Errors
 ///
@@ -272,13 +303,28 @@ pub fn load(
     read: &dyn Fn(&str) -> Result<String, String>,
     kinds: &Kinds,
 ) -> Result<Config, Errors> {
+    load_with(file, text, &read, kinds)
+}
+
+/// The config `text` holds, read from the file named `file`, with each
+/// template file, member file and shared block list, and each local
+/// preset, read through `files`.
+///
+/// # Errors
+///
+/// Every mistake in the file, each with its line, column, key and fix.
+pub fn load_with(
+    file: &str,
+    text: &str,
+    files: &dyn Files,
+    kinds: &Kinds,
+) -> Result<Config, Errors> {
+    let read = &|path: &str| files.read(path);
     let mut loader = Loader::new(file, text, kinds);
     let (root, syntax) = DeTable::parse_recoverable(text);
-    for error in syntax {
-        loader.error(&error.span().unwrap_or(0..0), "", error.message());
-    }
     let secret_keys = secret_keys(root.get_ref());
-    let sections = loader.sections(root.into_inner());
+    let mut adopting = Vec::new();
+    let (sections, expanded) = loader.expanding((root.into_inner(), &syntax), files, &mut adopting);
     loader.version(sections.version);
     loader.specs = loader.declared(sections.kinds);
     let (store, kept) = loader.store(sections.store).unzip();
@@ -294,16 +340,17 @@ pub fn load(
     let listed = loader.apps(sections.apps, &sources, store.as_ref());
     let makers = loader.credentials(&listed, (&peers, &federation), (&sources, &source_spans));
     loader.remembering((store.as_ref(), makers), (&mut sources, &source_spans));
-    let templates = loader.templates(sections.templates, read);
+    let templates = loader.templates(sections.templates, expanded.templates, read);
     let models = loader.models(sections.models);
     let tasks = loader.tasks(sections.tasks, &models);
     let teams = loader.teams(sections.teams);
-    let views = loader.views(sections.views, &sources, &tasks);
+    let views = loader.views(sections.views, expanded.views, &sources, &tasks);
     let (merge_queues, queue_spans) = loader.merge_queues(sections.merge_queues, &sources);
-    let (boarded, boards) = loader.boards(sections.boards);
+    let (boarded, boards) = loader.boards(sections.boards, (expanded.reports, expanded.routes));
     let named = listed.keys().map(String::as_str).collect();
     let reports = loader.reports(sections.reports, boarded, &views, (&sources, &named));
-    let rules = loader.rules(sections.rules, &views, (&sources, &named), &reports);
+    let rules = loader.sectioned(sections.rules, "rules", expanded.rules);
+    let rules = loader.rules(rules, &views, (&sources, &named), &reports);
     let github_apps = loader.apps_of(
         sections.github_apps,
         store.as_ref(),
@@ -387,6 +434,9 @@ mod models;
 mod oidc;
 mod pages;
 mod peers;
+mod presets;
+
+pub use presets::expansion;
 mod pushes;
 mod route;
 mod secrets;

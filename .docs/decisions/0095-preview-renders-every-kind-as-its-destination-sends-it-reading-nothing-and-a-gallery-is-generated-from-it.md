@@ -48,7 +48,9 @@ Markdown; it has no website.
    repository, and as a GitHub Pages site built from those same pages by a
    workflow: a build job on every pull request that touches them, and a
    deploy job on `main` through GitHub's own Pages actions, with
-   `pages: write` and `id-token: write` on that job alone. The site holds
+   `pages: write` and `id-token: write` on that job alone, which runs
+   only where the repository variable `HERALD_PAGES` is set, so `main`
+   stays green until Pages is switched on. The site holds
    only generated pages and herald's own stylesheet: no script, no
    analytics, no third-party asset.
 

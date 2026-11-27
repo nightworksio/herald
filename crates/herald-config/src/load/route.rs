@@ -63,6 +63,7 @@ pub(super) struct Rendered {
     pub(super) template: TemplateName,
     pub(super) title_span: Range<usize>,
     pub(super) body_span: Range<usize>,
+    pub(super) title_path: String,
     pub(super) body_path: String,
 }
 
@@ -662,6 +663,7 @@ impl Loader<'_> {
             template,
             title_span: written.title.span(),
             body_span: written.body.span(),
+            title_path: written.title_path.clone(),
             body_path: written.body_path.clone(),
         })
     }

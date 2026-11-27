@@ -17,7 +17,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use clap::Parser as _;
-use herald_config::{Config, Uses, load};
+use herald_config::{Config, Uses, load_with};
 use herald_core::Printed;
 use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
@@ -39,6 +39,7 @@ mod orphaning;
 mod output;
 mod pages;
 mod peers;
+mod presetting;
 mod preview;
 mod queue_setup;
 mod queueing;
@@ -382,6 +383,13 @@ async fn answered(
                 queue_setup::setting_up(config, path, (vars, connect), &asked, answers, out).await;
             finished(done, err)
         }
+        Reading::Preset(asked) => {
+            let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
+            finished(
+                presetting::presetting(path, &asked, answers, out).await,
+                err,
+            )
+        }
         Reading::Peer(asked) => {
             let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
             let done = peers::peering(config, path, &asked, (vars, connect), answers, out).await;
@@ -439,17 +447,54 @@ fn read(path: &str) -> Result<Config, String> {
 /// The config `text` writes, as read from the file at `path`.
 fn loaded(path: &str, text: &str) -> Result<Config, String> {
     let directory = Path::new(path).parent().unwrap_or(Path::new(""));
-    let files = |file: &str| {
-        std::fs::read_to_string(directory.join(file)).map_err(|error| error.to_string())
-    };
-    let mut config =
-        load(path, text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
+    let mut config = load_with(path, text, &Beside { directory }, &herald_compose::kinds())
+        .map_err(|errors| errors.to_string())?;
     if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
         let mut options = options.clone();
         options.path = Some(options.file(directory).display().to_string());
         config.store = herald_config::ConfiguredStore::new(options);
     }
     Ok(config)
+}
+
+/// The files a config in `directory` names, each read from beside it.
+struct Beside<'a> {
+    directory: &'a Path,
+}
+
+impl herald_config::Files for Beside<'_> {
+    fn read(&self, file: &str) -> Result<String, String> {
+        std::fs::read_to_string(self.directory.join(file)).map_err(|error| error.to_string())
+    }
+
+    fn read_inside(&self, file: &str) -> Result<String, String> {
+        let directory = if self.directory.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            self.directory
+        };
+        let directory = std::fs::canonicalize(directory).map_err(unread)?;
+        let resolved = std::fs::canonicalize(directory.join(file)).map_err(unread)?;
+        if !resolved.starts_with(&directory) {
+            return Err(format!(
+                "its links lead outside {}, the config's directory",
+                directory.display()
+            ));
+        }
+        if !resolved.is_file() {
+            return Err("it is no file".to_owned());
+        }
+        std::fs::read_to_string(resolved).map_err(unread)
+    }
+}
+
+/// Why a file could not be read, as the system says it.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "map_err hands each error over by value"
+)]
+fn unread(error: std::io::Error) -> String {
+    error.to_string()
 }
 
 /// The secret `herald init` names for the marker key it prints.

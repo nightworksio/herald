@@ -88,6 +88,13 @@
         "$ref": "#/$defs/Peer"
       }
     },
+    "presets": {
+      "description": "The presets the config adopts, by name: each expanded into the\ntables it writes, each of them named `<name>-<table>` (ADR-0092).",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Preset"
+      }
+    },
     "render": {
       "description": "How far a template may go as it renders.",
       "$ref": "#/$defs/Render"
@@ -5180,6 +5187,64 @@
           "description": "Pre-releases only.",
           "type": "string",
           "const": "only"
+        }
+      ]
+    },
+    "Preset": {
+      "description": "A table adopting a preset by `use`, given its parameters and any key its tables write.",
+      "oneOf": [
+        {
+          "description": "`herald:announce-releases`: Each release of its sources, announced once to its destination with its notes.",
+          "type": "object",
+          "properties": {
+            "body": {
+              "description": "The template of each announcement's body.",
+              "type": "string"
+            },
+            "destination": {
+              "description": "The destination its routes announce to, as `[destinations]` names it.",
+              "type": "string"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it announces: `include`, `exclude` or `only`.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "sources": {
+              "description": "The sources whose events its routes take, as `[sources]` names them.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "title": {
+              "description": "The template of each announcement's title.",
+              "type": "string"
+            },
+            "use": {
+              "description": "The preset it adopts.",
+              "type": "string",
+              "const": "herald:announce-releases"
+            }
+          },
+          "required": [
+            "use",
+            "destination",
+            "sources"
+          ]
+        },
+        {
+          "description": "A local preset: a file inside herald.toml's directory, of version 1, writing routes, templates, views, reports and rules only.",
+          "type": "object",
+          "properties": {
+            "use": {
+              "description": "The file, named from herald.toml's directory as `./<path>`.",
+              "type": "string",
+              "pattern": "^\\./"
+            }
+          },
+          "required": [
+            "use"
+          ]
         }
       ]
     },

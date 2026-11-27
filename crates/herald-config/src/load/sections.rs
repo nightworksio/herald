@@ -2,18 +2,22 @@
 //! the version checked, and the sections read in one step from their file
 //! shape.
 
+use std::collections::BTreeSet;
+
 use herald_core::SecretRef;
 use herald_kinds::ConfiguredStore;
 use herald_ports::Outbound;
-use toml::de::DeTable;
+use toml::Spanned;
+use toml::de::{DeTable, DeValue};
 
 use super::{Loader, Value, list};
 use crate::config::{Config, Schedule, Server};
 use crate::file::{HttpFile, MarkersFile, ScheduleFile, ServerFile};
 
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 29] = [
+const SECTIONS: [&str; 30] = [
     "version",
+    "presets",
     "kinds",
     "store",
     "markers",
@@ -48,6 +52,7 @@ const SECTIONS: [&str; 29] = [
 #[derive(Default)]
 pub(super) struct Sections<'i> {
     pub(super) version: Option<Value<'i>>,
+    pub(super) presets: Option<Value<'i>>,
     pub(super) kinds: Option<Value<'i>>,
     pub(super) store: Option<Value<'i>>,
     pub(super) markers: Option<Value<'i>>,
@@ -78,12 +83,32 @@ pub(super) struct Sections<'i> {
     pub(super) log: Option<Value<'i>>,
 }
 
+impl Sections<'_> {
+    /// Each of the sections whose tables are named, with the names its
+    /// table writes.
+    pub(super) fn names(&self) -> [(&'static str, BTreeSet<String>); 4] {
+        let names = |value: &Option<Value<'_>>| match value.as_ref().map(Spanned::get_ref) {
+            Some(DeValue::Table(table)) => {
+                table.keys().map(|key| key.get_ref().to_string()).collect()
+            }
+            _ => BTreeSet::new(),
+        };
+        [
+            ("templates", names(&self.templates)),
+            ("views", names(&self.views)),
+            ("reports", names(&self.reports)),
+            ("rules", names(&self.rules)),
+        ]
+    }
+}
+
 impl Loader<'_> {
     pub(super) fn sections<'i>(&mut self, root: DeTable<'i>) -> Sections<'i> {
         let mut sections = Sections::default();
         for (key, value) in root {
             let slot = match key.get_ref().as_ref() {
                 "version" => &mut sections.version,
+                "presets" => &mut sections.presets,
                 "kinds" => &mut sections.kinds,
                 "store" => &mut sections.store,
                 "markers" => &mut sections.markers,

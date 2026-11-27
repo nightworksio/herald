@@ -82,17 +82,11 @@ what is missing.
 
 ## Quick start
 
-Every key `herald.toml` takes is listed, with its type and what it sets, in
-the [settings reference](.docs/settings.md), generated from the schema.
+Every key `herald.toml` takes is listed, with its type and what it sets, in the [settings reference](.docs/settings.md), generated from the schema.
 
-The snippets below show the configuration that
-[ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md)
-and
-[ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md)
-fix. No release of herald exists yet, so the Action has no binary to download.
+The snippets below show the configuration that [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) and [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) fix. No release of herald exists yet, so the Action has no binary to download.
 
-`herald.toml`, herald's own, announcing its releases and pre-releases into
-the NightWorksIO Discord's `package-releases` announcement channel:
+`herald.toml`, herald's own, announcing its releases and pre-releases into the NightWorksIO Discord's `package-releases` announcement channel:
 
 ```toml
 #:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
@@ -537,6 +531,11 @@ and `match`. A route not declared private refuses such an override where
 the owner takes private or internal repositories, as above. A route
 announcing each project as an actor of its own serves only the projects
 its `match` and its members' overrides take.
+
+### Presets
+
+A `[presets.<name>]` table adopts a preset herald ships, or a local one beside `herald.toml`:
+routes, templates, views, reports and rules written as the config loads, overridden key by key ([`.docs/presets.md`](.docs/presets.md)).
 
 ### Releases, tags and pre-releases
 
