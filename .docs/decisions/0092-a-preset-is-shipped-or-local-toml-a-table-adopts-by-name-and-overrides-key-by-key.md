@@ -80,6 +80,14 @@ already ships named content under a `herald:` prefix: the templates
      trusts and what it does stays in `herald.toml`. A shipped `herald:`
      preset is herald's own data and is not read against this list;
    - a local preset does not `use` another preset.
+   - A template's `file`, a member list's `members.file` and an
+     ActivityPub `lists[].file` are read with the same containment: a
+     path inside the config's directory, every link followed. A config may
+     name further directories in `herald.toml` itself, absolute, each
+     canonicalised before the check, never from a preset or the
+     environment; a file elsewhere stops the load, the error naming the
+     file and that setting. A config that named a file outside its
+     directory stops loading until the directory is named.
 5. **Nothing is hidden.** `herald preset show <table>` prints the TOML a
    table expands to; `herald preset eject <table>` writes that expansion
    into `herald.toml` in place of the table, through `toml_edit`, after one

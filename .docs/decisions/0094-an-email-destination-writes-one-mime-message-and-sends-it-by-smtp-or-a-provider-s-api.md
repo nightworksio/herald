@@ -107,13 +107,19 @@ Where a host can open a TCP connection for SMTP, read 2026-11-27:
      `"gmail"`, `"ses"` (`region`, GovCloud among them) and `"mailgun"`
      (its US or EU host): the message as each takes it, over `Http` to the
      provider's documented host.
-4. **Postmark and Resend are not transports**: each takes a message's
-   parts, not the message herald writes. Through either, the provider
-   assembles the body; herald's Message-ID is not known to be kept, so a
-   later part could not name its parent by herald's own id; on Resend
-   only the provider's Message-ID, read back after each send, could
-   thread one. Postmark's message takes `TrackOpens` and `TrackLinks`,
-   open and link tracking herald's messages never carry.
+4. **Postmark and Resend are senders of a message's parts**, not of the
+   message herald writes. herald gives each the subject, the text and
+   HTML bodies, the addresses and its own headers, and the provider
+   assembles the MIME message. What differs from the senders of herald's
+   complete message:
+   - the provider writes the multipart body, so herald's golden MIME is
+     not what is sent; the parts are;
+   - Resend threads on Resend's own Message-ID: after each send herald
+     reads it back (`GET /emails/{id}`, one more request a part) and names
+     it in the next part's `In-Reply-To` and `References`;
+   - Postmark does not thread: each part is a message of its own, and
+     each is sent with `TrackOpens` and `TrackLinks` false;
+   - doctor names both differences for a route through either.
 5. **A new port, `Streams`, opens an outbound TCP connection** to a host
    and port the destination names and nothing else, upgrades it to TLS in
    place or opens it with TLS, and verifies the certificate against the

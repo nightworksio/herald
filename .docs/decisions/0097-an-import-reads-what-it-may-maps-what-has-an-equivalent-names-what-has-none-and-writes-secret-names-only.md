@@ -51,8 +51,14 @@ writes a secret to a file, prints one or takes one from argv (ADR-0007).
    is shown (the hook's page in the forge's settings). Every field the
    import does not need, Forgejo's `authorization_header` among them, is
    dropped unread: each answer is read through a closed list of fields.
-4. **`--store-secrets` writes a webhook URL into GitHub's Actions secrets**
-   (`import webhooks --forge github` only), never to disk or the screen:
+4. **`--store-secrets` writes a webhook URL into the forge's own secret
+   store**: GitHub's Actions secrets, GitLab's CI/CD variables (masked)
+   and Forgejo's Actions secrets, never to disk or the screen. On GitLab
+   and Forgejo each write is made with the narrowest token that forge
+   documents for it, checked before the call as GitHub's is below, and
+   on a self-managed host through the source's API base; which token that
+   is, and that the answer echoes no value, is read from each forge's API
+   documentation before it is built. On GitHub:
    - the URL is read from the hook's config into memory, joins the run's
      scrubber as it is read (ADR-0089), is encrypted with libsodium under
      the repository's public key (`GET …/actions/secrets/public-key`) and
