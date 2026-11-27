@@ -162,9 +162,23 @@ impl Log {
     /// Each of `told` the log writes, as it writes it.
     #[must_use]
     pub fn lines(&self, told: impl IntoIterator<Item = Told>) -> Vec<String> {
-        told.into_iter()
+        self.crowded()
+            .into_iter()
+            .chain(told)
             .filter_map(|told| self.written(&told))
             .collect()
+    }
+
+    /// What the log says once, where its scrubber holds more values than
+    /// [`Scrubber::CROWDED`]: each is still scrubbed.
+    #[must_use]
+    pub fn crowded(&self) -> Option<Told> {
+        self.scrubber.crowded().map(|held| {
+            Told::warn(format!(
+                "herald holds {held} secret values to scrub, more than {}; each is still scrubbed until it can no longer be valid",
+                Scrubber::CROWDED
+            ))
+        })
     }
 }
 

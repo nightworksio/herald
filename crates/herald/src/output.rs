@@ -102,6 +102,9 @@ impl<'a> Logged<'a> {
 
     /// `told`, as the log writes it.
     pub(crate) fn told(&mut self, told: &Told) {
+        if let Some(crowded) = self.log.crowded() {
+            self.told(&crowded);
+        }
         if let Some(line) = self.log.written(told) {
             match self.log.format() {
                 LogFormat::Text => say(self.out, &line),

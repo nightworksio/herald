@@ -152,3 +152,28 @@ fn a_log_before_any_config_takes_the_level_and_format_the_variables_name_and_els
     assert_eq!(defaults.format(), LogFormat::Text);
     assert_eq!(defaults.lines(told()).len(), 3);
 }
+
+#[test]
+fn a_log_says_once_where_its_scrubber_holds_more_values_than_many() {
+    let scrubber = scrubber();
+    for index in 0..=Scrubber::CROWDED {
+        scrubber.keep(&Secret::new("MANY", format!("value-{index:08}")));
+    }
+    let log = Log::of(&herald_config::Log::default(), |_| None, scrubber);
+    let Ok(log) = log else {
+        panic!("{log:?}");
+    };
+    let lines = log.lines([Told::info("polled")]);
+    assert_eq!(
+        lines,
+        [
+            format!(
+                "herald holds {} secret values to scrub, more than {}; each is still scrubbed until it can no longer be valid",
+                Scrubber::CROWDED + 1,
+                Scrubber::CROWDED
+            ),
+            "polled".to_owned()
+        ]
+    );
+    assert_eq!(log.lines([Told::info("polled")]), ["polled"]);
+}

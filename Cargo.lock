@@ -1307,6 +1307,7 @@ dependencies = [
 name = "herald-ports"
 version = "0.0.0"
 dependencies = [
+ "aho-corasick",
  "herald-core",
  "jiff",
  "pollster",

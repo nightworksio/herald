@@ -255,3 +255,22 @@ fn a_log_variable_naming_no_level_stops_the_run_before_it_starts() {
         flagged.err
     );
 }
+
+#[test]
+fn a_run_s_log_says_once_where_it_holds_more_secret_values_than_many() {
+    let scrubber = Scrubber::new(herald_config::Log::SCRUB_FROM);
+    for index in 0..=Scrubber::CROWDED {
+        scrubber.keep(&Secret::new("MANY", format!("value-{index:08}")));
+    }
+    let log = herald_compose::Log::of(&herald_config::Log::default(), |_| None, scrubber).unwrap();
+    let mut written = Vec::new();
+    let out = &mut output::Logged::new(&mut written, &log);
+    out.info("polled");
+    out.info("polled");
+    let written = String::from_utf8(written).unwrap();
+    assert_eq!(written.lines().count(), 3, "{written}");
+    assert!(
+        written.starts_with("herald holds 4097 secret values to scrub"),
+        "{written}"
+    );
+}

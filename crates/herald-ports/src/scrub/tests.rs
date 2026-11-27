@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use jiff::Timestamp;
+use jiff::{SignedDuration, Timestamp};
 
 use super::*;
 use crate::{Clock, Method, Request, Secret, SecretError, SecretText, Secrets};
@@ -105,7 +105,11 @@ struct Moved(Arc<AtomicI64>);
 
 impl Moved {
     fn on(&self, hours: i64) {
-        self.0.fetch_add(hours * 3600, Ordering::Relaxed);
+        self.minutes(hours * 60);
+    }
+
+    fn minutes(&self, minutes: i64) {
+        self.0.fetch_add(minutes * 60, Ordering::Relaxed);
     }
 }
 
@@ -206,5 +210,100 @@ fn each_secret_read_through_kept_secrets_is_scrubbed() {
         })
     );
     assert_eq!(scrubber.scrubbed(&token), "«secret:HERALD_TOKEN»");
-    assert!(format!("{scrubber:?}").contains("kept: [«secret:HERALD_TOKEN»]"));
+    let shown = format!("{scrubber:?}");
+    assert!(shown.contains("(«secret:HERALD_TOKEN», Ever)"), "{shown}");
+    assert!(!shown.contains(&token), "{shown}");
+}
+
+fn minted(value: &str, expires: Timestamp) -> Request {
+    Request::new(Method::Get, SecretText::plain("https://api.example/")).bearer(Secret::expiring(
+        "github_apps.release",
+        value,
+        expires,
+    ))
+}
+
+#[test]
+fn a_minted_token_is_held_until_its_expiry_and_a_margin_and_forgotten_as_text_is_scrubbed_or_sent()
+{
+    let clock = Moved::default();
+    let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
+    let expires = Timestamp::UNIX_EPOCH + SignedDuration::from_hours(1);
+    let token = installation_token("Ex1");
+    scrubber.sent(&minted(&token, expires));
+    clock.minutes(70);
+    assert_eq!(scrubber.scrubbed(&token), "«secret:github_apps.release»");
+    clock.minutes(1);
+    assert_eq!(
+        scrubber.scrubbed(&token),
+        token,
+        "pruned as text is scrubbed"
+    );
+    let other = installation_token("Ex2");
+    let later = expires + SignedDuration::from_hours(1);
+    scrubber.sent(&minted(&other, later));
+    clock.minutes(60);
+    scrubber.sent(&sending(&installation_token("Ex3")));
+    assert!(
+        !format!("{scrubber:?}").contains("«secret:github_apps.release»"),
+        "pruned as a value is sent"
+    );
+    let untimed = Scrubber::new(shortest(8));
+    untimed.sent(&minted(&token, Timestamp::UNIX_EPOCH));
+    assert_eq!(untimed.scrubbed(&token), "«secret:github_apps.release»");
+}
+
+#[test]
+fn past_the_crowded_count_every_live_value_is_still_scrubbed_and_said_once() {
+    let clock = Moved::default();
+    let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
+    let values: Vec<String> = (0..=Scrubber::CROWDED)
+        .map(|index| format!("{}{index:05}", installation_token("Cr1")))
+        .collect();
+    for value in &values[..Scrubber::CROWDED] {
+        scrubber.sent(&sending(value));
+    }
+    assert_eq!(scrubber.crowded(), None);
+    scrubber.sent(&sending(&values[Scrubber::CROWDED]));
+    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED + 1));
+    assert_eq!(scrubber.crowded(), None, "said once");
+    for value in &values {
+        assert_eq!(scrubber.scrubbed(value), "«secret:minted»");
+    }
+    clock.on(25);
+    assert_eq!(scrubber.scrubbed(&values[0]), values[0]);
+    for value in &values[..2] {
+        scrubber.sent(&sending(value));
+    }
+    assert_eq!(
+        scrubber.crowded(),
+        None,
+        "no longer crowded once the expired ones went"
+    );
+}
+
+#[test]
+fn a_text_is_scrubbed_in_one_pass_and_a_value_held_later_is_matched_too() {
+    let scrubber = Scrubber::new(shortest(8)).timed(Moved::default());
+    let first = installation_token("Op1");
+    scrubber.keep(&Secret::new("FIRST", first.as_str()));
+    assert_eq!(
+        scrubber.scrubbed(&format!("{first}{first}")),
+        "«secret:FIRST»«secret:FIRST»"
+    );
+    let second = installation_token("Op2");
+    assert_eq!(scrubber.scrubbed(&second), second);
+    scrubber.sent(&sending(&second));
+    assert_eq!(
+        scrubber.scrubbed(&format!("{second} {first}")),
+        "«secret:minted» «secret:FIRST»"
+    );
+    scrubber.keep(&Secret::new("SECOND", second.as_str()));
+    assert_eq!(
+        scrubber.scrubbed(&second),
+        "«secret:SECOND»",
+        "a value sent then read is shown as read"
+    );
+    scrubber.sent(&sending(&second));
+    assert_eq!(scrubber.scrubbed(&second), "«secret:SECOND»");
 }

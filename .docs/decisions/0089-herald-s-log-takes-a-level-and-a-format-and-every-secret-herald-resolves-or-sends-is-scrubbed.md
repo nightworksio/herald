@@ -43,8 +43,11 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
    token minted at run time among them, and everything herald writes passes
    through it, on every host: the log, the CLI's output and errors, and an
    answer a server echoed back. A secret read is held for as long as the
-   scrubber lives; a value known only by its sending is held until a day
-   after it was last sent, and a value sent and then read is held as read.
+   scrubber lives, and a value sent and then read is held as read. A
+   token minted with an expiry is held until ten minutes past it, and a
+   value of no known expiry known only by its sending until a day after it
+   was last sent. Past 4096 values held, every value is still held and
+   scrubbed, and the log says so once.
 6. **`[log] scrub_from` is the fewest characters a value holds to be
    scrubbed.** 8 where absent, as a shorter value would rewrite ordinary
    words. On GitHub Actions every secret is masked whatever its length.

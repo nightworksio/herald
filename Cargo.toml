@@ -13,6 +13,7 @@ authors = ["NightWorksIO"]
 publish = false
 
 [workspace.dependencies]
+aho-corasick = "1"
 async-lock = { version = "3", default-features = false, features = ["std"] }
 base64 = "0.23"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

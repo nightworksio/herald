@@ -1,6 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
+use jiff::Timestamp;
 use zeroize::Zeroizing;
 
 /// What every redacted secret is shown opening with, its name following.
@@ -14,6 +15,7 @@ pub const REDACTED: &str = "«secret:";
 pub struct Secret {
     name: String,
     value: Zeroizing<String>,
+    expires: Option<Timestamp>,
 }
 
 impl PartialEq for Secret {
@@ -29,7 +31,24 @@ impl Secret {
         Self {
             name: name.into(),
             value: Zeroizing::new(value.into()),
+            expires: None,
         }
+    }
+
+    /// The secret `name`, whose value is `value`, minted to be valid until
+    /// `expires`.
+    #[must_use]
+    pub fn expiring(name: impl Into<String>, value: impl Into<String>, expires: Timestamp) -> Self {
+        Self {
+            expires: Some(expires),
+            ..Self::new(name, value)
+        }
+    }
+
+    /// When it stops being valid, where it was minted with an expiry.
+    #[must_use]
+    pub const fn expires(&self) -> Option<Timestamp> {
+        self.expires
     }
 
     /// The name the config gives it.

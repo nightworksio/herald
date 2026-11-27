@@ -267,7 +267,11 @@ impl Minting {
                 .ok()?;
             let token = String::from_utf8(plain).ok()?;
             Some((
-                Secret::new(format!("github_apps.{}", self.app), token),
+                Secret::expiring(
+                    format!("github_apps.{}", self.app),
+                    token,
+                    record.value.expires,
+                ),
                 record.value.expires,
             ))
         };
