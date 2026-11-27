@@ -259,7 +259,7 @@ fn a_log_variable_naming_no_level_stops_the_run_before_it_starts() {
 #[test]
 fn a_run_s_log_says_once_where_it_holds_more_secret_values_than_many() {
     let scrubber = Scrubber::new(herald_config::Log::SCRUB_FROM);
-    for index in 0..=Scrubber::CROWDED {
+    for index in 0..=Scrubber::CROWDED.get() {
         scrubber.keep(&Secret::new("MANY", format!("value-{index:08}")));
     }
     let log = herald_compose::Log::of(&herald_config::Log::default(), |_| None, scrubber).unwrap();

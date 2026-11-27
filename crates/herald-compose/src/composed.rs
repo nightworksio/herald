@@ -12,7 +12,7 @@ use herald_flows::{
     report, unplaced, work,
 };
 use herald_kinds::{GITHUB_REPOSITORY, Opened};
-use herald_ports::{Base, Clock as _, Kept, Keyring, Scrubber, Sockets, Store, Timer};
+use herald_ports::{Base, Clock as _, Kept, Keyring, Sockets, Store, Timer};
 use herald_records::{Memory, MemoryKeyring, RecordStore};
 use jiff::{SignedDuration, Timestamp};
 
@@ -137,7 +137,7 @@ where
         }
         let scrubber = host
             .scrubber()
-            .unwrap_or_else(|| Scrubber::new(config.log.scrub_from).timed(host.clock().clone()));
+            .unwrap_or_else(|| config.log.scrubber().timed(host.clock().clone()));
         let log = Log::of(&config.log, |name| host.var(name), scrubber.clone())?;
         let secrets = Kept::new(host.secrets(), &scrubber);
         let prepared = prepare(&config, &secrets, host.signer(), uses)

@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use herald_core::{Duration, Inbound, RecordKind, Sandbox, Size};
 use herald_kinds::ConfiguredStore;
-use herald_ports::{Outbound, Proxy, Roots};
+use herald_ports::{Outbound, Proxy, Roots, Scrubber};
 use jiff::SignedDuration;
 use toml::Spanned;
 
@@ -403,6 +403,7 @@ impl Loader<'_> {
                 level: file.level.unwrap_or_default(),
                 format: file.format.unwrap_or_default(),
                 scrub_from: file.scrub_from.unwrap_or(Log::SCRUB_FROM),
+                scrub_warn_past: file.scrub_warn_past.unwrap_or(Scrubber::CROWDED),
             })
     }
 

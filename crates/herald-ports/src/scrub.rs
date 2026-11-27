@@ -42,6 +42,7 @@ struct Matcher {
 
 struct Hidden {
     shortest: NonZeroUsize,
+    many: NonZeroUsize,
     clock: Option<Arc<dyn Clock + Send>>,
     held: HashMap<String, Held>,
     next: Option<Timestamp>,
@@ -49,8 +50,7 @@ struct Hidden {
     crowded: Crowded,
 }
 
-/// Whether more values are held than [`Scrubber::CROWDED`], and whether
-/// that was said.
+/// Whether more values are held than are many, and whether that was said.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Crowded {
     /// No more are held.
@@ -71,6 +71,7 @@ impl std::fmt::Debug for Hidden {
         held.sort_by_key(|(secret, _)| secret.name().to_owned());
         f.debug_struct("Hidden")
             .field("shortest", &self.shortest)
+            .field("many", &self.many)
             .field("timed", &self.clock.is_some())
             .field("held", &held)
             .finish_non_exhaustive()
@@ -112,7 +113,7 @@ impl Hidden {
         if let Until::At(at) = until {
             self.next = Some(self.next.map_or(at, |next| next.min(at)));
         }
-        if self.held.len() > Scrubber::CROWDED && self.crowded == Crowded::Not {
+        if self.held.len() > self.many.get() && self.crowded == Crowded::Not {
             self.crowded = Crowded::Unsaid;
         }
     }
@@ -140,7 +141,7 @@ impl Hidden {
                 Until::Ever => None,
             })
             .min();
-        if self.held.len() <= Scrubber::CROWDED {
+        if self.held.len() <= self.many.get() {
             self.crowded = Crowded::Not;
         }
     }
@@ -173,16 +174,19 @@ impl Scrubber {
     /// How long a value of no known expiry, known only by its sending, is
     /// held after it was last sent.
     pub const RETAINED: SignedDuration = SignedDuration::from_hours(24);
-    /// How many values held are many: past it, every value is still held
-    /// and scrubbed, and the log says so once (ADR-0089).
-    pub const CROWDED: usize = 4096;
+    /// How many values held are many where a config says nothing: past
+    /// it, every value is still held and scrubbed, and the log says so once
+    /// (ADR-0089).
+    pub const CROWDED: NonZeroUsize = NonZeroUsize::new(4096).unwrap();
 
     /// A scrubber that knows no secret yet, leaves every value shorter
-    /// than `shortest` characters as it is, and forgets no value it knows.
+    /// than `shortest` characters as it is, forgets no value it knows, and
+    /// takes [`Scrubber::CROWDED`] values for many.
     #[must_use]
     pub fn new(shortest: NonZeroUsize) -> Self {
         Self(Arc::new(Mutex::new(Hidden {
             shortest,
+            many: Self::CROWDED,
             clock: None,
             held: HashMap::new(),
             next: None,
@@ -199,6 +203,20 @@ impl Scrubber {
     pub fn timed(self, clock: impl Clock + Send + 'static) -> Self {
         self.hidden().clock = Some(Arc::new(clock));
         self
+    }
+
+    /// The same scrubber, taking `many` values for many: past it, every
+    /// value is still held and scrubbed, and the log says so once.
+    #[must_use]
+    pub fn crowded_past(self, many: NonZeroUsize) -> Self {
+        self.hidden().many = many;
+        self
+    }
+
+    /// How many values it takes for many.
+    #[must_use]
+    pub fn many(&self) -> NonZeroUsize {
+        self.hidden().many
     }
 
     fn hidden(&self) -> MutexGuard<'_, Hidden> {
@@ -240,8 +258,8 @@ impl Scrubber {
         }
     }
 
-    /// Whether more than [`Scrubber::CROWDED`] values are held, told once
-    /// each time it becomes so.
+    /// How many values are held, where more are held than it takes for
+    /// many, told once each time it becomes so.
     #[must_use]
     pub fn crowded(&self) -> Option<usize> {
         let mut hidden = self.hidden();

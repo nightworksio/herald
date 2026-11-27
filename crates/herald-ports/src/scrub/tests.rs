@@ -257,15 +257,15 @@ fn a_minted_token_is_held_until_its_expiry_and_a_margin_and_forgotten_as_text_is
 fn past_the_crowded_count_every_live_value_is_still_scrubbed_and_said_once() {
     let clock = Moved::default();
     let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
-    let values: Vec<String> = (0..=Scrubber::CROWDED)
+    let values: Vec<String> = (0..=Scrubber::CROWDED.get())
         .map(|index| format!("{}{index:05}", installation_token("Cr1")))
         .collect();
-    for value in &values[..Scrubber::CROWDED] {
+    for value in &values[..Scrubber::CROWDED.get()] {
         scrubber.sent(&sending(value));
     }
     assert_eq!(scrubber.crowded(), None);
-    scrubber.sent(&sending(&values[Scrubber::CROWDED]));
-    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED + 1));
+    scrubber.sent(&sending(&values[Scrubber::CROWDED.get()]));
+    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED.get() + 1));
     assert_eq!(scrubber.crowded(), None, "said once");
     for value in &values {
         assert_eq!(scrubber.scrubbed(value), "«secret:minted»");
@@ -280,6 +280,26 @@ fn past_the_crowded_count_every_live_value_is_still_scrubbed_and_said_once() {
         None,
         "no longer crowded once the expired ones went"
     );
+}
+
+#[test]
+fn a_scrubber_given_its_many_says_so_past_it_and_still_scrubs_every_value() {
+    let scrubber = Scrubber::new(shortest(8)).crowded_past(NonZeroUsize::new(3).unwrap());
+    assert_eq!(scrubber.many().get(), 3);
+    assert_eq!(Scrubber::new(shortest(8)).many(), Scrubber::CROWDED);
+    let values: Vec<String> = (0..4)
+        .map(|index| format!("{}{index}", installation_token("Mn1")))
+        .collect();
+    for value in &values[..3] {
+        scrubber.keep(&Secret::new("MANY", value.as_str()));
+    }
+    assert_eq!(scrubber.crowded(), None, "three are not more than three");
+    scrubber.keep(&Secret::new("MANY", values[3].as_str()));
+    assert_eq!(scrubber.crowded(), Some(4));
+    assert_eq!(scrubber.crowded(), None, "said once");
+    for value in &values {
+        assert_eq!(scrubber.scrubbed(value), "«secret:MANY»");
+    }
 }
 
 #[test]
@@ -314,15 +334,15 @@ fn a_scrubber_crowded_again_after_its_expired_values_went_says_so_again() {
     let scrubber = Scrubber::new(shortest(8)).timed(clock.clone());
     let early = installation_token("Ea1");
     scrubber.sent(&minted(&early, Timestamp::UNIX_EPOCH));
-    for index in 0..Scrubber::CROWDED {
+    for index in 0..Scrubber::CROWDED.get() {
         scrubber.sent(&sending(&format!(
             "{}{index:05}",
             installation_token("Ag2")
         )));
     }
-    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED + 1));
+    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED.get() + 1));
     clock.on(2);
     scrubber.sent(&sending(&installation_token("Ag3")));
     assert_eq!(scrubber.scrubbed(&early), early);
-    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED + 1));
+    assert_eq!(scrubber.crowded(), Some(Scrubber::CROWDED.get() + 1));
 }

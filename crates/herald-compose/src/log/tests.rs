@@ -158,7 +158,7 @@ fn a_log_before_any_config_takes_the_level_and_format_the_variables_name_and_els
 #[test]
 fn a_log_says_once_where_its_scrubber_holds_more_values_than_many() {
     let scrubber = scrubber();
-    for index in 0..=Scrubber::CROWDED {
+    for index in 0..=Scrubber::CROWDED.get() {
         scrubber.keep(&Secret::new("MANY", format!("value-{index:08}")));
     }
     let log = Log::of(&herald_config::Log::default(), |_| None, scrubber);
@@ -170,12 +170,31 @@ fn a_log_says_once_where_its_scrubber_holds_more_values_than_many() {
         lines,
         [
             format!(
-                "herald holds {} secret values to scrub, more than {}; each is still scrubbed until it can no longer be valid",
-                Scrubber::CROWDED + 1,
-                Scrubber::CROWDED
+                "herald holds {} secret values to scrub, more than [log] scrub_warn_past, {}; each is still scrubbed until it can no longer be valid, and scrub_warn_past may be raised where a run sends this many",
+                Scrubber::CROWDED.get() + 1,
+                Scrubber::CROWDED.get()
             ),
             "polled".to_owned()
         ]
     );
     assert_eq!(log.lines([Told::info("polled")]), ["polled"]);
+}
+
+#[test]
+fn a_log_whose_config_lowers_many_says_so_past_it() {
+    let config = herald_config::Log {
+        scrub_warn_past: NonZeroUsize::new(1).unwrap(),
+        ..herald_config::Log::default()
+    };
+    let scrubber = config.scrubber();
+    for name in ["FIRST", "SECOND"] {
+        scrubber.keep(&Secret::new(name, format!("{name}-value-held")));
+    }
+    let Ok(log) = Log::of(&config, |_| None, scrubber) else {
+        panic!("a log of a config lowering many");
+    };
+    assert_eq!(
+        log.crowded().map(|told| told.text),
+        Some("herald holds 2 secret values to scrub, more than [log] scrub_warn_past, 1; each is still scrubbed until it can no longer be valid, and scrub_warn_past may be raised where a run sends this many".to_owned())
+    );
 }

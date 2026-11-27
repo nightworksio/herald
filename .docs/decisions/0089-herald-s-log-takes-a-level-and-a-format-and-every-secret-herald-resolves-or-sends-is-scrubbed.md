@@ -46,8 +46,11 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
    scrubber lives, and a value sent and then read is held as read. A
    token minted with an expiry is held until ten minutes past it, and a
    value of no known expiry known only by its sending until a day after it
-   was last sent. Past 4096 values held, every value is still held and
-   scrubbed, and the log says so once.
+   was last sent. Past `[log] scrub_warn_past` values held, 4096 where
+   absent, every value is still held and scrubbed, and the log says so
+   once, naming the setting. An operator raises it where a run sends that
+   many secrets by design, or lowers it to hear sooner; no live credential
+   is dropped at it either way.
 6. **`[log] scrub_from` is the fewest characters a value holds to be
    scrubbed.** 8 where absent, as a shorter value would rewrite ordinary
    words. On GitHub Actions every secret is masked whatever its length.
@@ -61,6 +64,7 @@ known to no scrubber, and a host other than the CLI scrubbed nothing.
 | **Scrub only the secrets the config names** | A token minted at run time, or a value read from a file the config names, would reach the log whenever a server echoed it. |
 | **Register every secret as it is made, process-wide** | Every test in a process would share one scrubber, and a server would hold every value it ever made. |
 | **Hold the last values sent up to a count** | A busy server could push out a token that is still valid, and stop scrubbing it. |
+| **A fixed count to warn at** | An operator whose runs send that many secrets by design would read the warning on every run, and one wanting to hear sooner could not. |
 | **A fixed least length** | An operator holding a short credential could not have it scrubbed. |
 
 ## Consequences

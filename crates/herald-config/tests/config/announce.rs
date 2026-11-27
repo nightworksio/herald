@@ -142,7 +142,7 @@ fn the_commands_withhold_private_rows_unless_the_cli_setting_says_their_output_i
 }
 
 #[test]
-fn the_log_s_level_format_and_least_scrubbed_length_are_read_and_a_mistake_named_by_its_key() {
+fn the_log_s_settings_are_read_and_a_mistake_named_by_its_key() {
     let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
     assert_eq!(config.log, Log::default());
     assert_eq!(
@@ -151,9 +151,12 @@ fn the_log_s_level_format_and_least_scrubbed_length_are_read_and_a_mistake_named
             level: Level::Info,
             format: LogFormat::Text,
             scrub_from: NonZeroUsize::new(8).unwrap(),
+            scrub_warn_past: NonZeroUsize::new(4096).unwrap(),
         }
     );
-    let text = format!("{EXAMPLE}\n[log]\nlevel = \"warn\"\nformat = \"json\"\nscrub_from = 4\n");
+    let text = format!(
+        "{EXAMPLE}\n[log]\nlevel = \"warn\"\nformat = \"json\"\nscrub_from = 4\nscrub_warn_past = 100\n"
+    );
     let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
     assert_eq!(
         config.log,
@@ -161,8 +164,10 @@ fn the_log_s_level_format_and_least_scrubbed_length_are_read_and_a_mistake_named
             level: Level::Warn,
             format: LogFormat::Json,
             scrub_from: NonZeroUsize::new(4).unwrap(),
+            scrub_warn_past: NonZeroUsize::new(100).unwrap(),
         }
     );
+    assert_eq!(config.log.scrubber().many().get(), 100);
     let text = format!("{EXAMPLE}\n[log]\nlevel = \"error\"\n");
     let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
     assert_eq!(config.log.level, Level::Error);
@@ -170,6 +175,7 @@ fn the_log_s_level_format_and_least_scrubbed_length_are_read_and_a_mistake_named
         ("level = \"debug\"", "log.level"),
         ("format = \"yaml\"", "log.format"),
         ("scrub_from = 0", "log.scrub_from"),
+        ("scrub_warn_past = 0", "log.scrub_warn_past"),
         ("colour = true", "colour"),
     ] {
         let error = load(

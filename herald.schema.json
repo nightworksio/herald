@@ -3799,6 +3799,12 @@
           "type": "integer",
           "format": "uint",
           "minimum": 1
+        },
+        "scrub_warn_past": {
+          "description": "How many secret values herald holds to scrub before its log says,\nonce, that it holds more: 4096 where absent. Past it every value is\nstill held and scrubbed until it can no longer be valid; raise it\nwhere a run sends that many secrets by design.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
         }
       },
       "additionalProperties": false
