@@ -27,6 +27,7 @@ mod poll;
 mod presets;
 mod preview;
 mod preview_event;
+mod preview_served;
 mod queue;
 mod release;
 mod rerun;
