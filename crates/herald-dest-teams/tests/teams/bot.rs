@@ -505,3 +505,69 @@ fn a_bot_s_route_names_its_conversation_and_a_webhook_s_names_none() {
     );
     assert!(bot.recalled(&written).is_some());
 }
+
+/// An `Http` that keeps each request's method and URL and answers each
+/// with a token and a message id.
+#[derive(Default)]
+struct Kept(std::sync::Mutex<Vec<String>>);
+
+impl herald_ports::Http for Kept {
+    fn send(
+        &self,
+        request: herald_ports::Request,
+    ) -> impl std::future::Future<Output = Result<herald_ports::Response, herald_ports::HttpError>> + Send
+    {
+        self.0.lock().unwrap().push(format!(
+            "{} {}",
+            request.method.as_str(),
+            request.url.redacted()
+        ));
+        std::future::ready(Ok(herald_ports::Response {
+            status: 200,
+            headers: Vec::new(),
+            body: br#"{"id":"9","access_token":"t","expires_in":3600}"#.to_vec(),
+        }))
+    }
+}
+
+#[test]
+fn an_unthreaded_bot_posts_each_part_on_its_own_and_edits_a_part_in_place() {
+    let kept = Kept::default();
+    let teams = teams(None);
+    let announcement = sample::announcement();
+    let entry = posted(&announcement);
+    let edit = Step::Edit {
+        revision: "r".to_owned(),
+        part: 1,
+    };
+    for step in [Step::Chunk(1), edit] {
+        assert_eq!(
+            pollster::block_on(teams.send(&kept, (&step, &announcement, &entry), now())).unwrap(),
+            landed("9")
+        );
+    }
+    let conversation = "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2";
+    assert_eq!(
+        *kept.0.lock().unwrap(),
+        [
+            "POST https://login.example/contoso.onmicrosoft.com/oauth2/v2.0/token".to_owned(),
+            format!("POST {conversation}/activities"),
+            format!("PUT {conversation}/activities/1700000000002"),
+        ]
+    );
+}
+
+#[test]
+fn a_bot_s_route_is_placed_in_its_conversation_and_shown_without_its_secret() {
+    assert_eq!(
+        herald_kinds::Placement::place(&route(None)),
+        Some("19:abc@thread.tacv2")
+    );
+    let shown = format!("{:?}", teams(None));
+    assert!(
+        shown.starts_with("Teams { bot: Bot {")
+            && shown.contains("«secret:HERALD_TEAMS_APP_PASSWORD»")
+            && !shown.contains("app-password"),
+        "{shown}"
+    );
+}

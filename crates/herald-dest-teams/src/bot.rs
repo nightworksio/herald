@@ -35,7 +35,7 @@ pub(crate) const LOGIN: &str = "Microsoft's sign-in service";
 pub(crate) const TOKEN: &str = "the Microsoft Teams bot's token";
 
 /// What a token answer may hold, in bytes.
-const TOKEN_ANSWER: usize = 16 * 1024;
+const TOKEN_ANSWER: usize = 16_384;
 
 /// The longest a token is held, as Microsoft gives one for 3600 seconds
 /// (<https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0>,
