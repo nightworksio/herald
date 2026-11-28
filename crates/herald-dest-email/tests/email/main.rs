@@ -2,7 +2,7 @@
 //! part read back by a strict reader, the encodings at their limits, and
 //! every attack on a field through the text an announcement carries; the
 //! destination's table and routes as the config reads them, and each message
-//! sent through Amazon SES.
+//! sent through Amazon SES and Mailgun.
 
 #[cfg(test)]
 mod address;
@@ -12,6 +12,8 @@ mod config;
 mod injection;
 #[cfg(test)]
 mod judge;
+#[cfg(test)]
+mod mailgun;
 #[cfg(test)]
 mod message;
 #[cfg(test)]

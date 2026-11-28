@@ -2718,15 +2718,23 @@
           ]
         },
         {
-          "description": "Email, one message per announcement, through Amazon SES.",
+          "description": "Email, one message per announcement, through Amazon SES or Mailgun.",
           "type": "object",
           "properties": {
             "access_key_id": {
               "description": "The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where\nunset.",
               "$ref": "#/$defs/SecretRef"
             },
+            "api_key": {
+              "description": "The secret holding the Mailgun API key, a domain sending key or the\naccount's.",
+              "$ref": "#/$defs/SecretRef"
+            },
             "configuration_set": {
               "description": "The Amazon SES configuration set each message is sent with, where it\nnames one.",
+              "type": "string"
+            },
+            "domain": {
+              "description": "The Mailgun domain each message is sent as, such as\n`mg.example.org`.",
               "type": "string"
             },
             "dual_stack": {
@@ -2756,7 +2764,7 @@
               "minimum": 0
             },
             "region": {
-              "description": "The AWS region Amazon SES sends from, such as `eu-west-1` or\n`us-gov-west-1`.",
+              "description": "The region it sends from: on Amazon SES an AWS region, such as\n`eu-west-1` or `us-gov-west-1`; on Mailgun `us` or `eu`, the region\nits domain was made in.",
               "type": "string"
             },
             "reply_to": {
@@ -2776,7 +2784,7 @@
               "$ref": "#/$defs/Symbols"
             },
             "transport": {
-              "description": "How each message leaves: `ses`, Amazon SES's API.",
+              "description": "How each message leaves: `ses`, Amazon SES's API, or `mailgun`,\nMailgun's.",
               "$ref": "#/$defs/EmailTransport"
             },
             "waits": {
@@ -3430,6 +3438,11 @@
           "description": "Amazon SES, by `SendEmail` of its API version 2, each request signed\nwith AWS Signature Version 4.",
           "type": "string",
           "const": "ses"
+        },
+        {
+          "description": "Mailgun, by `messages.mime`, each request carrying its API key.",
+          "type": "string",
+          "const": "mailgun"
         }
       ]
     },

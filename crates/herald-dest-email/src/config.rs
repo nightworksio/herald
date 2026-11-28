@@ -5,9 +5,11 @@ use herald_kinds::{
 use herald_ports::Secret;
 use url::Url;
 
-use crate::email::{self, Addressing, EMAIL, Email, UNCHECKED};
+use crate::address::host_name;
+use crate::email::{self, Addressing, Carrier, EMAIL, Email, UNCHECKED};
+use crate::mailgun::{MAILGUN, MAILGUN_BYTES, Mailgun, hosted};
 use crate::message::{MOST_BYTES, Recipients};
-use crate::options::{DestinationOptions, RouteOptions};
+use crate::options::{DestinationOptions, RouteOptions, Transport};
 use crate::ses::{Credentials, SES, SES_BYTES, SES_RECIPIENTS, Ses, regional};
 
 /// The kind of an email destination, as the config spells it.
@@ -26,6 +28,39 @@ const SET_NAME: usize = 64;
 const ACCESS_KEY_ID: &str = "AWS_ACCESS_KEY_ID";
 const SECRET_ACCESS_KEY: &str = "AWS_SECRET_ACCESS_KEY";
 
+/// The longest domain name (RFC 1035 §2.3.4: 255 bytes on the wire).
+const DOMAIN_MOST: usize = 253;
+
+impl Transport {
+    /// The provider it names, as herald names it.
+    #[must_use]
+    pub const fn provider(self) -> &'static str {
+        match self {
+            Self::Ses => SES,
+            Self::Mailgun => MAILGUN,
+        }
+    }
+
+    /// The most bytes of a message its provider takes.
+    #[must_use]
+    pub const fn most_bytes(self) -> usize {
+        match self {
+            Self::Ses => SES_BYTES,
+            Self::Mailgun => MAILGUN_BYTES,
+        }
+    }
+
+    /// The most recipients of a message its provider takes, where it
+    /// documents fewer than herald writes.
+    #[must_use]
+    pub const fn most_recipients(self) -> Option<usize> {
+        match self {
+            Self::Ses => Some(SES_RECIPIENTS),
+            Self::Mailgun => None,
+        }
+    }
+}
+
 impl DestinationOptions {
     /// The most bytes of a message.
     #[must_use]
@@ -39,6 +74,25 @@ impl DestinationOptions {
     ///
     /// The key that is not written as it must be, and why.
     pub fn url(&self) -> Result<String, (&'static str, String)> {
+        match self.transport {
+            Transport::Ses => self.ses_url(),
+            Transport::Mailgun => {
+                let region = self.region.as_deref().ok_or((
+                    "region",
+                    format!(
+                        "{MAILGUN} sends from the region its domain was made in; give \"us\" or \
+                         \"eu\""
+                    ),
+                ))?;
+                hosted(region)
+                    .map(str::to_owned)
+                    .map_err(|why| ("region", why))
+            }
+        }
+    }
+
+    /// The base URL Amazon SES is reached at.
+    fn ses_url(&self) -> Result<String, (&'static str, String)> {
         let region = self.region.as_deref().ok_or((
             "region",
             format!("{SES} sends from a region; give it, such as \"eu-west-1\""),
@@ -77,33 +131,116 @@ impl DestinationOptions {
         ))
     }
 
+    /// Each key of a transport other than its own that it gives, and the
+    /// transport whose it is.
+    fn foreign(&self) -> impl Iterator<Item = (&'static str, Transport)> {
+        [
+            ("fips", self.fips.is_some(), Transport::Ses),
+            ("dual_stack", self.dual_stack.is_some(), Transport::Ses),
+            ("endpoint", self.endpoint.is_some(), Transport::Ses),
+            (
+                "access_key_id",
+                self.access_key_id.is_some(),
+                Transport::Ses,
+            ),
+            (
+                "secret_access_key",
+                self.secret_access_key.is_some(),
+                Transport::Ses,
+            ),
+            (
+                "session_token",
+                self.session_token.is_some(),
+                Transport::Ses,
+            ),
+            (
+                "configuration_set",
+                self.configuration_set.is_some(),
+                Transport::Ses,
+            ),
+            ("domain", self.domain.is_some(), Transport::Mailgun),
+            ("api_key", self.api_key.is_some(), Transport::Mailgun),
+        ]
+        .into_iter()
+        .filter(|(_, given, owner)| *given && *owner != self.transport)
+        .map(|(key, _, owner)| (key, owner))
+    }
+
     /// Each key that is not written as it must be, and why.
     fn faults(&self) -> Vec<Fault> {
+        let provider = self.transport.provider();
         let mut faults: Vec<Fault> = self
-            .url()
-            .err()
-            .map(|(key, why)| Fault::at(key, why))
-            .into_iter()
+            .foreign()
+            .map(|(key, owner)| {
+                Fault::at(
+                    key,
+                    format!(
+                        "{provider} takes no {key}, a key of {} alone; drop it",
+                        owner.provider()
+                    ),
+                )
+            })
             .collect();
+        faults.extend(self.url().err().map(|(key, why)| Fault::at(key, why)));
+        let largest = self.transport.most_bytes();
         if let Some(most) = self.max_bytes
-            && !(FEWEST_BYTES..=SES_BYTES).contains(&most)
+            && !(FEWEST_BYTES..=largest).contains(&most)
         {
             faults.push(Fault::at(
                 "max_bytes",
                 format!(
-                    "{SES} takes messages of at most {SES_BYTES} bytes, and a message needs at \
+                    "{provider} takes messages of at most {largest} bytes, and a message needs at \
                      least {FEWEST_BYTES}; give a bound between them"
                 ),
             ));
         }
-        if let Some(set) = &self.configuration_set
-            && !set_name(set)
-        {
+        match self.transport {
+            Transport::Ses => faults.extend(self.ses_faults()),
+            Transport::Mailgun => faults.extend(self.mailgun_faults()),
+        }
+        faults
+    }
+
+    /// The fault of an Amazon SES configuration set it names, where its
+    /// name is not one.
+    fn ses_faults(&self) -> Option<Fault> {
+        self.configuration_set
+            .as_deref()
+            .filter(|set| !set_name(set))
+            .map(|_| {
+                Fault::at(
+                    "configuration_set",
+                    format!(
+                        "it is not a configuration set's name: at most {SET_NAME} letters, \
+                         digits, hyphens and underscores"
+                    ),
+                )
+            })
+    }
+
+    /// Each key Mailgun needs that it leaves out or does not write as it
+    /// must be, and why.
+    fn mailgun_faults(&self) -> Vec<Fault> {
+        let mut faults = Vec::new();
+        match self.domain.as_deref() {
+            None => faults.push(Fault::at(
+                "domain",
+                format!("{MAILGUN} sends as a domain; give it, such as \"mg.example.org\""),
+            )),
+            Some(domain) if domain.len() > DOMAIN_MOST || !host_name(domain) => {
+                faults.push(Fault::at(
+                    "domain",
+                    "it is not a domain's name; give one, such as \"mg.example.org\"",
+                ));
+            }
+            Some(_) => {}
+        }
+        if self.api_key.is_none() {
             faults.push(Fault::at(
-                "configuration_set",
+                "api_key",
                 format!(
-                    "it is not a configuration set's name: at most {SET_NAME} letters, digits, \
-                     hyphens and underscores"
+                    "{MAILGUN} takes each message with an API key; give the secret holding it, \
+                     such as {{ secret = \"MAILGUN_API_KEY\" }}"
                 ),
             ));
         }
@@ -112,6 +249,9 @@ impl DestinationOptions {
 
     /// It, each secret its table leaves unnamed named as AWS names it.
     fn named(mut self) -> Self {
+        if self.transport != Transport::Ses {
+            return self;
+        }
         for (given, name) in [
             (&mut self.access_key_id, ACCESS_KEY_ID),
             (&mut self.secret_access_key, SECRET_ACCESS_KEY),
@@ -149,7 +289,10 @@ impl DestinationConfig for DestinationOptions {
     }
 
     fn credential(&self) -> Option<&SecretRef> {
-        self.secret_access_key.as_ref()
+        match self.transport {
+            Transport::Ses => self.secret_access_key.as_ref(),
+            Transport::Mailgun => self.api_key.as_ref(),
+        }
     }
 
     fn secret_refs(&self) -> Vec<&SecretRef> {
@@ -157,6 +300,7 @@ impl DestinationConfig for DestinationOptions {
             .iter()
             .chain(&self.secret_access_key)
             .chain(&self.session_token)
+            .chain(&self.api_key)
             .collect()
     }
 
@@ -187,17 +331,23 @@ impl DestinationConfig for DestinationOptions {
             .map(Placed::new)
     }
 
-    fn reach(&self, _: &Placed, _: &str, _: Secret) -> Option<Reached> {
-        None
+    fn reach(&self, placed: &Placed, _: &str, secret: Secret) -> Option<Reached> {
+        let mailgun = match self.transport {
+            Transport::Mailgun => Mailgun::new(&self.url().ok()?, self.domain.as_deref()?, secret),
+            Transport::Ses => return None,
+        };
+        self.reached(placed, mailgun)
     }
 
     fn reach_reading(
         &self,
         placed: &Placed,
-        _: &str,
+        base: &str,
         (secret, read): (Secret, Vec<Secret>),
     ) -> Option<Reached> {
-        let route = placed.of::<RouteOptions>()?;
+        if self.transport != Transport::Ses {
+            return self.reach(placed, base, secret);
+        }
         let mut read = read.into_iter();
         let credentials = Credentials {
             access_key_id: read.next()?,
@@ -210,6 +360,14 @@ impl DestinationConfig for DestinationOptions {
             credentials,
             self.configuration_set.clone(),
         );
+        self.reached(placed, ses)
+    }
+}
+
+impl DestinationOptions {
+    /// It, mailing the route `placed` through `carrier`.
+    fn reached(&self, placed: &Placed, carrier: impl Into<Carrier>) -> Option<Reached> {
+        let route = placed.of::<RouteOptions>()?;
         let addressing = Addressing {
             from: self.from.clone(),
             reply_to: self.reply_to.clone(),
@@ -217,7 +375,7 @@ impl DestinationConfig for DestinationOptions {
             most: self.most(),
         };
         Some(Reached::new(
-            Email::new(addressing, ses).waiting(self.waits()),
+            Email::new(addressing, carrier).waiting(self.waits()),
         ))
     }
 }
@@ -238,7 +396,7 @@ pub enum EmailKind {}
 
 impl DestinationKind for EmailKind {
     const NAME: &str = KIND;
-    const DESCRIPTION: &str = "Email, one message per announcement, through Amazon SES.";
+    const DESCRIPTION: &str = "Email, one message per announcement, through Amazon SES or Mailgun.";
     const LABEL: &str = EMAIL;
     const ROUTE: &str = "EmailRoute";
     const ROUTE_DESCRIPTION: &str = "A route to an email destination: whom its messages go to.";
@@ -256,16 +414,18 @@ impl DestinationKind for EmailKind {
         Ok((options.named(), faults))
     }
 
-    fn placed(_: &DestinationOptions, route: &RouteOptions, _: Placing<'_>) -> Vec<Fault> {
-        match route.recipients() {
-            Err(why) => vec![Fault::here(format!("the route {why}"))],
-            Ok(recipients) if recipients.envelope().count() > SES_RECIPIENTS => {
+    fn placed(options: &DestinationOptions, route: &RouteOptions, _: Placing<'_>) -> Vec<Fault> {
+        let transport = options.transport;
+        match (route.recipients(), transport.most_recipients()) {
+            (Err(why), _) => vec![Fault::here(format!("the route {why}"))],
+            (Ok(recipients), Some(most)) if recipients.envelope().count() > most => {
                 vec![Fault::here(format!(
-                    "the route names more than the {SES_RECIPIENTS} recipients {SES} takes in \
-                     one message, `to`, `cc` and `bcc` together"
+                    "the route names more than the {most} recipients {} takes in one message, \
+                     `to`, `cc` and `bcc` together",
+                    transport.provider()
                 ))]
             }
-            Ok(_) => Vec::new(),
+            (Ok(_), _) => Vec::new(),
         }
     }
 }

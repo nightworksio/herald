@@ -29,8 +29,6 @@ exclude_re = [
     "StoreConfig::named -> Vec<&str> with vec!\\[\\]",
     # A herald feed names no secret of its own, and a feed or a push places every route as it is, and `Vec::new()` is `vec![]`.
     "impl DestinationConfig for FeedOptions>::secret_refs -> Vec<&SecretRef> with vec!\\[\\]",
-    # An email destination is reached only with the key's id it reads beside its credential, so reached with its credential alone it is none, which is its body.
-    "herald-dest-email/src/config\\.rs:\\d+:\\d+: replace <impl DestinationConfig for DestinationOptions>::reach -> Option<Reached> with None",
     # A destination reads no secret beside its credential unless its kind says so, and `Vec::new()` is `vec![]`.
     "DestinationConfig::reads -> Vec<&SecretRef> with vec!\\[\\]",
     "impl DestinationKind for (HeraldKind|PushKind)>::placed -> Vec<Fault> with vec!\\[\\]",

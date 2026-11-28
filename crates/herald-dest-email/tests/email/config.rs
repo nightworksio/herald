@@ -1,11 +1,11 @@
 //! An email table and route, read and checked as the config reads them:
-//! each key of Amazon SES, the recipients a route names, the secrets it
-//! reads.
+//! each key of Amazon SES and of Mailgun, the recipients a route names, the
+//! secrets it reads.
 
 use herald_core::{Delivery, Features, MentionStyle, Pins, Threads};
 use herald_dest_email::{
-    Addresses, DestinationOptions, EmailKind, FEWEST_BYTES, KIND, MOST_BYTES, RouteOptions,
-    SES_BYTES, UNCHECKED, profile, regional,
+    Addresses, DestinationOptions, EmailKind, FEWEST_BYTES, KIND, MAILGUN_BYTES, MOST_BYTES,
+    RouteOptions, SES_BYTES, UNCHECKED, profile, regional,
 };
 use herald_kinds::{
     Checking, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing,
@@ -387,4 +387,165 @@ fn a_route_s_addresses_are_described_as_one_address_or_a_list_of_them() {
         schema["anyOf"][1],
         json!({ "type": "array", "items": { "$ref": "#/$defs/Mailbox" } })
     );
+}
+
+fn mailgun_options(extra: &Value) -> DestinationOptions {
+    let mut table = json!({
+        "transport": "mailgun",
+        "from": "herald <releases@example.org>",
+        "region": "eu",
+        "domain": "mg.example.org",
+        "api_key": { "secret": "MAILGUN_API_KEY" },
+    });
+    for (key, value) in extra.as_object().unwrap() {
+        table[key] = value.clone();
+    }
+    serde_json::from_value(table).unwrap()
+}
+
+fn mailgun_faults(extra: &Value) -> Vec<Fault> {
+    EmailKind::checked(mailgun_options(extra), &|_| Err(String::new()))
+        .unwrap()
+        .1
+}
+
+#[test]
+fn a_mailgun_table_names_its_region_its_domain_and_its_key_and_reads_no_other_secret() {
+    let (options, faults) =
+        EmailKind::checked(mailgun_options(&json!({})), &|_| Err(String::new())).unwrap();
+    assert_eq!(faults, []);
+    assert_eq!(options.url(), Ok("https://api.eu.mailgun.net".to_owned()));
+    assert_eq!(
+        mailgun_options(&json!({ "region": "us" })).url(),
+        Ok("https://api.mailgun.net".to_owned())
+    );
+    assert_eq!(
+        options
+            .credential()
+            .map(|reference| reference.secret.as_str()),
+        Some("MAILGUN_API_KEY")
+    );
+    assert_eq!(options.reads().len(), 0);
+    assert_eq!(options.access_key_id, None);
+    let every: Vec<&str> = options
+        .secret_refs()
+        .iter()
+        .map(|reference| reference.secret.as_str())
+        .collect();
+    assert_eq!(every, ["MAILGUN_API_KEY"]);
+    let placed = Placed::new(route(&json!({ "to": "team@example.org" })));
+    let key = herald_ports::Secret::new("MAILGUN_API_KEY", "m".repeat(32));
+    assert!(options.reach(&placed, "", key.clone()).is_some());
+    assert!(
+        options
+            .reach_reading(&placed, "", (key.clone(), Vec::new()))
+            .is_some()
+    );
+    assert!(
+        options
+            .reach(&Placed::new(RouteOptions::default()), "", key.clone())
+            .is_none()
+    );
+    let (ses, _) = checked(&json!({}));
+    assert!(ses.reach(&placed, "", key).is_none());
+}
+
+#[test]
+fn a_mailgun_table_refuses_what_mailgun_cannot_take_by_its_key() {
+    let at = |extra: Value| {
+        mailgun_faults(&extra)
+            .into_iter()
+            .map(|fault| fault.key.unwrap_or_default())
+            .collect::<Vec<_>>()
+    };
+    for region in ["au", "US", "eu-west-1", ""] {
+        assert_eq!(at(json!({ "region": region })), ["region"], "{region}");
+    }
+    let longest = format!("{}org", "a.".repeat(125));
+    assert_eq!(longest.len(), 253);
+    for domain in [
+        "",
+        "a..b",
+        "-a.example",
+        "a b",
+        "a/b",
+        &format!("{longest}x"),
+    ] {
+        assert_eq!(at(json!({ "domain": domain })), ["domain"], "{domain}");
+    }
+    assert_eq!(at(json!({ "domain": longest })), Vec::<String>::new());
+    for most in [FEWEST_BYTES, MAILGUN_BYTES] {
+        assert_eq!(at(json!({ "max_bytes": most })), Vec::<String>::new());
+    }
+    assert_eq!(
+        mailgun_faults(&json!({ "max_bytes": MAILGUN_BYTES + 1 })),
+        [Fault::at(
+            "max_bytes",
+            "Mailgun takes messages of at most 25000000 bytes, and a message needs at least 4096; give a bound between them"
+        )]
+    );
+    for (key, value) in [
+        ("fips", json!(false)),
+        ("dual_stack", json!(true)),
+        ("endpoint", json!("https://api.mailgun.net")),
+        ("access_key_id", json!({ "secret": "A" })),
+        ("secret_access_key", json!({ "secret": "B" })),
+        ("session_token", json!({ "secret": "C" })),
+        ("configuration_set", json!("a b")),
+    ] {
+        assert_eq!(
+            mailgun_faults(&json!({ key: value })),
+            [Fault::at(
+                key,
+                format!("Mailgun takes no {key}, a key of Amazon SES alone; drop it")
+            )],
+            "{key}"
+        );
+    }
+    let bare: DestinationOptions =
+        serde_json::from_value(json!({ "transport": "mailgun", "from": "a@example.org" })).unwrap();
+    let (_, bare) = EmailKind::checked(bare, &|_| Err(String::new())).unwrap();
+    assert_eq!(
+        bare,
+        [
+            Fault::at(
+                "region",
+                "Mailgun sends from the region its domain was made in; give \"us\" or \"eu\""
+            ),
+            Fault::at(
+                "domain",
+                "Mailgun sends as a domain; give it, such as \"mg.example.org\""
+            ),
+            Fault::at(
+                "api_key",
+                "Mailgun takes each message with an API key; give the secret holding it, such as { secret = \"MAILGUN_API_KEY\" }"
+            ),
+        ]
+    );
+    for (key, value) in [
+        ("domain", json!("mg.example.org")),
+        ("api_key", json!({ "secret": "MAILGUN_API_KEY" })),
+    ] {
+        assert_eq!(
+            faults(&json!({ key: value })),
+            [Fault::at(
+                key,
+                format!("Amazon SES takes no {key}, a key of Mailgun alone; drop it")
+            )],
+            "{key}"
+        );
+    }
+}
+
+#[test]
+fn a_mailgun_route_may_name_every_recipient_herald_writes() {
+    let placed = EmailKind::placed(
+        &mailgun_options(&json!({})),
+        &route(&json!({ "to": addresses(60, "t"), "bcc": addresses(40, "b") })),
+        Placing {
+            destination: "mail",
+            subscribers: false,
+        },
+    );
+    assert_eq!(placed, []);
 }

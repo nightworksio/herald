@@ -738,21 +738,24 @@ Microsoft Teams, by Workflows webhook or as a bot.
 
 ### `destinations.<name>` of kind `email`
 
-Email, one message per announcement, through Amazon SES.
+Email, one message per announcement, through Amazon SES or Mailgun.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `destinations.<name>` | table | Email, one message per announcement, through Amazon SES. |
+| `destinations.<name>` | table | Email, one message per announcement, through Amazon SES or Mailgun. |
 | `destinations.<name>.access_key_id` | table | The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where unset. |
 | `destinations.<name>.access_key_id.secret` | string | The secret's name. |
+| `destinations.<name>.api_key` | table | The secret holding the Mailgun API key, a domain sending key or the account's. |
+| `destinations.<name>.api_key.secret` | string | The secret's name. |
 | `destinations.<name>.configuration_set` | string | The Amazon SES configuration set each message is sent with, where it names one. |
+| `destinations.<name>.domain` | string | The Mailgun domain each message is sent as, such as `mg.example.org`. |
 | `destinations.<name>.dual_stack` | boolean | Whether Amazon SES is reached at its region's endpoint on IPv4 and IPv6, under `api.aws`; false where unset. |
 | `destinations.<name>.endpoint` | string | The base URL Amazon SES is reached at, in place of its region's own endpoint, such as a VPC endpoint's: an https URL of a host alone. |
 | `destinations.<name>.fips` | boolean | Whether Amazon SES is reached at its region's FIPS endpoint, `email-fips.<region>`, where AWS gives the region one; false where unset. |
 | `destinations.<name>.from` | [Mailbox](#mailbox) | Who each message is from, written `local@domain` or `Name <local@domain>`; its domain names each message's id. |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.max_bytes` | integer | The most bytes a message holds, 262144 where unset: an announcement whose message would be longer is cut into more messages, or refused. |
-| `destinations.<name>.region` | string | The AWS region Amazon SES sends from, such as `eu-west-1` or `us-gov-west-1`. |
+| `destinations.<name>.region` | string | The region it sends from: on Amazon SES an AWS region, such as `eu-west-1` or `us-gov-west-1`; on Mailgun `us` or `eu`, the region its domain was made in. |
 | `destinations.<name>.reply_to` | [Mailbox](#mailbox) | Where replies go, where not to `from`. |
 | `destinations.<name>.secret_access_key` | table | The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY` where unset. |
 | `destinations.<name>.secret_access_key.secret` | string | The secret's name. |
@@ -763,7 +766,7 @@ Email, one message per announcement, through Amazon SES.
 | `destinations.<name>.symbols.done` | [OneCharacter](#onecharacter) | A task done; `☑` where unset. |
 | `destinations.<name>.symbols.rule` | [OneCharacter](#onecharacter) | A rule's character, drawn three wide; `─` where unset. |
 | `destinations.<name>.symbols.todo` | [OneCharacter](#onecharacter) | A task to do; `☐` where unset. |
-| `destinations.<name>.transport` | [EmailTransport](#emailtransport) | How each message leaves: `ses`, Amazon SES's API. |
+| `destinations.<name>.transport` | [EmailTransport](#emailtransport) | How each message leaves: `ses`, Amazon SES's API, or `mailgun`, Mailgun's. |
 | `destinations.<name>.waits` | table | How long it waits before sending again where its transport answers that it is unwell or limited and names no wait. |
 | `destinations.<name>.waits.limited` | [Duration](#duration) | After the platform answers that herald sends too often; the platform's own window where unset: "5m" on Mastodon, "5s" elsewhere. |
 | `destinations.<name>.waits.outage` | [Duration](#duration) | After the platform answers that it is unwell; "5s" where unset. |

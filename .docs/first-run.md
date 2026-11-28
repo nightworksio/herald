@@ -190,6 +190,31 @@ one, `dual_stack = true` its endpoint on IPv6 too, and `endpoint` any
 other, such as a VPC endpoint's
 (<https://docs.aws.amazon.com/general/latest/gr/ses.html>).
 
+### `email-mailgun`
+
+Mailgun, as one domain it verified, in the region the domain was made in:
+`us` (`api.mailgun.net`) or `eu` (`api.eu.mailgun.net`)
+(<https://documentation.mailgun.com/docs/mailgun/api-reference/api-overview>).
+Make a domain sending key for that domain: it may only send, by
+`messages` and `messages.mime`, as that domain alone, where the account's
+own key may do everything the account may
+(<https://documentation.mailgun.com/docs/mailgun/api-reference/authentication>).
+The secret holds the key; herald sends it as the password of the user
+`api`, to the region's host alone. A sandbox domain sends only to the
+recipients the account authorised
+(<https://documentation.mailgun.com/docs/mailgun/user-manual/domains/domains-sandbox>).
+
+herald sends each part of an announcement as one message, whole, by
+`messages.mime`, with every address of `to`, `cc` and `bcc` as a `to`
+beside it, so `bcc` stands outside the message alone; Mailgun takes
+messages of at most 25 MB
+(<https://documentation.mailgun.com/docs/mailgun/api-reference/send/mailgun/messages/post-v3--domain-name--messages-mime>,
+<https://documentation.mailgun.com/docs/mailgun/user-manual/sending-messages/send-http>).
+Open and click tracking is off for every message, whatever the domain
+says. `herald doctor --online` reads the domain (`GET /v4/domains/{name}`),
+which sends nothing; a domain sending key may not read it, so with one
+doctor says that whether it sends is not asked.
+
 ### `forgejo-branch`
 
 A token that may push to the repository's `herald-state` branch: an

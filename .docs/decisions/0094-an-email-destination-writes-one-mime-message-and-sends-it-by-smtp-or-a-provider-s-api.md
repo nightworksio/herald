@@ -152,6 +152,30 @@ Where a host can open a TCP connection for SMTP, read 2026-11-27:
      message; `ThrottlingException` and 429 are waited on. Doctor asks
      `GetAccount`, which sends nothing, and says where the account's
      sending is paused or it is in SES's sandbox.
+   - `"mailgun"`: `messages.mime` with the whole message as a file of a
+     `multipart/form-data` form and each address of its envelope, `to`,
+     `cc` and `bcc`, as a `to` field beside it, so a blind copy stands
+     beside the message alone, and `o:tracking-clicks` and
+     `o:tracking-opens` `no` on every message
+     (<https://documentation.mailgun.com/docs/mailgun/api-reference/send/mailgun/messages/post-v3--domain-name--messages-mime>).
+     `region = "us"` reaches `api.mailgun.net` and `"eu"`
+     `api.eu.mailgun.net`, the hosts Mailgun lists for the region a domain
+     is made in
+     (<https://documentation.mailgun.com/docs/mailgun/api-reference/api-overview>);
+     `domain` names the domain it sends as, and `api_key` the secret
+     holding a key, sent as the password of the user `api` to that host
+     alone, no redirect followed. `max_bytes` is at most the 25 MB
+     Mailgun takes, read as 25,000,000 bytes
+     (<https://documentation.mailgun.com/docs/mailgun/user-manual/sending-messages/send-http>);
+     Mailgun documents no recipient limit below herald's 100. An answer is
+     named by its status alone, never by its message; 429 and 420, the
+     status Mailgun gives a domain over its recipients' rate, are waited
+     on. Doctor reads the domain (`GET /v4/domains/{name}`), which sends
+     nothing, and says where it is disabled or a sandbox; a domain sending
+     key may only send
+     (<https://documentation.mailgun.com/docs/mailgun/api-reference/authentication>),
+     so where the key may not read the domain doctor says whether it sends
+     is not asked.
    - A route's `to`, `cc` and `bcc` each take a list of addresses, or one
      address as text.
    - `herald preview --format wire` shows each address as the config writes

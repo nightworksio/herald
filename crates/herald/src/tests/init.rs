@@ -12,7 +12,7 @@ pub(super) fn key() -> String {
 /// `answer` and the random generator making `random`: its code or why it
 /// stopped, and what it printed. Nothing it reaches answers, the
 /// environment is empty and no terminal is there.
-fn init(
+pub(super) fn init(
     directory: &Path,
     args: &[&str],
     answer: &str,
