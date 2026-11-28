@@ -34,6 +34,10 @@ Markdown; it has no website.
    `wire`, the exact request body each destination's own request builder
    writes (Block Kit, embed, Matrix event, Adaptive Card, MIME message),
    each secret as `«secret:NAME»` and each URL as the configured base;
+   for a route to one of herald's own ActivityPub actors, feeds or pushes
+   to a peer, the document herald publishes (the actor's Note, the
+   envelope) marked as served rather than sent, its proof and every
+   signature left out and the key that makes them named alone;
    `json`, for tools and the gallery.
 3. **No config needed.** `--destination <kind>` previews a sample against
    that kind's default profile.

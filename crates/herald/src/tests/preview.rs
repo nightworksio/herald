@@ -291,9 +291,130 @@ fn preview_names_only_what_the_config_has_where_a_flag_names_nothing_of_it() {
     );
 }
 
+/// [`wired`]'s config with a feed of herald's own and a push to a peer by
+/// the instance's key and by the run's ID token beside its actor.
+fn served() -> String {
+    format!(
+        r#"{}[federation]
+domain = "herald.example"
+keys = [{{ secret = "HERALD_FED_KEY" }}]
+[peers.org]
+url = "https://herald.peer.example"
+keys = ["{}"]
+[destinations.feed]
+kind = "herald"
+[destinations.mirror]
+kind = "herald-push"
+peer = "org"
+inbox = "up"
+[destinations.tokened]
+kind = "herald-push"
+peer = "org"
+inbox = "up"
+credential = "id-token"
+[[routes]]
+id = "fed"
+sources = ["cli"]
+destination = "feed"
+[[routes]]
+id = "pushed"
+sources = ["cli"]
+destination = "mirror"
+[[routes]]
+id = "tokened"
+sources = ["cli"]
+destination = "tokened"
+"#,
+        wired(),
+        herald_peers::multibase::ed25519_public(&[5; 32])
+    )
+}
+
 #[test]
 fn preview_reads_no_secret_and_opens_no_connection() {
-    let setup = setup(KINDS);
+    unread(
+        KINDS,
+        &[
+            &[],
+            &["--kind", "issue"],
+            &["--report", "daily"],
+            &["--sample", "long"],
+            &["--event", EVENT_FILE],
+            &["--format", "wire"],
+            &["--format", "wire", "--event", EVENT_FILE],
+            &["--format", "json"],
+            &["--format", "json", "--report", "daily"],
+        ],
+    );
+    unread(
+        &served(),
+        &[
+            &["--format", "wire"],
+            &["--format", "wire", "--event", EVENT_FILE],
+            &["--format", "json"],
+            &["--format", "json", "--event", EVENT_FILE],
+        ],
+    );
+}
+
+#[test]
+fn preview_wire_shows_the_envelope_a_feed_serves_or_a_push_carries_its_proof_by_name_alone() {
+    let text = previewed(&served(), &["--sample", "plain"]);
+    assert_eq!(
+        (text.code, heads(&text.out)[3..].to_vec()),
+        (
+            DONE,
+            vec![
+                "fed to feed, sample release (plain): it publishes each event as an envelope rather than a message; --format wire shows it",
+                "pushed to mirror, sample release (plain): it publishes each event as an envelope rather than a message; --format wire shows it",
+                "tokened to tokened, sample release (plain): it publishes each event as an envelope rather than a message; --format wire shows it",
+            ]
+        )
+    );
+    let wire = previewed(&served(), &["--sample", "plain", "--format", "wire"]);
+    for said in [
+        "  served, not sent: herald's feed lists this envelope, proved by «secret:HERALD_FED_KEY»:",
+        "  served, not sent: herald pushes this envelope to the peer org's inbox, proved by «secret:HERALD_FED_KEY»:",
+        "  served, not sent: herald pushes this envelope to the peer org's inbox, proved by the run's ID token:",
+        "      \"type\": \"herald:Event\",",
+    ] {
+        assert!(
+            wire.out.lines().any(|line| line == said),
+            "{said}: {}",
+            wire.out
+        );
+    }
+    assert!(!wire.out.contains("\"proof\""), "{}", wire.out);
+    let json = previewed(&served(), &["--sample", "plain", "--format", "json"]);
+    let all: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(
+        (
+            &all[3]["title"],
+            &all[3]["served"]["by"],
+            &all[3]["served"]["name"],
+            &all[3]["served"]["proof"],
+            &all[3]["served"]["document"]["type"],
+            &all[5]["served"]["name"],
+        ),
+        (
+            &serde_json::Value::Null,
+            &serde_json::json!("feed"),
+            &serde_json::Value::Null,
+            &serde_json::json!("«secret:HERALD_FED_KEY»"),
+            &serde_json::json!("herald:Event"),
+            &serde_json::json!("org"),
+        )
+    );
+}
+
+/// What stands for the setup's event file among the arguments [`unread`]
+/// is given.
+const EVENT_FILE: &str = "EVENT_FILE";
+
+/// Preview run on `text` as each of `forms` asks, with no environment and
+/// ports that fail the test when called.
+fn unread(text: &str, forms: &[&[&str]]) {
+    let setup = setup(text);
     let config = setup
         .directory
         .path()
@@ -309,19 +430,15 @@ fn preview_reads_no_secret_and_opens_no_connection() {
     let refused = |_: herald_ports::Base<'_>,
                    _: &herald_ports::Outbound|
      -> Result<Connection, String> { panic!("preview opened a connection") };
-    for asked in [
-        &[][..],
-        &["--kind", "issue"],
-        &["--report", "daily"],
-        &["--sample", "long"],
-        &["--event", &event],
-        &["--format", "wire"],
-        &["--format", "wire", "--event", &event],
-        &["--format", "json"],
-        &["--format", "json", "--report", "daily"],
-    ] {
+    for asked in forms {
         let mut args = vec!["herald", "--config", &config, "preview"];
-        args.extend(asked);
+        args.extend(asked.iter().map(|arg| {
+            if *arg == EVENT_FILE {
+                event.as_str()
+            } else {
+                arg
+            }
+        }));
         let args: Vec<String> = args.into_iter().map(ToOwned::to_owned).collect();
         let mut out = Vec::new();
         let mut err = Vec::new();
@@ -452,7 +569,17 @@ fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_n
         .out
         .lines()
         .filter(|line| !line.starts_with("    User-Agent: "))
+        .take(23)
         .collect();
+    let note = &shown.out[shown.out.find("\n    {\n").unwrap()..];
+    let note: serde_json::Value = serde_json::from_str(note).unwrap();
+    assert_eq!(
+        (&note["type"], &note["attributedTo"]),
+        (
+            &serde_json::json!("Note"),
+            &serde_json::json!("https://herald.example/users/cli")
+        )
+    );
     let channel = "https://discord.com/api/v10/channels/1566200000000000100/messages";
     let bot = "    Authorization: Bot «secret:HERALD_DISCORD_TOKEN»";
     let json = "    Content-Type: application/json; charset=utf-8";
@@ -479,7 +606,9 @@ fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_n
             json,
             "    ",
             lines[19],
-            "followed to fedi, sample release (plain): herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request",
+            "followed to fedi, sample release (plain):",
+            "  served, not sent: the actor cli publishes this document in its outbox and delivers it to each follower's inbox in a request signed by «secret:HERALD_ACTIVITYPUB_KEY»:",
+            "    {",
         ]
     );
     assert!(
@@ -666,14 +795,24 @@ fn preview_json_holds_what_each_route_renders_against_its_text_and_its_requests(
         "«secret:HERALD_SLACK_WEBHOOK»"
     );
     assert_eq!(
-        (&all[2]["steps"], &all[2]["unsent"]),
+        (
+            &all[2]["steps"],
+            &all[2]["unsent"],
+            &all[2]["served"]["by"],
+            &all[2]["served"]["name"],
+            &all[2]["served"]["proof"],
+            &all[2]["served"]["document"]["type"],
+        ),
         (
             &serde_json::json!([]),
-            &serde_json::json!(
-                "herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request"
-            )
+            &serde_json::Value::Null,
+            &serde_json::json!("actor"),
+            &serde_json::json!("cli"),
+            &serde_json::json!("«secret:HERALD_ACTIVITYPUB_KEY»"),
+            &serde_json::json!("Note"),
         )
     );
+    assert_eq!(all[0]["served"], serde_json::Value::Null);
     let reported = previewed(KINDS, &["--format", "json", "--report", "daily"]);
     let report: serde_json::Value = serde_json::from_str(&reported.out).unwrap();
     assert_eq!(

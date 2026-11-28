@@ -25,14 +25,14 @@ use super::{Outcome, Run, Stop, stopped, stored};
 
 /// Why an event that is not public is pushed to no peer that takes no
 /// private events.
-const UNSHARED: &str =
+pub(crate) const UNSHARED: &str =
     "the event is not public, and the peer takes no private events, so it is pushed none";
 
 /// Who answers a push.
 const INBOX: &str = "the peer's inbox";
 
 /// What a token asked of the CI is named, in place of a secret's name.
-const ASKED: &str = "the run's ID token";
+pub(crate) const ASKED: &str = "the run's ID token";
 
 impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     /// What the route did with `event`, pushed to the peer `pushed` names:

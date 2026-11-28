@@ -18,7 +18,7 @@ use herald_ports::{Algorithm, Ledger, Published, Secret, Signer, Store, Versione
 use super::{Outcome, Run, Stop, stopped, stored};
 
 /// Why an event that is not public enters no feed.
-const PRIVATE: &str =
+pub(crate) const PRIVATE: &str =
     "the event is not public, and a herald feed is served to anyone, so it enters none";
 
 impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {

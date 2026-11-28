@@ -11,7 +11,10 @@ mod delivered;
 mod wire;
 
 pub use delivered::{Sourced, Unmapped, delivered, preview_delivered, preview_delivered_group};
-pub use wire::{DRY_ID, FED, FOLLOWED, PUSHED, Recording, UNREACHED, Wire, wired};
+pub use wire::{
+    DRY_ID, FOLLOWED, Proof, Publisher, Recording, Served, UNENVELOPED, UNREACHED, Wire, enveloped,
+    wired,
+};
 
 /// One route's templates rendered against an event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +25,11 @@ pub struct Previewed {
     pub destination: DestinationName,
     /// The sample it was rendered against, where it was one.
     pub against: Option<Against>,
+    /// The event it rendered, or the lead of the group, where it had one.
+    pub event: Option<Event>,
+    /// Whether the route publishes each event as an envelope rather than
+    /// rendering it through a template (ADR-0046, ADR-0054).
+    pub envelopes: bool,
     /// What the destination would show, or why the templates cannot render
     /// the event.
     pub rendered: Result<Announcement, String>,
@@ -275,6 +283,8 @@ pub(crate) fn rendered(
         route: route.route.id.clone(),
         destination: route.route.destination.clone(),
         against: None,
+        event: Some(subject.event.clone()),
+        envelopes: route.route.template.is_none(),
         rendered,
     }
 }

@@ -35,8 +35,10 @@ mod withdrawing;
 mod zoning;
 
 use crate::prepare::{Connected, PreparedRoute};
+pub(crate) use feeding::PRIVATE;
 use heard::Heard;
 pub(crate) use latest::kept_latest;
+pub(crate) use pushing::{ASKED, UNSHARED};
 pub(crate) use sealing::sealed;
 pub(crate) use withdrawing::{Asked, undeletable};
 
