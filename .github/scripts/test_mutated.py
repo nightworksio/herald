@@ -84,7 +84,7 @@ class Nightly(unittest.TestCase):
     def test_no_green_run_mutates_the_whole_workspace(self):
         found = mutated.nightly(None, changing(), METADATA)
         self.assertTrue(found.whole)
-        self.assertEqual(found.outputs(), {"shards": "--workspace", "excluded": EXCLUDING, "matrix": WHOLE, "wasm": "true", "wasi": "true", "fastly": "true"})
+        self.assertEqual(found.outputs(), {"shards": "--workspace", "excluded": EXCLUDING, "examined": "", "matrix": WHOLE, "total": "40", "wasm": "true", "wasi": "true", "fastly": "true"})
 
     def test_a_read_path_outside_the_crates_mutates_the_whole_workspace(self):
         found = mutated.nightly("g1", changing("crates/herald-core/src/lib.rs", "Cargo.lock"), METADATA)
@@ -96,7 +96,8 @@ class Nightly(unittest.TestCase):
         self.assertFalse(found.whole)
         self.assertEqual(
             found.outputs(),
-            {"shards": "--package herald-flows --package herald-ports --package herald-wasm", "excluded": EXCLUDING, "matrix": WHOLE, "wasm": "true",
+            {"shards": "--package herald-flows --package herald-ports --package herald-wasm", "excluded": EXCLUDING, "examined": "",
+             "matrix": WHOLE, "total": "40", "wasm": "true",
              "wasi": "false", "fastly": "false"},
         )
         self.assertIn("herald-flows herald-ports herald-wasm", found.why)
@@ -104,11 +105,11 @@ class Nightly(unittest.TestCase):
     def test_a_crate_the_shards_exclude_whole_is_left_to_its_runtime_job(self):
         metadata = {"workspace_root": ROOT, "packages": [package("herald-wasi"), package("herald-spin")]}
         found = mutated.nightly("g1", changing("crates/herald-wasi/src/lib.rs", "crates/herald-spin/src/lib.rs"), metadata)
-        self.assertEqual(found.outputs(), {"shards": "", "excluded": EXCLUDING, "matrix": WHOLE, "wasm": "false", "wasi": "true", "fastly": "false"})
+        self.assertEqual(found.outputs(), {"shards": "", "excluded": EXCLUDING, "examined": "", "matrix": WHOLE, "total": "40", "wasm": "false", "wasi": "true", "fastly": "false"})
 
     def test_nothing_changed_mutates_nothing(self):
         found = mutated.nightly("g1", changing(".docs/decisions/0002-y.md"), METADATA)
-        self.assertEqual(found.outputs(), {"shards": "", "excluded": EXCLUDING, "matrix": WHOLE, "wasm": "false", "wasi": "false", "fastly": "false"})
+        self.assertEqual(found.outputs(), {"shards": "", "excluded": EXCLUDING, "examined": "", "matrix": WHOLE, "total": "40", "wasm": "false", "wasi": "false", "fastly": "false"})
         self.assertEqual(found.why, "no crate changed since g1, so nothing is mutated")
 
 
@@ -129,8 +130,8 @@ class Scope(unittest.TestCase):
 
     def test_a_push_to_main_mutates_nothing(self):
         found = mutated.scope("push", "", mutated.MAIN)
-        self.assertEqual(found.outputs(), {"shards": "", "excluded": EXCLUDING, "matrix": WHOLE,
-                                           "wasm": "false", "wasi": "false", "fastly": "false"})
+        self.assertEqual(found.outputs(), {"shards": "", "excluded": EXCLUDING, "examined": "", "matrix": WHOLE,
+                                           "total": "40", "wasm": "false", "wasi": "false", "fastly": "false"})
 
 
 class Cutting(unittest.TestCase):
@@ -208,10 +209,48 @@ class Counting(unittest.TestCase):
             with answering(out):
                 self.assertEqual(mutated.listed(["--workspace"]), mutants, out)
 
+    def test_the_mutants_named_by_hand_are_listed_and_cut_as_the_shards_mutate_them(self):
+        asked, listed = self.listing(500)
+        found = mutated.counted(mutated.asked(mutated.scope("workflow_dispatch", "", mutated.MAIN), "", "herald-config/src/load"),
+                                listed, None)
+        self.assertEqual(asked, [["--workspace", *EXCLUDING.split(), "--re", "herald-config/src/load"]])
+        self.assertEqual((found.outputs()["matrix"], found.outputs()["total"]), ("[0,1]", "2"))
+
+    def test_a_shard_named_by_hand_is_run_as_named_and_lists_nothing(self):
+        asked, listed = self.listing(500)
+        found = mutated.counted(mutated.asked(mutated.scope("workflow_dispatch", "", mutated.MAIN), "16/29", ""), listed, None)
+        self.assertEqual((asked, found.outputs()["matrix"], found.outputs()["total"]), ([], "[16]", "29"))
+
     def test_a_scope_mutating_nothing_lists_nothing(self):
         asked, listed = self.listing(5)
         found = mutated.counted(mutated.scope("push", "", mutated.MAIN), listed, None)
         self.assertEqual((asked, found.outputs()["shards"]), ([], ""))
+
+
+class Asked(unittest.TestCase):
+    WHOLE = mutated.scope("workflow_dispatch", "", mutated.MAIN)
+
+    def test_nothing_named_leaves_the_scope_as_it_is(self):
+        self.assertEqual(mutated.asked(self.WHOLE, "", ""), self.WHOLE)
+
+    def test_a_named_shard_and_mutants_run_alone_and_no_runtime_job(self):
+        found = mutated.asked(self.WHOLE, "3/7", "lib\\.rs:382")
+        self.assertEqual(found.outputs(), {"shards": "--workspace", "excluded": EXCLUDING, "examined": "lib\\.rs:382",
+                                           "matrix": "[3]", "total": "7", "wasm": "false", "wasi": "false", "fastly": "false"})
+        self.assertTrue(found.why.endswith("; only the mutants matching 'lib\\\\.rs:382'; only shard 3 of 7"), found.why)
+        self.assertEqual(mutated.asked(self.WHOLE, "0/1", "").outputs()["matrix"], "[0]")
+        self.assertEqual(mutated.asked(self.WHOLE, "", "x").outputs()["wasm"], "false")
+
+    def test_a_shard_not_named_as_k_below_n_is_refused(self):
+        for shard in ["7/7", "8/7", "3", "-1/7", "3/7/1", " 3/7", "a/b", "3/0"]:
+            with self.assertRaisesRegex(ValueError, "K/N, K below N", msg=shard):
+                mutated.asked(self.WHOLE, shard, "")
+
+    def test_mutants_named_by_no_regular_expression_on_one_line_are_refused(self):
+        with self.assertRaises(mutated.re.error):
+            mutated.asked(self.WHOLE, "", "(")
+        with self.assertRaisesRegex(ValueError, "one line"):
+            mutated.asked(self.WHOLE, "", "a\nb")
 
 
 FORGE_PLACES = frozenset({".github/CODEOWNERS"})
@@ -227,8 +266,10 @@ class Repository(unittest.TestCase):
         for name in mutated.UNSHARDED:
             self.assertIn(f"crates/{name}/**", mutated.EXCLUDED)
         shard = workflow[workflow.index("  mutants-shard:"):workflow.index("  mutants-wasm:")]
-        self.assertIn('--sharding round-robin "${excluded[@]}"', shard)
-        self.assertNotIn("--exclude", shard)
+        script = (mutated.ROOT / ".github" / "scripts" / "mutants-shard.sh").read_text(encoding="utf-8")
+        self.assertIn("run: .github/scripts/mutants-shard.sh", shard)
+        self.assertIn('"${excluded[@]}" "${examined[@]}" "${scope[@]}"', script)
+        self.assertNotIn("--exclude", shard + script)
 
     def test_no_crate_names_a_path_held_unread(self):
         literal = re.compile(r'"(?:\.\./)*([^"\s]+)"')

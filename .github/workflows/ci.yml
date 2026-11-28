@@ -13,7 +13,18 @@ on:
   schedule:
     - cron: "17 2 * * 0-5"
     - cron: "17 2 * * 6"
+  # A run started by hand naming a shard or mutants runs only those, and none
+  # of the other jobs.
   workflow_dispatch:
+    inputs:
+      shard:
+        description: "Only this shard, as K/N: shard K of the mutants cut into N"
+        type: string
+        default: ""
+      mutants:
+        description: "Only the mutants this regular expression matches, as cargo-mutants' --re reads it"
+        type: string
+        default: ""
   # The release runs the whole gate on the commit its tag was verified at,
   # before it publishes (ADR-0012).
   workflow_call:
@@ -35,6 +46,7 @@ env:
 
 jobs:
   fmt:
+    if: &whole-run ${{ !inputs.shard && !inputs.mutants }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,6 +57,7 @@ jobs:
       - run: cargo fmt --all --check
 
   clippy:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -62,6 +75,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services: &postgres
@@ -95,6 +109,7 @@ jobs:
   # Every line of the workspace, less the platform-only entry points that the
   # serverless smoke tests run (ADR-0008).
   coverage:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services: *postgres
@@ -134,6 +149,7 @@ jobs:
           retention-days: 7
 
   deny:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -146,6 +162,7 @@ jobs:
       - run: cargo deny --locked --manifest-path fuzz/Cargo.toml check
 
   audit:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -164,6 +181,7 @@ jobs:
   # RUSTUP_TOOLCHAIN takes precedence over rust-toolchain.toml, which would
   # otherwise hand this job the pinned toolchain.
   msrv:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -211,6 +229,7 @@ jobs:
   # of their databases and key-value stores passes the conformance suite of
   # its port, and the SQLite and Postgres databases keep their waits.
   wasm:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services: *postgres
@@ -252,6 +271,7 @@ jobs:
   # ports pass under wasmtime and Viceroy, and each answers real requests on
   # its host, Spin's databases included, which pass the store conformance.
   compute:
+    if: *whole-run
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services: *postgres
@@ -305,6 +325,7 @@ jobs:
   # under Compose with SQLite and with Postgres, and on a kind cluster from
   # the manifests and from the chart (ADR-0009).
   image:
+    if: *whole-run
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -410,7 +431,9 @@ jobs:
     outputs:
       shards: ${{ steps.scope.outputs.shards }}
       excluded: ${{ steps.scope.outputs.excluded }}
+      examined: ${{ steps.scope.outputs.examined }}
       matrix: ${{ steps.scope.outputs.matrix }}
+      total: ${{ steps.scope.outputs.total }}
       wasm: ${{ steps.scope.outputs.wasm }}
       wasi: ${{ steps.scope.outputs.wasi }}
       fastly: ${{ steps.scope.outputs.fastly }}
@@ -427,6 +450,8 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           REF: ${{ github.ref }}
           SCHEDULE: ${{ github.event.schedule }}
+          ASKED_SHARD: ${{ inputs.shard }}
+          ASKED_MUTANTS: ${{ inputs.mutants }}
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/mutated.py
 
@@ -463,21 +488,13 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           SHARD: ${{ matrix.shard }}
-          SHARDS: ${{ strategy.job-total }}
+          SHARDS: ${{ needs.mutants-scope.outputs.total }}
           MUTATED: ${{ needs.mutants-scope.outputs.shards }}
           EXCLUDED: ${{ needs.mutants-scope.outputs.excluded }}
-        run: |
-          set -euo pipefail
-          read -r -a mutated <<< "$MUTATED"
-          read -r -a excluded <<< "$EXCLUDED"
-          scope=()
-          if [ "$EVENT" = "pull_request" ]; then
-            git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
-            scope=(--in-diff "${RUNNER_TEMP}/change.diff")
-          fi
-          cargo mutants "${mutated[@]}" --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin "${excluded[@]}" "${scope[@]}"
+          EXAMINED: ${{ needs.mutants-scope.outputs.examined }}
+        run: .github/scripts/mutants-shard.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         with:
           name: mutants-${{ matrix.shard }}
           path: mutants.out

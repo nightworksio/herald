@@ -25,7 +25,7 @@ few.
    `.github/scripts/mutated.py`, and every mutants job reads its outputs:
    - **A pull request** mutates its diff (ADR-0008).
    - **The weekly run, a run started by hand and a release's gate** mutate
-     the whole workspace.
+     the whole workspace, a run started by hand only what it names (8).
    - **The nightly run** mutates the crates changed since the head of the
      last green scheduled run on `main`, nightly or weekly, and every
      workspace member depending on one of them, by any kind of dependency,
@@ -88,6 +88,25 @@ few.
      `Found` line, in every shard above, and a baseline build and test of
      153 to 179 seconds in the shards whose baseline was read (shard 0 of
      44891794888, 45910907079 and 45557289174), so four minutes.
+
+8. **A run started by hand may name its shard and its mutants.** Its
+   `shard` input, as K/N, runs shard K alone of its mutants cut into N, so
+   a shard of an earlier run of the same mutants is run again on its own;
+   its `mutants` input, a regular expression cargo-mutants' `--re` reads,
+   mutates only the mutants it matches, cut as item 6 cuts them. A run
+   naming either runs `mutants-scope`, its shards and `mutants`, and none
+   of ci's other jobs or the runtime jobs.
+9. **A shard is held and watched.** `.github/scripts/mutants-shard.sh`
+   runs cargo-mutants in a cgroup holding at most 12 GiB and no swap, of
+   the 16 GB a GitHub-hosted runner of a public repository has, so a
+   mutant that allocates without bound has its test killed and fails it,
+   where it would take the runner. A mutant's build may take five times
+   the baseline's build, and its test five times the baseline's test,
+   cargo-mutants' own multiplier. Each mutant is named in the job's log as
+   it starts and as it ends, and each minute the cgroup's memory and the
+   disk's free space; under 1 GiB free the script stops cargo-mutants,
+   naming the mutants then running. A shard that fails or is cancelled
+   uploads its `mutants.out`.
 
 ## Alternatives considered
 

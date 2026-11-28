@@ -4,19 +4,25 @@ narrowed to its diff by its shards. The nightly run mutates the crates changed
 since the last green scheduled run on main, and every crate depending on one.
 Where that run cannot be found, or a change outside the crates may reach a
 build or a test, the nightly run mutates the whole workspace too. A push to
-main mutates nothing. It runs on every event, and writes the scope to
+main mutates nothing. A run started by hand may name one shard, as K/N, and a
+regular expression of the mutants it mutates; it then runs that shard alone
+and no runtime job. It runs on every event, and writes the scope to
 $GITHUB_OUTPUT: `shards` (the cargo-mutants arguments naming what the shards
 mutate, empty for nothing), `excluded` (the cargo-mutants arguments naming
-what they leave to the runtime jobs), `matrix` (the shards' indices, as
-JSON), and `wasm`, `wasi` and `fastly` (whether the runtime jobs mutate those
-crates). The shards are as many as the mutants listed take to keep each well
-inside its job's limit, at most a cap; where the mutants cannot be listed,
-the cap."""
+what they leave to the runtime jobs), `examined` (the regular expression of
+the mutants the shards mutate, empty for every one), `matrix` (the shards'
+indices, as JSON), `total` (how many shards the mutants are cut into), and
+`wasm`, `wasi` and `fastly` (whether the runtime jobs mutate those crates).
+The shards are as many as the mutants listed take to keep each well inside
+its job's limit, at most a cap; where the mutants cannot be listed, the
+cap."""
 import json
 import math
 import os
 import pathlib
+import re
 import subprocess
+import sys
 from typing import Callable, NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -62,12 +68,34 @@ UNREAD_FILES = frozenset({
 })
 
 
+class Shard(NamedTuple):
+    """Shard `index` of the mutants cut into `of`."""
+    index: int
+    of: int
+
+
 class Scope(NamedTuple):
     whole: bool
     packages: frozenset[str]
     why: str
     cut: Cut = WHOLE_CUT
     mutants: int | None = None
+    shard: Shard | None = None
+    examined: str = ""
+
+    def narrowed(self) -> bool:
+        """Whether a run started by hand named its shard or its mutants."""
+        return self.shard is not None or self.examined != ""
+
+    def examining(self) -> list[str]:
+        """The cargo-mutants arguments naming the mutants the shards mutate."""
+        return ["--re", self.examined] if self.examined else []
+
+    def matrix(self) -> list[int]:
+        """The indices of the shards this run runs."""
+        if self.shard is not None:
+            return [self.shard.index]
+        return list(range(self.cut.shards(self.mutants)))
 
     def mutated(self) -> list[str]:
         """The cargo-mutants arguments naming what the shards mutate, none
@@ -79,11 +107,13 @@ class Scope(NamedTuple):
     def outputs(self) -> dict[str, str]:
         """The job outputs naming it."""
         shards = "" if self.mutants == 0 else " ".join(self.mutated())
-        reached = {name.removeprefix("herald-"): self.whole or name in self.packages for name in RUNTIMES}
-        matrix = json.dumps(list(range(self.cut.shards(self.mutants))), separators=(",", ":"))
-        return {"shards": shards, "excluded": " ".join(EXCLUDING), "matrix": matrix} | {
-            name: str(value).lower() for name, value in reached.items()
+        reached = {
+            name.removeprefix("herald-"): not self.narrowed() and (self.whole or name in self.packages) for name in RUNTIMES
         }
+        total = self.shard.of if self.shard is not None else self.cut.shards(self.mutants)
+        matrix = json.dumps(self.matrix(), separators=(",", ":"))
+        return {"shards": shards, "excluded": " ".join(EXCLUDING), "examined": self.examined, "matrix": matrix,
+                "total": str(total)} | {name: str(value).lower() for name, value in reached.items()}
 
 
 def whole(why: str) -> Scope:
@@ -197,14 +227,33 @@ def listed(arguments: list[str]) -> int | None:
         return None
 
 
+def asked(found: Scope, shard: str, examined: str) -> Scope:
+    """`found` narrowed to what a run started by hand names: `shard`, as K/N,
+    shard K of its mutants cut into N, and `examined`, a regular expression
+    of the mutants to mutate; either empty for none named."""
+    if "\n" in examined:
+        raise ValueError("the mutants are named by a regular expression on one line")
+    if examined:
+        re.compile(examined)
+        found = found._replace(examined=examined, why=f"{found.why}; only the mutants matching {examined!r}")
+    if not shard:
+        return found
+    parts = re.fullmatch(r"(\d+)/(\d+)", shard)
+    if parts is None or not int(parts.group(1)) < int(parts.group(2)):
+        raise ValueError(f"a shard is named as K/N, K below N, not {shard!r}")
+    index, of = int(parts.group(1)), int(parts.group(2))
+    return found._replace(shard=Shard(index, of), why=f"{found.why}; only shard {index} of {of}")
+
+
 def counted(found: Scope, listing: Callable[[list[str]], int | None], diff: str | None) -> Scope:
     """`found` with the mutants its shards mutate counted by `listing`, a
-    pull request's narrowed to the diff at the path `diff`."""
+    pull request's narrowed to the diff at the path `diff`. A shard named by
+    hand is run as named, so nothing is listed."""
     mutated = found.mutated()
-    if not mutated:
+    if not mutated or found.shard is not None:
         return found
     narrowed = ["--in-diff", diff] if diff is not None else []
-    mutants = listing([*mutated, *EXCLUDING, *narrowed])
+    mutants = listing([*mutated, *EXCLUDING, *found.examining(), *narrowed])
     shards = found.cut.shards(mutants)
     cut = f"{shards} shard" if shards == 1 else f"{shards} shards"
     if mutants is None:
@@ -222,6 +271,11 @@ def changes(base: str, into: pathlib.Path) -> str:
 if __name__ == "__main__":
     event = os.environ.get("EVENT", "")
     found = scope(event, os.environ.get("SCHEDULE", ""), os.environ.get("REF", ""))
+    try:
+        found = asked(found, os.environ.get("ASKED_SHARD", ""), os.environ.get("ASKED_MUTANTS", ""))
+    except (ValueError, re.error) as error:
+        print(f"::error::{error}")
+        sys.exit(2)
     diff = changes(os.environ["BASE"], pathlib.Path(os.environ["RUNNER_TEMP"]) / "change.diff") if event == "pull_request" else None
     found = counted(found, listed, diff)
     print(found.why)
