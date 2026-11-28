@@ -805,13 +805,11 @@ const QUEUE: &str = r#"[presets.queue]
 use = "herald:merge-queue-small-team"
 source = "app"
 branch = "main"
-method = "squash"
 write = { token = { secret = "HERALD_MERGE_TOKEN" } }
 "#;
 
 #[test]
-fn a_small_team_s_merge_queue_is_one_queue_named_for_the_adopting_table_entered_by_herald_s_label()
-{
+fn a_small_team_s_queue_is_herald_s_own_squashing_one_named_for_its_table_entered_by_label() {
     let config = loaded(&with(QUEUE));
     let [(name, queue)] = config.merge_queues.iter().collect::<Vec<_>>()[..] else {
         panic!("one queue: {:?}", config.merge_queues.keys());
@@ -820,7 +818,7 @@ fn a_small_team_s_merge_queue_is_one_queue_named_for_the_adopting_table_entered_
     assert_eq!(queue.source, SourceName::new("app"));
     assert_eq!(queue.branch, "main");
     assert_eq!(queue.method, Some(herald_core::merging::Method::Squash));
-    assert_eq!(queue.runs, herald_core::merging::Runs::Forge);
+    assert_eq!(queue.runs, herald_core::merging::Runs::Herald);
     assert_eq!(
         queue.enter,
         herald_core::merging::Enter::Label(herald_core::merging::ENTER_LABEL.to_owned())
@@ -837,12 +835,13 @@ fn a_small_team_s_merge_queue_is_one_queue_named_for_the_adopting_table_entered_
 }
 
 #[test]
-fn a_small_team_s_merge_queue_takes_who_runs_it_and_its_gesture_from_the_table() {
+fn a_small_team_s_merge_queue_takes_who_runs_it_how_it_merges_and_its_gesture_from_the_table() {
     let config = loaded(&with(&format!(
-        "{QUEUE}runs = \"herald\"\nenter = {{ comment = \"/merge\" }}\n"
+        "{QUEUE}runs = \"forge\"\nmethod = \"rebase\"\nenter = {{ comment = \"/merge\" }}\n"
     )));
     let queue = &config.merge_queues["queue-queue"];
-    assert_eq!(queue.runs, herald_core::merging::Runs::Herald);
+    assert_eq!(queue.runs, herald_core::merging::Runs::Forge);
+    assert_eq!(queue.method, Some(herald_core::merging::Method::Rebase));
     assert_eq!(
         queue.enter,
         herald_core::merging::Enter::Comment("/merge".to_owned())
@@ -868,9 +867,9 @@ fn a_merge_queue_a_preset_makes_is_held_to_every_rule_a_written_one_is() {
             && unknown.contains(&format!("herald.toml:{}:", line + 2)),
         "{unknown}"
     );
-    let missing = errors(&with(&QUEUE.replace("method = \"squash\"\n", "")));
+    let missing = errors(&with(&QUEUE.replace("branch = \"main\"\n", "")));
     assert!(
-        missing.contains("presets.queue: give method: How it merges"),
+        missing.contains("presets.queue: give branch: The base branch it merges into"),
         "{missing}"
     );
 }

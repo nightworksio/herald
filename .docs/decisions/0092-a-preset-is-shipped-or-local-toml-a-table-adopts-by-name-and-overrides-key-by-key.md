@@ -38,7 +38,11 @@ already ships named content under a `herald:` prefix: the templates
    `herald:review-reminders`, `herald:merge-queue-small-team` and
    `herald:security-alerts-private`; the last writes `private = true`, and
    ADR-0067's rules hold for what it expands to as for a hand-written
-   route.
+   route. `herald:merge-queue-small-team` writes `runs = "herald"`,
+   herald's own serial queue, which works on every forge and plan where a
+   forge's queue or merge train may need a paid plan or not exist, and
+   `method = "squash"`; the adopting table gives `runs` or `method` to
+   change either.
    They are data in the binary, never fetched: a config gets the presets
    of the herald that reads it.
 4. **A local preset is a file in the config's directory.**

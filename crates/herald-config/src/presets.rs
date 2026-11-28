@@ -258,8 +258,8 @@ const MERGE_QUEUE_SMALL_TEAM: Preset = Preset {
         },
         Parameter {
             key: "method",
-            described: "How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method.",
-            required: true,
+            described: "How it merges: `squash` where not given; `merge`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method.",
+            required: false,
             lands: Lands::MergeQueues,
             schema: method,
         },
@@ -272,7 +272,7 @@ const MERGE_QUEUE_SMALL_TEAM: Preset = Preset {
         },
         Parameter {
             key: "runs",
-            described: "Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue.",
+            described: "Who runs it: `herald`, herald's own serial queue, which works on every forge and plan, where not given; or `forge`, the forge's own merge queue or merge train.",
             required: false,
             lands: Lands::MergeQueues,
             schema: runs,
@@ -285,7 +285,10 @@ const MERGE_QUEUE_SMALL_TEAM: Preset = Preset {
             schema: enter,
         },
     ],
-    tables: "[merge_queues.queue]\n",
+    tables: r#"[merge_queues.queue]
+runs = "herald"
+method = "squash"
+"#,
 };
 
 const SECURITY_ALERTS_PRIVATE: Preset = Preset {

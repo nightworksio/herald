@@ -21,7 +21,7 @@ herald ships four:
 |--------|----------------|
 | `herald:announce-releases` | a route announcing each release of its sources, and its template |
 | `herald:review-reminders` | a view of the open pull requests waiting on review, a rule nudging each past `2d` and `7d` at 09:00 UTC on weekdays, and a route of its nudges |
-| `herald:merge-queue-small-team` | a [merge queue](merging.md) on one branch, entered by the label `herald:merge` |
+| `herald:merge-queue-small-team` | a [merge queue](merging.md) on one branch, entered by the label `herald:merge`, run by herald's own serial queue, which works on every forge and plan, and merging by squash |
 | `herald:security-alerts-private` | a route of its sources' [alerts](alerts.md) to a place it states is private, `private = true`, and its template |
 
 The [settings reference](settings.md#presets) lists each one's parameters

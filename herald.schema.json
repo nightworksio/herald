@@ -5949,11 +5949,11 @@
               "$ref": "#/$defs/Enter"
             },
             "method": {
-              "description": "How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method.",
+              "description": "How it merges: `squash` where not given; `merge`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method.",
               "$ref": "#/$defs/Method"
             },
             "runs": {
-              "description": "Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue.",
+              "description": "Who runs it: `herald`, herald's own serial queue, which works on every forge and plan, where not given; or `forge`, the forge's own merge queue or merge train.",
               "$ref": "#/$defs/MergeRuns"
             },
             "source": {
@@ -5974,7 +5974,6 @@
             "use",
             "source",
             "branch",
-            "method",
             "write"
           ]
         },

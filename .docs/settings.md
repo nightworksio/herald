@@ -1114,8 +1114,8 @@ The presets the config adopts, by name: each expanded into the tables it writes,
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `presets.<name>.method` | [Method](#method) | How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method. |
-| `presets.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue. |
+| `presets.<name>.method` | [Method](#method) | How it merges: `squash` where not given; `merge`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method. |
+| `presets.<name>.runs` | [MergeRuns](#mergeruns) | Who runs it: `herald`, herald's own serial queue, which works on every forge and plan, where not given; or `forge`, the forge's own merge queue or merge train. |
 | `presets.<name>.source` | string | The source whose repository it merges in, of kind `github`, `gitlab` or `forgejo`, as `[sources]` names it. |
 | `presets.<name>.use` | string | The preset it adopts. |
 | `presets.<name>.write` | table | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`. |
@@ -3198,13 +3198,15 @@ A merge queue on one base branch, which a writer enters a pull request into by a
 |---|---|---|
 | `source` | always | The source whose repository it merges in, of kind `github`, `gitlab` or `forgejo`, as `[sources]` names it. |
 | `branch` | always | The base branch it merges into, such as `main`. |
-| `method` | always | How it merges: `merge`, `squash`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method. |
+| `method` | optional | How it merges: `squash` where not given; `merge`, `rebase`, `fast-forward`, or `repository`, the repository's one allowed method. |
 | `write` | always | The credential its steps are made with, held apart from every one herald reads with: `{ token = { secret = "NAME" } }` or `{ app = "<github_apps name>" }`. |
-| `runs` | optional | Who runs it: `forge`, the forge's own merge queue or merge train, where not given; or `herald`, herald's own serial queue. |
+| `runs` | optional | Who runs it: `herald`, herald's own serial queue, which works on every forge and plan, where not given; or `forge`, the forge's own merge queue or merge train. |
 | `enter` | optional | The gesture that enters a pull request: `{ label = "herald:merge" }` where not given, or another label or a comment's command. |
 
 ```toml
 [merge_queues.queue]
+runs = "herald"
+method = "squash"
 ```
 
 ### `herald:security-alerts-private`
