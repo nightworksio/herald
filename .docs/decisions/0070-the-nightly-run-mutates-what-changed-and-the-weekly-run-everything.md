@@ -103,8 +103,9 @@ few.
    where it would take the runner. A mutant's build may take five times
    the baseline's build, and its test five times the baseline's test,
    cargo-mutants' own multiplier. Each mutant is named in the job's log as
-   it starts and as it ends, and each minute the cgroup's memory and the
-   disk's free space; under 1 GiB free the script stops cargo-mutants,
+   it starts and as it ends, and each minute the cgroup's anonymous
+   memory, now and the most seen, its page cache, which the kernel
+   reclaims at the cap, and the disk's free space; under 1 GiB free the script stops cargo-mutants,
    naming the mutants then running. A shard that fails or is cancelled
    uploads its `mutants.out`.
 
