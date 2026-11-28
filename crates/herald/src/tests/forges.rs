@@ -254,6 +254,26 @@ fn preview_reads_the_event_file_of_the_forge_it_names() {
         "{}",
         previewed.out
     );
+    let (forged, _) = forgejo();
+    let release = forged
+        .directory
+        .path()
+        .join("event.json")
+        .display()
+        .to_string();
+    let previewed = herald(
+        &forged,
+        &world,
+        &["preview", "--from", "forgejo", "--event", &release],
+    );
+    assert!(
+        previewed
+            .out
+            .starts_with("releases to discord:\n  title: 📦 forgejo v17.0.1\n"),
+        "{}{}",
+        previewed.out,
+        previewed.err
+    );
     let misread = herald(&setup, &world, &["preview", "--event", &path]);
     assert_eq!(
         (misread.code, misread.err.as_str()),
