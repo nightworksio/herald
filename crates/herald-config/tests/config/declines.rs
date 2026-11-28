@@ -10,7 +10,7 @@ use crate::addressed::loaded;
 
 /// Every kind of destination herald ships, and the error envelope its
 /// platform declines a request with, where it has one.
-const ENVELOPES: [(&str, Option<&str>); 7] = [
+const ENVELOPES: [(&str, Option<&str>); 8] = [
     (
         "discord",
         Some(r#"{"code": 50013, "message": "Missing Permissions"}"#),
@@ -21,6 +21,7 @@ const ENVELOPES: [(&str, Option<&str>); 7] = [
         Some(r#"{"errcode": "M_FORBIDDEN", "error": "not in the room"}"#),
     ),
     ("slack", Some(r#"{"ok": false, "error": "not_in_channel"}"#)),
+    ("teams", None),
     ("activitypub", None),
     ("herald", None),
     ("herald-push", None),

@@ -1,0 +1,316 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_TEAMS_WEBHOOK»"
+      },
+      "response": {
+        "status": 202
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "body": [
+                  {
+                    "text": "- the gate",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_TEAMS_WEBHOOK»"
+      },
+      "response": {
+        "status": 202
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_TEAMS_WEBHOOK»"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "TriggerInputSchemaMismatch",
+            "message": "The input body for trigger 'manual' of type 'Request' did not match its schema definition."
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 400
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_TEAMS_WEBHOOK»"
+      },
+      "response": {
+        "body": "workflow not found",
+        "status": 404
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_TEAMS_WEBHOOK»"
+      },
+      "response": {
+        "headers": {
+          "Retry-After": "7"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_TEAMS_WEBHOOK»"
+      },
+      "response": {
+        "status": 413
+      }
+    }
+  ]
+}

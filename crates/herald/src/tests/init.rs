@@ -520,8 +520,8 @@ fn a_wrong_answer_given_as_a_flag_stops_with_why_and_writes_nothing() {
             "--with domain: give it once",
         ),
         (
-            &["--chat", "teams", "--yes"][..],
-            "--chat: answer one of discord, mastodon, matrix, slack",
+            &["--chat", "no-such-chat", "--yes"][..],
+            "--chat: answer one of discord, mastodon, matrix, slack, teams",
         ),
     ] {
         let (done, _) = init(directory.path(), args, "", Some(key()));

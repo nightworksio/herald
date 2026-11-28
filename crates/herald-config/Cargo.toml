@@ -30,6 +30,7 @@ herald-dest-fediverse.workspace = true
 herald-dest-herald.workspace = true
 herald-dest-matrix.workspace = true
 herald-dest-slack.workspace = true
+herald-dest-teams.workspace = true
 herald-sources-feed.workspace = true
 herald-sources-forge.workspace = true
 herald-sources-herald.workspace = true

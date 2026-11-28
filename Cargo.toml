@@ -26,6 +26,7 @@ herald-dest-fediverse = { path = "crates/herald-dest-fediverse" }
 herald-dest-herald = { path = "crates/herald-dest-herald" }
 herald-dest-matrix = { path = "crates/herald-dest-matrix" }
 herald-dest-slack = { path = "crates/herald-dest-slack" }
+herald-dest-teams = { path = "crates/herald-dest-teams" }
 herald-flows = { path = "crates/herald-flows" }
 herald-crypto = { path = "crates/herald-crypto" }
 herald-environment = { path = "crates/herald-environment" }

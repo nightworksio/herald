@@ -1,7 +1,7 @@
 //! The oracle the markup property tests and fuzz targets share: whether a
 //! converted text could mention anyone or link anywhere it does not show.
 
-use crate::{Escape, Markup, Text};
+use crate::{Escape, Links, Markup, Text};
 
 const BREAK: char = '\u{200B}';
 const MENTIONS: [char; 3] = ['@', '\u{FF20}', '\u{FE6B}'];
@@ -16,7 +16,7 @@ pub fn inert(text: &Text, markup: Markup) -> Result<(), String> {
         return hrefs_shown_in(markup, &text.body);
     }
     match markup.escape {
-        Escape::Backslash => discord(&text.body),
+        Escape::Backslash => backslashed(&text.body, markup.links),
         Escape::Entities => slack(&text.body),
         Escape::Neutral => plain(&text.body),
     }
@@ -127,7 +127,20 @@ fn link_span(rest: &str) -> Option<usize> {
     (allowed && !url.contains(char::is_whitespace)).then_some(end + 1)
 }
 
-fn discord(body: &str) -> Result<(), String> {
+fn shown_link_span(rest: &str) -> Option<usize> {
+    let inner = rest.strip_prefix('[')?;
+    let close = inner.find("](")?;
+    let url = inner.get(..close)?;
+    let after = inner
+        .get(close + 2..)?
+        .strip_prefix(url)?
+        .strip_prefix(')')?;
+    let allowed = SCHEMES.iter().any(|scheme| url.starts_with(scheme))
+        && !url.contains(|character: char| character.is_whitespace() || "[]()".contains(character));
+    allowed.then_some(rest.len() - after.len())
+}
+
+fn backslashed(body: &str, links: Links) -> Result<(), String> {
     let mut index = 0;
     while let Some(rest) = body.get(index..) {
         let Some(character) = rest.chars().next() else {
@@ -159,10 +172,15 @@ fn discord(body: &str) -> Result<(), String> {
                 at_breaks(inside.get(..close).unwrap_or_default())?;
                 index += marker.len() * 2 + close;
             }
-            '<' => {
+            '<' if links != Links::Shown => {
                 index += link_span(rest)
                     .ok_or_else(|| format!("a < that is no shown link in {body:?}"))?;
             }
+            '[' if links == Links::Shown => {
+                index += shown_link_span(rest)
+                    .ok_or_else(|| format!("a [ that is no shown link in {body:?}"))?;
+            }
+            '<' => return Err(format!("an unescaped < in {body:?}")),
             '[' | ']' => return Err(format!("a masked link bracket in {body:?}")),
             '@' | '\u{FF20}' | '\u{FE6B}' => {
                 at_breaks(rest.get(..width + BREAK.len_utf8()).unwrap_or(rest))?;

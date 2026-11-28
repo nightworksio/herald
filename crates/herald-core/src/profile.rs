@@ -45,6 +45,9 @@ pub enum Links {
     Piped,
     /// Its text, then its target spelled out in parentheses.
     Spelled,
+    /// Its text, then in parentheses its target, linked under its own
+    /// target as Markdown writes a link.
+    Shown,
 }
 
 /// How a heading is written.
@@ -531,5 +534,20 @@ pub(crate) mod fixtures {
         html: true,
         pills: Some("https://matrix.to/"),
         ..PLAIN
+    };
+
+    pub(crate) const TEAMS: Markup = Markup {
+        escape: Escape::Backslash,
+        links: Links::Shown,
+        heading: Heading::Wrapped("**"),
+        marks: Emphases {
+            emphasis: "_",
+            strong: "**",
+            strike: "",
+        },
+        fences: Fences::None,
+        bullet: Bullet::Fixed("- "),
+        html: false,
+        pills: None,
     };
 }

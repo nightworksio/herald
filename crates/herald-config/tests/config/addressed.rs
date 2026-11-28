@@ -10,11 +10,12 @@ use herald_kinds::Checking;
 /// Every kind of destination herald ships, whether a route to it as set
 /// here posts where anyone may read it, and whether it edits a post again
 /// from what herald kept of the route.
-const DECIDED: [(&str, bool, bool); 7] = [
+const DECIDED: [(&str, bool, bool); 8] = [
     ("discord", false, true),
     ("mastodon", true, true),
     ("matrix", false, true),
     ("slack", false, true),
+    ("teams", false, true),
     ("activitypub", true, true),
     ("herald", true, false),
     ("herald-push", true, false),
@@ -22,16 +23,26 @@ const DECIDED: [(&str, bool, bool); 7] = [
 
 /// Every kind of destination herald ships, and how herald learns who may
 /// read a route's place as set here before a run's first advisory send:
-/// by the requests named, or never, as the kind is never sent a section.
-const CHECKED: [(&str, Option<usize>); 7] = [
-    ("discord", Some(3)),
-    ("mastodon", None),
-    ("matrix", Some(7)),
-    ("slack", Some(1)),
-    ("activitypub", None),
-    ("herald", None),
-    ("herald-push", None),
+/// by the requests named, not at all, as it cannot ask, or never, as the
+/// kind is never sent a section.
+const CHECKED: [(&str, Learned); 8] = [
+    ("discord", Learned::Asked(3)),
+    ("mastodon", Learned::Never),
+    ("matrix", Learned::Asked(7)),
+    ("slack", Learned::Asked(1)),
+    ("teams", Learned::Unasked),
+    ("activitypub", Learned::Never),
+    ("herald", Learned::Never),
+    ("herald-push", Learned::Never),
 ];
+
+/// How herald learns who may read a route's place.
+#[derive(Debug, Clone, Copy)]
+enum Learned {
+    Asked(usize),
+    Unasked,
+    Never,
+}
 
 const FEDERATION: &str =
     "[federation]\ndomain = \"herald.example\"\nkeys = [{ secret = \"HERALD_KEY_NEW\" }]\n";
@@ -68,6 +79,12 @@ fn written(kind: &str, extra: &str) -> String {
             "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
             "domain = \"herald.example\"\nkey = { secret = \"HERALD_ACTIVITYPUB_KEY\" }",
             "actor = \"gate\"",
+            true,
+        ),
+        "teams" => (
+            "kind = \"sqlite\"",
+            "webhook = { secret = \"HERALD_TEAMS_WEBHOOK\" }",
+            "",
             true,
         ),
         "herald" => ("kind = \"sqlite\"", "", "", false),
@@ -148,11 +165,12 @@ fn every_kind_of_destination_decides_how_herald_learns_who_may_read_a_route_s_pl
         let route = &config.routes[0];
         let checking = config.destinations[&route.route.destination].checking(&route.options);
         match (checking, requests) {
-            (Checking::Asked { asks, requests }, Some(wanted)) => {
+            (Checking::Asked { asks, requests }, Learned::Asked(wanted)) => {
                 assert_eq!(requests, wanted, "{kind}");
                 assert!(!asks.is_empty(), "{kind}");
             }
-            (Checking::Unadvised, None) => {}
+            (Checking::Unchecked(why), Learned::Unasked) => assert!(!why.is_empty(), "{kind}"),
+            (Checking::Unadvised, Learned::Never) => {}
             (other, _) => panic!("{kind}: {other:?}"),
         }
     }

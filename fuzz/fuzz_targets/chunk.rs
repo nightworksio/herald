@@ -5,11 +5,12 @@
 use herald_core::{Markup, Measure, Room, chunk, size};
 use libfuzzer_sys::fuzz_target;
 
-const MARKUPS: [Markup; 4] = [
+const MARKUPS: [Markup; 5] = [
     herald_dest_discord::MARKUP,
     herald_dest_slack::MARKUP,
     herald_dest_matrix::MARKUP,
     herald_dest_fediverse::MASTODON_MARKUP,
+    herald_dest_teams::MARKUP,
 ];
 
 fuzz_target!(|input: (u8, u8, &str)| {

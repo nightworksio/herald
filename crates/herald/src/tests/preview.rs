@@ -493,6 +493,52 @@ fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_n
 }
 
 #[test]
+fn preview_wire_prints_a_teams_card_posted_to_its_webhook_by_the_secret_s_name() {
+    let config = format!(
+        "{CONFIG}{}",
+        r#"[destinations.teams]
+kind = "teams"
+webhook = { secret = "HERALD_TEAMS_WEBHOOK" }
+[[routes]]
+id = "carded"
+sources = ["cli"]
+destination = "teams"
+template = "release"
+"#
+    );
+    let shown = previewed(&config, &["--format", "wire", "--sample", "plain"]);
+    assert_eq!(
+        (shown.code, shown.err.as_str()),
+        (DONE, ""),
+        "{}",
+        shown.out
+    );
+    let carded: Vec<&str> = shown
+        .out
+        .lines()
+        .skip_while(|line| !line.starts_with("carded to teams"))
+        .filter(|line| !line.starts_with("    User-Agent: "))
+        .collect();
+    assert_eq!(
+        carded.get(..5).unwrap_or_else(|| panic!("{}", shown.out)),
+        [
+            "carded to teams, sample release (plain):",
+            "  post:",
+            "    POST «secret:HERALD_TEAMS_WEBHOOK»",
+            "    Content-Type: application/json; charset=utf-8",
+            "    ",
+        ]
+    );
+    assert!(
+        carded[5].starts_with(r#"    {"attachments":[{"content":{"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","#)
+            && carded[5].contains(r#""text":"**Added**\n\n- a sample change","type":"TextBlock","wrap":true"#)
+            && carded[5].contains(r#""contentType":"application/vnd.microsoft.card.adaptive""#),
+        "{}",
+        carded[5]
+    );
+}
+
+#[test]
 fn preview_json_holds_what_each_route_renders_against_its_text_and_its_requests() {
     let shown = previewed(&wired(), &["--format", "json", "--sample", "plain"]);
     assert_eq!(
