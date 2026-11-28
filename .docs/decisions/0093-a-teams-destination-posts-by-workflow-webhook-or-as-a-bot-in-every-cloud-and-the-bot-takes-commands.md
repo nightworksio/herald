@@ -68,16 +68,22 @@ preformatted text, block quotes or HTML
    and keys, the issuer, the audience (`app_id`), the expiry and the
    service URL it names. This is a new row of ADR-0007 decision 3's
    inbound table.
-5. **`cloud = "public" | "gcc" | "gcc-high" | "dod"`**, `"public"` where
+5. **`cloud = "public" | "gcc-high" | "dod"`**, `"public"` where
    absent, picks the login host, the Bot Framework hosts and scope, the
    service URL fallback and the OpenID metadata, from tables kept in one
    place with the URL each value was read at. A cloud whose hosts herald
-   has not read from Microsoft's documentation is not offered. `api`
-   replaces the base for fixtures, as Slack's does.
+   has not read from Microsoft's documentation is not offered: Microsoft's
+   pages give GCC's service URL alone, so `cloud` takes `public`,
+   `gcc-high` and `dod`. Each host is also a setting of its own (`login`,
+   `scope`, `service`, and the tenant a bot signs in under), which replaces
+   its cloud's: any other cloud, and a fixture server, is reached by
+   writing its hosts.
 6. **A dialect of its own (extending ADR-0004 decision 2):** card Markdown
    with links as `[text](url)`, a heading written bold, code as plain
    text, `-` bullets, no HTML; measured in bytes against 28 KB for the
-   webhook and 100 KB for the bot, less the card's envelope. The card holds
+   webhook, and for the bot against the 80 KB of its UTF-16 encoding that
+   Microsoft says delivers within its approximate 100 KB, less the card's
+   envelope. The card holds
    the title as a large bolder TextBlock, the body as a TextBlock and each
    link as an `Action.OpenUrl` (ADR-0019, ADR-0021); its `version` is the
    lowest that holds every element used, never above 1.6. Text from an

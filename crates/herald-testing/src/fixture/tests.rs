@@ -52,6 +52,12 @@ fn a_request_is_recorded_with_its_secrets_redacted_and_its_json_as_json() {
         .body,
         None
     );
+    let sealed = Request::new(Method::Post, SecretText::plain("https://example.org"))
+        .sealed_body(["client_secret=", "s3"].concat());
+    assert_eq!(
+        Recorded::of(&sealed).body,
+        Some(json!("«sealed: 16 bytes»"))
+    );
 }
 
 #[test]

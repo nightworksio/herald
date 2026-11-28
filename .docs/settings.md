@@ -275,6 +275,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>` | table | A route to a Microsoft Teams destination. |
 | `boards.<name>.area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
 | `boards.<name>.at` | string | The wall-clock time a day's first window begins at, as "HH:MM": "09:00" where absent. |
+| `boards.<name>.conversation` | string | The id of the channel or chat the bot posts to, such as `19:…@thread.tacv2`, where its app is installed. A bot needs one; a webhook posts where its workflow names. |
 | `boards.<name>.crosspost` | boolean | Whether to crosspost each announcement. |
 | `boards.<name>.days` | array of [Day](#day) | The days windows begin on, every day where empty. |
 | `boards.<name>.destination` | string | The destination it announces to. |
@@ -315,6 +316,7 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `boards.<name>.thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `boards.<name>.thread.name` | string | The template of the thread's name. |
+| `boards.<name>.threads` | boolean | Whether the bot posts each overflow part as a reply in its post's thread, through Microsoft's `replyChains`, which Microsoft marks as a preview; each part is posted on its own where unset. |
 | `boards.<name>.versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `boards.<name>.view` | string | The view it shows: "queue", every source's open pull requests, where absent. |
 | `boards.<name>.vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
@@ -642,17 +644,25 @@ Slack, by bot token or webhook.
 
 ### `destinations.<name>` of kind `teams`
 
-Microsoft Teams, by Workflows webhook.
+Microsoft Teams, by Workflows webhook or as a bot.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `destinations.<name>` | table | Microsoft Teams, by Workflows webhook. |
+| `destinations.<name>` | table | Microsoft Teams, by Workflows webhook or as a bot. |
+| `destinations.<name>.app_id` | string | A bot's Microsoft App ID: the application (client) ID of its Microsoft Entra app registration. A bot edits its posts, and replies in their threads where a route says so. |
+| `destinations.<name>.app_password` | table | The secret holding the bot's client secret, which its app registration made. |
+| `destinations.<name>.app_password.secret` | string | The secret's name. |
+| `destinations.<name>.cloud` | [Cloud](#cloud) | The Microsoft cloud the bot is registered in: `public` where unset, `gcc-high` or `dod`. It names the hosts below where they are unset. |
 | `destinations.<name>.kind` | string |  |
+| `destinations.<name>.login` | string | The base URL of the sign-in service the bot asks for its token, in place of its cloud's, such as `https://login.microsoftonline.com`. |
+| `destinations.<name>.scope` | string | The resource the bot's token is for, in place of its cloud's, such as `https://api.botframework.com`. |
+| `destinations.<name>.service` | string | The service URL the bot posts through, in place of its cloud's, such as `https://smba.trafficmanager.net/teams/`. |
 | `destinations.<name>.symbols` | table | The characters its posts write where its markup has none: a task done and to do, a rule and a text list's bullet. |
 | `destinations.<name>.symbols.bullet` | [OneCharacter](#onecharacter) | A list's bullet where a list is written as text: `•` in Slack and `-` in plain text where unset. |
 | `destinations.<name>.symbols.done` | [OneCharacter](#onecharacter) | A task done; `☑` where unset. |
 | `destinations.<name>.symbols.rule` | [OneCharacter](#onecharacter) | A rule's character, drawn three wide; `─` where unset. |
 | `destinations.<name>.symbols.todo` | [OneCharacter](#onecharacter) | A task to do; `☐` where unset. |
+| `destinations.<name>.tenant` | string | The id of the Microsoft Entra tenant the bot's app is registered in, for a bot registered for one tenant; where unset, the cloud's own tenant for bots registered for every tenant: `botframework.com` in the public cloud. |
 | `destinations.<name>.waits` | table | How long it waits before sending again where Teams answers that it is unwell or limited and names no wait. |
 | `destinations.<name>.waits.limited` | [Duration](#duration) | After the platform answers that herald sends too often; the platform's own window where unset: "5m" on Mastodon, "5s" elsewhere. |
 | `destinations.<name>.waits.outage` | [Duration](#duration) | After the platform answers that it is unwell; "5s" where unset. |
@@ -1277,6 +1287,7 @@ Which events go where, rendered how.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `routes[].area_paths` | [AreaPaths](#areapaths) | Where the paths a pull request's head changes are read, which the areas its `match` narrows by are those of: `kept`, from the pull request as herald keeps it where its head is the event's, no request more; or `delivery`, from the forge as the event is delivered, one request more for each pull request event (ADR-0072). |
+| `routes[].conversation` | string | The id of the channel or chat the bot posts to, such as `19:…@thread.tacv2`, where its app is installed. A bot needs one; a webhook posts where its workflow names. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
@@ -1318,6 +1329,7 @@ Which events go where, rendered how.
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
+| `routes[].threads` | boolean | Whether the bot posts each overflow part as a reply in its post's thread, through Microsoft's `replyChains`, which Microsoft marks as a preview; each part is posted on its own where unset. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].vouch_unchecked` | boolean | Whether the operator vouches that its place is private where herald cannot check who may read it, as for a Discord or Slack route reached by a webhook: with `private = true` it is then shown a view's advisories on the operator's word, which doctor lists. Refused on a route herald checks before each run's first advisory send, and on one that posts where anyone may read. False where absent. |
 | `routes[].withdraw` | [Withdraw](#withdraw) | What it does with an announcement whose Release the forge deletes: keeps its post (`keep`), or deletes every message herald recorded of it where the destination can (`delete`). |
@@ -2602,6 +2614,10 @@ What a view does with a bot's pull requests.
 ### CapacityFrom
 
 Which repositories a capacity overview reads.
+
+### Cloud
+
+The Microsoft cloud a Teams bot is registered in: each names the hosts its bot signs in at and posts through, as Microsoft's documentation gives them (ADR-0093).
 
 ### CodeownersRef
 

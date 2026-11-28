@@ -4,6 +4,7 @@ use herald_kinds::{
 };
 use herald_ports::Secret;
 
+use crate::bot::Bot;
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::teams::{self, TEAMS, Teams, UNCHECKED};
 
@@ -24,16 +25,22 @@ impl DestinationConfig for DestinationOptions {
     }
 
     fn credential(&self) -> Option<&SecretRef> {
-        Some(&self.webhook)
+        self.webhook.as_ref().or(self.app_password.as_ref())
     }
 
     fn secret_refs(&self) -> Vec<&SecretRef> {
-        vec![&self.webhook]
+        self.webhook.iter().chain(&self.app_password).collect()
     }
 
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
-        placed.of::<RouteOptions>()?;
-        Some((teams::profile(), None))
+        let route = placed.of::<RouteOptions>()?;
+        let threads = route.threads.unwrap_or_default();
+        let reached = if self.webhook.is_some() {
+            teams::profile()
+        } else {
+            teams::bot_profile(threads)
+        };
+        Some((reached, Some(teams::bot_profile(threads))))
     }
 
     fn public(&self, _: &Placed, _: &Delivery) -> Option<&'static str> {
@@ -47,12 +54,19 @@ impl DestinationConfig for DestinationOptions {
     fn recalled(&self, written: &str) -> Option<Placed> {
         serde_json::from_str::<RouteOptions>(written)
             .ok()
+            .filter(|route| route.unwritten().is_none())
             .map(Placed::new)
     }
 
     fn reach(&self, placed: &Placed, _: &str, secret: Secret) -> Option<Reached> {
-        placed.of::<RouteOptions>()?;
-        Some(Reached::new(Teams::new(secret).waiting(self.waits())))
+        let route = placed.of::<RouteOptions>()?;
+        let teams = match self.registered().ok()? {
+            Some(registered) => {
+                Teams::bot(Bot::new(registered.app_id, secret, registered.hosts, route))
+            }
+            None => Teams::new(secret),
+        };
+        Some(Reached::new(teams.waiting(self.waits())))
     }
 }
 
@@ -62,7 +76,7 @@ impl Placement for RouteOptions {
     }
 
     fn place(&self) -> Option<&str> {
-        None
+        self.conversation.as_deref()
     }
 }
 
@@ -72,7 +86,7 @@ pub enum TeamsKind {}
 
 impl DestinationKind for TeamsKind {
     const NAME: &str = KIND;
-    const DESCRIPTION: &str = "Microsoft Teams, by Workflows webhook.";
+    const DESCRIPTION: &str = "Microsoft Teams, by Workflows webhook or as a bot.";
     const LABEL: &str = TEAMS;
     const ROUTE: &str = "TeamsRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Microsoft Teams destination.";
@@ -82,7 +96,48 @@ impl DestinationKind for TeamsKind {
 
     const FIRST_RUN: &[herald_kinds::Variant] = crate::first_run::VARIANTS;
 
-    fn placed(_: &DestinationOptions, _: &RouteOptions, _: Placing<'_>) -> Vec<Fault> {
-        Vec::new()
+    fn checked(
+        options: DestinationOptions,
+        _read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(DestinationOptions, Vec<Fault>), Fault> {
+        options.bot().map_err(Fault::here)?;
+        let faults = options
+            .registered()
+            .err()
+            .map(|(key, message)| Fault::at(key, message))
+            .into_iter()
+            .collect();
+        Ok((options, faults))
+    }
+
+    fn placed(options: &DestinationOptions, route: &RouteOptions, _: Placing<'_>) -> Vec<Fault> {
+        let bot = options.webhook.is_none();
+        let mut faults: Vec<Fault> = route
+            .unwritten()
+            .map(|message| Fault::at("conversation", message))
+            .into_iter()
+            .collect();
+        if bot && route.conversation.is_none() {
+            faults.push(Fault::here(
+                "a Microsoft Teams bot posts to a channel or chat; give conversation = \"<its id>\"",
+            ));
+        }
+        if !bot {
+            faults.extend(
+                [
+                    ("conversation", route.conversation.is_some()),
+                    ("threads", route.threads.is_some()),
+                ]
+                .into_iter()
+                .filter(|(_, given)| *given)
+                .map(|(key, _)| {
+                    Fault::at(
+                        key,
+                        "a Workflows webhook posts where its workflow names, alone; drop it",
+                    )
+                }),
+            );
+        }
+        faults
     }
 }

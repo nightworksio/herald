@@ -104,6 +104,31 @@ bot, so it posts as a user (the same page). The workflow belongs to the
 person who made it and is orphaned when they leave unless it has
 co-owners (the first page). The URL can be longer than 255 characters.
 
+### `teams-bot`
+
+A bot's app registration and a client secret of it: in the Azure portal,
+create an "Azure Bot" resource with a single-tenant app (Microsoft no
+longer creates bots registered for every tenant); its "Configuration"
+page shows the "Microsoft App ID" and "App Tenant ID" the first run asks,
+and "Manage", next to the app id, leads to "Certificates + secrets", where
+a new client secret is made and its value shown once
+(<https://learn.microsoft.com/en-us/azure/bot-service/bot-service-quickstart-registration?view=azure-bot-service-4.0>).
+The secret is the value herald's secret holds. In GCC High and DoD the bot
+is registered on Azure Government and `cloud` names it
+(<https://learn.microsoft.com/en-us/azure/bot-service/how-to-deploy-gov-cloud-high?view=azure-bot-service-4.0>).
+
+The bot posts only where its app is installed: in the team of the
+channel, or in the chat
+(<https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages>).
+The conversation the first run asks is the channel's or chat's id, which
+starts with `19:`. A channel's link holds it, URL-encoded: in
+`https://teams.microsoft.com/l/channel/19%3A…%40thread.tacv2/…` the id is
+`19:…@thread.tacv2`; a chat message's "Copy link" holds the chat's
+(<https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/build-and-test/deep-link-teams>).
+A route that says `threads = true` posts each overflow part as a reply in
+its post's thread, through an endpoint Microsoft marks as a preview
+(<https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/agent-chat-threads>).
+
 ### `forgejo-branch`
 
 A token that may push to the repository's `herald-state` branch: an

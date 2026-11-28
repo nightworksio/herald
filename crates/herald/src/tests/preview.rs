@@ -539,6 +539,59 @@ template = "release"
 }
 
 #[test]
+fn preview_wire_prints_a_teams_bot_s_sealed_sign_in_then_its_card_sent_with_a_token_by_name() {
+    let config = format!(
+        "{CONFIG}{}",
+        r#"[destinations.teams]
+kind = "teams"
+app_id = "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9"
+app_password = { secret = "HERALD_TEAMS_APP_PASSWORD" }
+tenant = "contoso.onmicrosoft.com"
+[[routes]]
+id = "carded"
+sources = ["cli"]
+destination = "teams"
+template = "release"
+conversation = "19:abc@thread.tacv2"
+"#
+    );
+    let shown = previewed(&config, &["--format", "wire", "--sample", "plain"]);
+    assert_eq!(
+        (shown.code, shown.err.as_str()),
+        (DONE, ""),
+        "{}",
+        shown.out
+    );
+    let carded: Vec<&str> = shown
+        .out
+        .lines()
+        .skip_while(|line| !line.starts_with("carded to teams"))
+        .filter(|line| !line.starts_with("    User-Agent: "))
+        .collect();
+    assert_eq!(
+        carded.get(..11).unwrap_or_else(|| panic!("{}", shown.out)),
+        [
+            "carded to teams, sample release (plain):",
+            "  post:",
+            "    POST https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/token",
+            "    Content-Type: application/x-www-form-urlencoded",
+            "    Accept: application/json",
+            "    ",
+            "    «sealed: 143 bytes»",
+            "    POST https://smba.trafficmanager.net/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+            "    Content-Type: application/json; charset=utf-8",
+            "    Authorization: Bearer «secret:the Microsoft Teams bot's token»",
+            "    ",
+        ]
+    );
+    assert!(
+        carded[11].contains(r#""contentType":"application/vnd.microsoft.card.adaptive""#),
+        "{}",
+        carded[11]
+    );
+}
+
+#[test]
 fn preview_json_holds_what_each_route_renders_against_its_text_and_its_requests() {
     let shown = previewed(&wired(), &["--format", "json", "--sample", "plain"]);
     assert_eq!(

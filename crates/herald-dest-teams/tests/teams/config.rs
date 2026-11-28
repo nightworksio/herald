@@ -1,8 +1,8 @@
-//! A Teams destination's table and route, read as the config reads them,
-//! and what the doctor's probe makes of its webhook.
+//! A Teams webhook's table and route, read as the config reads them, and
+//! what the doctor's probe makes of its webhook.
 
 use herald_core::{Chore, Delivery, Features, MentionStyle, Pins, Sent, Threads};
-use herald_dest_teams::{DestinationOptions, KIND, RouteOptions, UNCHECKED, profile};
+use herald_dest_teams::{DestinationOptions, KIND, RouteOptions, UNCHECKED, bot_profile, profile};
 use herald_kinds::{Audience, Checking, DestinationConfig, Placed, Placement, Probe, Recorded};
 use herald_ports::{Base, Response, Secret};
 use herald_testing::{Fixture, Replay};
@@ -37,7 +37,11 @@ fn a_teams_table_names_its_webhook_and_posts_only() {
     assert_eq!(options.secret_refs().len(), 1);
     assert_eq!(options.checking(&placed()), Checking::Unchecked(UNCHECKED));
     assert_eq!(options.public(&placed(), &Delivery::default()), None);
-    assert_eq!(options.profile(&placed()), Some((profile(), None)));
+    assert_eq!(
+        options.profile(&placed()),
+        Some((profile(), Some(bot_profile(false))))
+    );
+    assert_eq!(options.bot(), Ok(false));
     assert_eq!(
         profile().features,
         Features {
@@ -50,7 +54,6 @@ fn a_teams_table_names_its_webhook_and_posts_only() {
             interactions: false,
         }
     );
-    assert!(serde_json::from_value::<DestinationOptions>(json!({})).is_err());
     assert!(
         serde_json::from_value::<DestinationOptions>(
             json!({ "webhook": { "secret": "W" }, "token": { "secret": "T" } })
@@ -101,6 +104,7 @@ fn the_doctor_is_told_a_webhook_cannot_be_asked_without_posting() {
         .reach(&placed(), "", Secret::new("HERALD_TEAMS_WEBHOOK", url))
         .unwrap();
     assert_eq!(reached.base(), Base::At("https://hook.example"));
+    assert_eq!(reached.profile(), profile());
     assert!(!reached.keeps_edits());
 }
 

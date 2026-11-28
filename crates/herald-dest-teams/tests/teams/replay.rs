@@ -2,13 +2,13 @@
 //! fixture holds it, and each answer read back into what the ledger
 //! records.
 
-use herald_core::{Announcement, Button, Facts, Sent, Step, Text, WaitOptions, Waits};
+use herald_core::{Announcement, Button, Entry, Facts, Sent, Step, Text, WaitOptions, Waits};
 use herald_dest_teams::{MESSAGE, Teams};
 use std::future::{Future, ready};
 
 use herald_ports::{Base, Http, HttpError, Request, Response, Secret};
 use herald_testing::{Fixture, Recorder, Replay, Scrub, sample};
-use jiff::SignedDuration;
+use jiff::{SignedDuration, Timestamp};
 
 const WEBHOOK: &str = "HERALD_TEAMS_WEBHOOK";
 
@@ -26,8 +26,10 @@ fn teams() -> Teams {
     Teams::new(Secret::new(WEBHOOK, url()))
 }
 
-fn send(teams: &Teams, replay: &Replay, step: &Step, announcement: &Announcement) -> Sent {
-    pollster::block_on(teams.send(replay, step, announcement)).unwrap()
+fn send<H: Http>(teams: &Teams, http: &H, step: &Step, announcement: &Announcement) -> Sent {
+    let entry = Entry::new(announcement.key);
+    pollster::block_on(teams.send(http, (step, announcement, &entry), Timestamp::UNIX_EPOCH))
+        .unwrap()
 }
 
 fn refused(said: &str) -> Sent {
@@ -78,9 +80,12 @@ fn a_webhook_takes_no_step_but_posting_and_sends_nothing_for_one() {
                 revision: "r".to_owned(),
                 part: 0,
             },
-            "edit a message",
+            "edit a message; a bot, given app_id and app_password, can",
         ),
-        (Step::Delete(0), "delete a message"),
+        (
+            Step::Delete(0),
+            "delete a message; a bot, given app_id and app_password, can",
+        ),
         (Step::Deliveries, "deliver to an inbox"),
         (Step::Deliver("i".to_owned()), "deliver to an inbox"),
         (Step::Updates("i".to_owned()), "deliver to an inbox"),
@@ -103,7 +108,6 @@ fn it_reaches_its_url_s_own_https_origin_alone() {
         teams().base(),
         Base::At("https://default0.12.environment.api.example")
     );
-    assert!(teams().addressed());
     let ported = Teams::new(Secret::new(WEBHOOK, "https://hook.example:8443/x"));
     assert_eq!(ported.base(), Base::At("https://hook.example:8443"));
     let shown = format!("{:?}", teams());
@@ -124,9 +128,8 @@ fn a_secret_holding_no_https_url_reaches_nothing_and_its_post_names_the_secret_a
     ] {
         let teams = Teams::new(Secret::new(WEBHOOK, held));
         assert_eq!(teams.base(), Base::Among(&[]), "{held}");
-        assert!(!teams.addressed(), "{held}");
         let recorder = Recorder::new(Answering);
-        pollster::block_on(teams.send(&recorder, &Step::Post, &announcement)).unwrap();
+        send(&teams, &recorder, &Step::Post, &announcement);
         let fixture = recorder.fixture(&Scrub::default()).unwrap();
         assert_eq!(
             fixture.exchanges[0].request.url,
@@ -166,7 +169,7 @@ fn a_card_with_no_button_shows_its_link_and_an_empty_part_writes_no_text() {
     }];
     let recorder = Recorder::new(Answering);
     assert_eq!(
-        pollster::block_on(teams().send(&recorder, &Step::Post, &announcement)).unwrap(),
+        send(&teams(), &recorder, &Step::Post, &announcement),
         Sent::Landed(Facts::default())
     );
     let fixture = recorder.fixture(&Scrub::default()).unwrap();
@@ -208,8 +211,12 @@ fn answer(status: u16, body: &[u8]) -> Response {
 }
 
 fn answered(teams: &Teams, response: Response) -> Sent {
-    pollster::block_on(teams.send(&Answered(response), &Step::Post, &sample::announcement()))
-        .unwrap()
+    send(
+        teams,
+        &Answered(response),
+        &Step::Post,
+        &sample::announcement(),
+    )
 }
 
 #[test]
@@ -258,7 +265,7 @@ fn a_card_of_exactly_what_a_message_holds_is_sent_and_one_byte_more_is_not() {
             url: format!("https://example.org/{}", "a".repeat(extra)),
         }];
         let recorder = Recorder::new(Answering);
-        let sent = pollster::block_on(teams().send(&recorder, &Step::Post, &announcement)).unwrap();
+        let sent = send(&teams(), &recorder, &Step::Post, &announcement);
         let length = recorder
             .fixture(&Scrub::default())
             .unwrap()
