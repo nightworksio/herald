@@ -291,15 +291,14 @@ fn unanswered(config: &Config, layer: &Layer, layers: &[Layer], gaps: &mut Vec<G
         .filter(|layer| layer.sessions)
         .map(|layer| layer.name)
         .collect();
-    let carrying = |session: &str| {
-        if holders.is_empty() {
-            String::new()
-        } else {
-            format!(
-                ", or carry them over {session} on the {} layer",
-                listed(&holders, "or")
-            )
-        }
+    let carrying = |session: Option<&str>| {
+        let Some(session) = session.filter(|_| !holders.is_empty()) else {
+            return String::new();
+        };
+        format!(
+            ", or carry them over {session} on the {} layer",
+            listed(&holders, "or")
+        )
     };
     let holding = if holders.is_empty() {
         "no layer holds a session open; have".to_owned()

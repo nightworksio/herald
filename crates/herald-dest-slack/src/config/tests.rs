@@ -123,7 +123,7 @@ fn commands_are_posted_unless_socket_mode_carries_them_under_its_domains() {
         Some(Carried {
             posted: false,
             what: "commands Slack posts",
-            session: "Socket Mode with via = \"socket\"",
+            session: Some("Socket Mode with via = \"socket\""),
         })
     );
     let answering = bot(&posted());

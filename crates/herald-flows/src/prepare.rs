@@ -8,7 +8,7 @@ use std::sync::Arc;
 use herald_config::{Config, Destination, Pages, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex, itself};
 use herald_kinds::{
-    Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Recorded, Registering,
+    Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Recorded, Registering, Vouching,
 };
 use herald_peers::discovery::Instance;
 use herald_ports::{
@@ -332,6 +332,12 @@ pub enum Asking<H> {
     Unbound,
 }
 
+/// A destination that takes commands, by name, with the `Http` its
+/// answers go through, the one its sessions open through and the one the
+/// keys its requests are vouched for with are read through, where it has
+/// them.
+pub(crate) type Interacting<H> = (DestinationName, Interacted, H, Option<H>, Option<H>);
+
 /// The prepared routes and sources, each with the `Http` that reaches it.
 #[derive(Debug)]
 pub struct Connected<H> {
@@ -342,7 +348,7 @@ pub struct Connected<H> {
     pub(crate) projects: BTreeMap<RouteId, Projects>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
     pub(crate) mintings: Vec<(Minting, H)>,
-    pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
+    pub(crate) interacting: Vec<Interacting<H>>,
     webhooks: Webhooks,
     pub(crate) instance: Vec<Secret>,
     pub(crate) pages: Option<(PreparedPages, H)>,
@@ -385,7 +391,18 @@ impl<H> Connected<H> {
         self.interacting
             .iter()
             .find(|(named, ..)| named == name)
-            .map(|(_, interacting, http, _)| (interacting, http))
+            .map(|(_, interacting, http, ..)| (interacting, http))
+    }
+
+    /// What the bearer token each request posted for the destination
+    /// named `name` carries must hold, with the `Http` the keys it is
+    /// checked with are read through, where its requests are vouched for so.
+    #[must_use]
+    pub fn vouching(&self, name: &DestinationName) -> Option<(&Vouching, &H)> {
+        self.interacting
+            .iter()
+            .find(|(named, ..)| named == name)
+            .and_then(|(_, interacting, .., vouches)| interacting.vouching().zip(vouches.as_ref()))
     }
 
     /// Every destination that takes commands, by name, with the `Http` its
@@ -396,7 +413,9 @@ impl<H> Connected<H> {
     ) -> impl Iterator<Item = (&DestinationName, &Interacted, &H, Option<&H>)> {
         self.interacting
             .iter()
-            .map(|(name, interacting, http, sessions)| (name, interacting, http, sessions.as_ref()))
+            .map(|(name, interacting, http, sessions, _)| {
+                (name, interacting, http, sessions.as_ref())
+            })
     }
 }
 
@@ -476,7 +495,11 @@ impl Prepared {
                 .sessions()
                 .map(|base| reach(Base::At(base)))
                 .transpose()?;
-            interacting.push((name, destination, reaching, sessions));
+            let vouches = destination
+                .vouching()
+                .map(|vouching| reach(Base::At(&vouching.metadata)))
+                .transpose()?;
+            interacting.push((name, destination, reaching, sessions, vouches));
         }
         let mintings = self
             .mintings

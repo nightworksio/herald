@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::cloud::{Cloud, Hosts};
+use crate::interactions::Interactions;
 use crate::teams::TEAMS;
 
 /// How a Microsoft Teams destination is reached, as `[destinations.*]`
@@ -38,8 +39,21 @@ pub struct DestinationOptions {
     /// as `https://api.botframework.com`.
     pub scope: Option<String>,
     /// The service URL the bot posts through, in place of its cloud's, such
-    /// as `https://smba.trafficmanager.net/teams/`.
+    /// as `https://smba.trafficmanager.net/teams/`. An activity Teams posts
+    /// to the bot is taken only where the service URL it names is on this
+    /// URL's origin.
     pub service: Option<String>,
+    /// The address of the Bot Framework's metadata document, in place of
+    /// its cloud's, such as
+    /// `https://login.botframework.com/v1/.well-known/openidconfiguration`:
+    /// it names the keys that sign each token vouching for an activity Teams
+    /// posts to the bot.
+    pub openid: Option<String>,
+    /// The issuer each token vouching for an activity names, in place of its
+    /// cloud's, such as `https://api.botframework.com`.
+    pub issuer: Option<String>,
+    /// How the bot takes what Teams posts to it at herald's endpoint.
+    pub interactions: Option<Interactions>,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
     pub symbols: Option<Symbols>,
@@ -87,6 +101,9 @@ impl DestinationOptions {
             ("login", self.login.is_some()),
             ("scope", self.scope.is_some()),
             ("service", self.service.is_some()),
+            ("openid", self.openid.is_some()),
+            ("issuer", self.issuer.is_some()),
+            ("interactions", self.interactions.is_some()),
         ];
         match (&self.webhook, bot) {
             (None, [true, true]) => Ok(true),
@@ -144,6 +161,8 @@ impl DestinationOptions {
                 tenant,
                 scope: based("scope", self.scope.as_deref(), cloud.scope)?,
                 service: based("service", self.service.as_deref(), cloud.service)?,
+                openid: based("openid", self.openid.as_deref(), cloud.openid)?,
+                issuer: based("issuer", self.issuer.as_deref(), cloud.issuer)?,
             },
         }))
     }

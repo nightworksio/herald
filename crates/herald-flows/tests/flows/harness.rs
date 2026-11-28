@@ -823,6 +823,7 @@ pub fn kinds() -> herald_config::Kinds {
         .destination::<herald_dest_fediverse::MastodonKind>()
         .destination::<herald_dest_matrix::MatrixKind>()
         .destination::<herald_dest_slack::SlackKind>()
+        .destination::<herald_dest_teams::TeamsKind>()
         .destination::<herald_dest_fediverse::ActorKind>()
         .destination::<herald_dest_herald::HeraldKind>()
         .destination::<herald_dest_herald::PushKind>()

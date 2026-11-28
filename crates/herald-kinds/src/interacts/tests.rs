@@ -101,6 +101,15 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
     assert_eq!(interacted.complete(&Replying::new(1_u8), &[]), None);
     assert_eq!(interacted.posted(Endpoint::Posted), None);
     assert_eq!(interacted.posted(Endpoint::Pushed), None);
+    assert_eq!(interacted.vouching(), None);
+    let vouched = Vouched {
+        claims: vec![("serviceUrl", "https://service.example/".to_owned())],
+    };
+    assert_eq!(
+        vouched.claim("serviceUrl"),
+        Some("https://service.example/")
+    );
+    assert_eq!(vouched.claim("aud"), None);
     assert_eq!(interacted.choices(&["herald".to_owned()]), "");
     assert_eq!(
         interacted.read(
@@ -109,6 +118,7 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
                 method: "POST",
                 path: &[],
                 body: b"{}",
+                vouched: None,
             },
         ),
         Read::Missing("such path")

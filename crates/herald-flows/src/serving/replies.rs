@@ -133,6 +133,8 @@ pub(crate) fn rejection(rejected: &Rejected) -> Answered {
     let status = match rejected {
         Rejected::Replayed => status::CONFLICT,
         Rejected::Unadmitted { .. } | Rejected::Unkept { .. } => status::UNAVAILABLE,
+        Rejected::Oversized => status::CONTENT_TOO_LARGE,
+        Rejected::Unendorsed => status::FORBIDDEN,
         _ => status::UNAUTHORIZED,
     };
     refusal(status, rejected.to_string())

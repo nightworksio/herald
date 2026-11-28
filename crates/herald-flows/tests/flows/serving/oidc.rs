@@ -324,7 +324,7 @@ fn unknown_keys_fetch_the_issuer_s_keys_at_most_once_a_cooldown_and_old_keys_fai
 
 #[test]
 fn keys_that_cannot_be_read_or_kept_leave_the_token_untaken_for_now() {
-    let unread = "the ID token's issuer's keys could not be read: ";
+    let unread = "the token's issuer's keys could not be read: ";
     let other = json!({ "issuer": "https://other.example", "jwks_uri": format!("{ISSUER}/keys") })
         .to_string();
     let away = json!({ "issuer": ISSUER, "jwks_uri": "https://keys.example/keys" }).to_string();
@@ -371,7 +371,7 @@ fn keys_that_cannot_be_read_or_kept_leave_the_token_untaken_for_now() {
         assert_eq!(status, 503, "{body}");
         assert_eq!(
             body,
-            "the ID token's issuer's keys could not be read: the kept ones are older than keys_for, and they were fetched or tried within keys_retry"
+            "the token's issuer's keys could not be read: the kept ones are older than keys_for, and they were fetched or tried within keys_retry"
         );
         assert_eq!(world.script.seen().len(), seen);
     }

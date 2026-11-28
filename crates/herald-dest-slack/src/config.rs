@@ -83,7 +83,7 @@ impl DestinationConfig for DestinationOptions {
         self.interactions.as_ref().map(|interactions| Carried {
             posted: interactions.via == Via::Http,
             what: "commands Slack posts",
-            session: "Socket Mode with via = \"socket\"",
+            session: Some("Socket Mode with via = \"socket\""),
         })
     }
 

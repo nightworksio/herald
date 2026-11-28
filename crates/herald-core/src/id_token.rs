@@ -17,6 +17,10 @@ const AUDIENCE: &str = "audience";
 /// What a CI's answer to a request for an ID token carries it under.
 const ANSWERED: &str = "value";
 
+/// What a key set herald writes lists the ids of its issuer's keys that are
+/// not endorsed for what herald takes under.
+const UNENDORSED: &str = "unendorsed";
+
 /// The algorithm an ID token is signed with, of those herald checks.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
@@ -128,7 +132,7 @@ impl fmt::Display for Untaken {
                 f,
                 "the ID token's claim {name} does not match its app's entry"
             ),
-            Self::Keys(why) => write!(f, "the ID token's issuer's keys could not be read: {why}"),
+            Self::Keys(why) => write!(f, "the token's issuer's keys could not be read: {why}"),
             Self::Used => f.write_str("the ID token was taken before, and each is taken once"),
             Self::Unkept(why) => write!(
                 f,
@@ -336,27 +340,14 @@ impl IdToken {
         if !self.meant_for(audience) {
             return Err(Untaken::Audience);
         }
-        let whole = |name: &str| {
-            self.claims
-                .get(name)
-                .map(|value| {
-                    value
-                        .as_u64()
-                        .and_then(|seconds| i64::try_from(seconds).ok())
-                        .ok_or(Untaken::Time(Untaken::UNWHOLE))
-                })
-                .transpose()
-        };
-        let expires = whole("exp")?.ok_or(Untaken::Time(Untaken::NO_EXPIRY))?;
-        let issued = whole("iat")?.ok_or(Untaken::Time(Untaken::NO_ISSUE))?;
-        let valid = whole("nbf")?;
+        let expires = self.within(now, skew).map_err(Untaken::Time)?;
+        let issued = self
+            .whole("iat")
+            .map_err(Untaken::Time)?
+            .ok_or(Untaken::Time(Untaken::NO_ISSUE))?;
         let now = now.as_second();
         let skew = skew.as_secs();
-        let why = if expires.saturating_add(skew) <= now {
-            Untaken::EXPIRED
-        } else if valid.is_some_and(|valid| valid.saturating_sub(skew) > now) {
-            Untaken::EARLY
-        } else if issued.saturating_sub(skew) > now {
+        let why = if issued.saturating_sub(skew) > now {
             Untaken::AHEAD
         } else if expires < issued {
             Untaken::BACKWARD
@@ -366,6 +357,41 @@ impl IdToken {
             return Ok(());
         };
         Err(Untaken::Time(why))
+    }
+
+    /// Its expiry, where it is valid at `now`, give or take `skew`: its
+    /// `exp` is still ahead and any `nbf` is not, both in whole seconds.
+    ///
+    /// # Errors
+    ///
+    /// Why not, as [`Untaken::Time`] says it: it names no expiry, a time
+    /// that is not whole seconds, or a time outside them.
+    pub fn within(&self, now: Timestamp, skew: SignedDuration) -> Result<i64, &'static str> {
+        let expires = self.whole("exp")?.ok_or(Untaken::NO_EXPIRY)?;
+        let valid = self.whole("nbf")?;
+        let now = now.as_second();
+        let skew = skew.as_secs();
+        if expires.saturating_add(skew) <= now {
+            Err(Untaken::EXPIRED)
+        } else if valid.is_some_and(|valid| valid.saturating_sub(skew) > now) {
+            Err(Untaken::EARLY)
+        } else {
+            Ok(expires)
+        }
+    }
+
+    /// The time the claim `name` names in whole seconds, where it names
+    /// one.
+    fn whole(&self, name: &str) -> Result<Option<i64>, &'static str> {
+        self.claims
+            .get(name)
+            .map(|value| {
+                value
+                    .as_u64()
+                    .and_then(|seconds| i64::try_from(seconds).ok())
+                    .ok_or(Untaken::UNWHOLE)
+            })
+            .transpose()
     }
 
     /// The claim `name`, written as text: a string as it is, a number or a
@@ -409,10 +435,12 @@ impl IdToken {
 }
 
 /// The RSA keys an issuer publishes for its tokens, each by the id it gives
-/// it.
+/// it, and the ids of those it publishes that are not endorsed for what
+/// herald takes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct KeySet {
     keys: Vec<RsaKey>,
+    unendorsed: Vec<String>,
 }
 
 /// One RSA public key of an issuer's key set.
@@ -424,15 +452,23 @@ pub struct RsaKey {
     pub modulus: Vec<u8>,
     /// Its public exponent, big-endian.
     pub exponent: Vec<u8>,
+    /// What its issuer endorses it for, such as the Bot Framework's
+    /// channels.
+    pub endorsements: Vec<String>,
 }
 
 impl KeySet {
+    /// The most keys a key set may list.
+    pub const MOST: usize = 1024;
+
     /// The RSA signing keys of the JSON Web Key Set `body`, skipping every
-    /// key of another type, use or algorithm.
+    /// key of another type, use or algorithm, each with what it is
+    /// endorsed for.
     ///
     /// # Errors
     ///
-    /// Where the body is not a JSON object holding a `keys` array.
+    /// Where the body is not a JSON object holding a `keys` array, or the
+    /// array lists more than [`Self::MOST`] keys.
     pub fn read(body: &[u8]) -> Result<Self, Untaken> {
         let unread = || Untaken::Keys("the key set is not a JSON Web Key Set".to_owned());
         let Ok(Value::Object(set)) = serde_json::from_slice::<Value>(body) else {
@@ -441,8 +477,23 @@ impl KeySet {
         let Some(Value::Array(listed)) = set.get("keys") else {
             return Err(unread());
         };
+        if listed.len() > Self::MOST {
+            return Err(Untaken::Keys(format!(
+                "the key set lists more than {} keys",
+                Self::MOST
+            )));
+        }
         let text = |key: &Map<String, Value>, name: &str| {
             key.get(name).and_then(Value::as_str).map(str::to_owned)
+        };
+        let texts = |value: Option<&Value>| -> Vec<String> {
+            value
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
         };
         let keys = listed
             .iter()
@@ -457,10 +508,79 @@ impl KeySet {
                     id: text(key, "kid"),
                     modulus: decoded(&text(key, "n")?)?,
                     exponent: decoded(&text(key, "e")?)?,
+                    endorsements: texts(key.get("endorsements")),
                 })
             })
             .collect();
-        Ok(Self { keys })
+        Ok(Self {
+            keys,
+            unendorsed: texts(set.get(UNENDORSED)),
+        })
+    }
+
+    /// Its keys endorsed for `endorsement`, each kept without what it is
+    /// endorsed for, and the ids of the rest.
+    #[must_use]
+    pub fn endorsed(&self, endorsement: &str) -> Self {
+        let (endorsed, rest): (Vec<&RsaKey>, Vec<&RsaKey>) = self.keys.iter().partition(|key| {
+            key.endorsements
+                .iter()
+                .any(|endorsed| endorsed == endorsement)
+        });
+        Self {
+            keys: endorsed
+                .into_iter()
+                .map(|key| RsaKey {
+                    endorsements: Vec::new(),
+                    ..key.clone()
+                })
+                .collect(),
+            unendorsed: rest.into_iter().filter_map(|key| key.id.clone()).collect(),
+        }
+    }
+
+    /// Whether `id` names a key its issuer publishes that is not endorsed
+    /// for what herald takes.
+    #[must_use]
+    pub fn unendorsed(&self, id: Option<&str>) -> bool {
+        id.is_some_and(|id| self.unendorsed.iter().any(|named| named == id))
+    }
+
+    /// It written as a JSON Web Key Set, as [`Self::read`] reads it back.
+    #[must_use]
+    pub fn written(&self) -> Vec<u8> {
+        let keys: Vec<Value> = self
+            .keys
+            .iter()
+            .map(|key| {
+                let mut written = Map::new();
+                written.insert("kty".to_owned(), Value::from("RSA"));
+                if let Some(id) = &key.id {
+                    written.insert("kid".to_owned(), Value::from(id.as_str()));
+                }
+                written.insert(
+                    "n".to_owned(),
+                    Value::from(URL_SAFE_NO_PAD.encode(&key.modulus)),
+                );
+                written.insert(
+                    "e".to_owned(),
+                    Value::from(URL_SAFE_NO_PAD.encode(&key.exponent)),
+                );
+                if !key.endorsements.is_empty() {
+                    written.insert(
+                        "endorsements".to_owned(),
+                        Value::from(key.endorsements.clone()),
+                    );
+                }
+                Value::Object(written)
+            })
+            .collect();
+        let mut set = Map::new();
+        set.insert("keys".to_owned(), Value::Array(keys));
+        if !self.unendorsed.is_empty() {
+            set.insert(UNENDORSED.to_owned(), Value::from(self.unendorsed.clone()));
+        }
+        serde_json::to_vec(&Value::Object(set)).unwrap_or_default()
     }
 
     /// The key `id` names; with no id, its only key.
@@ -552,6 +672,18 @@ impl KeptKeys {
 ///
 /// Where the body names another issuer, no `jwks_uri`, or one elsewhere.
 pub fn jwks_uri(body: &[u8], issuer: &str) -> Result<String, Untaken> {
+    jwks_uri_on(body, issuer, issuer)
+}
+
+/// The key set address the discovery document `body` of `issuer` names,
+/// where the document is that issuer's and the address is `https` on the
+/// origin of `on`, the document's own address where it is not on the
+/// issuer's origin.
+///
+/// # Errors
+///
+/// Where the body names another issuer, no `jwks_uri`, or one elsewhere.
+pub fn jwks_uri_on(body: &[u8], issuer: &str, on: &str) -> Result<String, Untaken> {
     let refused = |why: &str| Untaken::Keys(why.to_owned());
     let Ok(Value::Object(document)) = serde_json::from_slice::<Value>(body) else {
         return Err(refused("the discovery document is not a JSON object"));
@@ -563,12 +695,28 @@ pub fn jwks_uri(body: &[u8], issuer: &str) -> Result<String, Untaken> {
         .get("jwks_uri")
         .and_then(Value::as_str)
         .ok_or_else(|| refused("the discovery document names no jwks_uri"))?;
-    if !same_origin(named, issuer) {
+    if !same_origin(named, on) {
         return Err(refused(
             "the discovery document's jwks_uri is not https on the issuer's own origin",
         ));
     }
     Ok(named.to_owned())
+}
+
+/// Whether the discovery document `body` lists `algorithm` among those its
+/// issuer signs ID tokens with.
+#[must_use]
+pub fn signs_with(body: &[u8], algorithm: TokenAlgorithm) -> bool {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(|document| document.get("id_token_signing_alg_values_supported"))
+        .and_then(Value::as_array)
+        .is_some_and(|listed| {
+            listed
+                .iter()
+                .any(|named| named.as_str() == Some(algorithm.name()))
+        })
 }
 
 /// Where an issuer publishes its discovery document.
