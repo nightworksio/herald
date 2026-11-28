@@ -16,7 +16,8 @@ pub enum Cloud {
     Dod,
 }
 
-/// The hosts a bot signs in at and posts through.
+/// The hosts a bot signs in at and posts through, and those that vouch for
+/// what Teams posts to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hosts<'a> {
     /// The sign-in service's base URL.
@@ -28,30 +29,42 @@ pub struct Hosts<'a> {
     /// The service URL a bot posts through where no message from Teams
     /// named another.
     pub service: &'a str,
+    /// The address of the Bot Framework's metadata document, which names
+    /// the keys that sign each token vouching for what Teams posts to a bot.
+    pub openid: &'a str,
+    /// The issuer each such token names.
+    pub issuer: &'a str,
 }
 
 /// Microsoft's public cloud: sign-in, tenant and scope from
 /// <https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0>
 /// ("Step 1: Request an access token", multi-tenant), the service URL from
 /// <https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages>
-/// ("Create the conversation", "Public").
+/// ("Create the conversation", "Public"), the metadata document and the
+/// issuer from the first page ("Authenticate requests from the Bot
+/// Connector service to your bot", steps 2 and 4).
 const PUBLIC: Hosts<'static> = Hosts {
     login: "https://login.microsoftonline.com",
     tenant: "botframework.com",
     scope: "https://api.botframework.com",
     service: "https://smba.trafficmanager.net/teams/",
+    openid: "https://login.botframework.com/v1/.well-known/openidconfiguration",
+    issuer: "https://api.botframework.com",
 };
 
 /// Office 365 GCC High: sign-in, tenant and scope from
 /// <https://learn.microsoft.com/en-us/azure/bot-service/how-to-deploy-gov-cloud-high?view=azure-bot-service-4.0>
 /// ("Configure for Office 365 GCC High": `ToChannelFromBotLoginUrl`,
-/// `ToChannelFromBotOAuthScope`), the service URL from the proactive
+/// `ToChannelFromBotOAuthScope`, `ToBotFromChannelOpenIdMetadataUrl`,
+/// `ToBotFromChannelTokenIssuer`), the service URL from the proactive
 /// messages page ("GCC High").
 const GCC_HIGH: Hosts<'static> = Hosts {
     login: "https://login.microsoftonline.us",
     tenant: "MicrosoftServices.onmicrosoft.us",
     scope: "https://api.botframework.us",
     service: "https://smba.infra.gov.teams.microsoft.us/teams",
+    openid: "https://login.botframework.azure.us/v1/.well-known/openidconfiguration",
+    issuer: "https://api.botframework.us",
 };
 
 /// The Department of Defense's environment: sign-in, tenant and scope
@@ -97,6 +110,13 @@ mod tests {
         assert_eq!(
             Cloud::GccHigh.hosts().service,
             "https://smba.infra.gov.teams.microsoft.us/teams"
+        );
+        assert_eq!(
+            (Cloud::GccHigh.hosts().openid, Cloud::GccHigh.hosts().issuer),
+            (
+                "https://login.botframework.azure.us/v1/.well-known/openidconfiguration",
+                "https://api.botframework.us"
+            )
         );
         assert_eq!(
             Cloud::Dod.hosts(),

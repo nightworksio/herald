@@ -114,7 +114,7 @@ fn commands_are_posted_unless_the_gateway_carries_them_under_its_domains() {
         Some(Carried {
             posted: false,
             what: "interactions Discord posts",
-            session: "the gateway with via = \"gateway\"",
+            session: Some("the gateway with via = \"gateway\""),
         })
     );
     let answering = bot(&posted());

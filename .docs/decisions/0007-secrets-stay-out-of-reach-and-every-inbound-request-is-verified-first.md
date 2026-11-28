@@ -63,6 +63,7 @@ part of theirs.
    | Discord interaction | Ed25519 over the timestamp and body, with the application's public key, inside a replay window |
    | Slack command or interaction | Slack's signing secret: HMAC-SHA256 over the version, timestamp and body, inside a five-minute replay window |
    | Matrix application-service transaction | the registration's homeserver token, compared in constant time |
+   | Microsoft Teams bot activity | the Bot Framework's bearer token, read once the body is no larger than the bot reads: RS256 by a key the cloud's Bot Framework metadata document lists on its own origin and endorses for Teams, of the cloud's issuer, meant for the bot's app id, within its expiry and not-before give or take five minutes, and naming as its `serviceUrl` the activity's own, which lies on the origin of the bot's service URL; the keys kept a day; the activity admitted once by its conversation and id |
    | ActivityPub activity | the HTTP signature, checked against the key of the actor that signed it, with the body's digest. `(request-target)` and the audience come from the request herald received and its own host, never from a header. The key is read from its `keyId`'s document, served as ActivityPub JSON: an actor's own document listing it, or the key's own document naming an owner on its origin, whose own document must list it. Every id is an HTTPS URL already written as a URL parser reads it. An activity naming an actor other than the key's owner, or an id on another origin, is refused |
    | HTTP API | a per-app bearer token (decision 4) |
 

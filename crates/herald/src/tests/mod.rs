@@ -35,5 +35,6 @@ mod server;
 mod setup;
 mod setup_queue;
 mod stores;
+mod teams;
 mod withdraw;
 mod world;

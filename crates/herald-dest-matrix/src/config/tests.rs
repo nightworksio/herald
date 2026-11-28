@@ -77,6 +77,7 @@ fn read(interacting: &Interacting, method: &str, path: &[&str], body: &Value) ->
             method,
             path,
             body: body.as_bytes(),
+            vouched: None,
         },
     )
 }
@@ -124,7 +125,7 @@ fn a_destination_reads_as_a_matrix_one_through_its_bot() {
         Some(Carried {
             posted: true,
             what: "transactions the homeserver pushes",
-            session: "a sync with via = \"sync\"",
+            session: Some("a sync with via = \"sync\""),
         })
     );
     assert_eq!(

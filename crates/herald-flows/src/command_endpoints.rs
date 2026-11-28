@@ -7,13 +7,14 @@
 use herald_core::{Asked, DestinationName, Place, Scheme};
 use herald_core::{media, status};
 use herald_kinds::{Endpoint, Interacted, Post, Read, Replying, Said};
-use herald_ports::{Clock, Keyring, Store, Verifier};
+use herald_ports::{Clock, Http, Keyring, Store, Verifier};
 
 use crate::command_answers::{completed, unlisted};
 use crate::serving::{
     Answered, Inbound, Job, Serving, missing, refusal, rejection, replied, unmethodical, unread,
 };
 use crate::verification::{Checking, Rejected, Verified, admitted, verified};
+use crate::vouching::vouched;
 
 /// Where requests carrying commands are posted, before the destination's
 /// name.
@@ -34,9 +35,10 @@ fn json_reply(said: Said) -> Answered {
 }
 
 /// A request to `endpoint` for the destination `name`, at `rest` after its
-/// name: verified with the scheme and secret its kind names, admitted once,
-/// and answered as it reads.
-pub(crate) async fn commanded<S: Store, C: Clock, G, V: Verifier, H, P, K: Keyring>(
+/// name: verified as its kind names, by the bearer token vouching for it or
+/// by the scheme and secret it signs with, admitted once, and answered as it
+/// reads.
+pub(crate) async fn commanded<S: Store, C: Clock, G, V: Verifier, H: Http, P, K: Keyring>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     endpoint: Endpoint,
     name: &str,
@@ -51,14 +53,30 @@ pub(crate) async fn commanded<S: Store, C: Clock, G, V: Verifier, H, P, K: Keyri
     let Some((interacting, _)) = serving.connected.interacting(&destination) else {
         return missing(unset);
     };
-    let (scheme, written) = match interacting.posted(endpoint) {
-        None => return missing(unset),
-        Some(Err(what)) => return missing(what),
-        Some(Ok(posted)) => posted,
-    };
-    let verified = match admit(serving, scheme, written, inbound).await {
-        Ok(verified) => verified,
-        Err(rejected) => return rejection(&rejected),
+    let (namespace, verified, vouched) = match serving.connected.vouching(&destination) {
+        Some((vouching, keys)) if endpoint == Endpoint::Posted => match vouched(
+            (serving.ports.store, keys, serving.verifier),
+            vouching,
+            (inbound.headers, inbound.body),
+            serving.ports.clock.now(),
+        )
+        .await
+        {
+            Ok(vouched) => (vouching.name, Verified::default(), Some(vouched)),
+            Err(rejected) => return rejection(&rejected),
+        },
+        Some(_) => return missing(unset),
+        None => {
+            let (scheme, written) = match interacting.posted(endpoint) {
+                None => return missing(unset),
+                Some(Err(what)) => return missing(what),
+                Some(Ok(posted)) => posted,
+            };
+            match admit(serving, scheme, written, inbound).await {
+                Ok(verified) => (scheme.name, verified, None),
+                Err(rejected) => return rejection(&rejected),
+            }
+        }
     };
     let path: Vec<&str> = if rest.is_empty() {
         Vec::new()
@@ -71,9 +89,18 @@ pub(crate) async fn commanded<S: Store, C: Clock, G, V: Verifier, H, P, K: Keyri
             method: inbound.method,
             path: &path,
             body: inbound.body,
+            vouched: vouched.as_ref(),
         },
     );
-    answered(serving, &destination, interacting, scheme, &verified, read).await
+    answered(
+        serving,
+        &destination,
+        interacting,
+        namespace,
+        &verified,
+        read,
+    )
+    .await
 }
 
 async fn admit<S: Store, C: Clock, G, V: Verifier, H, P, K>(
@@ -110,7 +137,7 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     destination: &DestinationName,
     interacting: &Interacted,
-    scheme: Scheme,
+    namespace: &'static str,
     verified: &Verified,
     read: Read,
 ) -> Answered {
@@ -132,7 +159,7 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                 serving,
                 destination,
                 interacting,
-                scheme,
+                namespace,
                 delivery,
                 replayed,
                 *then,
@@ -140,7 +167,8 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             .await
         }
         Read::Refused(reason) => refusal(status::BAD_REQUEST, reason),
-        Read::Unread(reason) => unread(serving.ports.store, scheme.name, verified, reason).await,
+        Read::Unvouched(reason) => refusal(status::UNAUTHORIZED, reason),
+        Read::Unread(reason) => unread(serving.ports.store, namespace, verified, reason).await,
         Read::Unmethodical => unmethodical(),
         Read::Missing(what) => missing(what),
     }
@@ -170,13 +198,13 @@ async fn completions<S: Store, C, G, V, H, P, K>(
 }
 
 /// What `then` says, once the delivery a request carries inside it is
-/// admitted once under `scheme`; a delivery admitted before is answered
-/// `replayed`.
+/// admitted once among those kept under `namespace`; a delivery admitted
+/// before is answered `replayed`.
 async fn redelivered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     destination: &DestinationName,
     interacting: &Interacted,
-    scheme: Scheme,
+    namespace: &'static str,
     delivery: String,
     replayed: Said,
     then: Read,
@@ -188,7 +216,7 @@ async fn redelivered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     match admitted(
         serving.ports.store,
         serving.admission,
-        scheme.name,
+        namespace,
         &delivery,
         serving.ports.clock.now(),
     )
@@ -198,5 +226,13 @@ async fn redelivered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         Err(Rejected::Replayed) => return json_reply(replayed),
         Err(rejected) => return rejection(&rejected),
     }
-    answered(serving, destination, interacting, scheme, &delivery, then).await
+    answered(
+        serving,
+        destination,
+        interacting,
+        namespace,
+        &delivery,
+        then,
+    )
+    .await
 }

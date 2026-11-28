@@ -2503,6 +2503,14 @@
               "description": "The Microsoft cloud the bot is registered in: `public` where unset,\n`gcc-high` or `dod`. It names the hosts below where they are unset.",
               "$ref": "#/$defs/Cloud"
             },
+            "interactions": {
+              "description": "How the bot takes what Teams posts to it at herald's endpoint.",
+              "$ref": "#/$defs/TeamsInteractions"
+            },
+            "issuer": {
+              "description": "The issuer each token vouching for an activity names, in place of its\ncloud's, such as `https://api.botframework.com`.",
+              "type": "string"
+            },
             "kind": {
               "type": "string",
               "const": "teams"
@@ -2511,12 +2519,16 @@
               "description": "The base URL of the sign-in service the bot asks for its token, in\nplace of its cloud's, such as `https://login.microsoftonline.com`.",
               "type": "string"
             },
+            "openid": {
+              "description": "The address of the Bot Framework's metadata document, in place of\nits cloud's, such as\n`https://login.botframework.com/v1/.well-known/openidconfiguration`:\nit names the keys that sign each token vouching for an activity Teams\nposts to the bot.",
+              "type": "string"
+            },
             "scope": {
               "description": "The resource the bot's token is for, in place of its cloud's, such\nas `https://api.botframework.com`.",
               "type": "string"
             },
             "service": {
-              "description": "The service URL the bot posts through, in place of its cloud's, such\nas `https://smba.trafficmanager.net/teams/`.",
+              "description": "The service URL the bot posts through, in place of its cloud's, such\nas `https://smba.trafficmanager.net/teams/`. An activity Teams posts\nto the bot is taken only where the service URL it names is on this\nURL's origin.",
               "type": "string"
             },
             "symbols": {
@@ -9645,6 +9657,17 @@
         }
       ]
     },
+    "TeamsInteractions": {
+      "description": "How a Teams bot takes what Teams posts to it.",
+      "type": "object",
+      "properties": {
+        "via": {
+          "description": "How Teams carries it.",
+          "$ref": "#/$defs/TeamsVia"
+        }
+      },
+      "additionalProperties": false
+    },
     "TeamsRoute": {
       "description": "A route to a Microsoft Teams destination.",
       "type": "object",
@@ -9782,6 +9805,16 @@
         "id",
         "sources",
         "destination"
+      ]
+    },
+    "TeamsVia": {
+      "description": "How Teams carries what it posts to a bot.",
+      "oneOf": [
+        {
+          "description": "Teams posts each activity to herald's endpoint with a bearer token\nthe Bot Framework signs: served by `herald server` and by a\nserverless driver.",
+          "type": "string",
+          "const": "http"
+        }
       ]
     },
     "Template": {

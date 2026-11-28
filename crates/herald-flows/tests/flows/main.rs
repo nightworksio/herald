@@ -108,6 +108,8 @@ mod sessions;
 #[cfg(test)]
 mod slack;
 #[cfg(test)]
+mod teams;
+#[cfg(test)]
 mod withdraw;
 #[cfg(test)]
 mod withheld;

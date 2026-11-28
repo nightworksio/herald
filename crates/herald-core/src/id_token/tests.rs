@@ -422,7 +422,7 @@ fn every_refusal_reads_as_a_sentence_that_never_quotes_the_token() {
         ),
         (
             Untaken::Keys("down".to_owned()),
-            "the ID token's issuer's keys could not be read: down",
+            "the token's issuer's keys could not be read: down",
         ),
         (
             Untaken::Used,
@@ -538,5 +538,132 @@ fn a_ci_is_asked_for_a_token_of_an_audience_and_answers_it_under_value() {
         b"t.o.k",
     ] {
         assert_eq!(IdToken::answered(unanswered), None);
+    }
+}
+
+#[test]
+fn a_token_is_within_its_times_by_its_expiry_and_any_not_before_alone() {
+    let skew = SignedDuration::from_mins(5);
+    let issued = |claims: Value| read(&claims).within(now(), skew);
+    let unissued = json!({ "exp": NOW + 60, "nbf": NOW - 60 });
+    assert_eq!(issued(unissued), Ok(NOW + 60));
+    assert_eq!(issued(json!({ "exp": NOW + 1 })), Ok(NOW + 1));
+    assert_eq!(issued(json!({ "exp": NOW - 299 })), Ok(NOW - 299));
+    assert_eq!(issued(json!({ "exp": NOW - 300 })), Err(Untaken::EXPIRED));
+    assert_eq!(
+        issued(json!({ "exp": NOW + 600, "nbf": NOW + 300 })),
+        Ok(NOW + 600)
+    );
+    assert_eq!(
+        issued(json!({ "exp": NOW + 600, "nbf": NOW + 301 })),
+        Err(Untaken::EARLY)
+    );
+    assert_eq!(issued(json!({ "nbf": NOW })), Err(Untaken::NO_EXPIRY));
+    for unwhole in [
+        json!({ "exp": "soon" }),
+        json!({ "exp": NOW + 60, "nbf": 1.5 }),
+    ] {
+        assert_eq!(issued(unwhole), Err(Untaken::UNWHOLE));
+    }
+}
+
+fn endorsed_set() -> Value {
+    let n = URL_SAFE_NO_PAD.encode([1, 2, 3]);
+    let e = URL_SAFE_NO_PAD.encode([1, 0, 1]);
+    json!({ "keys": [
+        { "kty": "RSA", "use": "sig", "kid": "teams", "n": n, "e": e, "endorsements": ["skype", "msteams"] },
+        { "kty": "RSA", "use": "sig", "kid": "speech", "n": n, "e": e, "endorsements": ["telephony"] },
+        { "kty": "RSA", "use": "sig", "kid": "plain", "n": n, "e": e },
+        { "kty": "RSA", "use": "sig", "n": n, "e": e, "endorsements": [7, "web"] },
+    ] })
+}
+
+#[test]
+fn a_key_set_keeps_what_each_key_is_endorsed_for_and_narrows_to_one_endorsement() {
+    let set = KeySet::read(&serde_json::to_vec(&endorsed_set()).unwrap()).unwrap();
+    assert_eq!(
+        set.key(Some("teams")).unwrap().endorsements,
+        ["skype", "msteams"]
+    );
+    assert_eq!(set.key(Some("plain")).unwrap().endorsements, [""; 0]);
+    assert!(!set.unendorsed(Some("speech")));
+    let teams = set.endorsed("msteams");
+    let kept = teams.key(Some("teams")).unwrap();
+    assert_eq!(
+        (&kept.modulus, &kept.exponent, kept.endorsements.is_empty()),
+        (&vec![1, 2, 3], &vec![1, 0, 1], true)
+    );
+    for other in ["speech", "plain"] {
+        assert_eq!(teams.key(Some(other)), None, "{other}");
+        assert!(teams.unendorsed(Some(other)), "{other}");
+    }
+    assert!(!teams.unendorsed(Some("teams")));
+    assert!(!teams.unendorsed(None));
+    assert!(!teams.unendorsed(Some("absent")));
+    let again = KeySet::read(&teams.written()).unwrap();
+    assert_eq!(again, teams);
+    let whole = KeySet::read(&set.written()).unwrap();
+    assert_eq!(whole, set);
+    assert!(set.endorsed("outlook").key(None).is_none());
+    assert!(set.endorsed("outlook").is_empty());
+    let unnamed =
+        KeySet::read(br#"{"keys":[{"kty":"RSA","n":"AQ","e":"AQAB","endorsements":["web"]}]}"#)
+            .unwrap()
+            .endorsed("web");
+    assert_eq!(KeySet::read(&unnamed.written()).unwrap(), unnamed);
+    assert_eq!(unnamed.key(None).unwrap().id, None);
+}
+
+#[test]
+fn a_key_set_listing_more_keys_than_herald_reads_is_refused() {
+    let key = json!({ "kty": "RSA", "kid": "k", "n": "AQ", "e": "AQAB" });
+    let listed =
+        |count: usize| serde_json::to_vec(&json!({ "keys": vec![key.clone(); count] })).unwrap();
+    assert!(KeySet::read(&listed(KeySet::MOST)).is_ok());
+    assert_eq!(
+        KeySet::read(&listed(KeySet::MOST + 1)),
+        Err(Untaken::Keys(
+            "the key set lists more than 1024 keys".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_metadata_document_names_keys_on_its_own_origin_and_the_algorithms_it_signs_with() {
+    let metadata = "https://login.botframework.com/v1/.well-known/openidconfiguration";
+    let issuer = "https://api.botframework.com";
+    let document = |jwks: &str, algorithms: Value| {
+        serde_json::to_vec(&json!({
+            "issuer": issuer,
+            "jwks_uri": jwks,
+            "id_token_signing_alg_values_supported": algorithms,
+        }))
+        .unwrap()
+    };
+    let keys = "https://login.botframework.com/v1/.well-known/keys";
+    let own = document(keys, json!(["RS256"]));
+    assert_eq!(jwks_uri_on(&own, issuer, metadata), Ok(keys.to_owned()));
+    assert!(matches!(jwks_uri(&own, issuer), Err(Untaken::Keys(_))));
+    assert!(matches!(
+        jwks_uri_on(
+            &document("https://api.botframework.com/keys", json!([])),
+            issuer,
+            metadata
+        ),
+        Err(Untaken::Keys(_))
+    ));
+    assert!(matches!(
+        jwks_uri_on(&own, "https://api.botframework.us", metadata),
+        Err(Untaken::Keys(_))
+    ));
+    assert!(signs_with(&own, TokenAlgorithm::Rs256));
+    for unsigned in [
+        document(keys, json!(["RS512"])),
+        document(keys, json!("RS256")),
+        document(keys, json!([256])),
+        b"{}".to_vec(),
+        b"no".to_vec(),
+    ] {
+        assert!(!signs_with(&unsigned, TokenAlgorithm::Rs256));
     }
 }

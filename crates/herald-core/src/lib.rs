@@ -102,7 +102,8 @@ pub use group::{
 };
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use id_token::{
-    IdToken, KeptKeys, KeySet, RsaKey, TokenAlgorithm, Untaken, discovery_of, jwks_uri, same_origin,
+    IdToken, KeptKeys, KeySet, RsaKey, TokenAlgorithm, Untaken, discovery_of, jwks_uri,
+    jwks_uri_on, same_origin, signs_with,
 };
 pub use inbound::{
     Addressed, Algorithm, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim,

@@ -653,10 +653,14 @@ Microsoft Teams, by Workflows webhook or as a bot.
 | `destinations.<name>.app_password` | table | The secret holding the bot's client secret, which its app registration made. |
 | `destinations.<name>.app_password.secret` | string | The secret's name. |
 | `destinations.<name>.cloud` | [Cloud](#cloud) | The Microsoft cloud the bot is registered in: `public` where unset, `gcc-high` or `dod`. It names the hosts below where they are unset. |
+| `destinations.<name>.interactions` | table | How the bot takes what Teams posts to it at herald's endpoint. |
+| `destinations.<name>.interactions.via` | [TeamsVia](#teamsvia) | How Teams carries it. |
+| `destinations.<name>.issuer` | string | The issuer each token vouching for an activity names, in place of its cloud's, such as `https://api.botframework.com`. |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.login` | string | The base URL of the sign-in service the bot asks for its token, in place of its cloud's, such as `https://login.microsoftonline.com`. |
+| `destinations.<name>.openid` | string | The address of the Bot Framework's metadata document, in place of its cloud's, such as `https://login.botframework.com/v1/.well-known/openidconfiguration`: it names the keys that sign each token vouching for an activity Teams posts to the bot. |
 | `destinations.<name>.scope` | string | The resource the bot's token is for, in place of its cloud's, such as `https://api.botframework.com`. |
-| `destinations.<name>.service` | string | The service URL the bot posts through, in place of its cloud's, such as `https://smba.trafficmanager.net/teams/`. |
+| `destinations.<name>.service` | string | The service URL the bot posts through, in place of its cloud's, such as `https://smba.trafficmanager.net/teams/`. An activity Teams posts to the bot is taken only where the service URL it names is on this URL's origin. |
 | `destinations.<name>.symbols` | table | The characters its posts write where its markup has none: a task done and to do, a rule and a text list's bullet. |
 | `destinations.<name>.symbols.bullet` | [OneCharacter](#onecharacter) | A list's bullet where a list is written as text: `•` in Slack and `-` in plain text where unset. |
 | `destinations.<name>.symbols.done` | [OneCharacter](#onecharacter) | A task done; `☑` where unset. |
@@ -2902,6 +2906,10 @@ What a token an entry takes may do.
 ### TeamsFrom
 
 Where the teams a view's load counts come from.
+
+### TeamsVia
+
+How Teams carries what it posts to a bot.
 
 ### TokenAlgorithm
 

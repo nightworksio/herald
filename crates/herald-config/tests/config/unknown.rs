@@ -48,7 +48,7 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
             ),
             unknown(
                 "teams",
-                "`webhook`, `app_id`, `app_password`, `tenant`, `cloud`, `login`, `scope`, `service`, `symbols`, `waits`"
+                "`webhook`, `app_id`, `app_password`, `tenant`, `cloud`, `login`, `scope`, `service`, `openid`, `issuer`, `interactions`, `symbols`, `waits`"
             ),
             unknown(
                 "activitypub",

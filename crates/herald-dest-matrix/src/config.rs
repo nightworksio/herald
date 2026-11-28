@@ -86,7 +86,7 @@ impl DestinationConfig for DestinationOptions {
         self.interactions.as_ref().map(|interactions| Carried {
             posted: interactions.via == Via::Appservice,
             what: "transactions the homeserver pushes",
-            session: "a sync with via = \"sync\"",
+            session: Some("a sync with via = \"sync\""),
         })
     }
 

@@ -55,6 +55,13 @@ pub enum Rejected {
         /// Why not.
         reason: String,
     },
+    /// Its body is larger than its destination reads.
+    Oversized,
+    /// The bearer token it carries does not hold, as this says of it.
+    Unvouched(&'static str),
+    /// The bearer token it carries is signed by a key its issuer does not
+    /// endorse for what herald takes.
+    Unendorsed,
 }
 
 /// Where the keys activities were checked with are kept, and how long one
@@ -83,7 +90,7 @@ impl<K: Keyring> Keys<'_, K> {
 }
 
 /// A request [`verified`] let through.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Verified {
     /// What it is delivered as, as its signature covers it, where its scheme
     /// names its deliveries.
@@ -117,6 +124,11 @@ impl fmt::Display for Rejected {
             Self::Unkept { reason } => write!(
                 f,
                 "the keys activities are checked with could not be read or kept, so the activity is not let through: {reason}"
+            ),
+            Self::Oversized => f.write_str("the request's body is larger than its destination reads"),
+            Self::Unvouched(why) => write!(f, "the request's bearer token {why}"),
+            Self::Unendorsed => f.write_str(
+                "the request's bearer token is signed by a key its issuer does not endorse for what herald takes",
             ),
         }
     }

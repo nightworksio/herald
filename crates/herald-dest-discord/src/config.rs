@@ -77,7 +77,7 @@ impl DestinationConfig for DestinationOptions {
         self.interactions.as_ref().map(|interactions| Carried {
             posted: interactions.via == Via::Http,
             what: "interactions Discord posts",
-            session: "the gateway with via = \"gateway\"",
+            session: Some("the gateway with via = \"gateway\""),
         })
     }
 

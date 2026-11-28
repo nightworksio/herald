@@ -1,6 +1,8 @@
-//! Whatever Discord, Slack or a homeserver sends, each destination answers
-//! what it asks or why it cannot read it, and every command it reads names
-//! where it was given and by whom, with Slack's answers going to Slack alone.
+//! Whatever Discord, Slack, Teams or a homeserver sends, each destination
+//! answers what it asks or why it cannot read it, and every command it reads
+//! names where it was given and by whom, with Slack's answers going to Slack
+//! alone; a Teams bot takes an activity only of Teams, naming the service URL
+//! its token vouches for.
 
 #![no_main]
 
@@ -10,8 +12,13 @@ use herald_dest_discord::{
 };
 use herald_dest_matrix::{Interacting as Matrix, Interactions as MatrixInteractions};
 use herald_dest_slack::{Interacting as Slack, Interactions as SlackInteractions, Received};
+use herald_dest_teams::{CHANNEL, Cloud, Interacting as Teams};
+use herald_kinds::{Interacts as _, Post, Read, Vouched};
 use herald_ports::Secret;
 use libfuzzer_sys::fuzz_target;
+
+const TEAMS_APP: &str = "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9";
+const TEAMS_SERVICE: &str = "https://smba.trafficmanager.net/emea/";
 
 fn placed(asked: &Asked) {
     assert!(!asked.place.id.is_empty());
@@ -30,7 +37,7 @@ fuzz_target!(|bytes: &[u8]| {
         return;
     };
     let destination = DestinationName::new("fuzzed");
-    match chosen % 4 {
+    match chosen % 5 {
         0 => {
             let interactions: DiscordInteractions =
                 serde_json::from_str(r#"{"application": "123456789012345678", "via": "gateway"}"#)
@@ -74,6 +81,26 @@ fuzz_target!(|bytes: &[u8]| {
                         .expose()
                         .starts_with("https://hooks.slack.com/")
                 );
+            }
+        }
+        3 => {
+            let teams = Teams::new(TEAMS_APP, Cloud::Public.hosts()).unwrap();
+            let vouched = Vouched {
+                claims: vec![("serviceUrl", TEAMS_SERVICE.to_owned())],
+            };
+            let read = teams.read(
+                &destination,
+                Post {
+                    method: "POST",
+                    path: &[],
+                    body,
+                    vouched: Some(&vouched),
+                },
+            );
+            if let Read::Delivered { .. } = read {
+                let activity: serde_json::Value = serde_json::from_slice(body).unwrap();
+                assert_eq!(activity["serviceUrl"], TEAMS_SERVICE);
+                assert_eq!(activity["channelId"], CHANNEL);
             }
         }
         _ => {

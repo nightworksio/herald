@@ -1270,6 +1270,7 @@ dependencies = [
  "herald-dest-herald",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-dest-teams",
  "herald-keys",
  "herald-kinds",
  "herald-models",

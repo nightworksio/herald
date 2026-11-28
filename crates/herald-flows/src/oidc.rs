@@ -14,15 +14,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::{App, Config, Oidc, Replay, Taking};
-use herald_core::media::JSON;
-use herald_core::{
-    IdToken, KeptKeys, KeySet, TokenAlgorithm, Untaken, digest, discovery_of, jwks_uri,
-};
-use herald_ports::{
-    Admitted, Algorithm, Deliveries, DynVerifier, Erased, Http, Method, Request, SecretText, Store,
-    Tokens, Verifier,
-};
+use herald_core::{IdToken, KeySet, TokenAlgorithm, Untaken, digest, discovery_of, jwks_uri};
+use herald_ports::{Admitted, Algorithm, Deliveries, DynVerifier, Erased, Http, Store, Verifier};
 use jiff::Timestamp;
+
+use crate::published::{Publisher, got, keys};
 
 /// The most bytes an issuer's discovery document or key set is read from.
 pub(crate) const KEYS_MOST: usize = 64 * 1024;
@@ -37,11 +33,6 @@ pub(crate) const TAKEN: &str = "oidc";
 /// Why an issuer's keys are not read where this herald reaches no address
 /// of its.
 const UNREACHED: &str = "they are read from no address this herald reaches";
-
-/// Why an issuer's keys older than `keys_for` are not used where they were
-/// fetched, or tried, within `keys_retry`.
-const UNTRIED: &str =
-    "the kept ones are older than keys_for, and they were fetched or tried within keys_retry";
 
 /// An entry naming a token's issuer that the token is held to, its app by
 /// name, and the algorithm the token is signed with.
@@ -91,7 +82,17 @@ pub(crate) async fn taken<'c, S: Store, H: Http>(
         .iter()
         .find(|(issuer, _)| *issuer == entry.issuer)
         .map(|(_, http)| http);
-    let keys = keys((store, http), entry, token.key_id(), now).await?;
+    let kept = format!("{KEPT}{}", digest(&entry.issuer));
+    let publisher = Publisher {
+        kept: &kept,
+        pinned: entry.keys.as_ref(),
+        keys_for: entry.keys_for,
+        keys_retry: entry.keys_retry,
+    };
+    let keys = keys(store, publisher, (token.key_id(), now), || async {
+        fetched(http.ok_or(Untaken::Keys(UNREACHED.to_owned()))?, entry).await
+    })
+    .await?;
     let key = keys.key(token.key_id()).ok_or(Untaken::Key)?;
     let public = herald_keys::rsa_public(&key.modulus, &key.exponent);
     if !Erased(verifier)
@@ -195,74 +196,10 @@ fn matched<'c>(
 }
 
 /// What checks a signature made with `algorithm`.
-const fn signed_with(algorithm: TokenAlgorithm) -> Algorithm {
+pub(crate) const fn signed_with(algorithm: TokenAlgorithm) -> Algorithm {
     match algorithm {
         TokenAlgorithm::Rs256 => Algorithm::RsaSha256,
     }
-}
-
-/// The keys of `entry`'s issuer at `now`, for a token naming `key_id`:
-/// those pinned; else those `store` keeps while younger than `keys_for`
-/// where they hold `key_id`; else fetched through `http` where they were
-/// last fetched or tried longer than `keys_retry` ago, and kept. A fetch
-/// that fails leaves the kept keys in use until they are `keys_for` old,
-/// and never longer. Keys kept as read later than `now` are not fresh, and
-/// a try kept as later than `now` is due, so a clock set back neither
-/// keeps old keys nor holds a fetch off.
-///
-/// # Errors
-///
-/// They are older than `keys_for` and cannot be fetched now, or cannot be
-/// kept.
-async fn keys<S: Store, H: Http>(
-    (store, http): (&S, Option<&H>),
-    entry: &Oidc,
-    key_id: Option<&str>,
-    now: Timestamp,
-) -> Result<KeySet, Untaken> {
-    if let Some(pinned) = &entry.keys {
-        return Ok(pinned.clone());
-    }
-    let tokens = store.tokens();
-    let name = format!("{KEPT}{}", digest(&entry.issuer));
-    let record = tokens.token(&name).await.map_err(unkept)?;
-    let version = record.as_ref().map(|record| record.version);
-    let kept = record.and_then(|record| KeptKeys::read(&record.value));
-    let held = kept.as_ref().map(KeptKeys::keys).unwrap_or_default();
-    let fresh = kept
-        .as_ref()
-        .and_then(|kept| kept.fetched)
-        .is_some_and(|fetched| fetched <= now && now < fetched + entry.keys_for);
-    if fresh && held.key(key_id).is_some() {
-        return Ok(held);
-    }
-    let due = kept
-        .as_ref()
-        .is_none_or(|kept| kept.tried > now || now >= kept.tried + entry.keys_retry);
-    match (due, fresh) {
-        (false, true) => return Ok(held),
-        (false, false) => return Err(Untaken::Keys(UNTRIED.to_owned())),
-        (true, _) => {}
-    }
-    let http = http.ok_or(Untaken::Keys(UNREACHED.to_owned()))?;
-    let (kept, read) = match fetched(http, entry).await {
-        Ok((read, body)) => (KeptKeys::new(&body, now), Ok(read)),
-        Err(why) => (
-            kept.map_or_else(|| KeptKeys::untried(now), |kept| kept.tried_at(now)),
-            if fresh { Ok(held) } else { Err(why) },
-        ),
-    };
-    let expires = kept.fetched.unwrap_or(now) + entry.keys_for;
-    tokens
-        .put_token(&kept.kept(name, expires), version)
-        .await
-        .map_err(unkept)?;
-    read
-}
-
-/// Why an issuer's keys are not read, where the store fails: `error`.
-fn unkept(error: impl std::fmt::Display) -> Untaken {
-    Untaken::Keys(format!("the store could not keep them: {error}"))
 }
 
 /// The key set of `entry`'s issuer and its body as read through `http`
@@ -277,11 +214,11 @@ async fn fetched<H: Http>(http: &H, entry: &Oidc) -> Result<(KeySet, Vec<u8>), U
     let address = match &entry.jwks {
         Some(jwks) => jwks.clone(),
         None => jwks_uri(
-            &got(http, &discovery_of(&entry.issuer)).await?,
+            &got(http, &discovery_of(&entry.issuer), KEYS_MOST).await?,
             &entry.issuer,
         )?,
     };
-    let body = got(http, &address).await?;
+    let body = got(http, &address, KEYS_MOST).await?;
     let keys = KeySet::read(&body)?;
     if keys.is_empty() {
         return Err(Untaken::Keys(format!(
@@ -289,29 +226,6 @@ async fn fetched<H: Http>(http: &H, entry: &Oidc) -> Result<(KeySet, Vec<u8>), U
         )));
     }
     Ok((keys, body))
-}
-
-/// The body `http` answers a GET of `address` with, at most
-/// [`KEYS_MOST`] bytes.
-///
-/// # Errors
-///
-/// It cannot be reached, or answers anything but 200.
-async fn got<H: Http>(http: &H, address: &str) -> Result<Vec<u8>, Untaken> {
-    let request = Request::new(Method::Get, SecretText::plain(address))
-        .header("Accept", SecretText::plain(JSON))
-        .at_most(KEYS_MOST);
-    let response = http
-        .send(request)
-        .await
-        .map_err(|error| Untaken::Keys(format!("{address} could not be read: {error}")))?;
-    if response.status != herald_core::status::OK {
-        return Err(Untaken::Keys(format!(
-            "{address} answered {}",
-            response.status
-        )));
-    }
-    Ok(response.body)
 }
 
 /// Each issuer whose ID tokens an app of `config` takes and whose keys are

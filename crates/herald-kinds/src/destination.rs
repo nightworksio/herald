@@ -207,8 +207,9 @@ pub struct Carried {
     pub posted: bool,
     /// What carries them, as a sentence names it.
     pub what: &'static str,
-    /// The session that would carry them instead, and how to choose it.
-    pub session: &'static str,
+    /// The session that would carry them instead, and how to choose it,
+    /// where one would.
+    pub session: Option<&'static str>,
 }
 
 /// A destination's options, of any kind.

@@ -28,7 +28,9 @@ pub use destination::{Carried, Checking, Destination, DestinationConfig, UNREAD}
 pub use federates::{Activity, Federates, Inboxes};
 pub use feeding::{Fed, Feeding};
 pub use first_run::{Answer, Ask, FirstRun, Key, Lands, Variant, Written};
-pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said, optional};
+pub use interacts::{
+    Endpoint, Interacted, Interacts, Post, Read, Replying, Said, Vouched, Vouching, optional,
+};
 pub use itself::Itself;
 pub use kind::{DestinationKind, Fault, Inherited, Placing};
 pub use merging::{

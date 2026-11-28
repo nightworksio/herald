@@ -7,6 +7,7 @@ use herald_core::{
     Answering, Asked, DestinationName, Markup, Place, Room, Scheme, SecretRef, Text,
 };
 use herald_ports::{DynSecrets, Request, Response, Secret, SecretError};
+use jiff::SignedDuration;
 
 use crate::{Itself, Session};
 
@@ -51,6 +52,14 @@ pub trait Interacts: fmt::Debug + Send + Sync + Itself {
     /// The scheme and secret a request to `endpoint` is verified with, where
     /// it takes requests there; else what is not set to take them.
     fn posted(&self, _endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
+        None
+    }
+
+    /// What the bearer token each request posted to its endpoint carries
+    /// must hold, where its sender vouches for its requests by such a token
+    /// rather than signing their bytes; such a request is verified by it
+    /// alone, whatever [`Self::posted`] names.
+    fn vouching(&self) -> Option<&Vouching> {
         None
     }
 
@@ -108,6 +117,59 @@ pub struct Post<'a> {
     pub path: &'a [&'a str],
     /// The body.
     pub body: &'a [u8],
+    /// What the token it carried vouched for, where its destination's
+    /// requests are verified by one.
+    pub vouched: Option<&'a Vouched>,
+}
+
+/// What the bearer token each request posted to a destination's endpoint
+/// carries must hold: a JSON Web Token its issuer signs with a key its
+/// metadata document lists, endorsed for what herald takes, meant for herald
+/// and valid now (ADR-0007).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Vouching {
+    /// The namespace its requests' deliveries are admitted once under.
+    pub name: &'static str,
+    /// The `https` address of its issuer's metadata document, which names
+    /// its key set.
+    pub metadata: String,
+    /// The issuer its tokens name.
+    pub issuer: String,
+    /// The audience its tokens name.
+    pub audience: String,
+    /// How far a token's times may lie from herald's clock.
+    pub skew: SignedDuration,
+    /// What the key signing a token must be endorsed for.
+    pub endorsement: &'static str,
+    /// The claims a token must carry, which its request is read with.
+    pub claims: &'static [&'static str],
+    /// The most bytes a request's body holds.
+    pub body: usize,
+    /// The most bytes its metadata and its key set are each read from.
+    pub keys_most: usize,
+    /// How long its keys are used once read.
+    pub keys_for: SignedDuration,
+    /// How long after its keys were last fetched, or tried, a token
+    /// naming a key they lack has them fetched again.
+    pub keys_retry: SignedDuration,
+}
+
+/// The claims a verified token carried that its request is read with.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Vouched {
+    /// Each claim, by name, as text.
+    pub claims: Vec<(&'static str, String)>,
+}
+
+impl Vouched {
+    /// The claim `name`, where the token carried it.
+    #[must_use]
+    pub fn claim(&self, name: &str) -> Option<&str> {
+        self.claims
+            .iter()
+            .find(|(named, _)| *named == name)
+            .map(|(_, claim)| claim.as_str())
+    }
 }
 
 /// What herald answers a request at once, as JSON.
@@ -163,6 +225,9 @@ pub enum Read {
     },
     /// A request of a kind herald does not answer, refused as it says.
     Refused(String),
+    /// A request whose body says what the token it carried does not vouch
+    /// for, refused as unauthorised, why.
+    Unvouched(String),
     /// A request that could not be read, why; its delivery is released.
     Unread(String),
     /// A method the path does not take.

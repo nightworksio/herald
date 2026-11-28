@@ -63,11 +63,17 @@ preformatted text, block quotes or HTML
 4. **The bot takes commands and buttons.** Commands and the subscribe
    button arrive as Bot Framework activities at
    `/interactions/<destination>`, on `herald server` and the serverless
-   hosts (ADR-0016). Each request is verified before it is parsed: its
-   bearer JWT is checked against the cloud's Bot Framework OpenID metadata
-   and keys, the issuer, the audience (`app_id`), the expiry and the
-   service URL it names. This is a new row of ADR-0007 decision 3's
-   inbound table.
+   hosts (ADR-0016), under `[destinations.<name>.interactions]`. Each
+   request is verified before it is parsed: its body is bounded, and its
+   bearer JWT is checked against the cloud's Bot Framework metadata and
+   keys (RS256, a key endorsed for Teams), the issuer, the audience
+   (`app_id`), the expiry and not-before with five minutes' skew, and the
+   service URL it names, which must be the activity's own and lie on the
+   origin of the bot's service URL, so nothing herald sends a member's
+   activity goes elsewhere. The keys are read again within a day. Any
+   failure is refused, saying nothing of why. Each activity is admitted
+   once by its conversation and id. This is a new row of ADR-0007
+   decision 3's inbound table.
 5. **`cloud = "public" | "gcc-high" | "dod"`**, `"public"` where
    absent, picks the login host, the Bot Framework hosts and scope, the
    service URL fallback and the OpenID metadata, from tables kept in one
@@ -75,7 +81,8 @@ preformatted text, block quotes or HTML
    has not read from Microsoft's documentation is not offered: Microsoft's
    pages give GCC's service URL alone, so `cloud` takes `public`,
    `gcc-high` and `dod`. Each host is also a setting of its own (`login`,
-   `scope`, `service`, and the tenant a bot signs in under), which replaces
+   `scope`, `service`, `openid`, `issuer`, and the tenant a bot signs in
+   under), which replaces
    its cloud's: any other cloud, and a fixture server, is reached by
    writing its hosts.
 6. **A dialect of its own (extending ADR-0004 decision 2):** card Markdown

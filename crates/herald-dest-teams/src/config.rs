@@ -1,10 +1,12 @@
 use herald_core::{Delivery, Profile, SecretRef, Symbols, WaitOptions};
 use herald_kinds::{
-    Checking, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached,
+    Carried, Checking, DestinationConfig, DestinationKind, Fault, Interacted, Placed, Placement,
+    Placing, Reached,
 };
-use herald_ports::Secret;
+use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
 use crate::bot::Bot;
+use crate::interact::Interacting;
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::teams::{self, TEAMS, Teams, UNCHECKED};
 
@@ -56,6 +58,28 @@ impl DestinationConfig for DestinationOptions {
             .ok()
             .filter(|route| route.unwritten().is_none())
             .map(Placed::new)
+    }
+
+    fn carried(&self) -> Option<Carried> {
+        self.interactions.as_ref().map(|_| Carried {
+            posted: true,
+            what: "activities Teams posts to the bot",
+            session: None,
+        })
+    }
+
+    fn interacts<'a>(
+        &'a self,
+        _: &'a Secret,
+        _: &'a dyn DynSecrets,
+    ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
+        let interacting = self
+            .interactions
+            .as_ref()
+            .and(self.registered().ok().flatten())
+            .and_then(|registered| Interacting::new(registered.app_id, registered.hosts))
+            .map(Interacted::new);
+        Box::pin(std::future::ready(Ok(interacting)))
     }
 
     fn reach(&self, placed: &Placed, _: &str, secret: Secret) -> Option<Reached> {

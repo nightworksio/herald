@@ -44,6 +44,7 @@ pub mod peering;
 mod poll;
 mod prepare;
 mod preview;
+mod published;
 mod publishing;
 mod readying;
 mod recall;
@@ -57,6 +58,7 @@ mod serving;
 mod sessions;
 mod trial;
 mod verification;
+mod vouching;
 mod withdraw;
 
 pub use announce::{Announced, Outcome, Ports, Stop, Within, announce, announce_within};

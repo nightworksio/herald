@@ -388,7 +388,14 @@ fn a_bot_s_table_takes_a_bot_or_a_webhook_whole_and_each_key_as_written() {
     ] {
         assert_eq!(bot(table.clone()), Err(said.to_owned()), "{table}");
     }
-    for key in ["tenant", "login", "scope"] {
+    assert_eq!(
+        bot(json!({ "webhook": { "secret": "W" }, "interactions": {} })),
+        Err(
+            "a Workflows webhook signs in nowhere, so interactions is a bot's alone; drop it"
+                .to_owned()
+        )
+    );
+    for key in ["tenant", "login", "scope", "openid", "issuer"] {
         assert_eq!(
             bot(json!({ "webhook": { "secret": "W" } })
                 .as_object()

@@ -129,6 +129,21 @@ A route that says `threads = true` posts each overflow part as a reply in
 its post's thread, through an endpoint Microsoft marks as a preview
 (<https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/agent-chat-threads>).
 
+With `[destinations.<name>.interactions]` the bot takes what Teams posts
+to it at `https://<your host>/interactions/<name>`, the messaging endpoint
+its Azure Bot names, on `herald server` or a serverless host. Each
+activity is taken only on the bearer token the Bot Framework vouches for
+it with: herald reads the signing keys from its cloud's Bot Framework
+metadata document (`openid`) and reads them again within a day, and
+checks the token's issuer (`issuer`), its audience (the app id), its times
+give or take five minutes, that its key is endorsed for Teams, and that
+the service URL it names is the activity's own and lies on the origin of
+the bot's `service`
+(<https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0>).
+Anything else is refused before its body is read, with an answer that
+says nothing of why. Each activity is taken once and answered; the bot
+takes no command.
+
 ### `forgejo-branch`
 
 A token that may push to the repository's `herald-state` branch: an
