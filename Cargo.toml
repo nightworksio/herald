@@ -22,6 +22,7 @@ herald-compose = { path = "crates/herald-compose" }
 herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }
+herald-dest-email = { path = "crates/herald-dest-email" }
 herald-dest-fediverse = { path = "crates/herald-dest-fediverse" }
 herald-dest-herald = { path = "crates/herald-dest-herald" }
 herald-dest-matrix = { path = "crates/herald-dest-matrix" }
