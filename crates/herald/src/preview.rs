@@ -399,7 +399,8 @@ fn printed_wire(shown: &Previewed, wire: &Wire, out: &mut dyn Write) {
         Wire::Served(served) => {
             say(out, &format!("{}:", head(shown)));
             say(out, &format!("  {}:", served_as(served)));
-            for line in pretty(&served.document).lines() {
+            let pretty = serde_json::to_string_pretty(&document(served)).unwrap_or_default();
+            for line in pretty.lines() {
                 say(out, &format!("    {line}"));
             }
             return;
@@ -503,16 +504,13 @@ fn served_json(served: &Served) -> Value {
         "by": by,
         "name": name,
         "proof": served.proof.named(),
-        "document": serde_json::from_str::<Value>(&served.document).unwrap_or_else(|_| json!(served.document)),
+        "document": document(served),
     })
 }
 
-/// `document` indented, where it is JSON; as it is otherwise.
-fn pretty(document: &str) -> String {
-    serde_json::from_str::<Value>(document)
-        .ok()
-        .and_then(|value| serde_json::to_string_pretty(&value).ok())
-        .unwrap_or_else(|| document.to_owned())
+/// The document `served` holds, as the JSON it is.
+fn document(served: &Served) -> Value {
+    serde_json::from_str(&served.document).unwrap_or_default()
 }
 
 /// `request` as JSON, its secrets by name: its body as the JSON it holds,
