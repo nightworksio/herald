@@ -93,7 +93,10 @@ few.
    `shard` input, as K/N, runs shard K alone of its mutants cut into N, so
    a shard of an earlier run of the same mutants is run again on its own;
    its `mutants` input, a regular expression cargo-mutants' `--re` reads,
-   mutates only the mutants it matches, cut as item 6 cuts them. A run
+   mutates only the mutants it matches, and every mutant deleting a
+   field from a struct expression, which cargo-mutants 27.1.0 generates
+   past its `--re` and `--exclude-re` filters (`visit_expr_struct` in its
+   `visit.rs`), cut as item 6 cuts them. A run
    naming either runs `mutants-scope`, its shards and `mutants`, and none
    of ci's other jobs or the runtime jobs.
 9. **A shard is held and watched.** `.github/scripts/mutants-shard.sh`

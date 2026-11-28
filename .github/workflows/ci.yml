@@ -22,7 +22,7 @@ on:
         type: string
         default: ""
       mutants:
-        description: "Only the mutants this regular expression matches, as cargo-mutants' --re reads it"
+        description: "Only the mutants this regular expression matches, as cargo-mutants' --re reads it, and every mutant deleting a struct field, which cargo-mutants 27.1.0 lists whatever --re says"
         type: string
         default: ""
   # The release runs the whole gate on the commit its tag was verified at,
