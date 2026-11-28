@@ -400,6 +400,7 @@ impl DestinationKind for EmailKind {
     const LABEL: &str = EMAIL;
     const ROUTE: &str = "EmailRoute";
     const ROUTE_DESCRIPTION: &str = "A route to an email destination: whom its messages go to.";
+    const PRESET_REFUSES: &[&str] = &["to", "cc", "bcc"];
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
