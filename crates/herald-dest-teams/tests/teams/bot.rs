@@ -571,3 +571,36 @@ fn a_bot_s_route_is_placed_in_its_conversation_and_shown_without_its_secret() {
         "{shown}"
     );
 }
+
+#[test]
+fn a_bot_whose_tenant_names_nothing_asks_nobody_and_sends_nothing() {
+    let unnamed = Bot::new(
+        "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+        password(),
+        herald_dest_teams::Hosts {
+            tenant: ".",
+            ..Cloud::Public.hosts()
+        },
+        &route(None),
+    );
+    let said = "the bot's tenant is empty or a dot segment, which names nothing in a URL path, so this step is not taken";
+    let replay = Replay::of(Fixture::default());
+    let first = Entry::new(sample::announcement().key);
+    assert_eq!(
+        send(
+            &Teams::bot(unnamed.clone()),
+            &replay,
+            &Step::Post,
+            &first,
+            now()
+        ),
+        Sent::Refused(said.to_owned())
+    );
+    let probes = pollster::block_on(herald_kinds::Reached::new(Teams::bot(unnamed)).probe(
+        &replay,
+        &Delivery::default(),
+        Recorded::Kept,
+    ));
+    assert_eq!(probes, [Probe::Credential(said.to_owned())]);
+    replay.finish().unwrap();
+}

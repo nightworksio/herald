@@ -258,7 +258,7 @@ impl Bot {
     /// for its scope's `.default`, its body sealed
     /// (<https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow>).
     fn signing_in(&self) -> Result<Request, Declined> {
-        let tenant = Declined::segment(&self.tenant, "the bot's tenant")?;
+        let tenant = Declined::segment(&self.tenant, "bot's tenant")?;
         let scope = format!("{}/.default", self.scope);
         let body = form(&[
             ("grant_type", "client_credentials"),
@@ -323,7 +323,7 @@ impl Bot {
 
     /// The URL of `path` under its conversation.
     fn conversation_url(&self, path: &str) -> Result<String, Declined> {
-        let conversation = Declined::segment(&self.conversation, "the route's conversation")?;
+        let conversation = Declined::segment(&self.conversation, "route's conversation")?;
         Ok(format!(
             "{}/v3/conversations/{conversation}{path}",
             self.service
@@ -333,7 +333,7 @@ impl Bot {
     /// The URL of the message `id`, as an earlier step recorded it.
     fn activity(&self, id: Option<&str>) -> Result<String, Declined> {
         let id = id.ok_or(Declined::Missing("the message"))?;
-        let id = Declined::segment(id, "the message's id")?;
+        let id = Declined::segment(id, "message's id")?;
         self.conversation_url(&format!("/activities/{id}"))
     }
 
@@ -368,7 +368,7 @@ impl Bot {
                 let root = entry
                     .message(&Step::Post)
                     .ok_or(Declined::Missing("the announcement's message"))
-                    .and_then(|root| Declined::segment(root, "the announcement's message id"));
+                    .and_then(|root| Declined::segment(root, "announcement's message id"));
                 (
                     Method::Post,
                     root.and_then(|root| self.conversation_url(&format!("/replyChains/{root}"))),

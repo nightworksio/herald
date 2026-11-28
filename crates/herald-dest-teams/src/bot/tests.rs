@@ -53,7 +53,7 @@ fn a_sign_in_asks_its_tenant_for_its_scope_s_default_with_its_body_sealed() {
     };
     assert_eq!(
         unnamed.signing_in().unwrap_err(),
-        Declined::Unnamed("the bot's tenant")
+        Declined::Unnamed("bot's tenant")
     );
 }
 
@@ -179,29 +179,4 @@ fn it_reaches_its_sign_in_service_and_service_url_and_shows_neither_secret_nor_t
             ..bot.clone()
         }
     );
-}
-
-#[test]
-fn a_bot_whose_tenant_names_nothing_asks_nobody_and_sends_nothing() {
-    let unnamed = Bot {
-        tenant: ".".to_owned(),
-        ..bot(None)
-    };
-    let replay = herald_testing::Replay::of(herald_testing::Fixture::default());
-    let probes = pollster::block_on(unnamed.probe(&replay));
-    let unnamed_said = Declined::Unnamed("the bot's tenant").to_string();
-    assert_eq!(probes, [Probe::Credential(unnamed_said.clone())]);
-    let announcement = herald_testing::sample::announcement();
-    let entry = Entry::new(announcement.key);
-    assert_eq!(
-        pollster::block_on(unnamed.send(
-            &replay,
-            (&Step::Post, &announcement, &entry),
-            Timestamp::UNIX_EPOCH,
-            Waits::DEFAULT
-        ))
-        .unwrap(),
-        Sent::Refused(unnamed_said)
-    );
-    replay.finish().unwrap();
 }
