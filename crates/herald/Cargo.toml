@@ -42,6 +42,7 @@ herald-store-actions-cache.workspace = true
 herald-store-sqlite.workspace = true
 herald-wire.workspace = true
 jiff.workspace = true
+rpassword.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

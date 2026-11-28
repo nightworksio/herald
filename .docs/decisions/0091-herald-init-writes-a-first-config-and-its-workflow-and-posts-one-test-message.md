@@ -83,7 +83,8 @@ herald's posts back, so the markers store cannot keep "sent once" for them
    making that credential.
 7. **The test post.** It shows the test message through `herald preview`'s
    text output (ADR-0095) and offers to post it: `herald doctor --online
-   --post` held to the new routes, the existing trial. The credential comes
+   --post`'s trial, held to the config's first route, so one message is
+   posted. The credential comes
    from the environment where its variable is set; otherwise, on a
    terminal, from a prompt that does not echo. The value is held in memory
    for that one post, joins the run's scrubber as it is read (ADR-0089),

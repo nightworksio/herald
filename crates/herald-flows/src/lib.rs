@@ -102,7 +102,7 @@ pub use serving::{
     Worked, answer, busy, refusal, uncomposed, unplaced, unworked, work,
 };
 pub use sessions::{Sessions, Taker};
-pub use trial::trial;
+pub use trial::{trial, trial_previewed};
 pub use verification::{
     Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };

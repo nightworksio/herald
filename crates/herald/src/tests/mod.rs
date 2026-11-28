@@ -15,6 +15,7 @@ mod followers;
 mod forges;
 mod housekeep;
 mod init;
+mod init_post;
 mod keygen;
 mod lambda;
 mod load;

@@ -56,7 +56,7 @@ pub(crate) struct DoctorArgs {
 
 /// The test messages `herald doctor --post` posts, kept in a store of their
 /// own.
-struct Posting;
+pub(crate) struct Posting;
 
 impl<H: Host> Through<H> for Posting {
     type Done = Vec<Announced>;
@@ -124,7 +124,7 @@ impl<H: Host> Through<H> for Rotating {
 
 /// What each route's test message did, as findings: a note where it was
 /// posted, and a gap where it was not.
-fn posted(config: &Config, tried: &[Announced]) -> Findings {
+pub(crate) fn posted(config: &Config, tried: &[Announced]) -> Findings {
     let mut findings = Findings::default();
     for announced in tried {
         let id = announced.route.as_str();
@@ -365,7 +365,7 @@ async fn rotating(
 }
 
 /// The exit code `findings` call for (ADR-0002).
-fn code(findings: &Findings) -> u8 {
+pub(crate) fn code(findings: &Findings) -> u8 {
     if !findings.mistakes.is_empty() {
         MISTAKEN
     } else if findings.gaps.is_empty() {

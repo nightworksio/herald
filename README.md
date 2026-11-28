@@ -82,7 +82,7 @@ what is missing.
 
 ## Quick start
 
-`herald init` writes a first `herald.toml` from a few answers, each also a flag, and names each secret to store ([a first run](.docs/first-run.md)). Every key `herald.toml` takes is listed, with its type and what it sets, in the [settings reference](.docs/settings.md), generated from the schema.
+`herald init` writes a first `herald.toml` from a few answers, each also a flag, names each secret to store and offers one test message ([a first run](.docs/first-run.md)). Every key `herald.toml` takes is listed, with its type and what it sets, in the [settings reference](.docs/settings.md), generated from the schema.
 
 The snippets below show the configuration that [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) and [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) fix. No release of herald exists yet, so the Action has no binary to download.
 
