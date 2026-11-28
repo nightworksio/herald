@@ -204,7 +204,7 @@ class Counting(unittest.TestCase):
                     raise out
                 return out
             return unittest.mock.patch.object(mutated, "run", run)
-        for out, mutants in [('[{"name": "a"}, {"name": "b"}]', 2), ("Found 2 mutants", None),
+        for out, mutants in [('[{"name": "a"}, {"name": "b"}]', 2), ("[]", 0), ("", 0), ("\n", 0), ("Found 2 mutants", None),
                              (mutated.subprocess.CalledProcessError(1, "cargo"), None), (FileNotFoundError(), None)]:
             with answering(out):
                 self.assertEqual(mutated.listed(["--workspace"]), mutants, out)

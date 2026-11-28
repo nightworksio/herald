@@ -220,9 +220,11 @@ def scope(event: str, schedule: str, ref: str) -> Scope:
 
 def listed(arguments: list[str]) -> int | None:
     """How many mutants cargo-mutants lists with `arguments`, or none where
-    it cannot list them."""
+    it cannot list them. A diff that changes no Rust source, or no code
+    holding a mutant, is listed as nothing at all, and exits 0."""
     try:
-        return len(json.loads(run("cargo", "mutants", "--list", "--json", *arguments)))
+        out = run("cargo", "mutants", "--list", "--json", *arguments)
+        return len(json.loads(out)) if out.strip() else 0
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, TypeError):
         return None
 
