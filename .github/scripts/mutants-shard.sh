@@ -9,9 +9,11 @@
 # allocates without bound has its own test killed and fails it in place of
 # taking the runner. A mutant's build may take BUILD_TIMEOUT_MULTIPLIER times
 # the baseline's, and its test cargo-mutants' own five times the baseline's.
-# Each mutant is named in the log as it starts and as it ends, and each
-# minute the cgroup's memory and the disk's free space; where the free space
-# falls under DISK_FLOOR_KIB the run is stopped, naming the mutants running.
+# Each mutant is named in the log as it starts and as it ends. Each minute
+# the log gives the cgroup's anonymous memory, now and the most seen in a
+# look every TICK_SECONDS, its page cache, which the kernel reclaims at the
+# cap, and the disk's free space; where the free space falls under
+# DISK_FLOOR_KIB the run is stopped, naming the mutants running.
 set -euo pipefail
 
 readonly MEMORY_CAP=$((12 * 1024 * 1024 * 1024))
@@ -19,6 +21,7 @@ readonly DISK_FLOOR_KIB=$((1024 * 1024))
 readonly BUILD_TIMEOUT_MULTIPLIER=5
 readonly GROUP=/sys/fs/cgroup/herald-mutants
 readonly OUT=mutants.out
+readonly MOST_ANON="${RUNNER_TEMP}/mutants-most-anon"
 readonly TICK_SECONDS=5
 readonly TICKS_A_REPORT=12
 
@@ -57,6 +60,11 @@ killed() {
   awk '$1 == "oom_kill" { print $2 }' "${GROUP}/memory.events"
 }
 
+held() {
+  local kind=$1
+  awk -v kind="$kind" '$1 == kind { print $2 }' "${GROUP}/memory.stat"
+}
+
 running() {
   local log name
   for log in "${OUT}"/log/*.log; do
@@ -69,14 +77,14 @@ running() {
 }
 
 report() {
-  local free=$1
-  echo "memory $(mebibytes "$(cat "${GROUP}/memory.current")") MiB now, $(mebibytes "$(cat "${GROUP}/memory.peak")") MiB at most, cap $(mebibytes "$MEMORY_CAP") MiB; processes killed at the cap $(killed); disk free $((free / 1024)) MiB; processes $(cat "${GROUP}/pids.current" 2> /dev/null || echo uncounted)"
+  local free=$1 anon=$2
+  echo "memory: anonymous $(mebibytes "$anon") MiB now, $(mebibytes "$(cat "$MOST_ANON")") MiB the most seen; page cache $(mebibytes "$(held file)") MiB; cap $(mebibytes "$MEMORY_CAP") MiB; processes killed at the cap $(killed); disk free $((free / 1024)) MiB; processes $(cat "${GROUP}/pids.current" 2> /dev/null || echo uncounted)"
 }
 
 watch() {
   local mutants=$1
   local -A started=()
-  local tick=0 log name free oom seen_oom
+  local tick=0 log name free oom seen_oom anon most=0
   seen_oom=$(killed)
   while sleep "$TICK_SECONDS"; do
     for log in "${OUT}"/log/*.log; do
@@ -87,6 +95,11 @@ watch() {
       echo "started  ${name}"
     done
     free=$(df --output=avail -k / | tail -n 1 | tr -d ' ')
+    anon=$(held anon)
+    if [[ "$anon" -gt "$most" ]]; then
+      most=$anon
+      echo "$most" > "$MOST_ANON"
+    fi
     oom=$(killed)
     if [[ "$oom" != "$seen_oom" ]]; then
       seen_oom=$oom
@@ -94,7 +107,7 @@ watch() {
     fi
     tick=$((tick + 1))
     if [[ $((tick % TICKS_A_REPORT)) -eq 0 ]]; then
-      report "$free"
+      report "$free" "$anon"
     fi
     if [[ "$free" -lt "$DISK_FLOOR_KIB" ]]; then
       echo "::error::The disk has ${free} KiB free, under ${DISK_FLOOR_KIB}, so the run stops; these mutants were running: $(running | paste -sd ';' -)"
@@ -104,6 +117,7 @@ watch() {
   done
 }
 
+held anon > "$MOST_ANON"
 cargo mutants "${mutated[@]}" --no-shuffle --jobs 2 --shard "${SHARD}/${SHARDS}" --sharding round-robin \
   --caught --unviable --build-timeout-multiplier "$BUILD_TIMEOUT_MULTIPLIER" \
   "${excluded[@]}" "${examined[@]}" "${scope[@]}" &
@@ -113,7 +127,7 @@ watcher=$!
 status=0
 wait "$mutants" || status=$?
 kill "$watcher" 2> /dev/null || true
-report "$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+report "$(df --output=avail -k / | tail -n 1 | tr -d ' ')" "$(held anon)"
 if [[ "$(killed)" != 0 ]]; then
   sudo dmesg | grep -i 'killed process' || true
 fi

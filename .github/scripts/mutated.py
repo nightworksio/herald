@@ -6,7 +6,8 @@ Where that run cannot be found, or a change outside the crates may reach a
 build or a test, the nightly run mutates the whole workspace too. A push to
 main mutates nothing. A run started by hand may name one shard, as K/N, and
 a regular expression of the mutants it mutates, as cargo-mutants' `--re`
-reads it; it then runs only those, and no runtime job. It runs on every event, and writes the scope to
+reads it (which keeps every mutant deleting a struct field); it then runs
+only those, and no runtime job. It runs on every event, and writes the scope to
 $GITHUB_OUTPUT: `shards` (the cargo-mutants arguments naming what the shards
 mutate, empty for nothing), `excluded` (the cargo-mutants arguments naming
 what they leave to the runtime jobs), `examined` (the regular expression of
