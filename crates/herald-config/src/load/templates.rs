@@ -243,7 +243,8 @@ impl Loader<'_> {
             )
         }));
         let events: Vec<Event> = read
-            .sample_kinds
+            .config
+            .taken
             .iter()
             .filter_map(|kind| self.specs.get(kind))
             .flat_map(|spec| samples_from(spec, read.origins))

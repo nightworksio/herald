@@ -7,7 +7,7 @@ use herald_core::{
 use jiff::Timestamp;
 
 /// Noon on 31 October 2026, when every sample happened.
-const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
+pub const SAMPLED: Timestamp = Timestamp::constant(1_793_448_000, 0);
 /// The lines of a sample's long body, past every destination's limit.
 const LONG: usize = 2_000;
 
@@ -56,7 +56,7 @@ fn draft(spec: &KindSpec) -> Draft {
             })
             .collect(),
         attributes,
-        occurred: NOON,
+        occurred: SAMPLED,
     }
 }
 
@@ -66,7 +66,7 @@ fn draft(spec: &KindSpec) -> Draft {
 /// milestone's issues as rows, and an empty one.
 #[must_use]
 pub fn sample_boards() -> [Board; 3] {
-    let opened = NOON - jiff::SignedDuration::from_hours(15 * 24);
+    let opened = SAMPLED - jiff::SignedDuration::from_hours(15 * 24);
     let pull = Pull {
         project: "sample-project".to_owned(),
         repository: "sample-owner/sample-project".to_owned(),
@@ -104,8 +104,8 @@ pub fn sample_boards() -> [Board; 3] {
         review: Review::Approved,
         ..pull.clone()
     };
-    let mut full = board(&View::default(), &[pull, bump], NOON);
-    full.overviews.advisories = Some(herald_core::Advised::sample(NOON));
+    let mut full = board(&View::default(), &[pull, bump], SAMPLED);
+    full.overviews.advisories = Some(herald_core::Advised::sample(SAMPLED));
     let count = herald_core::Loaded {
         requested: 1,
         reviewed: 1,
@@ -225,6 +225,36 @@ pub fn samples_from(spec: &KindSpec, origins: bool) -> Vec<Event> {
     }
 }
 
+/// Which of a kind's samples an event is (ADR-0095).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Sample {
+    /// The plain one.
+    #[default]
+    Plain,
+    /// The pre-release, where the kind marks one.
+    Prerelease,
+    /// The one whose body runs past every destination's limit.
+    Long,
+    /// The one with no body, where the kind names a signal.
+    Bodiless,
+}
+
+impl Sample {
+    /// Every sample, in the order [`samples`] gives them.
+    pub const ALL: [Self; 4] = [Self::Plain, Self::Prerelease, Self::Long, Self::Bodiless];
+
+    /// Its name, as `herald preview --sample` takes it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Prerelease => "pre-release",
+            Self::Long => "long",
+            Self::Bodiless => "no-body",
+        }
+    }
+}
+
 /// The sample events of the kind `spec` describes, every template is
 /// dry-rendered against: a plain one, a pre-release where the kind marks
 /// one, one with a long body (ADR-0006), and one with no body where the
@@ -232,6 +262,12 @@ pub fn samples_from(spec: &KindSpec, origins: bool) -> Vec<Event> {
 /// (ADR-0035).
 #[must_use]
 pub fn samples(spec: &KindSpec) -> Vec<Event> {
+    sampled(spec).into_iter().map(|(_, event)| event).collect()
+}
+
+/// [`samples`], each with which sample it is.
+#[must_use]
+pub fn sampled(spec: &KindSpec) -> Vec<(Sample, Event)> {
     let plain = draft(spec);
     let prerelease = spec.attributes.contains_key(PRERELEASE).then(|| {
         let mut attributes = plain.attributes.clone();
@@ -261,12 +297,15 @@ pub fn samples(spec: &KindSpec) -> Vec<Event> {
             ..plain.clone()
         }
     });
-    std::iter::once(plain)
-        .chain(prerelease)
-        .chain(std::iter::once(long))
-        .chain(tagged)
-        .filter_map(|draft| Event::normalise(draft).ok())
-        .collect()
+    [
+        (Sample::Plain, Some(plain)),
+        (Sample::Prerelease, prerelease),
+        (Sample::Long, Some(long)),
+        (Sample::Bodiless, tagged),
+    ]
+    .into_iter()
+    .filter_map(|(sample, draft)| Some((sample, Event::normalise(draft?).ok()?)))
+    .collect()
 }
 
 #[cfg(test)]
@@ -347,6 +386,22 @@ mod tests {
         let release = samples(kinds.get(&Kind::RELEASE).unwrap());
         assert_eq!(release[0].version(), Some("v1.2.0"));
         assert_eq!(release[1].version(), Some("v1.2.0-rc.1"));
+    }
+
+    #[test]
+    fn each_sample_is_named() {
+        let kinds = KindSpecs::default();
+        let which = |kind: &Kind| -> Vec<Sample> {
+            sampled(kinds.get(kind).unwrap())
+                .into_iter()
+                .map(|(sample, _)| sample)
+                .collect()
+        };
+        assert_eq!(which(&Kind::RELEASE), Sample::ALL);
+        assert_eq!(which(&Kind::FEED_ENTRY), [Sample::Plain, Sample::Long]);
+        let names: Vec<&str> = Sample::ALL.iter().map(|sample| sample.name()).collect();
+        assert_eq!(names, ["plain", "pre-release", "long", "no-body"]);
+        assert_eq!(Sample::default(), Sample::Plain);
     }
 
     #[test]

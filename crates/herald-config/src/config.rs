@@ -310,6 +310,9 @@ pub struct RouteConfig {
     /// The private kinds it takes without saying whether its place is
     /// private.
     pub unstated: Vec<Kind>,
+    /// The kinds of event it takes, each known: those it names, or else
+    /// every kind its sources announce.
+    pub taken: BTreeSet<Kind>,
 }
 
 impl RouteConfig {

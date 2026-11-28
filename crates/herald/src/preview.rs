@@ -1,100 +1,191 @@
 //! `herald preview`: each route's templates rendered as its destination
-//! would show them.
+//! would show them, reading no secret and sending nothing (ADR-0095).
 
 use std::io::Write;
 
-use herald_config::{Config, samples_from};
+use herald_config::{Config, Sample};
 use herald_core::{Event, Kind, RouteId};
-use herald_flows::{Previewed, preview, preview_group};
+use herald_flows::{Against, Previewed, Sampling, preview, preview_group, preview_samples};
 use herald_sources_forge::Forge;
 
 use super::output::say;
 use super::{DONE, MISTAKEN, STOPPED};
 
-/// Each route's templates rendered against the release of a forge's event
-/// file, or a sample release, as its destination would show them; or, under
-/// `group`, each grouping route's against the file's release or every sample
-/// release as one group.
+/// What `herald preview` was asked for, as given.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Asked<'a> {
+    /// Only the route of this id.
+    pub(crate) route: Option<&'a str>,
+    /// Only this kind's samples.
+    pub(crate) kind: Option<&'a str>,
+    /// Only the sample of this name.
+    pub(crate) sample: Option<&'a str>,
+    /// Only the report of this name.
+    pub(crate) report: Option<&'a str>,
+    /// Each route that groups, rendering one group under this key.
+    pub(crate) group: Option<&'a str>,
+}
+
+/// What `asked` names, each a route, kind, sample or report of `config`.
+struct Named {
+    route: Option<RouteId>,
+    kind: Option<Kind>,
+    sample: Option<Sample>,
+}
+
+/// Each route's templates rendered as `asked` says, against the release of
+/// a forge's event file or the samples of each kind it takes, as its
+/// destination would show them; or, under `group`, each grouping route's
+/// as one group.
 pub(super) fn previewing(
     config: &Config,
-    route: Option<&str>,
+    asked: Asked<'_>,
     event_file: Option<(Forge, &str)>,
-    group: Option<&str>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    let events = match events(config, event_file, group.is_some()) {
-        Ok(events) => events,
+    let named = match named(config, asked) {
+        Ok(named) => named,
         Err(message) => {
             say(err, &message);
             return MISTAKEN;
         }
     };
-    let only = route.map(RouteId::new);
-    let shown: Vec<Vec<Previewed>> = match group {
-        Some(key) => vec![preview_group(config, (key, &events), only.as_ref())],
-        None => events
-            .iter()
-            .map(|event| preview(config, event, only.as_ref()))
-            .collect(),
-    };
-    let mut code = DONE;
-    for previewed in shown {
-        if previewed.is_empty() {
-            say(err, &unpreviewed(route, group.is_some()));
-            return MISTAKEN;
-        }
-        for shown in previewed {
-            if !rendered(shown, out) {
-                code = STOPPED;
+    let only = named.route.as_ref();
+    let shown = match event_file {
+        Some(file) => match event(file) {
+            Ok(event) => match asked.group {
+                Some(key) => preview_group(config, (key, std::slice::from_ref(&event)), only),
+                None => preview(config, &event, only),
+            },
+            Err(message) => {
+                say(err, &message);
+                return MISTAKEN;
             }
+        },
+        None => preview_samples(
+            config,
+            Sampling {
+                only,
+                kind: named.kind.as_ref(),
+                sample: named.sample,
+                report: asked.report,
+                group: asked.group,
+            },
+        ),
+    };
+    if shown.is_empty() {
+        say(err, &unpreviewed(asked, event_file.is_some()));
+        return MISTAKEN;
+    }
+    let mut code = DONE;
+    for shown in shown {
+        if !rendered(shown, out) {
+            code = STOPPED;
         }
     }
     code
 }
 
-/// Why nothing was previewed: no route has the id `route`, or none that
-/// groups where `grouped`.
-fn unpreviewed(route: Option<&str>, grouped: bool) -> String {
-    match (route, grouped) {
-        (Some(id), true) => format!("no route that groups has the id \"{id}\""),
-        (None, true) => "no route groups".to_owned(),
-        (id, false) => format!("no route has the id \"{}\"", id.unwrap_or_default()),
-    }
+/// The route, kind and sample `asked` names, or why one names none of
+/// `config`'s, which says only the names it has.
+fn named(config: &Config, asked: Asked<'_>) -> Result<Named, String> {
+    let routes: Vec<(&str, RouteId)> = config
+        .routes
+        .iter()
+        .map(|route| (route.route.id.as_str(), route.route.id.clone()))
+        .collect();
+    let kinds: Vec<(&str, Kind)> = config
+        .kinds
+        .iter()
+        .map(|spec| (spec.kind.as_str(), spec.kind.clone()))
+        .collect();
+    let reports: Vec<(&str, ())> = config
+        .reports
+        .keys()
+        .map(|name| (name.as_str(), ()))
+        .collect();
+    picked(asked.report, ("--report", "report"), &reports)?;
+    Ok(Named {
+        route: picked(asked.route, ("--route", "route"), &routes)?,
+        kind: picked(asked.kind, ("--kind", "kind"), &kinds)?,
+        sample: picked(
+            asked.sample,
+            ("--sample", "sample"),
+            &Sample::ALL.map(|sample| (sample.name(), sample)),
+        )?,
+    })
 }
 
-/// The release a forge's event file publishes, or else a sample release,
-/// every sample release where `every`, or why the file gives none.
-fn events(
-    config: &Config,
-    event_file: Option<(Forge, &str)>,
-    every: bool,
-) -> Result<Vec<Event>, String> {
-    let Some((forge, path)) = event_file else {
-        return Ok(config
-            .kinds
-            .get(&Kind::RELEASE)
-            .map(|spec| samples_from(spec, true))
-            .unwrap_or_default()
-            .into_iter()
-            .take(if every { usize::MAX } else { 1 })
-            .collect());
+/// What of `known` the name `given` names, or why `flag` names no `what`:
+/// it names none of `known`, which it names, or the config's none.
+fn picked<T: Clone>(
+    given: Option<&str>,
+    (flag, what): (&str, &str),
+    known: &[(&str, T)],
+) -> Result<Option<T>, String> {
+    let Some(given) = given else {
+        return Ok(None);
     };
+    if let Some((_, found)) = known.iter().find(|(name, _)| *name == given) {
+        return Ok(Some(found.clone()));
+    }
+    let names: Vec<&str> = known.iter().map(|(name, _)| *name).collect();
+    Err(if names.is_empty() {
+        format!("{flag} names no {what}, and the config has none")
+    } else {
+        format!(
+            "{flag} names no {what}; the {what}s are {}",
+            names.join(", ")
+        )
+    })
+}
+
+/// Why nothing was previewed as `asked`, whose every name is known, of an
+/// event file where `evented`: no route it names takes what it asks for.
+fn unpreviewed(asked: Asked<'_>, evented: bool) -> String {
+    let route = asked
+        .route
+        .map(|id| format!(" \"{id}\""))
+        .unwrap_or_default();
+    let grouping = if asked.group.is_some() {
+        " that groups"
+    } else {
+        ""
+    };
+    let what = match (asked.report, asked.kind) {
+        (Some(report), _) => format!("the report \"{report}\""),
+        (None, Some(kind)) => format!("\"{kind}\" events"),
+        (None, None) if evented => "the event".to_owned(),
+        (None, None) => "events".to_owned(),
+    };
+    let sample = asked
+        .sample
+        .map(|sample| format!(" with a {sample} sample"))
+        .unwrap_or_default();
+    format!("nothing to preview: no route{route}{grouping} takes {what}{sample}")
+}
+
+/// The release a forge's event file publishes, or why the file gives none.
+fn event((forge, path): (Forge, &str)) -> Result<Event, String> {
     let payload =
         std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    match forge
+    forge
         .event(&payload, herald_core::PrereleaseRule::default())
         .map_err(|error| error.to_string())?
-    {
-        Some(event) => Ok(vec![event]),
-        None => Err(format!("{path} publishes no release")),
-    }
+        .ok_or_else(|| format!("{path} publishes no release"))
 }
 
 /// Whether `shown` rendered, printed as its destination would show it or
 /// with why its templates cannot render the event.
 pub(crate) fn rendered(shown: Previewed, out: &mut dyn Write) -> bool {
-    let head = format!("{} to {}", shown.route.as_str(), shown.destination.as_str());
+    let to = format!("{} to {}", shown.route.as_str(), shown.destination.as_str());
+    let head = match &shown.against {
+        None => to,
+        Some(Against::Sample(kind, sample)) => format!("{to}, sample {kind} ({})", sample.name()),
+        Some(Against::Report(name)) => format!("{to}, report {name} (sample view)"),
+        Some(Against::Group(members)) => format!("{to}, samples as one group ({members})"),
+    };
     match shown.rendered {
         Ok(announcement) => {
             say(out, &format!("{head}:"));

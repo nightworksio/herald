@@ -243,6 +243,7 @@ fn recalling<'c, H>(
         vouched: false,
         stated: true,
         unstated: Vec::new(),
+        taken: borrowed.config.taken.clone(),
     };
     Ok((
         PreparedRoute {

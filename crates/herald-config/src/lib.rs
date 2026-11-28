@@ -38,7 +38,7 @@ pub use oidc::{Oidc, Replay, Taking};
 pub use peers::{Peer, Rotation};
 pub use presets::{Lands, Parameter, Preset, SHIPPED, SHIPPED_PREFIX, shipped};
 pub use reference::reference;
-pub use samples::{sample_boards, sample_origin, samples, samples_from};
+pub use samples::{SAMPLED, Sample, sample_boards, sample_origin, sampled, samples, samples_from};
 pub use schema::schema;
 pub use views::{
     BUILT_IN_VIEW, DEQUEUED_TEMPLATE, NUDGE_TEMPLATE, QUEUE_TEMPLATE, READINESS_TEMPLATE,

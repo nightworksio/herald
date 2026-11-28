@@ -65,6 +65,7 @@ pub fn trial_previewed(config: &Config, route: &RouteConfig, at: (&str, Timestam
         Err(problem) => Previewed {
             route: posting.route.id,
             destination: posting.route.destination,
+            against: None,
             rendered: Err(problem.to_string()),
         },
     }
