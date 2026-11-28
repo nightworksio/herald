@@ -45,7 +45,7 @@ function bodyOf(incoming, most) {
 }
 
 export async function serve({ env = process.env, path = configPath(env), listen = env.HERALD_LISTEN } = {}) {
-  const herald = await composedFrom(path, host(env, dirname(path)), "node");
+  const herald = await composedFrom(path, host(env, dirname(path)), "node", env.HERALD_FILES_ALLOWED);
   const schedule = herald.schedule();
   const timers = ROUNDS
     .filter((round) => schedule[round])

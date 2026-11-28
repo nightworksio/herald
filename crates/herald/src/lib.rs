@@ -10,19 +10,20 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::future::Future;
-use std::io::{IsTerminal as _, Write};
+use std::io::{IsTerminal as _, Read as _, Write};
 use std::ops::ControlFlow;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::Duration;
 
 use clap::Parser as _;
-use herald_config::{Config, Unread, Uses, Within, load_with};
+use herald_config::{Config, FILES_ALLOWED, Reach, Unread, Uses, Within, load_with};
 use herald_core::Printed;
 use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
 use herald_ports::{Scrubber, Secret};
 use herald_sources_forge::Forge;
+use same_file::Handle;
 
 mod announce;
 mod apps;
@@ -143,7 +144,11 @@ async fn stopping(
         Command::Token(Tokens::New { app }) => return apps::token(&app, random_secret(), out, err),
         Command::Health { url, timeout } => {
             let listen = vars.get(LISTEN).map(String::as_str);
-            let configured = || read(&cli.config).ok().map(|config| config.server.listen);
+            let configured = || {
+                read(&cli.config, vars)
+                    .ok()
+                    .map(|config| config.server.listen)
+            };
             let url = health::url(url, listen, configured);
             return health::health(&url, Duration::from_millis(timeout), out, err).await;
         }
@@ -156,7 +161,7 @@ async fn stopping(
         Reading::Doctor(asked) => Some(asked),
         _ => None,
     };
-    let config = match configured(&cli.config, doctored, out, err) {
+    let config = match configured(&cli.config, vars, doctored, out, err) {
         Ok(config) => config,
         Err(code) => return code,
     };
@@ -236,15 +241,22 @@ fn parsed(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<C
 /// read: the doctor's findings where `doctored` asks for them, or else why.
 fn configured(
     path: &str,
+    vars: &BTreeMap<String, String>,
     doctored: Option<DoctorArgs>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<Config, u8> {
-    read(path).map_err(|message| {
-        if let Some(code) = doctored.and_then(|asked| doctoring::unread(asked, &message, out)) {
+    read(path, vars).map_err(|message| {
+        let reach = doctored.and_then(|_| reach(path, vars));
+        if let Some(code) =
+            doctored.and_then(|asked| doctoring::unread(asked, &message, reach.clone(), out))
+        {
             return code;
         }
         say(err, &message);
+        if let Some(reach) = reach {
+            say(err, &reach);
+        }
         MISTAKEN
     })
 }
@@ -414,7 +426,7 @@ async fn answered(
         Reading::Preset(asked) => {
             let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
             finished(
-                presetting::presetting(path, &asked, answers, out).await,
+                presetting::presetting(path, vars, &asked, answers, out).await,
                 err,
             )
         }
@@ -480,14 +492,16 @@ fn rewrite(path: &str, text: String) -> Result<(), String> {
     )
 }
 
-fn read(path: &str) -> Result<Config, String> {
-    loaded(path, &text(path)?)
+fn read(path: &str, vars: &BTreeMap<String, String>) -> Result<Config, String> {
+    loaded(path, &text(path)?, vars)
 }
 
-/// The config `text` writes, as read from the file at `path`.
-fn loaded(path: &str, text: &str) -> Result<Config, String> {
+/// The config `text` writes, as read from the file at `path` on a host
+/// whose environment is `vars`.
+fn loaded(path: &str, text: &str, vars: &BTreeMap<String, String>) -> Result<Config, String> {
     let directory = Path::new(path).parent().unwrap_or(Path::new(""));
-    let mut config = load_with(path, text, &Beside { directory }, &herald_compose::kinds())
+    let beside = Beside::new(directory, vars)?;
+    let mut config = load_with(path, text, &beside, &herald_compose::kinds())
         .map_err(|errors| errors.to_string())?;
     if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
         let mut options = options.clone();
@@ -497,38 +511,119 @@ fn loaded(path: &str, text: &str) -> Result<Config, String> {
     Ok(config)
 }
 
-/// The files a config in `directory` names, each read from beside it.
+/// The files a config in `directory` names, each read from beside it or
+/// from a directory `[files] allowed` names within `reach`.
 struct Beside<'a> {
     directory: &'a Path,
+    own: Option<PathBuf>,
+    reach: Reach,
 }
 
-impl Beside<'_> {
+impl<'a> Beside<'a> {
+    /// The files a config in `directory` names, on a host whose environment
+    /// is `vars`.
+    ///
+    /// # Errors
+    ///
+    /// Where [`FILES_ALLOWED`] lists a directory that is not absolute or
+    /// not one on this host, naming none of it.
+    fn new(directory: &'a Path, vars: &BTreeMap<String, String>) -> Result<Self, String> {
+        let own = canonical(dotted(directory));
+        let reach = match var(vars, FILES_ALLOWED) {
+            Some(listed) => Reach::Listed(
+                std::env::split_paths(listed)
+                    .map(|listed| {
+                        listed
+                            .is_absolute()
+                            .then(|| canonical(&listed))
+                            .flatten()
+                            .map(|resolved| resolved.display().to_string())
+                            .ok_or_else(|| format!("{FILES_ALLOWED} lists a directory that is not absolute or not a directory on this host; list each directory from the root, joined as PATH joins its own"))
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+            None => own.as_ref().map_or(Reach::Named, |own| {
+                Reach::Beside(own.display().to_string())
+            }),
+        };
+        Ok(Self {
+            directory,
+            own,
+            reach,
+        })
+    }
+
     /// The config's directory, `.` where its path names none.
     fn directory(&self) -> &Path {
-        if self.directory.as_os_str().is_empty() {
-            Path::new(".")
-        } else {
-            self.directory
-        }
+        dotted(self.directory)
     }
+}
+
+/// `directory`, `.` where it names none.
+fn dotted(directory: &Path) -> &Path {
+    if directory.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        directory
+    }
+}
+
+/// What this host lets the config at `path` name in `[files] allowed`, and
+/// where it took that from, where `vars` name it rightly.
+fn reach(path: &str, vars: &BTreeMap<String, String>) -> Option<String> {
+    let directory = Path::new(path).parent().unwrap_or(Path::new(""));
+    Beside::new(directory, vars)
+        .ok()
+        .map(|beside| beside.reach.said())
+}
+
+/// The directory at `path`, every link followed, where it is one.
+fn canonical(path: &Path) -> Option<PathBuf> {
+    std::fs::canonicalize(path)
+        .ok()
+        .filter(|resolved| resolved.is_dir())
+}
+
+/// The text of the file at `resolved`, every link followed, read through
+/// the handle it was opened as, where that handle is still the file at
+/// `resolved` and `resolved` still holds no link once it is open; none
+/// where it is not.
+fn opened(resolved: &Path) -> std::io::Result<Option<String>> {
+    let handle = Handle::from_file(std::fs::File::open(resolved)?)?;
+    unmoved(&handle, resolved)
+        .then(|| {
+            let mut text = String::new();
+            handle.as_file().read_to_string(&mut text).map(|_| text)
+        })
+        .transpose()
+}
+
+/// Whether `handle` is the file at `resolved`, which holds no link.
+fn unmoved(handle: &Handle, resolved: &Path) -> bool {
+    std::fs::canonicalize(resolved).is_ok_and(|again| again == resolved)
+        && Handle::from_path(resolved).is_ok_and(|now| now == *handle)
 }
 
 impl herald_config::Files for Beside<'_> {
     fn read(&self, file: &str, within: Within<'_>) -> Result<String, Unread> {
         let failed = |error: std::io::Error| Unread::Failed(error.to_string());
-        let base = match within {
-            Within::Beside => self.directory(),
-            Within::Allowed(directory) => Path::new(directory),
-        };
-        let base = std::fs::canonicalize(base).map_err(failed)?;
         let resolved = std::fs::canonicalize(self.directory().join(file)).map_err(failed)?;
-        if !resolved.starts_with(&base) {
+        let inside = match within {
+            Within::Beside => self
+                .own
+                .as_ref()
+                .is_some_and(|own| resolved.starts_with(own)),
+            Within::Allowed(directory) => {
+                resolved.starts_with(directory) && self.reach.holds(&resolved.display().to_string())
+            }
+        };
+        if !inside {
             return Err(Unread::Outside);
         }
         if !resolved.is_file() {
             return Err(Unread::Failed("it is no file".to_owned()));
         }
-        std::fs::read_to_string(resolved).map_err(failed)
+        opened(&resolved).map_err(failed)?.ok_or(Unread::Outside)
     }
 
     fn read_inside(&self, file: &str) -> Result<String, String> {
@@ -540,6 +635,14 @@ impl herald_config::Files for Beside<'_> {
                 ),
                 Unread::Failed(why) => why,
             })
+    }
+
+    fn reach(&self) -> Reach {
+        self.reach.clone()
+    }
+
+    fn resolved(&self, directory: &str) -> Option<String> {
+        canonical(Path::new(directory)).map(|resolved| resolved.display().to_string())
     }
 }
 

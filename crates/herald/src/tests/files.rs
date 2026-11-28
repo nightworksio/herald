@@ -2,6 +2,7 @@
 //! `herald.toml` or in a directory `[files] allowed` names, every link
 //! followed (ADR-0092 decision 8).
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -38,11 +39,25 @@ fn canary() -> String {
 }
 
 /// The config in `directory` whose template body is the file `body`, with
-/// `allowed` as `[files] allowed`.
+/// `allowed` as `[files] allowed`, each directory of `allowed` also listed
+/// by the host.
 fn loaded(
     directory: &Path,
     body: &str,
     allowed: &[&Path],
+) -> Result<herald_config::Config, String> {
+    let host: Vec<&str> = allowed.iter().map(|path| path.to_str().unwrap()).collect();
+    hosted(directory, body, allowed, &host)
+}
+
+/// The config in `directory` whose template body is the file `body`, with
+/// `allowed` as `[files] allowed`, on a host whose `HERALD_FILES_ALLOWED`
+/// lists `host`, unset where it lists none.
+fn hosted(
+    directory: &Path,
+    body: &str,
+    allowed: &[&Path],
+    host: &[&str],
 ) -> Result<herald_config::Config, String> {
     let mut text = CONFIG.replace("BODY", body);
     if !allowed.is_empty() {
@@ -54,7 +69,33 @@ fn loaded(
     }
     let path = directory.join("herald.toml");
     fs::write(&path, text).unwrap();
-    crate::read(path.to_str().unwrap())
+    crate::read(path.to_str().unwrap(), &listing(host))
+}
+
+/// An environment whose `HERALD_FILES_ALLOWED` lists `host`, empty where it
+/// lists none.
+fn listing(host: &[&str]) -> BTreeMap<String, String> {
+    if host.is_empty() {
+        return BTreeMap::new();
+    }
+    let joined = std::env::join_paths(host).unwrap();
+    BTreeMap::from([(
+        herald_config::FILES_ALLOWED.to_owned(),
+        joined.to_str().unwrap().to_owned(),
+    )])
+}
+
+/// That `refused` refuses `files.allowed`, its reason naming none of
+/// `typed`.
+fn unwidened(refused: &str, typed: &[&Path]) {
+    let (_, reason) = refused.split_once("files.allowed: ").unwrap();
+    let reason = reason.lines().next().unwrap();
+    for typed in typed {
+        assert!(
+            !reason.contains(typed.to_str().unwrap()),
+            "{typed:?}: {reason}"
+        );
+    }
 }
 
 /// That `refused` names `file` and the setting, and holds nothing of what
@@ -149,4 +190,197 @@ fn doctor_names_each_file_the_config_names_outside_its_directory() {
             run.err
         );
     }
+}
+
+#[test]
+fn a_config_cannot_widen_files_allowed_past_the_directories_its_host_lists() {
+    let secret = canary();
+    let base = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(base.path()).unwrap();
+    let work = base.join("work");
+    let workspace = base.join("workspace");
+    let outside = base.join("outside");
+    for directory in [&work, &workspace, &outside] {
+        fs::create_dir(directory).unwrap();
+    }
+    fs::write(outside.join("secret.md"), &secret).unwrap();
+    symlink(&outside, work.join("linked")).unwrap();
+    let config = work.join("config");
+    fs::create_dir(&config).unwrap();
+    let host = [work.to_str().unwrap()];
+    let linked = work.join("linked");
+    for widened in [Path::new("/"), &base, &workspace, &outside, &linked] {
+        let body = widened.join("secret.md");
+        let refused = hosted(&config, body.to_str().unwrap(), &[widened], &host).unwrap_err();
+        unwidened(&refused, &[widened]);
+        assert!(
+            refused.contains("lies inside no directory HERALD_FILES_ALLOWED lists on this host"),
+            "{refused}"
+        );
+        assert!(!refused.contains(&secret), "{refused}");
+    }
+    let stepped = work.join("..").join("outside");
+    let refused = hosted(
+        &config,
+        stepped.join("secret.md").to_str().unwrap(),
+        &[&stepped],
+        &host,
+    )
+    .unwrap_err();
+    unwidened(&refused, &[&stepped]);
+    assert!(refused.contains("is no absolute directory"), "{refused}");
+    let templates = work.join("templates");
+    fs::create_dir(&templates).unwrap();
+    fs::write(templates.join("body.md"), "{{ event.body }}").unwrap();
+    let body = templates.join("body.md");
+    assert!(hosted(&config, body.to_str().unwrap(), &[&templates], &host).is_ok());
+}
+
+#[test]
+fn with_no_host_list_files_allowed_reaches_no_further_than_the_config_s_own_directory() {
+    let directory = tempfile::tempdir().unwrap();
+    let directory = fs::canonicalize(directory.path()).unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let elsewhere = fs::canonicalize(elsewhere.path()).unwrap();
+    fs::write(elsewhere.join("body.md"), "{{ event.body }}").unwrap();
+    let body = elsewhere.join("body.md");
+    let refused = hosted(&directory, body.to_str().unwrap(), &[&elsewhere], &[]).unwrap_err();
+    unwidened(&refused, &[&elsewhere]);
+    assert!(
+        refused.contains("lies outside the config's own directory, and HERALD_FILES_ALLOWED, which lists more, is not set on this host"),
+        "{refused}"
+    );
+    let templates = directory.join("templates");
+    fs::create_dir(&templates).unwrap();
+    fs::write(templates.join("body.md"), "{{ event.body }}").unwrap();
+    let body = templates.join("body.md");
+    assert!(hosted(&directory, body.to_str().unwrap(), &[&templates], &[]).is_ok());
+}
+
+#[test]
+fn a_host_list_that_names_no_absolute_directory_stops_the_load_naming_none_of_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let absent = directory.path().join("absent");
+    for listed in ["relative/dir", absent.to_str().unwrap()] {
+        let refused = hosted(directory.path(), "body.md", &[], &[listed]).unwrap_err();
+        assert!(
+            refused.contains("HERALD_FILES_ALLOWED lists a directory that is not absolute or not a directory on this host"),
+            "{refused}"
+        );
+        assert!(!refused.contains(listed), "{refused}");
+    }
+}
+
+#[test]
+fn doctor_says_what_files_allowed_may_reach_and_where_the_host_took_it_from() {
+    let mut setup = super::world::setup(&CONFIG.replace("BODY", "body.md"));
+    let own = fs::canonicalize(setup.directory.path()).unwrap();
+    let run = super::world::herald(&setup, &super::world::World::default(), &["doctor"]);
+    assert!(
+        run.out.contains(&format!(
+            "[files] allowed may name directories inside the config's own, {}, alone: HERALD_FILES_ALLOWED is not set on this host",
+            own.display()
+        )),
+        "{}",
+        run.out
+    );
+    setup.vars.extend(listing(&[own.to_str().unwrap()]));
+    let world = super::world::World::default();
+    let run = super::world::herald(&setup, &world, &["doctor"]);
+    assert!(
+        run.out.contains(&format!(
+            "[files] allowed may name directories inside those HERALD_FILES_ALLOWED lists on this host: {}",
+            own.display()
+        )),
+        "{}",
+        run.out
+    );
+    let refusing = CONFIG.replace("BODY", "body.md") + "\n[files]\nallowed = [\"/\"]\n";
+    fs::write(setup.directory.path().join("herald.toml"), refusing).unwrap();
+    let run = super::world::herald(&setup, &world, &["doctor"]);
+    assert_eq!(run.code, crate::MISTAKEN, "{}", run.err);
+    assert!(run.err.contains("files.allowed"), "{}", run.err);
+    assert!(
+        run.err.contains("HERALD_FILES_ALLOWED lists on this host:"),
+        "{}",
+        run.err
+    );
+    let run = super::world::herald(&setup, &world, &["poll"]);
+    assert_eq!(run.code, crate::MISTAKEN, "{}", run.err);
+    assert!(run.err.contains("files.allowed"), "{}", run.err);
+    assert!(!run.err.contains("may name directories"), "{}", run.err);
+}
+
+#[test]
+fn a_read_outside_the_host_s_list_is_refused_whatever_directory_it_is_asked_within() {
+    use herald_config::Files as _;
+    let secret = canary();
+    let base = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(base.path()).unwrap();
+    let work = base.join("work");
+    let outside = base.join("outside");
+    fs::create_dir(&work).unwrap();
+    fs::create_dir(&outside).unwrap();
+    fs::write(outside.join("secret.md"), &secret).unwrap();
+    let beside = crate::Beside::new(&work, &listing(&[work.to_str().unwrap()])).unwrap();
+    let file = outside.join("secret.md");
+    assert_eq!(
+        beside.read(
+            file.to_str().unwrap(),
+            herald_config::Within::Allowed(outside.to_str().unwrap())
+        ),
+        Err(herald_config::Unread::Outside)
+    );
+}
+
+#[test]
+fn a_link_re_pointed_after_the_load_reads_nothing_outside_the_directory_vouched_for() {
+    use herald_config::Files as _;
+    let secret = canary();
+    let base = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(base.path()).unwrap();
+    let work = base.join("work");
+    let real = work.join("real");
+    let outside = base.join("outside");
+    let config = work.join("config");
+    for directory in [&work, &real, &outside, &config] {
+        fs::create_dir(directory).unwrap();
+    }
+    fs::write(real.join("body.md"), "{{ event.body }}").unwrap();
+    fs::write(outside.join("body.md"), &secret).unwrap();
+    let linked = work.join("linked");
+    symlink(&real, &linked).unwrap();
+    let host = [work.to_str().unwrap()];
+    let body = linked.join("body.md");
+    assert!(hosted(&config, body.to_str().unwrap(), &[&linked], &host).is_ok());
+    fs::remove_file(&linked).unwrap();
+    symlink(&outside, &linked).unwrap();
+    let beside = crate::Beside::new(&config, &listing(&host)).unwrap();
+    assert_eq!(
+        beside.read(
+            body.to_str().unwrap(),
+            herald_config::Within::Allowed(real.to_str().unwrap())
+        ),
+        Err(herald_config::Unread::Outside)
+    );
+    let refused = hosted(&config, body.to_str().unwrap(), &[&linked], &host).unwrap_err();
+    unwidened(&refused, &[&linked]);
+    assert!(!refused.contains(&secret), "{refused}");
+}
+
+#[test]
+fn a_handle_is_unmoved_only_while_it_is_the_file_at_its_link_free_path() {
+    let directory = tempfile::tempdir().unwrap();
+    let directory = fs::canonicalize(directory.path()).unwrap();
+    let (kept, other) = (directory.join("kept.md"), directory.join("other.md"));
+    fs::write(&kept, "kept").unwrap();
+    fs::write(&other, "other").unwrap();
+    let handle = same_file::Handle::from_path(&kept).unwrap();
+    assert!(crate::unmoved(&handle, &kept));
+    assert!(!crate::unmoved(&handle, &other));
+    let linked = directory.join("linked.md");
+    symlink(&kept, &linked).unwrap();
+    assert!(!crate::unmoved(&handle, &linked));
+    assert!(!crate::unmoved(&handle, &directory.join("absent.md")));
+    assert_eq!(crate::opened(&kept).unwrap(), Some("kept".to_owned()));
 }

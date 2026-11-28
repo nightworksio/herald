@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
-use herald_config::{Files as _, UNCONTAINED, Unread, Within};
+use herald_config::{Files as _, Reach, UNCONTAINED, Unread, Within};
 use herald_ports::{
     Algorithm, Base, Binding, Clock as _, CryptoError, Frame, Http as _, HttpError, InferError,
     Inference, Kv as _, Method, Outbound, Request, Sealing, Secret, SecretError, SecretText,
@@ -764,10 +764,46 @@ export function reader() {
 export function given() {
   return { "post.md": "listed" };
 }
+export function bounded(allowed) {
+  const read = () => undefined;
+  read.allowed = allowed;
+  read.beside = "/srv/config";
+  read.resolved = (directory) => (directory === "/srv/link" ? "/etc" : directory);
+  return read;
+}
+export function besideOnly() {
+  const read = () => undefined;
+  read.beside = "/srv/config";
+  return read;
+}
 "#)]
 extern "C" {
     fn reader() -> JsValue;
     fn given() -> JsValue;
+    fn bounded(allowed: JsValue) -> JsValue;
+    #[wasm_bindgen(js_name = besideOnly)]
+    fn beside_only() -> JsValue;
+}
+
+#[wasm_bindgen_test]
+fn a_reader_s_host_names_what_files_allowed_may_reach_every_link_followed() {
+    let listed = bounded(strings(&["/srv/herald"]).into());
+    let files = Given(&listed);
+    assert_eq!(files.reach(), Reach::Listed(vec!["/srv/herald".to_owned()]));
+    assert_eq!(files.resolved("/srv/link"), Some("/etc".to_owned()));
+    assert_eq!(
+        files.resolved("/srv/herald"),
+        Some("/srv/herald".to_owned())
+    );
+    let beside = beside_only();
+    let files = Given(&beside);
+    assert_eq!(files.reach(), Reach::Beside("/srv/config".to_owned()));
+    assert_eq!(files.resolved("/srv/config"), None);
+    let plain = reader();
+    assert_eq!(Given(&plain).reach(), Reach::Named);
+    let given = given();
+    assert_eq!(Given(&given).reach(), Reach::Named);
+    assert_eq!(Given(&given).resolved("/srv"), None);
 }
 
 #[wasm_bindgen_test]

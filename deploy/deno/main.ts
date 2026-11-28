@@ -8,7 +8,7 @@ const host = envHost(env, {
   fetch: guarded(),
   kv: { "deno-kv": async (at: { path?: string }) => denoKv(await Deno.openKv(at.path)) },
 });
-const herald = await composedFrom(configPath(env), host, "deno");
+const herald = await composedFrom(configPath(env), host, "deno", env.HERALD_FILES_ALLOWED);
 
 Deno.cron("herald poll", env.HERALD_POLL_CRON ?? "*/5 * * * *", () => rounds(herald, ["poll"]));
 Deno.cron("herald housekeep", env.HERALD_HOUSEKEEP_CRON ?? "17 * * * *", () => rounds(herald, ["housekeep"]));

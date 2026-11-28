@@ -49,6 +49,13 @@ fn doctor_prints_its_findings_as_json_with_the_first_layer_of_each_gap() {
             .is_some_and(|mistakes| mistakes.len() == 1),
         "{report}"
     );
+    assert!(
+        report["notes"][0]
+            .as_str()
+            .is_some_and(|note| note
+                .starts_with("[files] allowed may name directories inside the config's own")),
+        "{report}"
+    );
     let text = herald(&unstored, &world, &["doctor"]);
     assert_eq!((text.code, text.out.as_str()), (MISTAKEN, ""));
     assert_ne!(text.err, "");

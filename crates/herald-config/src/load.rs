@@ -324,7 +324,7 @@ pub fn load_with(
     let secret_keys = secret_keys(root.get_ref());
     let mut adopting = Vec::new();
     let (sections, expanded) = loader.expanding((root.into_inner(), &syntax), files, &mut adopting);
-    let read = &contained(files, file, loader.allowed(sections.files));
+    let read = &contained(files, file, loader.allowed(sections.files, files));
     loader.version(sections.version);
     loader.specs = loader.declared(sections.kinds);
     let (store, kept) = loader.store(sections.store).unzip();

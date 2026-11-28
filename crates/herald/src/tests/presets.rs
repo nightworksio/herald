@@ -41,7 +41,7 @@ body = "{{ event.body }}"
 fn loaded(directory: &Path, preset: &str) -> Result<herald_config::Config, String> {
     let path = directory.join("herald.toml");
     fs::write(&path, CONFIG.replace("./presets/team.toml", preset)).unwrap();
-    crate::read(path.to_str().unwrap())
+    crate::read(path.to_str().unwrap(), &std::collections::BTreeMap::new())
 }
 
 #[test]
@@ -93,6 +93,7 @@ fn presetting(
     let mut out = Vec::new();
     let done = pollster::block_on(crate::presetting::presetting(
         path.to_str().unwrap(),
+        &std::collections::BTreeMap::new(),
         asked,
         &mut answers,
         &mut out,
@@ -170,7 +171,7 @@ fn eject_writes_the_tables_in_place_of_the_preset_and_keeps_the_comments() {
         written.contains("# where herald keeps its records"),
         "{written}"
     );
-    let after = crate::read(path.to_str().unwrap()).unwrap();
+    let after = crate::read(path.to_str().unwrap(), &std::collections::BTreeMap::new()).unwrap();
     let routes = |config: &herald_config::Config| {
         config
             .routes
@@ -255,9 +256,7 @@ fn herald_preset_show_reads_the_config_it_is_given() {
 #[test]
 fn a_config_named_without_a_directory_reads_its_preset_from_the_working_directory() {
     use herald_config::Files as _;
-    let beside = crate::Beside {
-        directory: Path::new(""),
-    };
+    let beside = crate::Beside::new(Path::new(""), &std::collections::BTreeMap::new()).unwrap();
     let read = beside.read_inside("Cargo.toml").unwrap();
     assert!(read.contains("name = \"herald\""), "{read}");
 }

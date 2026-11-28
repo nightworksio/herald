@@ -434,7 +434,8 @@ pub(crate) async fn doctoring(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> u8 {
-    let findings = findings(config, asked, vars, connect).await;
+    let mut findings = findings(config, asked, vars, connect).await;
+    findings.notes.extend(crate::reach(path, vars));
     let secrets = EnvSecrets::from_vars(vars.clone());
     let mut shown = herald_flows::federation(
         config,
@@ -452,12 +453,19 @@ pub(crate) async fn doctoring(
 }
 
 /// `herald doctor` on a config that could not be read, as `message` says,
+/// with what `[files] allowed` may reach as its note where `reach` says it,
 /// printed as JSON where `asked` says so; `None` where it prints lines.
-pub(crate) fn unread(asked: DoctorArgs, message: &str, out: &mut dyn Write) -> Option<u8> {
+pub(crate) fn unread(
+    asked: DoctorArgs,
+    message: &str,
+    reach: Option<String>,
+    out: &mut dyn Write,
+) -> Option<u8> {
     (asked.format == Format::Json).then(|| {
         let mistakes: Vec<String> = message.lines().map(ToOwned::to_owned).collect();
         let findings = Findings {
             mistakes,
+            notes: reach.into_iter().collect(),
             ..Findings::default()
         };
         printed("", asked, (&findings, None), out)

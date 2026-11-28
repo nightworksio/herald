@@ -118,7 +118,7 @@ fn path_of(setup: &Setup) -> String {
 /// `herald peer add` as `args` asks, the operator answering `answer`.
 fn answered(setup: &Setup, world: &World, args: &[&str], answer: &str) -> (u8, String) {
     let path = path_of(setup);
-    let config = crate::read(&path).unwrap();
+    let config = crate::read(&path, &std::collections::BTreeMap::new()).unwrap();
     let mut all = vec!["herald", "peer", "add"];
     all.extend(args);
     let crate::cli::Command::Read(Reading::Peer(asked)) =
@@ -173,7 +173,7 @@ fn a_peer_s_keys_are_shown_and_pinned_once_the_operator_confirms_them() {
         )),
         "{out}"
     );
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     let peer = &config.peers["herald-peer-example"];
     assert_eq!(peer.url, "https://herald.peer.example");
     assert_eq!(peer.keys, [public(NEWER), public(OLDER)]);
@@ -213,7 +213,7 @@ fn keys_named_on_the_command_line_are_pinned_without_asking_and_only_they() {
     );
     assert_eq!(run.code, DONE, "{}{}", run.out, run.err);
     assert!(!run.out.contains("[y/N]"), "{}", run.out);
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert_eq!(config.peers["upstream"].keys, [public(OLDER)]);
     let unknown = herald(
         &setup,
@@ -242,7 +242,7 @@ fn keys_named_on_the_command_line_are_pinned_without_asking_and_only_they() {
     ];
     let by_multikey = herald(&setup, &world, &twice);
     assert_eq!(by_multikey.code, DONE, "{}", by_multikey.err);
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert_eq!(config.peers["other"].keys, [public(NEWER)]);
     let third = ["peer", "add", DOMAIN, "--name", "third", "--key", &older];
     let taken = herald(&setup, &world, &third);
@@ -303,7 +303,7 @@ fn a_peer_already_pinned_takes_new_keys_only_on_update_keeping_its_other_setting
         out.contains(&format!("{} (pinned)", fingerprint(&public(OLDER)))),
         "{out}"
     );
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert_eq!(config.peers["org"].keys, [public(NEWER), public(OLDER)]);
     assert_eq!(config.peers["org"].rate.to_string(), "60/m");
     let missing = herald(
@@ -345,7 +345,7 @@ fn a_revoked_key_is_never_pinned() {
     );
     let (code, _) = answered(&setup, &world, &[DOMAIN], "y\n");
     assert_eq!(code, DONE);
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert_eq!(config.peers["herald-peer-example"].keys, [public(NEWER)]);
     world.state.lock().unwrap().peer = Some(served(&[OLDER], 4));
     let only = herald(&setup, &world, &["peer", "add", DOMAIN, "--name", "lost"]);
@@ -525,12 +525,12 @@ fn revoke_takes_a_peer_or_one_key_out_and_keeps_it_revoked() {
         "{}",
         one.out
     );
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert_eq!(config.peers["org"].keys, [public(NEWER)]);
     assert_eq!(config.federation.revoked, [public(OLDER)]);
     let all = herald(&setup, &world, &["peer", "revoke", "org"]);
     assert!(all.out.contains("removed [peers.org]"), "{}", all.out);
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert!(config.peers.is_empty());
     assert_eq!(config.federation.revoked, [public(OLDER), public(NEWER)]);
     let gone = herald(&setup, &world, &["peer", "revoke", "org"]);

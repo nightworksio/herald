@@ -7,7 +7,7 @@ function host(env) {
   return envHost(env, { by: "this function", fetch: guarded(), sql: { postgres } });
 }
 
-export const composed = composeOnce(() => composedFrom(configPath(process.env), host(process.env), "netlify"));
+export const composed = composeOnce(() => composedFrom(configPath(process.env), host(process.env), "netlify", process.env.HERALD_FILES_ALLOWED));
 
 export default async function herald(request, context) {
   return answered(await composed(), request, (work) => context.waitUntil(work));

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import { mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { before, test } from "node:test";
 import {
   ROUNDS,
@@ -132,8 +133,33 @@ test("a config's files are read inside the directory each must lie in, every lin
   assert.equal(files("post.md"), "beside");
   assert.equal(files(elsewhere), null);
   assert.equal(files("link.md"), null);
-  assert.equal(files(elsewhere, away), "away");
+  assert.equal(files(elsewhere, realpathSync(away)), null);
   assert.equal(files("absent.md"), undefined);
+  assert.equal(files.beside, realpathSync(directory));
+  assert.equal(files.allowed, undefined);
+  assert.equal(files.resolved(join(directory, "post.md")), undefined);
+});
+
+test("the host's HERALD_FILES_ALLOWED lists what [files] allowed may reach, every link followed", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-files-"));
+  const work = await mkdtemp(join(tmpdir(), "herald-work-"));
+  await symlink(work, join(directory, "link"));
+  const files = beside(join(directory, "herald.toml"), [work, directory].join(delimiter));
+  assert.deepEqual(files.allowed, [realpathSync(work), realpathSync(directory)]);
+  assert.equal(files.beside, undefined);
+  assert.equal(files.resolved(join(directory, "link")), realpathSync(work));
+  const elsewhere = await mkdtemp(join(tmpdir(), "herald-elsewhere-"));
+  await writeFile(join(elsewhere, "away.md"), "away");
+  await writeFile(join(work, "kept.md"), "kept");
+  assert.equal(files(join(elsewhere, "away.md"), realpathSync(elsewhere)), null);
+  assert.equal(files(join(directory, "link", "kept.md"), realpathSync(work)), "kept");
+  for (const listed of ["relative", join(directory, "absent"), join(directory, "link", "..", "absent")]) {
+    assert.throws(() => beside(join(directory, "herald.toml"), listed), (error) => {
+      assert.match(error.message, /HERALD_FILES_ALLOWED lists a directory that is not absolute/);
+      assert.ok(!error.message.includes(listed));
+      return true;
+    });
+  }
 });
 
 test("a request aborted mid-body is dropped and the next is answered", async (t) => {

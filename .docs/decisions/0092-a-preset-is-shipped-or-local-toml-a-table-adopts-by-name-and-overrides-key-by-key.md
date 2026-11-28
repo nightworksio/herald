@@ -98,9 +98,32 @@ already ships named content under a `herald:` prefix: the templates
    read only where the path is a path of names under `herald.toml`'s
    directory with no `..` step, or an absolute path inside a directory
    `[files] allowed` lists. Each listed directory is absolute with no `..`
-   step. The list lives in `herald.toml` alone: a preset cannot write it,
-   and it has no environment variable or flag, so what a config may reach
-   is read in the one file a reviewer reads. herald's native binary and the
+   step. The list lives in `herald.toml` alone, and a preset cannot write
+   it. It may narrow, and never widen, a bound the host sets where a pull
+   request editing `herald.toml` cannot: `HERALD_FILES_ALLOWED`, absolute
+   directories joined as `PATH` joins its own. Each directory the list
+   names lies, every link followed and compared step by step, inside one
+   the host lists, or inside the config's own directory where the host
+   lists none; a host that reads files by name (Fastly's Config Store, a
+   JavaScript object of files, the WASI component) lets it name none. A
+   directory outside the bound stops the load; the error names
+   `files.allowed`, its line and why, and never the path written there.
+   `herald doctor` says what the bound is and where the host took it from.
+   The loader keeps each directory as the host resolved it, and a file is
+   read within that resolved directory, never the path as written, so a
+   link re-pointed after the load reaches nothing new. As the file is read
+   the host judges it again: its real path, every link followed, lies inside
+   the resolved directory and inside the host's bound, and the native binary
+   and the JavaScript shims read it through the handle they opened, once that
+   handle is found to be the file at that real path and the path holds no
+   link. A file swapped between the check and the open is therefore refused,
+   and what is read is a file that lay inside. A hard link inside an allowed
+   directory is the file it links, as it is for every reader; a checkout
+   holds none, as git stores no hard link.
+   Where the host's own variable comes from a file a pull request may
+   change, such as a workflow run on `pull_request`, the pull request may
+   change the bound too: `.docs/files.md` names which events run whose
+   workflow. herald's native binary and the
    JavaScript hosts' `deploy/files.mjs` resolve every link of the file and
    of the directory before the check, so a link inside the directory that
    leads out of it is refused; Fastly's Config Store and a JavaScript object
@@ -130,6 +153,9 @@ already ships named content under a `herald:` prefix: the templates
 | **A preset is only a wizard template written out in full** | A config of one line per preset would not get a later release's improved presets, and every adopter would carry tables they did not write. `eject` gives the written-out form to anyone who wants it. |
 | **Shipped presets only** | A team with several repositories repeats the same routes and templates; a local preset keeps them once, beside the config. |
 | **Files read from any path the config names** | Whoever may change `herald.toml` but not reach the host that runs herald could make herald post any file the process can read into a channel they read, and read some of it back from load errors. |
+| **`[files] allowed` in `herald.toml` with no host bound** | Whoever may edit `herald.toml` could list `/` and reach every file the process can read. |
+| **The list on the host alone, never in `herald.toml`** | A config could not narrow what it reads below what its host allows, and a reviewer could not read a config's reach in the file. |
+| **The working directory as the bound where the host sets none** | A server or container often runs in `/`, so that bound would reach every file. |
 | **A local preset with the full config's reach** | A preset file is reviewed less closely than `herald.toml`; secrets, hosts, privacy statements and acting rights in it would let a change to a shared file widen where herald writes or what it trusts. |
 
 ## Consequences
@@ -139,7 +165,8 @@ already ships named content under a `herald:` prefix: the templates
 - A local preset written for another config format stops the load, named.
 - Privacy statements, credentials and hosts live only in `herald.toml`.
 - A config naming a template, member list, block list or CA file outside its
-  directory lists that file's directory in `[files] allowed`.
+  directory lists that file's directory in `[files] allowed`, and its host
+  lists it, or a directory holding it, in `HERALD_FILES_ALLOWED`.
 
 ## Related
 

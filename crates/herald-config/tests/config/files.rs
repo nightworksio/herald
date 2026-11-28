@@ -4,7 +4,7 @@
 
 use std::cell::RefCell;
 
-use herald_config::{Files, Unread, Within, load, load_with};
+use herald_config::{Files, Reach, Unread, Within, load, load_with};
 
 const CONFIG: &str = r#"version = 1
 
@@ -107,10 +107,90 @@ fn every_file_the_config_names_outside_its_directory_is_refused_unread() {
     }
 }
 
+/// A host that lists `/etc/herald` and `/srv/herald` for `[files] allowed`
+/// to reach, where `/etc/herald/linked` leads to `/etc/ssh`, answering each
+/// file it is asked for, named in `asked`, with `answer`.
+struct Hosted<'a> {
+    asked: RefCell<Vec<String>>,
+    within: RefCell<Vec<String>>,
+    answer: &'a str,
+}
+
+impl Files for Hosted<'_> {
+    fn read(&self, path: &str, within: Within<'_>) -> Result<String, Unread> {
+        self.asked.borrow_mut().push(path.to_owned());
+        if let Within::Allowed(directory) = within {
+            self.within.borrow_mut().push(directory.to_owned());
+        }
+        Ok(self.answer.to_owned())
+    }
+
+    fn read_inside(&self, path: &str) -> Result<String, String> {
+        Err(format!("no file {path}"))
+    }
+
+    fn reach(&self) -> Reach {
+        Reach::Listed(vec!["/etc/herald".to_owned(), "/srv/herald".to_owned()])
+    }
+
+    fn resolved(&self, directory: &str) -> Option<String> {
+        Some(
+            directory
+                .replace("/etc/herald/linked", "/etc/ssh")
+                .replace("/srv/herald/linked", "/srv/herald/real"),
+        )
+    }
+}
+
+/// What loading `text` on [`Hosted`] says, every file it asked for, and the
+/// directory each allowed one was asked within.
+fn hosted_within(
+    text: &str,
+    answer: &str,
+) -> (
+    Result<herald_config::Config, String>,
+    Vec<String>,
+    Vec<String>,
+) {
+    let host = Hosted {
+        asked: RefCell::new(Vec::new()),
+        within: RefCell::new(Vec::new()),
+        answer,
+    };
+    let loaded = load_with("herald.toml", text, &host, &crate::common::kinds())
+        .map_err(|errors| errors.to_string());
+    (loaded, host.asked.into_inner(), host.within.into_inner())
+}
+
+/// What loading `text` on [`Hosted`] says, and every file it asked for.
+fn hosted(text: &str, answer: &str) -> (Result<herald_config::Config, String>, Vec<String>) {
+    let (loaded, asked, _) = hosted_within(text, answer);
+    (loaded, asked)
+}
+
+#[test]
+fn an_allowed_file_is_read_within_the_directory_the_host_resolved_and_vouched_for() {
+    for (written, file) in [
+        ("/srv/herald/linked", "/srv/herald/linked/body.md"),
+        ("/srv/herald/linked", "/srv/herald/real/body.md"),
+    ] {
+        let (loaded, asked, within) = hosted_within(
+            &format!(
+                "{}\n[files]\nallowed = [\"{written}\"]\n",
+                naming("templates.release.file", file)
+            ),
+            "{{ event.body }}",
+        );
+        assert!(loaded.is_ok(), "{loaded:?}");
+        assert_eq!(asked, [file]);
+        assert_eq!(within, ["/srv/herald/real"], "{file}");
+    }
+}
+
 #[test]
 fn a_file_in_a_directory_files_allowed_names_is_read() {
     let allowed = "\n[files]\nallowed = [\"/etc/herald\"]\n";
-    let (loaded, asked) = loading(
+    let (loaded, asked) = hosted(
         &format!(
             "{}{allowed}",
             naming("templates.release.file", "/etc/herald/body.md")
@@ -119,7 +199,7 @@ fn a_file_in_a_directory_files_allowed_names_is_read() {
     );
     assert!(loaded.is_ok(), "{loaded:?}");
     assert_eq!(asked, ["/etc/herald/body.md"]);
-    let (loaded, asked) = loading(
+    let (loaded, asked) = hosted(
         &format!(
             "{}{allowed}",
             naming("templates.release.file", "/etc/heraldic/body.md")
@@ -131,18 +211,80 @@ fn a_file_in_a_directory_files_allowed_names_is_read() {
 }
 
 #[test]
-fn a_directory_files_allowed_names_is_absolute_with_no_step_up() {
-    for directory in ["templates", "/etc/herald/../ssh"] {
-        let (loaded, _) = loading(
-            &format!("{CONFIG}\n[files]\nallowed = [\"{directory}\"]\n"),
-            "",
+fn files_allowed_never_reaches_past_what_the_host_lists_and_never_says_what_it_refuses() {
+    for widened in [
+        "/",
+        "/etc",
+        "/etc/heraldic",
+        "/srv/herald-old",
+        "/etc/herald/linked",
+        "/proc/self",
+    ] {
+        let (loaded, asked) = hosted(
+            &format!(
+                "{}\n[files]\nallowed = [\"{widened}\"]\n",
+                naming("templates.release.file", &format!("{widened}/body.md"))
+            ),
+            "{{ event.body }}",
         );
         let error = loaded.unwrap_err();
-        assert!(error.contains("files.allowed"), "{error}");
+        assert!(asked.is_empty(), "{widened}: read {asked:?}");
+        let (_, reason) = error.split_once("files.allowed: ").unwrap();
+        let reason = reason.lines().next().unwrap();
+        assert_eq!(
+            reason,
+            "a directory it lists, every link followed, lies inside no directory HERALD_FILES_ALLOWED lists on this host; herald doctor names what this host lets [files] allowed reach",
+            "{widened}"
+        );
+    }
+    let (loaded, _) = hosted(
+        &format!(
+            "{}\n[files]\nallowed = [\"/srv/herald/templates\"]\n",
+            naming("templates.release.file", "/srv/herald/templates/body.md")
+        ),
+        "{{ event.body }}",
+    );
+    assert!(loaded.is_ok(), "{loaded:?}");
+}
+
+#[test]
+fn a_host_that_reads_files_by_name_lets_files_allowed_name_no_directory() {
+    let (loaded, asked) = loading(
+        &format!(
+            "{}\n[files]\nallowed = [\"/etc/herald\"]\n",
+            naming("templates.release.file", "/etc/herald/body.md")
+        ),
+        "{{ event.body }}",
+    );
+    let error = loaded.unwrap_err();
+    assert!(asked.is_empty(), "{asked:?}");
+    assert!(
+        error.contains("files.allowed: a directory it lists, every link followed, cannot be reached: this host reads files by name"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_directory_files_allowed_names_is_absolute_with_no_step_up() {
+    for directory in ["templates", "./templates", "/etc/herald/../ssh"] {
+        let (loaded, asked) = hosted(
+            &format!(
+                "{}\n[files]\nallowed = [\"{directory}\"]\n",
+                naming("templates.release.file", &format!("{directory}/body.md"))
+            ),
+            "",
+        );
         assert!(
-            error.contains(&format!("\"{directory}\" is no absolute directory")),
+            asked.iter().all(|file| !file.contains("..")),
+            "{directory}: {asked:?}"
+        );
+        let error = loaded.unwrap_err();
+        let (_, reason) = error.split_once("files.allowed: ").unwrap();
+        assert!(
+            reason.starts_with("a directory it lists is no absolute directory"),
             "{error}"
         );
+        assert!(!reason.contains(directory), "{error}");
     }
 }
 
@@ -209,6 +351,14 @@ impl Files for Linked {
 
     fn read_inside(&self, path: &str) -> Result<String, String> {
         Err(format!("no file {path}"))
+    }
+
+    fn reach(&self) -> Reach {
+        Reach::Beside("/etc".to_owned())
+    }
+
+    fn resolved(&self, directory: &str) -> Option<String> {
+        Some(directory.to_owned())
     }
 }
 
