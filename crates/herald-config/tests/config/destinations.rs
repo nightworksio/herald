@@ -625,7 +625,10 @@ fn an_activitypub_route_is_refused_a_bad_domain_or_actor_what_it_cannot_do_and_a
 fn a_first_run_offers_each_destination_kind_that_names_a_way_in_and_no_other() {
     let first_runs = crate::common::kinds().first_runs();
     let kinds: Vec<&str> = first_runs.iter().map(|first_run| first_run.kind).collect();
-    assert_eq!(kinds, ["discord", "mastodon", "matrix", "slack", "teams"]);
+    assert_eq!(
+        kinds,
+        ["discord", "mastodon", "matrix", "slack", "teams", "email"]
+    );
     for first_run in &first_runs {
         assert!(!first_run.variants.is_empty(), "{}", first_run.kind);
         assert!(!first_run.described.is_empty(), "{}", first_run.kind);

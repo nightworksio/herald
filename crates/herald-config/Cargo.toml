@@ -26,6 +26,7 @@ toml.workspace = true
 
 [dev-dependencies]
 herald-dest-discord.workspace = true
+herald-dest-email.workspace = true
 herald-dest-fediverse.workspace = true
 herald-dest-herald.workspace = true
 herald-dest-matrix.workspace = true

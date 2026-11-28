@@ -3,9 +3,10 @@
 
 use herald_core::Delivery;
 use herald_dest_discord::{Credential, Discord, RouteOptions, UNCHECKED};
-use herald_kinds::{Audience, Probe, Reach, Recorded};
+use herald_kinds::{Audience, Probe, Probing, Reach, Recorded};
 use herald_ports::{Response, Secret};
 use herald_testing::ScriptedHttp;
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 const CHANNEL: &str = "1566184281406177531";
@@ -267,8 +268,14 @@ fn doctor_names_the_roles_that_withhold_a_channel_its_section() {
         answer(200, &server(VIEW | SEND, &[(MODS, "Mods", 0)])),
         answer(200, &json!({ "roles": [MODS] })),
     ]);
-    let probes =
-        pollster::block_on(bot(CHANNEL, &[]).probe(&http, &Delivery::default(), Recorded::Kept));
+    let probes = pollster::block_on(bot(CHANNEL, &[]).probe(
+        &http,
+        &Delivery::default(),
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     assert_eq!(
         probes,
         [
@@ -342,7 +349,14 @@ fn an_onboarding_prompt_showing_the_channel_makes_it_public_and_one_showing_anot
 fn doctor_names_a_channel_that_is_no_path_segment_and_says_nothing_of_a_private_one() {
     let probed = |discord: &Discord, answers: Vec<Response>| {
         let http = ScriptedHttp::new(answers);
-        let probes = pollster::block_on(discord.probe(&http, &Delivery::default(), Recorded::Kept));
+        let probes = pollster::block_on(discord.probe(
+            &http,
+            &Delivery::default(),
+            Probing {
+                recorded: Recorded::Kept,
+                now: Timestamp::UNIX_EPOCH,
+            },
+        ));
         (probes, http.asked().len())
     };
     let (dotted, asked) = probed(&bot("..", &[]), vec![answer(200, &json!({ "id": "1" }))]);

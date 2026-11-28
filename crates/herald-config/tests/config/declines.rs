@@ -10,7 +10,7 @@ use crate::addressed::loaded;
 
 /// Every kind of destination herald ships, and the error envelope its
 /// platform declines a request with, where it has one.
-const ENVELOPES: [(&str, Option<&str>); 8] = [
+const ENVELOPES: [(&str, Option<&str>); 9] = [
     (
         "discord",
         Some(r#"{"code": 50013, "message": "Missing Permissions"}"#),
@@ -22,6 +22,10 @@ const ENVELOPES: [(&str, Option<&str>); 8] = [
     ),
     ("slack", Some(r#"{"ok": false, "error": "not_in_channel"}"#)),
     ("teams", None),
+    (
+        "email",
+        Some(r#"{"__type": "MessageRejected", "message": "Email address is not verified."}"#),
+    ),
     ("activitypub", None),
     ("herald", None),
     ("herald-push", None),
@@ -43,8 +47,18 @@ fn every_kind_of_destination_decides_which_answers_are_its_platform_s_own_refusa
     for (kind, envelope) in ENVELOPES {
         let config = loaded(kind, "").unwrap();
         let route = &config.routes[0];
-        let reached = config.destinations[&route.route.destination]
-            .reach(&route.options, "", Secret::new("HERALD_PLACE", "unread"))
+        let destination = &config.destinations[&route.route.destination];
+        let read = destination
+            .reads()
+            .into_iter()
+            .map(|reference| Secret::new(reference.secret.clone(), "unread"))
+            .collect();
+        let reached = destination
+            .reach_reading(
+                &route.options,
+                "",
+                (Secret::new("HERALD_PLACE", "unread"), read),
+            )
             .unwrap();
         assert_eq!(
             envelope.is_some_and(|envelope| reached.declines(&forbidden(envelope))),

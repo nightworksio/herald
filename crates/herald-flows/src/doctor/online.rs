@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
 use herald_keys::ed25519_of;
-use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted};
+use herald_kinds::{Expand, Expanded, Polling, Probe, Probing, Standing, Unlisted};
 use herald_ports::{Algorithm, DynHttp, Http, SecretError, Secrets, Signer, Tokens};
 use jiff::Timestamp;
 
@@ -98,7 +98,14 @@ pub async fn online<H: Http, G: Signer>(
         let delivery = &route.config.route.delivery;
         for probe in route
             .reached
-            .probe(http, delivery, connected.recorded)
+            .probe(
+                http,
+                delivery,
+                Probing {
+                    recorded: connected.recorded,
+                    now,
+                },
+            )
             .await
         {
             match probe {

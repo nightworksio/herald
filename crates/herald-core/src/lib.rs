@@ -84,7 +84,7 @@ pub use bounds::{
 pub use bump::{Bump, BumpPattern, Bumper, NotABumpPattern, bumped, read_bump};
 pub use chunk::{Room, chunk, size};
 pub use claim_pattern::ClaimPattern;
-pub use credentials::{basic, bot_or_webhook};
+pub use credentials::{base64_of, basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, Proof, Tombstone, Unheld, fresh};
 pub use decide::{
     Answer, Decided, LONGEST_OPTION, MOST_OPTIONS, Options, Question, Slot, decided, state,

@@ -111,15 +111,15 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
     /// word, so every kind decides it (ADR-0067).
     fn declines(&self, answer: &Response) -> bool;
 
-    /// What its platform says, asked through `http`, of its credential and
-    /// of what a route delivering as `delivery`, its announcements
-    /// `recorded` so, needs, with nothing posted (ADR-0002): nothing where
-    /// it has no platform to ask.
+    /// What its platform says, asked through `http` as `probing` says, of
+    /// its credential and of what a route delivering as `delivery` needs,
+    /// with nothing posted (ADR-0002): nothing where it has no platform to
+    /// ask.
     fn probe<'a>(
         &'a self,
         _http: &'a dyn DynHttp,
         _delivery: &'a Delivery,
-        _recorded: Recorded,
+        _probing: Probing,
     ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(ready(Vec::new()))
     }
@@ -161,6 +161,16 @@ pub enum Recorded {
     Kept,
     /// In the route's own posts, read back for their markers.
     Posts,
+}
+
+/// How a probe asks: where the route's announcements are recorded, and
+/// when it asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Probing {
+    /// Where the route's announcements are recorded.
+    pub recorded: Recorded,
+    /// When it asks.
+    pub now: Timestamp,
 }
 
 /// What a platform answers when asked whether it serves a route

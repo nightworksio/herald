@@ -241,6 +241,46 @@ fn a_self_hosted_forgejo_writes_its_api_and_keeps_records_on_its_branch() {
 }
 
 #[test]
+fn an_email_first_run_writes_its_transport_unasked_and_asks_the_rest() {
+    let directory = tempfile::tempdir().unwrap();
+    git(directory.path(), "git@github.com:owner/app.git");
+    let asked = [
+        "--chat",
+        "email",
+        "--with",
+        "from=releases@example.org",
+        "--with",
+        "region=eu-west-1",
+        "--with",
+        "to=team@example.org",
+        "--yes",
+    ];
+    let (done, out) = init(directory.path(), &asked, "", Some(key()));
+    assert_eq!(done, Ok(crate::DONE), "{out}");
+    let text = written(directory.path()).unwrap();
+    for written in [
+        "kind = \"email\"\ntransport = \"ses\"\nfrom = \"releases@example.org\"\nregion = \"eu-west-1\"\n",
+        "access_key_id = { secret = \"AWS_ACCESS_KEY_ID\" }",
+        "secret_access_key = { secret = \"AWS_SECRET_ACCESS_KEY\" }",
+        "to = \"team@example.org\"",
+    ] {
+        assert!(text.contains(written), "{written}\n{text}");
+    }
+    let again = tempfile::tempdir().unwrap();
+    git(again.path(), "git@github.com:owner/app.git");
+    let (refused, _) = init(
+        again.path(),
+        &["--chat", "email", "--with", "transport=smtp", "--yes"],
+        "",
+        Some(key()),
+    );
+    assert_eq!(
+        refused,
+        Err("--with: an unknown key or no KEY=VALUE; the email ses asks from, region, access_key_id, secret_access_key, to".to_owned())
+    );
+}
+
+#[test]
 fn on_gitlab_only_a_way_in_that_reads_its_posts_back_is_offered() {
     let directory = tempfile::tempdir().unwrap();
     git(directory.path(), "https://gitlab.com/group/sub/app.git");
@@ -521,7 +561,7 @@ fn a_wrong_answer_given_as_a_flag_stops_with_why_and_writes_nothing() {
         ),
         (
             &["--chat", "no-such-chat", "--yes"][..],
-            "--chat: answer one of discord, mastodon, matrix, slack, teams",
+            "--chat: answer one of discord, mastodon, matrix, slack, teams, email",
         ),
     ] {
         let (done, _) = init(directory.path(), args, "", Some(key()));

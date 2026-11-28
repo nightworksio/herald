@@ -51,6 +51,10 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
                 "`webhook`, `app_id`, `app_password`, `tenant`, `cloud`, `login`, `scope`, `service`, `openid`, `issuer`, `interactions`, `symbols`, `waits`"
             ),
             unknown(
+                "email",
+                "`transport`, `from`, `reply_to`, `max_bytes`, `region`, `fips`, `dual_stack`, `endpoint`, `access_key_id`, `secret_access_key`, `session_token`, `configuration_set`, `symbols`, `waits`"
+            ),
+            unknown(
                 "activitypub",
                 "`domain`, `key`, `symbols`, `waits`, `outbox_page`, `deliveries`, `mode`, `block`, `allow`, `followers`, `approve`, `lists`"
             ),

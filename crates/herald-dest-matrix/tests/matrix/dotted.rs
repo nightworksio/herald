@@ -4,10 +4,11 @@
 
 use herald_core::{Declined, Delivery, Entry, Facts, Sent, Step};
 use herald_dest_matrix::{Matrix, MatrixMarkers, RouteOptions};
-use herald_kinds::{Probe, Reach, Recorded};
+use herald_kinds::{Probe, Probing, Reach, Recorded};
 use herald_ports::{Markers, Response, Secret, USER_AGENT};
 use herald_testing::sample::{announcement, marker};
 use herald_testing::{Fixture, Replay, ScriptedHttp};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 const DOTTED: &str = "the Matrix id in the request's path is empty or a dot segment, which names nothing in a URL path, so this step is not taken";
@@ -105,7 +106,14 @@ fn a_dotted_room_is_pinned_unpinned_redacted_or_read_back_with_no_request() {
     );
     assert_eq!(http.finish(), Ok(()));
     let checking = ScriptedHttp::new(vec![whoami()]);
-    let probes = pollster::block_on(dotted.probe(&checking, &Delivery::default(), Recorded::Kept));
+    let probes = pollster::block_on(dotted.probe(
+        &checking,
+        &Delivery::default(),
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     assert_eq!(
         probes,
         [

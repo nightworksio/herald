@@ -232,7 +232,7 @@ fn sign(model: &Model, request: Request, now: Timestamp) -> Request {
     signed(
         request,
         &canonical,
-        herald_core::media::JSON,
+        Some(herald_core::media::JSON),
         &[],
         &signing,
         now,

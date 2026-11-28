@@ -37,9 +37,12 @@ fn config(kind: &str, variant: &Variant) -> String {
 }
 
 #[test]
-fn discord_mastodon_matrix_slack_and_teams_are_offered_first() {
+fn discord_mastodon_matrix_slack_teams_and_email_are_offered_first() {
     let kinds: Vec<&str> = first_runs().iter().map(|run| run.kind).collect();
-    assert_eq!(kinds, ["discord", "mastodon", "matrix", "slack", "teams"]);
+    assert_eq!(
+        kinds,
+        ["discord", "mastodon", "matrix", "slack", "teams", "email"]
+    );
 }
 
 #[test]
@@ -71,7 +74,7 @@ fn every_question_s_example_is_an_answer_it_takes() {
         for variant in run.variants {
             for ask in variant.asks {
                 let taken = match ask.answer {
-                    Answer::Choice { .. } => answered(ask),
+                    Answer::Choice { .. } | Answer::Fixed { .. } => answered(ask),
                     Answer::Secret { .. } | Answer::Text => ask.example.to_owned(),
                 };
                 assert_eq!(
