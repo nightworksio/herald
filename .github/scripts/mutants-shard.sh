@@ -73,7 +73,8 @@ report() {
 
 watch() {
   local -A started=()
-  local tick=0 log name free oom seen_oom=0
+  local tick=0 log name free oom seen_oom
+  seen_oom=$(killed)
   while sleep "$TICK_SECONDS"; do
     for log in "${OUT}"/log/*.log; do
       [ -e "$log" ] && [ -z "${started[$log]:-}" ] || continue

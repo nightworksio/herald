@@ -4,9 +4,9 @@ narrowed to its diff by its shards. The nightly run mutates the crates changed
 since the last green scheduled run on main, and every crate depending on one.
 Where that run cannot be found, or a change outside the crates may reach a
 build or a test, the nightly run mutates the whole workspace too. A push to
-main mutates nothing. A run started by hand may name one shard, as K/N, and a
-regular expression of the mutants it mutates; it then runs that shard alone
-and no runtime job. It runs on every event, and writes the scope to
+main mutates nothing. A run started by hand may name one shard, as K/N, and
+a regular expression of the mutants it mutates, as cargo-mutants' `--re`
+reads it; it then runs only those, and no runtime job. It runs on every event, and writes the scope to
 $GITHUB_OUTPUT: `shards` (the cargo-mutants arguments naming what the shards
 mutate, empty for nothing), `excluded` (the cargo-mutants arguments naming
 what they leave to the runtime jobs), `examined` (the regular expression of
@@ -234,7 +234,6 @@ def asked(found: Scope, shard: str, examined: str) -> Scope:
     if "\n" in examined:
         raise ValueError("the mutants are named by a regular expression on one line")
     if examined:
-        re.compile(examined)
         found = found._replace(examined=examined, why=f"{found.why}; only the mutants matching {examined!r}")
     if not shard:
         return found
@@ -273,7 +272,7 @@ if __name__ == "__main__":
     found = scope(event, os.environ.get("SCHEDULE", ""), os.environ.get("REF", ""))
     try:
         found = asked(found, os.environ.get("ASKED_SHARD", ""), os.environ.get("ASKED_MUTANTS", ""))
-    except (ValueError, re.error) as error:
+    except ValueError as error:
         print(f"::error::{error}")
         sys.exit(2)
     diff = changes(os.environ["BASE"], pathlib.Path(os.environ["RUNNER_TEMP"]) / "change.diff") if event == "pull_request" else None

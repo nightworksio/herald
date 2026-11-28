@@ -246,9 +246,7 @@ class Asked(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "K/N, K below N", msg=shard):
                 mutated.asked(self.WHOLE, shard, "")
 
-    def test_mutants_named_by_no_regular_expression_on_one_line_are_refused(self):
-        with self.assertRaises(mutated.re.error):
-            mutated.asked(self.WHOLE, "", "(")
+    def test_mutants_named_on_more_than_one_line_are_refused(self):
         with self.assertRaisesRegex(ValueError, "one line"):
             mutated.asked(self.WHOLE, "", "a\nb")
 
