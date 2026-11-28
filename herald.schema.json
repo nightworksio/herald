@@ -1311,6 +1311,10 @@
                 "09:00"
               ]
             },
+            "conversation": {
+              "description": "The id of the channel or chat the bot posts to, such as\n`19:…@thread.tacv2`, where its app is installed. A bot needs one; a\nwebhook posts where its workflow names.",
+              "type": "string"
+            },
             "crosspost": {
               "description": "Whether to crosspost each announcement.",
               "type": "boolean",
@@ -1399,6 +1403,10 @@
             "thread": {
               "description": "The thread to open for each announcement.",
               "$ref": "#/$defs/Thread"
+            },
+            "threads": {
+              "description": "Whether the bot posts each overflow part as a reply in its post's\nthread, through Microsoft's `replyChains`, which Microsoft marks as\na preview; each part is posted on its own where unset.",
+              "type": "boolean"
             },
             "versions": {
               "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
@@ -1905,6 +1913,26 @@
         }
       },
       "additionalProperties": false
+    },
+    "Cloud": {
+      "description": "The Microsoft cloud a Teams bot is registered in: each names the hosts\nits bot signs in at and posts through, as Microsoft's documentation\ngives them (ADR-0093).",
+      "oneOf": [
+        {
+          "description": "Microsoft's public cloud.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "Office 365 GCC High, on Azure Government.",
+          "type": "string",
+          "const": "gcc-high"
+        },
+        {
+          "description": "The Department of Defense's environment, on Azure Government.",
+          "type": "string",
+          "const": "dod"
+        }
+      ]
     },
     "CodeownersRef": {
       "description": "The branch a repository's CODEOWNERS file is read at.",
@@ -2460,16 +2488,44 @@
           ]
         },
         {
-          "description": "Microsoft Teams, by Workflows webhook.",
+          "description": "Microsoft Teams, by Workflows webhook or as a bot.",
           "type": "object",
           "properties": {
+            "app_id": {
+              "description": "A bot's Microsoft App ID: the application (client) ID of its\nMicrosoft Entra app registration. A bot edits its posts, and replies\nin their threads where a route says so.",
+              "type": "string"
+            },
+            "app_password": {
+              "description": "The secret holding the bot's client secret, which its app\nregistration made.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "cloud": {
+              "description": "The Microsoft cloud the bot is registered in: `public` where unset,\n`gcc-high` or `dod`. It names the hosts below where they are unset.",
+              "$ref": "#/$defs/Cloud"
+            },
             "kind": {
               "type": "string",
               "const": "teams"
             },
+            "login": {
+              "description": "The base URL of the sign-in service the bot asks for its token, in\nplace of its cloud's, such as `https://login.microsoftonline.com`.",
+              "type": "string"
+            },
+            "scope": {
+              "description": "The resource the bot's token is for, in place of its cloud's, such\nas `https://api.botframework.com`.",
+              "type": "string"
+            },
+            "service": {
+              "description": "The service URL the bot posts through, in place of its cloud's, such\nas `https://smba.trafficmanager.net/teams/`.",
+              "type": "string"
+            },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
               "$ref": "#/$defs/Symbols"
+            },
+            "tenant": {
+              "description": "The id of the Microsoft Entra tenant the bot's app is registered in,\nfor a bot registered for one tenant; where unset, the cloud's own\ntenant for bots registered for every tenant: `botframework.com` in\nthe public cloud.",
+              "type": "string"
             },
             "waits": {
               "description": "How long it waits before sending again where Teams answers that it\nis unwell or limited and names no wait.",
@@ -2482,8 +2538,7 @@
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "webhook"
+            "kind"
           ]
         },
         {
@@ -9598,6 +9653,10 @@
           "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
           "$ref": "#/$defs/AreaPaths"
         },
+        "conversation": {
+          "description": "The id of the channel or chat the bot posts to, such as\n`19:…@thread.tacv2`, where its app is installed. A bot needs one; a\nwebhook posts where its workflow names.",
+          "type": "string"
+        },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
           "type": "boolean",
@@ -9699,6 +9758,10 @@
         "thread": {
           "description": "The thread to open for each announcement.",
           "$ref": "#/$defs/Thread"
+        },
+        "threads": {
+          "description": "Whether the bot posts each overflow part as a reply in its post's\nthread, through Microsoft's `replyChains`, which Microsoft marks as\na preview; each part is posted on its own where unset.",
+          "type": "boolean"
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",

@@ -28,7 +28,8 @@ pub const UNREACHED: &str =
     "its destination cannot be reached with its options, so it shows no request";
 
 /// An `Http` that sends nothing: it keeps each request it is handed, in
-/// order, and answers each with a success naming [`DRY_ID`].
+/// order, and answers each with a success naming [`DRY_ID`], as the id of
+/// what it made and as a token a sign-in gives.
 #[derive(Debug, Clone, Default)]
 pub struct Recording {
     kept: Arc<Mutex<Vec<Request>>>,
@@ -51,7 +52,8 @@ impl Http for Recording {
         ready(Ok(Response {
             status: status::OK,
             headers: Vec::new(),
-            body: format!(r#"{{"id":"{DRY_ID}"}}"#).into_bytes(),
+            body: format!(r#"{{"id":"{DRY_ID}","access_token":"{DRY_ID}","expires_in":3600}}"#)
+                .into_bytes(),
         }))
     }
 }

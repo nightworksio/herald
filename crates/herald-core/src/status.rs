@@ -24,6 +24,8 @@ pub const REQUEST_TIMEOUT: u16 = 408;
 pub const CONFLICT: u16 = 409;
 /// What the request names existed and is gone for good.
 pub const GONE: u16 = 410;
+/// A condition the request names does not hold on the server.
+pub const PRECONDITION_FAILED: u16 = 412;
 /// The request's body is larger than the server reads.
 pub const CONTENT_TOO_LARGE: u16 = 413;
 /// The request reads, but the server cannot do what it asks.

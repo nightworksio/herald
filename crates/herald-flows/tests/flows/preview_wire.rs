@@ -136,13 +136,17 @@ fn a_route_herald_serves_delivers_or_pushes_sends_no_request_and_says_why() {
 }
 
 #[test]
-fn a_recording_keeps_each_request_until_taken_and_answers_each_with_the_dry_id() {
+fn a_recording_keeps_each_request_until_taken_and_answers_each_with_the_dry_id_as_id_and_token() {
     let recording = herald_flows::Recording::default();
     let request = Request::new(Method::Get, SecretText::plain("https://example.org"));
     let answer = pollster::block_on(recording.send(request.clone())).unwrap();
     assert_eq!(
         (answer.status, answer.body),
-        (200, format!(r#"{{"id":"{DRY_ID}"}}"#).into_bytes())
+        (
+            200,
+            format!(r#"{{"id":"{DRY_ID}","access_token":"{DRY_ID}","expires_in":3600}}"#)
+                .into_bytes()
+        )
     );
     assert_eq!(recording.taken(), [request]);
     assert_eq!(recording.taken(), []);

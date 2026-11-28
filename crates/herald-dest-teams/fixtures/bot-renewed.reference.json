@@ -1,0 +1,460 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://login.example/contoso.onmicrosoft.com/oauth2/v2.0/token",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "body": "«sealed: 157 bytes»"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "token_type": "Bearer",
+          "expires_in": 3600,
+          "ext_expires_in": 3600,
+          "access_token": "token-1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+        "headers": {
+          "Authorization": "Bearer «secret:the Microsoft Teams bot's token»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": "1700000000001"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+        "headers": {
+          "Authorization": "Bearer «secret:the Microsoft Teams bot's token»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": "1700000000001"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://login.example/contoso.onmicrosoft.com/oauth2/v2.0/token",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "body": "«sealed: 157 bytes»"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "token_type": "Bearer",
+          "expires_in": 3600,
+          "ext_expires_in": 3600,
+          "access_token": "token-1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+        "headers": {
+          "Authorization": "Bearer «secret:the Microsoft Teams bot's token»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": "1700000000001"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://login.example/contoso.onmicrosoft.com/oauth2/v2.0/token",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "body": "«sealed: 157 bytes»"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "token_type": "Bearer",
+          "expires_in": 7200,
+          "ext_expires_in": 3600,
+          "access_token": "token-1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+        "headers": {
+          "Authorization": "Bearer «secret:the Microsoft Teams bot's token»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": "1700000000001"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+        "headers": {
+          "Authorization": "Bearer «secret:the Microsoft Teams bot's token»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": "1700000000001"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://login.example/contoso.onmicrosoft.com/oauth2/v2.0/token",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "body": "«sealed: 157 bytes»"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "token_type": "Bearer",
+          "expires_in": 3600,
+          "ext_expires_in": 3600,
+          "access_token": "token-1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://smba.example/teams/v3/conversations/19%3Aabc%40thread.tacv2/activities",
+        "headers": {
+          "Authorization": "Bearer «secret:the Microsoft Teams bot's token»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "attachments": [
+            {
+              "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "actions": [
+                  {
+                    "title": "Release",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                  },
+                  {
+                    "title": "Changelog",
+                    "type": "Action.OpenUrl",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                  }
+                ],
+                "body": [
+                  {
+                    "size": "Large",
+                    "text": "📦 php\\-mutation\\-gate v0\\.1\\.0",
+                    "type": "TextBlock",
+                    "weight": "Bolder",
+                    "wrap": true
+                  },
+                  {
+                    "text": "## Added",
+                    "type": "TextBlock",
+                    "wrap": true
+                  }
+                ],
+                "type": "AdaptiveCard",
+                "version": "1.0"
+              },
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "contentUrl": null
+            }
+          ],
+          "type": "message"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": "1700000000001"
+        }
+      }
+    }
+  ]
+}

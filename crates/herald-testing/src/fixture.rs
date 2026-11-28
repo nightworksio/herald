@@ -21,7 +21,8 @@ pub struct Recorded {
     /// The headers, their secrets redacted.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
-    /// The body: JSON where it parses as JSON, otherwise its text.
+    /// The body: JSON where it parses as JSON, otherwise its text; a
+    /// sealed body by its length alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body: Option<Value>,
 }
@@ -38,7 +39,10 @@ impl Recorded {
                 .iter()
                 .map(|(name, value)| (name.clone(), value.redacted()))
                 .collect(),
-            body: body(&request.body),
+            body: match request.shown_body() {
+                Some(shown) if request.sealed => Some(Value::String(shown)),
+                _ => body(&request.body),
+            },
         }
     }
 }

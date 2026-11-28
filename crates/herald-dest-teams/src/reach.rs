@@ -4,14 +4,14 @@ use herald_core::{Announcement, Chore, Declined, Delivery, Entry, Profile, Sent,
 use herald_kinds::{Audience, Probe, Reach, Recorded, Signing, UNREAD, UnreadPosts};
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
 
-use crate::teams::{TEAMS, Teams, UNCHECKED, unaddressed};
+use crate::teams::{TEAMS, Teams, UNCHECKED, Way, unaddressed};
 
 /// What doctor `--online` says of a webhook it cannot ask without posting.
 const UNASKED: &str = "a Workflows webhook cannot be asked whether it takes its URL without posting to it; herald doctor --online --post posts one test message there";
 
 impl Reach for Teams {
     fn profile(&self) -> Profile {
-        crate::teams::profile()
+        Self::profile(self)
     }
 
     fn base(&self) -> Base<'_> {
@@ -21,13 +21,21 @@ impl Reach for Teams {
     fn send<'a>(
         &'a self,
         http: &'a dyn DynHttp,
-        _: Signing<'a>,
+        signing: Signing<'a>,
         step: &'a Step,
         announcement: &'a Announcement,
         _: &'a Delivery,
-        _: &'a Entry,
+        entry: &'a Entry,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
-        Box::pin(async move { Self::send(self, &Erased(http), step, announcement).await })
+        Box::pin(async move {
+            Self::send(
+                self,
+                &Erased(http),
+                (step, announcement, entry),
+                signing.now,
+            )
+            .await
+        })
     }
 
     fn housekeep<'a>(
@@ -54,24 +62,27 @@ impl Reach for Teams {
     }
 
     fn keeps_edits(&self) -> bool {
-        false
+        matches!(self.way, Way::Bot(_))
     }
 
-    fn declines(&self, _: &Response) -> bool {
-        false
+    fn declines(&self, answer: &Response) -> bool {
+        matches!(self.way, Way::Bot(_)) && crate::bot::declines(answer)
     }
 
     fn probe<'a>(
         &'a self,
-        _: &'a dyn DynHttp,
+        http: &'a dyn DynHttp,
         _: &'a Delivery,
         _: Recorded,
     ) -> Boxed<'a, Vec<Probe>> {
-        let probe = if self.addressed() {
-            Probe::Said(UNASKED.to_owned())
-        } else {
-            Probe::Credential(unaddressed(&self.webhook))
-        };
-        Box::pin(ready(vec![probe]))
+        Box::pin(async move {
+            match &self.way {
+                Way::Bot(bot) => bot.probe(http).await,
+                Way::Webhook { webhook, origin } => vec![match origin {
+                    Some(_) => Probe::Said(UNASKED.to_owned()),
+                    None => Probe::Credential(unaddressed(webhook)),
+                }],
+            }
+        })
     }
 }
