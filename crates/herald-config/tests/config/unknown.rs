@@ -52,7 +52,7 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
             ),
             unknown(
                 "email",
-                "`transport`, `from`, `reply_to`, `max_bytes`, `region`, `fips`, `dual_stack`, `endpoint`, `access_key_id`, `secret_access_key`, `session_token`, `configuration_set`, `symbols`, `waits`"
+                "`transport`, `from`, `reply_to`, `max_bytes`, `region`, `fips`, `dual_stack`, `endpoint`, `access_key_id`, `secret_access_key`, `session_token`, `configuration_set`, `domain`, `api_key`, `symbols`, `waits`"
             ),
             unknown(
                 "activitypub",

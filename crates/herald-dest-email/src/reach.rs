@@ -58,7 +58,7 @@ impl Reach for Email {
     }
 
     fn declines(&self, answer: &Response) -> bool {
-        crate::ses::declines(answer)
+        self.carrier().declines(answer)
     }
 
     fn probe<'a>(
@@ -67,6 +67,6 @@ impl Reach for Email {
         _: &'a Delivery,
         probing: Probing,
     ) -> Boxed<'a, Vec<Probe>> {
-        Box::pin(self.ses().probe(http, probing.now))
+        Box::pin(self.carrier().probe(http, probing.now))
     }
 }

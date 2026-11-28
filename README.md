@@ -43,7 +43,7 @@ enough to start.
 - **Matrix:** threaded messages in any room, from a bot account;
 - **Slack:** Block Kit messages with threaded overflow, from a bot or an incoming webhook;
 - **Microsoft Teams:** Adaptive Cards from a bot or a Workflows webhook;
-- **Email:** one message per part, each later part a reply to the first, through Amazon SES;
+- **Email:** one message per part, each later part a reply to the first, through Amazon SES or Mailgun;
 - **the Fediverse:** posts from a Mastodon-API account, or from herald's own
   ActivityPub actor that people follow per project.
 

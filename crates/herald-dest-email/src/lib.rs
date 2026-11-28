@@ -13,6 +13,8 @@
 //! Amazon SES carries each message whole, by `SendEmail` of its API version
 //! 2, each request signed with AWS Signature Version 4 to the region's
 //! endpoint alone, the recipients beside the message and tracking off.
+//! Mailgun carries it whole too, by `messages.mime` to its region's host
+//! alone, the recipients beside the message and tracking off.
 
 mod address;
 mod body;
@@ -20,6 +22,7 @@ mod config;
 mod email;
 mod first_run;
 mod header;
+mod mailgun;
 mod message;
 mod options;
 mod reach;
@@ -28,8 +31,9 @@ mod ses;
 pub use address::{ADDRESS_MOST, AddrSpec, LABEL_MOST, LOCAL_MOST, Mailbox, NAME_MOST, Unparsed};
 pub use body::QUOTED_LINE;
 pub use config::{EmailKind, FEWEST_BYTES, KIND};
-pub use email::{Addressing, Email, MARKUP, UNCHECKED, profile};
+pub use email::{Addressing, Carrier, Email, MARKUP, UNCHECKED, profile};
 pub use header::{ENCODED_LINE, ENCODED_WORD, LINE};
+pub use mailgun::{MAILGUN_BYTES, Mailgun, hosted};
 pub use message::{
     AUTO_SUBMITTED, BOUNDARY, Letter, MOST_BYTES, MOST_RECIPIENTS, MessageId, Oversized,
     Recipients, Unrecipiented, Written, subject_line,

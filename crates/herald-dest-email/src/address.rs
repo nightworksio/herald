@@ -149,7 +149,7 @@ fn dot_atom(text: &str) -> bool {
 /// starting or ending with a hyphen, joined by single dots (RFC 1123 §2.1,
 /// RFC 5321 §4.1.2 `Domain`). An address of at most [`ADDRESS_MOST`] bytes
 /// holds a domain shorter than the 255 bytes RFC 5321 §4.5.3.1.2 allows.
-fn host_name(text: &str) -> bool {
+pub(crate) fn host_name(text: &str) -> bool {
     text.split('.').all(|label| {
         !label.is_empty()
             && label.len() <= LABEL_MOST

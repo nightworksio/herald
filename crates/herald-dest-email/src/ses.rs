@@ -1,10 +1,11 @@
 use herald_aws::{Endpoint, Signing, signed};
-use herald_core::{Facts, Sent, Waits, base64_of, media};
+use herald_core::{Sent, Waits, base64_of, media};
 use herald_kinds::Probe;
 use herald_ports::{DynHttp, HttpError, Method, Request, Response, Secret, SecretText};
 use jiff::Timestamp;
 use serde_json::{Map, Value, json};
 
+use crate::email::landed;
 use crate::message::{Recipients, Written};
 
 /// Amazon SES, as herald names it.
@@ -42,9 +43,6 @@ const DENIED: &str = "AccessDeniedException";
 
 /// The longest error name herald repeats.
 const NAMED: usize = 64;
-
-/// The longest message id herald keeps of an answer.
-const ID: usize = 256;
 
 /// Each region AWS lists an Amazon SES API endpoint for, and whether it
 /// lists a FIPS endpoint there too
@@ -327,17 +325,7 @@ fn sent(answer: &Response, waits: Waits) -> Sent {
     }
     answer
         .failure(waits, None, SES, || named.unwrap_or_default())
-        .unwrap_or_else(|| {
-            let id = serde_json::from_slice::<Value>(&answer.body)
-                .ok()
-                .and_then(|body| body.get("MessageId")?.as_str().map(str::to_owned))
-                .filter(|id| id.len() <= ID && id.bytes().all(|byte| byte.is_ascii_graphic()));
-            Sent::Landed(Facts {
-                message: id,
-                thread: None,
-                permalink: None,
-            })
-        })
+        .unwrap_or_else(|| landed(answer, "MessageId"))
 }
 
 /// Whether `answer`, a client error, is Amazon SES's own: it names an

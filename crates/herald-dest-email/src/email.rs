@@ -1,14 +1,16 @@
 use herald_core::{
-    Announcement, Bullet, Declined, Emphases, Escape, Features, Fences, Heading, Limits, Links,
-    Markup, Measure, MentionStyle, Pins, Profile, Sent, Step, Symbols, Threads, Waits, safe_url,
-    web_url,
+    Announcement, Bullet, Declined, Emphases, Escape, Facts, Features, Fences, Heading, Limits,
+    Links, Markup, Measure, MentionStyle, Pins, Profile, Sent, Step, Symbols, Threads, Waits,
+    safe_url, web_url,
 };
-use herald_ports::{Base, DynHttp, HttpError};
+use herald_kinds::Probe;
+use herald_ports::{Base, DynHttp, HttpError, Response};
 use jiff::Timestamp;
 
 use crate::address::Mailbox;
-use crate::message::{Letter, MessageId, Recipients};
-use crate::ses::Ses;
+use crate::mailgun::{self, Mailgun};
+use crate::message::{Letter, MessageId, Recipients, Written};
+use crate::ses::{self, Ses};
 
 /// Email, as herald names it.
 pub(crate) const EMAIL: &str = "Email";
@@ -33,6 +35,9 @@ pub const MARKUP: Markup = Markup {
 
 /// The longest subject, in bytes.
 const TITLE: usize = 256;
+
+/// The longest message id herald keeps of an answer.
+const ID: usize = 256;
 
 /// How many times a part's text fits in its message: each byte of its
 /// plain text written as up to three in quoted-printable, its HTML as up to
@@ -85,21 +90,83 @@ pub struct Addressing {
     pub most: usize,
 }
 
+/// The provider carrying each message whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Carrier {
+    /// Amazon SES.
+    Ses(Box<Ses>),
+    /// Mailgun.
+    Mailgun(Mailgun),
+}
+
+impl From<Ses> for Carrier {
+    fn from(ses: Ses) -> Self {
+        Self::Ses(Box::new(ses))
+    }
+}
+
+impl From<Mailgun> for Carrier {
+    fn from(mailgun: Mailgun) -> Self {
+        Self::Mailgun(mailgun)
+    }
+}
+
+impl Carrier {
+    /// The base URL its requests reach, and no other.
+    #[must_use]
+    pub fn url(&self) -> &str {
+        match self {
+            Self::Ses(ses) => ses.url(),
+            Self::Mailgun(mailgun) => mailgun.url(),
+        }
+    }
+
+    /// Sends `written` to `recipients` at `now`, and reads the answer.
+    async fn send(
+        &self,
+        http: &dyn DynHttp,
+        (written, recipients): (&Written, &Recipients),
+        now: Timestamp,
+        waits: Waits,
+    ) -> Result<Sent, HttpError> {
+        match self {
+            Self::Ses(ses) => ses.send(http, (written, recipients), now, waits).await,
+            Self::Mailgun(mailgun) => mailgun.send(http, written, waits).await,
+        }
+    }
+
+    /// What its provider says, asked at `now`, sending nothing.
+    pub(crate) async fn probe(&self, http: &dyn DynHttp, now: Timestamp) -> Vec<Probe> {
+        match self {
+            Self::Ses(ses) => ses.probe(http, now).await,
+            Self::Mailgun(mailgun) => mailgun.probe(http).await,
+        }
+    }
+
+    /// Whether `answer`, a client error, is its provider's own.
+    pub(crate) fn declines(&self, answer: &Response) -> bool {
+        match self {
+            Self::Ses(_) => ses::declines(answer),
+            Self::Mailgun(_) => mailgun::declines(answer),
+        }
+    }
+}
+
 /// One email destination, for one route.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Email {
     addressing: Addressing,
-    ses: Ses,
+    carrier: Carrier,
     waits: Waits,
 }
 
 impl Email {
-    /// The destination mailing as `addressing` says through `ses`.
+    /// The destination mailing as `addressing` says through `carrier`.
     #[must_use]
-    pub fn new(addressing: Addressing, ses: Ses) -> Self {
+    pub fn new(addressing: Addressing, carrier: impl Into<Carrier>) -> Self {
         Self {
             addressing,
-            ses,
+            carrier: carrier.into(),
             waits: Waits::DEFAULT,
         }
     }
@@ -114,7 +181,7 @@ impl Email {
     /// (ADR-0007).
     #[must_use]
     pub fn base(&self) -> Base<'_> {
-        Base::At(self.ses.url())
+        Base::At(self.carrier.url())
     }
 
     /// What it can do.
@@ -125,8 +192,8 @@ impl Email {
 
     /// Its transport.
     #[must_use]
-    pub const fn ses(&self) -> &Ses {
-        &self.ses
+    pub const fn carrier(&self) -> &Carrier {
+        &self.carrier
     }
 
     /// Sends `step` of `announcement`, written at `now`, and reads the
@@ -165,7 +232,7 @@ impl Email {
         };
         match letter.written(self.addressing.most) {
             Ok(written) => {
-                self.ses
+                self.carrier
                     .send(
                         http,
                         (&written, &self.addressing.recipients),
@@ -222,4 +289,18 @@ fn appended(body: &mut String, line: &str) {
         body.push_str("\n\n");
     }
     body.push_str(line);
+}
+
+/// Landed, keeping the message id the JSON body of `answer` names at
+/// `field` where herald keeps it: at most [`ID`] bytes of printable ASCII.
+pub(crate) fn landed(answer: &Response, field: &str) -> Sent {
+    let id = serde_json::from_slice::<serde_json::Value>(&answer.body)
+        .ok()
+        .and_then(|body| body.get(field)?.as_str().map(str::to_owned))
+        .filter(|id| id.len() <= ID && id.bytes().all(|byte| byte.is_ascii_graphic()));
+    Sent::Landed(Facts {
+        message: id,
+        thread: None,
+        permalink: None,
+    })
 }

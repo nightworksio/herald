@@ -15,13 +15,16 @@ pub enum Transport {
     /// Amazon SES, by `SendEmail` of its API version 2, each request signed
     /// with AWS Signature Version 4.
     Ses,
+    /// Mailgun, by `messages.mime`, each request carrying its API key.
+    Mailgun,
 }
 
 /// An email destination, as `[destinations.*]` writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DestinationOptions {
-    /// How each message leaves: `ses`, Amazon SES's API.
+    /// How each message leaves: `ses`, Amazon SES's API, or `mailgun`,
+    /// Mailgun's.
     pub transport: Transport,
     /// Who each message is from, written `local@domain` or
     /// `Name <local@domain>`; its domain names each message's id.
@@ -31,8 +34,9 @@ pub struct DestinationOptions {
     /// The most bytes a message holds, 262144 where unset: an announcement
     /// whose message would be longer is cut into more messages, or refused.
     pub max_bytes: Option<usize>,
-    /// The AWS region Amazon SES sends from, such as `eu-west-1` or
-    /// `us-gov-west-1`.
+    /// The region it sends from: on Amazon SES an AWS region, such as
+    /// `eu-west-1` or `us-gov-west-1`; on Mailgun `us` or `eu`, the region
+    /// its domain was made in.
     pub region: Option<String>,
     /// Whether Amazon SES is reached at its region's FIPS endpoint,
     /// `email-fips.<region>`, where AWS gives the region one; false where
@@ -57,6 +61,12 @@ pub struct DestinationOptions {
     /// The Amazon SES configuration set each message is sent with, where it
     /// names one.
     pub configuration_set: Option<String>,
+    /// The Mailgun domain each message is sent as, such as
+    /// `mg.example.org`.
+    pub domain: Option<String>,
+    /// The secret holding the Mailgun API key, a domain sending key or the
+    /// account's.
+    pub api_key: Option<SecretRef>,
     /// The characters its messages write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
     pub symbols: Option<Symbols>,
