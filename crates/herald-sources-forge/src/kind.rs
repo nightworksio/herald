@@ -487,7 +487,7 @@ impl SourceConfig for ForgeSource {
         headers: &[(&str, &str)],
         payload: &[u8],
     ) -> Result<Option<herald_core::Folding>, String> {
-        let Some(name) = self.forge.event_named(headers) else {
+        let Some(name) = self.forge.event_name(headers) else {
             return Ok(None);
         };
         let of = match (&self.options.owner, self.options.repository.as_deref()) {

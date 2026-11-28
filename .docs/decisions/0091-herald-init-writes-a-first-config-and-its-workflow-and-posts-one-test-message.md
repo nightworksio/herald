@@ -38,7 +38,8 @@ herald's posts back, so the markers store cannot keep "sent once" for them
      Server, GHE.com, GitLab self-managed and every Forgejo host are first
      runs too;
    - chat (`--chat <kind>`): the destination kinds the build carries, read
-     from the destination registry; the CLI names none;
+     from the destination registry, the first it lists (`discord`) where
+     absent; the CLI names none;
    - that chat's own questions, asked through a hook without I/O on
      `DestinationKind`: its zero-setup variant first, the place it posts
      to, the secret's name with its recommended default
@@ -89,7 +90,8 @@ herald's posts back, so the markers store cannot keep "sent once" for them
    terminal, from a prompt that does not echo. The value is held in memory
    for that one post, joins the run's scrubber as it is read (ADR-0089),
    and is never written or printed. With `--yes`, or with no terminal, no
-   prompt is shown: it prints the command to run later. A refused
+   prompt is shown and nothing is posted, even where the environment holds
+   the credential: it prints the command to run later. A refused
    credential leaves the files written and names the secret to fix and the
    command to retry. The exit code is the doctor's.
 8. **The native CLI alone runs it**, since it writes files. `--runs none`

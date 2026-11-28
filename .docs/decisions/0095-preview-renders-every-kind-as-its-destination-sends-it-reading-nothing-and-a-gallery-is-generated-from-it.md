@@ -20,9 +20,16 @@ Markdown; it has no website.
 
 1. **Every kind.** `--kind <kind>` renders a kind's samples; without it,
    every kind a route takes. `--event <file>` takes any payload a forge
-   sends that a source maps, `-` reading stdin; `--sample <name>` picks a
-   shipped sample payload; `--report <name>` renders a report's template
-   against a sample view built from fixtures.
+   sends that a source maps, `-` reading stdin: each source of the config
+   reads it as its webhook reads a delivery, and each route renders the
+   event of a source it takes. `--event-name <name>` names the event as the
+   forge's event header does (`pull_request`, `Merge Request Hook`), the
+   forge's release event (`release`, GitLab's `Release Hook`) where absent;
+   `--from` names the forge. Where no source maps the file, preview says
+   what each source made of it, naming neither the path given, the name
+   given nor anything the file holds. `--sample <name>` picks a shipped
+   sample payload; `--report <name>` renders a report's template against a
+   sample view built from fixtures.
 2. **Three formats.** `--format text` (the default, today's output);
    `wire`, the exact request body each destination's own request builder
    writes (Block Kit, embed, Matrix event, Adaptive Card, MIME message),
@@ -33,7 +40,9 @@ Markdown; it has no website.
 4. **Preview reads nothing.** It resolves no secret and opens no
    connection on any path; a test runs it with ports that fail the test
    when called. Private repositories' events print as `(private)` unless
-   `--private` (ADR-0080). Reading the forge stays with
+   `--private` or `[cli] private` (ADR-0080): each route the event
+   reaches prints its name, its destination and `(private)` alone, in
+   every format. Reading the forge stays with
    `announce --dry-run`.
 5. **The gallery is generated.** For each destination, kind and sample,
    an entry shows the message as text, the destination's own format (the

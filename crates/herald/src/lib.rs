@@ -398,25 +398,8 @@ async fn answered(
             let done = queueing::queueing(config, vars, connect, asked, out);
             finished(done.await, err)
         }
-        Reading::Preview {
-            route,
-            kind,
-            sample,
-            report,
-            event,
-            from,
-            group,
-            format,
-        } => {
-            let asked = preview::Asked {
-                route: route.as_deref(),
-                kind: kind.as_deref(),
-                sample: sample.as_deref(),
-                report: report.as_deref(),
-                group: group.as_deref(),
-            };
-            let event = event.as_deref().map(|path| (from.forge(), path));
-            previewing(config, (asked, format), event, (out, err)).await
+        Reading::Preview(flags) => {
+            previewing(config, &flags, &mut std::io::stdin().lock(), (out, err)).await
         }
         Reading::Set(setting) => {
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;

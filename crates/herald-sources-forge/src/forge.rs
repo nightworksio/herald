@@ -350,23 +350,14 @@ impl Forge {
         struct Acted {
             action: String,
         }
-        let (names, kinds, actions): (&[&str], &[&str], &[&str]) = match self {
-            Self::GitHub => (
-                &["x-github-event"],
-                &["registry_package", "package"],
-                &PACKAGE_ACTIONS,
-            ),
-            Self::Forgejo => (
-                &["x-forgejo-event", "x-gitea-event"],
-                &["package"],
-                &[PACKAGE_CREATED],
-            ),
+        let (kinds, actions): (&[&str], &[&str]) = match self {
+            Self::GitHub => (&["registry_package", "package"], &PACKAGE_ACTIONS),
+            Self::Forgejo => (&["package"], &[PACKAGE_CREATED]),
             Self::GitLab => return false,
         };
-        let of_kind = headers
-            .iter()
-            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
-            .is_some_and(|(_, value)| kinds.contains(value));
+        let of_kind = self
+            .event_name(headers)
+            .is_some_and(|name| kinds.contains(&name));
         of_kind
             && read::<Acted>(self.api().packages, payload)
                 .is_ok_and(|acted| actions.contains(&acted.action.as_str()))
@@ -381,15 +372,11 @@ impl Forge {
             ref_type: Option<String>,
             after: Option<String>,
         }
-        let (names, kind): (&[&str], &str) = match self {
-            Self::GitHub => (&["x-github-event"], "create"),
-            Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "create"),
-            Self::GitLab => (&["x-gitlab-event"], "Tag Push Hook"),
+        let kind = match self {
+            Self::GitHub | Self::Forgejo => "create",
+            Self::GitLab => "Tag Push Hook",
         };
-        let of_kind = headers
-            .iter()
-            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
-            .is_some_and(|(_, value)| *value == kind);
+        let of_kind = self.event_name(headers) == Some(kind);
         of_kind
             && read::<Created>(self.api().tag, payload).is_ok_and(|created| match self {
                 Self::GitHub | Self::Forgejo => created.ref_type.as_deref() == Some("tag"),
@@ -399,15 +386,7 @@ impl Forge {
 
     /// Whether a delivery with `headers` is of a release.
     fn of_a_release(self, headers: &[(&str, &str)]) -> bool {
-        let (names, release): (&[&str], &str) = match self {
-            Self::GitHub => (&["x-github-event"], "release"),
-            Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "release"),
-            Self::GitLab => (&["x-gitlab-event"], "Release Hook"),
-        };
-        headers
-            .iter()
-            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
-            .is_some_and(|(_, value)| *value == release)
+        self.event_name(headers) == Some(self.release_event())
     }
 
     /// Whether the repositories of `owner`, with its subgroups' where

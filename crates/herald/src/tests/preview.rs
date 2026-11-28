@@ -369,11 +369,12 @@ fn preview_says_why_an_event_file_or_a_template_fails() {
         &world,
         &["preview", "--event", "/nonexistent/event.json"],
     );
-    assert_eq!(missing.code, MISTAKEN);
-    assert!(
-        missing
-            .err
-            .starts_with("/nonexistent/event.json could not be read")
+    assert_eq!(
+        (missing.code, missing.err.as_str()),
+        (
+            MISTAKEN,
+            "the event file could not be read: No such file or directory (os error 2)\n"
+        )
     );
     std::fs::write(
         setup.directory.path().join("draft.json"),
@@ -389,7 +390,10 @@ fn preview_says_why_an_event_file_or_a_template_fails() {
     let unpublished = herald(&setup, &world, &["preview", "--event", &draft]);
     assert_eq!(
         (unpublished.code, unpublished.err),
-        (MISTAKEN, format!("{draft} publishes no release\n"))
+        (
+            MISTAKEN,
+            "nothing to preview: no source of the config reads the event file as an event it announces\n  source \"cli\": the release is not published, or is a draft\n".to_owned()
+        )
     );
     std::fs::write(setup.directory.path().join("garbled.json"), "{}").unwrap();
     let garbled = setup

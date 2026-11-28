@@ -248,46 +248,33 @@ impl Forge {
     /// What the webhook or CI event names that `headers` or the run's
     /// event name name, where it is of a run.
     pub(crate) fn run_delivery(self, headers: &[(&str, &str)]) -> Option<Delivery> {
-        self.event_named(headers)
+        self.event_name(headers)
             .and_then(|name| Delivery::named(self, name))
     }
 
     /// What the alert webhook `headers` name, where it is of an alert.
     pub(crate) fn alert_delivery(self, headers: &[(&str, &str)]) -> Option<alerts::Delivery> {
-        self.event_named(headers)
+        self.event_name(headers)
             .and_then(|name| alerts::Delivery::named(self, name))
     }
 
     /// Whether the webhook `headers` name a pull request's event.
     pub(crate) fn pull_delivery(self, headers: &[(&str, &str)]) -> bool {
-        self.event_named(headers)
+        self.event_name(headers)
             .is_some_and(|name| crate::pulls::hooked(self, name))
     }
 
     /// The name of the issue event the webhook `headers` deliver, where
     /// they deliver one.
     pub(crate) fn issue_event<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
-        self.event_named(headers)
+        self.event_name(headers)
             .filter(|name| crate::issues::hooked(self, name))
     }
 
     /// Whether the webhook `headers` name a milestone's event.
     pub(crate) fn milestone_delivery(self, headers: &[(&str, &str)]) -> bool {
-        self.event_named(headers)
+        self.event_name(headers)
             .is_some_and(|name| crate::milestones::hooked(self, name))
-    }
-
-    /// The name of the event a webhook's `headers` deliver.
-    pub(crate) fn event_named<'h>(self, headers: &[(&str, &'h str)]) -> Option<&'h str> {
-        let names: &[&str] = match self {
-            Self::GitHub => &["x-github-event"],
-            Self::GitLab => &["x-gitlab-event"],
-            Self::Forgejo => &["x-forgejo-event", "x-gitea-event"],
-        };
-        headers
-            .iter()
-            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
-            .map(|(_, value)| *value)
     }
 
     /// What the run `delivery`'s `payload` names.

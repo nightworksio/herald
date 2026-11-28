@@ -28,9 +28,36 @@ shows its view.
 | `--sample <name>` | only that sample of each kind: `plain`, `pre-release` (a kind that marks pre-releases), `long` (a body past every destination's limit) or `no-body` (a kind that names a signal) |
 | `--report <name>` | only that report, showing a sample view |
 | `--group <key>` | each route that groups, its samples as one group under the key ([one post for a release train](../README.md#one-post-for-a-release-train)) |
-| `--event <file> --from github\|gitlab\|forgejo` | the release a forge's release event publishes, on each route that takes it, in place of a sample |
-
+| `--event <file> --from github\|gitlab\|forgejo` | a forge's event file (`-` for standard input), on each route that takes it, in place of a sample ([below](#an-event-file)) |
 | `--format text\|wire\|json` | what is printed of each route's message: `text` (the default) as above, `wire` the requests its first post sends, `json` both |
+
+## An event file
+
+`--event` reads a payload as the forge's webhook delivers it. Each source
+of the config reads it as its webhook reads a delivery, and each route
+renders the event of a source it takes. `--event-name` gives the event's
+name as the forge's event header (`X-GitHub-Event`, `X-Gitlab-Event`,
+`X-Forgejo-Event`) carries it; without it, the forge's release event
+(`release`, or GitLab's `Release Hook`).
+
+```console
+$ herald preview --event pull.json --event-name pull_request
+pulls to discord:
+  title: Pull request #4 opened: Bump
+  part 1:
+    …
+```
+
+- An event of a private or internal repository prints each route it
+  reaches as `<route> to <destination>: (private)`, in every format,
+  unless `--private` or `[cli] private` says the output is private
+  ([ADR-0080](decisions/0080-a-poll-announces-a-milestone-overdue-by-its-own-clock-and-poll-and-announce-name-private-events-where-said-private.md)).
+- Where no source maps the file to an event it announces, preview says
+  what each source made of it and exits 2: a reason of its own (a draft
+  release, a kind the source does not announce), a tag or package a poll
+  reads in full, or a payload it cannot read as the event named. It names
+  neither the path, the event name given nor anything the file holds; a
+  file that is not JSON is named by the line and column alone.
 
 ## The requests a first post sends
 

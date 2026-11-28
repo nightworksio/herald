@@ -238,36 +238,9 @@ pub(crate) enum Reading {
     Preset(Presetting),
     /// Render each route's templates as its destination would show them,
     /// or print the requests its first post sends, against the samples of
-    /// each kind it takes or a release event's file, reading no secret and
+    /// each kind it takes or a forge's event file, reading no secret and
     /// sending nothing (ADR-0095).
-    Preview {
-        /// Only this route.
-        #[arg(long)]
-        route: Option<String>,
-        /// Only this kind's samples.
-        #[arg(long, conflicts_with = "event")]
-        kind: Option<String>,
-        /// Only this sample of each kind.
-        #[arg(long, conflicts_with = "event")]
-        sample: Option<String>,
-        /// Only this report, showing a sample view.
-        #[arg(long, conflicts_with = "event")]
-        report: Option<String>,
-        /// A release event's file, as the forge sends it, in place of a
-        /// sample event.
-        #[arg(long)]
-        event: Option<String>,
-        /// The forge whose release event the file is.
-        #[arg(long, value_enum, default_value_t = RunForge::Github)]
-        from: RunForge,
-        /// Render each route that groups against the file's release, or
-        /// every sample of each kind it takes, as one group under this key.
-        #[arg(long)]
-        group: Option<String>,
-        /// What is printed of each route's message.
-        #[arg(long, value_enum, default_value_t = PreviewFormat::Text)]
-        format: PreviewFormat,
-    },
+    Preview(crate::preview::Flags),
 }
 
 /// The commands on the heralds this one trusts.
