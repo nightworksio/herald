@@ -187,8 +187,8 @@ impl DestinationConfig for DestinationOptions {
             .map(Placed::new)
     }
 
-    fn reach(&self, placed: &Placed, base: &str, secret: Secret) -> Option<Reached> {
-        self.reach_reading(placed, base, (secret, Vec::new()))
+    fn reach(&self, _: &Placed, _: &str, _: Secret) -> Option<Reached> {
+        None
     }
 
     fn reach_reading(

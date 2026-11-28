@@ -4,8 +4,8 @@
 
 use herald_core::{Delivery, Features, MentionStyle, Pins, Threads};
 use herald_dest_email::{
-    DestinationOptions, EmailKind, FEWEST_BYTES, KIND, MOST_BYTES, RouteOptions, SES_BYTES,
-    UNCHECKED, profile, regional,
+    Addresses, DestinationOptions, EmailKind, FEWEST_BYTES, KIND, MOST_BYTES, RouteOptions,
+    SES_BYTES, UNCHECKED, profile, regional,
 };
 use herald_kinds::{
     Checking, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing,
@@ -354,4 +354,37 @@ fn a_route_is_written_and_recalled_whole_and_a_recalled_route_naming_none_is_ref
             .is_some()
     );
     assert!(options.recalled("not json").is_none());
+}
+
+#[test]
+fn an_email_table_s_symbols_and_waits_are_read_as_written() {
+    let written = options(&json!({
+        "symbols": { "bullet": "*" },
+        "waits": { "limited": "9s" },
+    }));
+    assert_eq!(
+        written.symbols_written(),
+        Some(serde_json::from_value(json!({ "bullet": "*" })).unwrap())
+    );
+    assert_eq!(
+        written.waits_written(),
+        Some(serde_json::from_value(json!({ "limited": "9s" })).unwrap())
+    );
+    assert_eq!(options(&json!({})).symbols_written(), None);
+    assert_eq!(options(&json!({})).waits_written(), None);
+}
+
+#[test]
+fn a_route_s_addresses_are_described_as_one_address_or_a_list_of_them() {
+    let schema = schemars::SchemaGenerator::default().into_root_schema_for::<Addresses>();
+    let schema = serde_json::to_value(&schema).unwrap();
+    assert_eq!(
+        schema["description"],
+        json!("An address, or a list of addresses.")
+    );
+    assert_eq!(schema["anyOf"][0]["$ref"], json!("#/$defs/Mailbox"));
+    assert_eq!(
+        schema["anyOf"][1],
+        json!({ "type": "array", "items": { "$ref": "#/$defs/Mailbox" } })
+    );
 }
