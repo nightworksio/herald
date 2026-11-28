@@ -2,7 +2,7 @@
 //! Workflows webhook and the Bot Framework take.
 
 use herald_core::{Announcement, Wording, safe_url};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::interact::{EXECUTE, SUBSCRIBE};
 use crate::options::guid;
@@ -100,22 +100,22 @@ fn card(body: &[Value], actions: Vec<Value>, entities: Vec<Value>) -> Value {
     let executes = actions
         .iter()
         .any(|action| action.get("type").and_then(Value::as_str) == Some(EXECUTE));
-    let mut content = json!({
-        "$schema": SCHEMA,
-        "type": "AdaptiveCard",
-        "version": if executes { EXECUTING } else { VERSION },
-        "body": body,
-    });
-    if let Some(fields) = content.as_object_mut() {
-        if !actions.is_empty() {
-            fields.insert("actions".to_owned(), Value::Array(actions));
-        }
-        if !entities.is_empty() {
-            fields.insert(
-                "msteams".to_owned(),
-                json!({ "entities": Value::Array(entities) }),
-            );
-        }
+    let mut content = Map::new();
+    content.insert("$schema".to_owned(), json!(SCHEMA));
+    content.insert("type".to_owned(), json!("AdaptiveCard"));
+    content.insert(
+        "version".to_owned(),
+        json!(if executes { EXECUTING } else { VERSION }),
+    );
+    content.insert("body".to_owned(), Value::Array(body.to_vec()));
+    if !actions.is_empty() {
+        content.insert("actions".to_owned(), Value::Array(actions));
+    }
+    if !entities.is_empty() {
+        content.insert(
+            "msteams".to_owned(),
+            json!({ "entities": Value::Array(entities) }),
+        );
     }
     json!({
         "type": "message",
