@@ -135,3 +135,55 @@ fn a_local_preset_s_table_beside_its_routes_takes_its_own_keys_and_no_destinatio
         "{errors}"
     );
 }
+
+#[test]
+fn each_destination_kind_names_every_key_its_routes_take_and_those_a_local_preset_may_not_write() {
+    let shown: Vec<(&str, Vec<String>, &[&str])> = crate::common::kinds()
+        .preset_route_options()
+        .into_iter()
+        .map(|kind| (kind.kind, kind.taken, kind.refuses))
+        .collect();
+    let taken = |keys: &[&str]| keys.iter().map(|key| (*key).to_owned()).collect::<Vec<_>>();
+    let none: &[&str] = &[];
+    assert_eq!(
+        shown,
+        [
+            (
+                "discord",
+                taken(&["channel", "forum", "subscribe", "viewers"]),
+                &["viewers"][..]
+            ),
+            (
+                "mastodon",
+                taken(&[
+                    "content_warning",
+                    "language",
+                    "limit",
+                    "link_length",
+                    "title",
+                    "visibility"
+                ]),
+                none
+            ),
+            ("matrix", taken(&["room"]), none),
+            ("slack", taken(&["channel", "subscribe"]), none),
+            (
+                "teams",
+                taken(&["conversation", "subscribe", "threads"]),
+                none
+            ),
+            (
+                "email",
+                taken(&["bcc", "cc", "to"]),
+                &["to", "cc", "bcc"][..]
+            ),
+            (
+                "activitypub",
+                taken(&["actor", "content_warning", "language", "visibility"]),
+                none
+            ),
+            ("herald", taken(&[]), none),
+            ("herald-push", taken(&[]), none),
+        ]
+    );
+}
