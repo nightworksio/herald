@@ -188,6 +188,9 @@ impl DestinationKind for DiscordKind {
     const LABEL: &str = DISCORD;
     const ROUTE: &str = "DiscordRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Discord destination.";
+    const PRESET_WRITES: &[&str] = &["channel", "forum", "subscribe"];
+    const ADDRESSING: &[&str] = &["channel", "forum"];
+    const PRESET_REFUSES: &[&str] = &["viewers"];
 
     type Options = DestinationOptions;
     type Route = RouteOptions;

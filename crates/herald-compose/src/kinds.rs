@@ -37,3 +37,39 @@ pub fn kinds() -> Kinds {
         .store::<herald_store_actions_cache::ActionsCacheKind>()
         .store::<herald_store_repo_variables::RepoVariablesKind>()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn every_route_option_of_every_kind_is_written_or_refused_by_a_local_preset_on_purpose() {
+        for kind in super::kinds().preset_route_options() {
+            let taken: BTreeSet<&str> = kind.taken.iter().map(String::as_str).collect();
+            let writes: BTreeSet<&str> = kind.writes.iter().copied().collect();
+            let refuses: BTreeSet<&str> = kind.refuses.iter().copied().collect();
+            assert!(
+                writes.is_disjoint(&refuses),
+                "{}: a key both written and refused",
+                kind.kind
+            );
+            assert_eq!(
+                taken,
+                &writes | &refuses,
+                "{}: say of each route option whether a local preset writes it (PRESET_WRITES) or not (PRESET_REFUSES)",
+                kind.kind
+            );
+            assert!(
+                kind.addressing.iter().all(|key| writes.contains(key)),
+                "{}: an addressing key a local preset does not write",
+                kind.kind
+            );
+            let marks: BTreeSet<&str> = ["private", "vouch_unchecked", "viewers"].into();
+            assert!(
+                writes.is_disjoint(&marks),
+                "{}: a local preset writes a mark of what a route may show",
+                kind.kind
+            );
+        }
+    }
+}

@@ -564,24 +564,6 @@ fn each_of_two_local_presets_is_told_in_its_own_file() {
 }
 
 #[test]
-fn a_local_preset_sets_no_key_that_decides_where_a_route_posts() {
-    let file = TEAM.replace(
-        "template = \"notes\"",
-        "template = \"notes\"\nchannel = \"1566200000000000999\"",
-    );
-    let adopting = ADOPT_TEAM.replace("channel = \"1566200000000000100\"\n", "");
-    let read = local(&with(&adopting), &file);
-    let placed = read
-        .as_ref()
-        .map(|config| format!("{:?}", config.routes[0].options));
-    let errors = read.as_ref().err().cloned().unwrap_or_default();
-    assert!(
-        errors.contains("./team.toml:7:1: a local preset does not write channel"),
-        "the preset placed its route: {placed:?}"
-    );
-}
-
-#[test]
 fn the_expansion_of_a_shipped_preset_is_its_tables_as_given() {
     let tables =
         herald_config::expansion("herald.toml", &with(RELEASES), &nothing, "releases").unwrap();
@@ -942,3 +924,5 @@ fn security_alerts_go_to_one_route_the_preset_states_is_private() {
         Some("security-alert")
     );
 }
+
+mod local_keys;

@@ -109,6 +109,16 @@ pub trait DestinationKind: 'static {
     /// A route's own options for it.
     type Route: Placement + Clone;
 
+    /// Of a route's own options for it, those a local preset may write
+    /// (ADR-0092 decision 4); none where the kind names none.
+    const PRESET_WRITES: &[&str] = &[];
+    /// Of [`DestinationKind::PRESET_WRITES`], those that say where a post
+    /// goes or who sees it, which a local preset writes only on a route
+    /// whose adopting table states nothing herald trusts of its place.
+    const ADDRESSING: &[&str] = &[];
+    /// Of a route's own options for it, those a local preset may not write.
+    const PRESET_REFUSES: &[&str] = &[];
+
     /// The keys a destination of it takes from `[federation]` where its
     /// table leaves them out.
     const INHERITS: &[Inherited] = &[];

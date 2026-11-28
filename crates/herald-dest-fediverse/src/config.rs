@@ -178,6 +178,15 @@ impl DestinationKind for MastodonKind {
     const LABEL: &str = PLATFORM;
     const ROUTE: &str = "MastodonRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Mastodon destination.";
+    const PRESET_WRITES: &[&str] = &[
+        "content_warning",
+        "language",
+        "limit",
+        "link_length",
+        "title",
+        "visibility",
+    ];
+    const ADDRESSING: &[&str] = &["visibility"];
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
@@ -203,6 +212,8 @@ impl DestinationKind for ActorKind {
     const LABEL: &str = ACTOR;
     const ROUTE: &str = "ActivityPubRoute";
     const ROUTE_DESCRIPTION: &str = "A route announcing as one of herald's own ActivityPub actors.";
+    const PRESET_WRITES: &[&str] = &["actor", "content_warning", "language", "visibility"];
+    const ADDRESSING: &[&str] = &["actor", "visibility"];
 
     type Options = ActorOptions;
     type Route = ActorRouteOptions;

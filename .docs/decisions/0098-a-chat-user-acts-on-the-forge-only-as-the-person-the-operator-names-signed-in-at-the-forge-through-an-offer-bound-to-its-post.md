@@ -92,12 +92,38 @@ with only what both the user and the App may do, for 8 hours by default
      permissions are those two; the pull request is open, its head is the
      offer's, and the
      presser is not its author; the presser's role holds `write`.
-   - On GitLab, approving as the person uses GitLab's equivalent: a token
-     that acts as the person for the one approval, of a scope and lifetime
-     comparable to GitHub's user access token used once and dropped. Which
-     GitLab token that is is established from GitLab's documentation
-     before it is built; where none is that narrow, nothing wider is
-     built and the owner chooses. Off by default, as on GitHub.
+   - On GitLab, a setting chooses how Approve acts as the person, and
+     where it is unset herald approves as itself, as before: an operator
+     turns one of two modes on, never both, and neither is a default.
+     - `stored-token`: each person stores a fine-grained personal access
+       token for herald, limited to the permission "Merge Request", action
+       "Approve", on the chosen projects
+       ([fine-grained access tokens, REST](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/));
+       GitLab offers such tokens on every tier from 19.2, made by hand,
+       living until midnight UTC on their expiry date, 365 days at most
+       where the instance does not set another bound
+       ([fine-grained access tokens](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens/)).
+     - `sign-in`: the person signs in to GitLab through OAuth with the
+       `api` scope at the press, and the token is held in memory for the
+       one approval and dropped, never stored.
+     - Either way the one call is `POST /projects/:id/merge_requests/:iid/approve`
+       with `sha` the offer's head, which GitLab refuses with `409` where
+       the head moved; it needs the person to be an eligible approver,
+       takes `approval_password` where the project asks for
+       re-authentication, and fails where SAML sign-in is enforced
+       ([merge request approvals API](https://docs.gitlab.com/api/merge_request_approvals/),
+       "Approve merge request"). The checks before use are GitLab's
+       counterparts of GitHub's above.
+     - Not decided, and built only once the owner answers: where a
+       person's stored token is sealed and under which key; who may make
+       herald use it (the person alone, through a press their verified
+       chat identity makes); how it is revoked (by the person in GitLab,
+       and in herald by a command that deletes it); what a store that
+       leaks exposes (sealed tokens and their projects, readable only with
+       the store's key); whether the sign-in mode may use the `api` scope,
+       which reaches all the person may do through the API for the life of
+       the token, and whether herald revokes that token after the call;
+       and how an instance's own bound on token lifetime is read. Nothing of either mode is built until then.
    - On Forgejo, Approve is the review page.
 8. **Replay and double presses.** The offer moves from offered to pressed
    by compare-and-set; a second press is told it is in hand; ADR-0068's

@@ -132,6 +132,8 @@ impl DestinationKind for TeamsKind {
     const LABEL: &str = TEAMS;
     const ROUTE: &str = "TeamsRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Microsoft Teams destination.";
+    const PRESET_WRITES: &[&str] = &["conversation", "subscribe", "threads"];
+    const ADDRESSING: &[&str] = &["conversation"];
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
