@@ -40,8 +40,10 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    /// Print a new marker secret, once, to store as `HERALD_MARKER_SECRET`.
-    Init,
+    /// Write a first herald.toml by answering a few questions, each also a
+    /// flag with its default chosen, the store picked for the chat
+    /// (ADR-0091); never over a config that exists.
+    Init(Box<crate::init::Answers>),
     /// Make tokens for the HTTP API's apps.
     #[command(subcommand)]
     Token(Tokens),
@@ -135,6 +137,8 @@ pub(crate) enum Orphaning {
 /// The commands that make tokens.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Tokens {
+    /// Print a new marker secret, once, to store as `HERALD_MARKER_SECRET`.
+    Marker,
     /// Print a new token for an app, once, with the hash herald.toml keeps.
     New {
         /// The app's name, as `[apps.<name>]` names it.

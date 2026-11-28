@@ -33,7 +33,7 @@ pub(crate) struct Question<'q> {
     /// What it asks.
     pub(crate) asked: &'q str,
     /// The flag that answers it.
-    pub(crate) flag: &'static str,
+    pub(crate) flag: &'q str,
     /// The flag's answer, where given.
     pub(crate) given: Option<&'q str>,
     /// The answer an empty line or `--yes` takes.

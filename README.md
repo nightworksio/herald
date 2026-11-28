@@ -82,7 +82,7 @@ what is missing.
 
 ## Quick start
 
-Every key `herald.toml` takes is listed, with its type and what it sets, in the [settings reference](.docs/settings.md), generated from the schema.
+`herald init` writes a first `herald.toml` from a few answers, each also a flag, and names each secret to store ([a first run](.docs/first-run.md)). Every key `herald.toml` takes is listed, with its type and what it sets, in the [settings reference](.docs/settings.md), generated from the schema.
 
 The snippets below show the configuration that [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) and [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) fix. No release of herald exists yet, so the Action has no binary to download.
 
@@ -154,7 +154,7 @@ makes, so the run writes nothing to the repository. It has no compare-and-set,
 so the `concurrency` group keeps to one herald run at a time.
 `[markers] key` names the secret every route's markers are keyed with; where
 it is absent, a route's key is derived from its destination's credential, so
-a new credential gives the route new markers. `herald init` prints a new
+a new credential gives the route new markers. `herald token marker` prints a new
 `HERALD_MARKER_SECRET`, once. Each destination reads back up to
 `read_back` pages of its own posts, 5 by default and at most 20, and stops at
 the page holding the post it looks for. A rerun that finds a post an earlier

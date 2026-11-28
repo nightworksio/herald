@@ -5,7 +5,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 const SECRET_BYTES: usize = 32;
 
 /// A new secret of 256 random bits from the system's generator, in
-/// lowercase hex, as `herald init` prints a marker secret (ADR-0011); none
+/// lowercase hex, as `herald token marker` prints a marker secret (ADR-0011); none
 /// where the generator fails.
 #[must_use]
 pub fn random_secret() -> Option<String> {
