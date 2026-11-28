@@ -5,7 +5,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef};
+use herald_core::{
+    Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef, Worded, worded,
+};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde_json::{Value, json};
 
@@ -18,9 +20,6 @@ use crate::web_api;
 
 /// The action id of the button that subscribes to a project.
 pub const SUBSCRIBE: &str = "herald_subscribe";
-/// The word after a project that asks for the answer to be shown to the
-/// channel.
-const SHARE: &str = "share";
 /// The most characters a section block's text holds.
 pub(crate) const SECTION: usize = 3_000;
 /// The most blocks a message holds.
@@ -221,17 +220,13 @@ impl Interacting {
         if given != self.interactions.command {
             return Ok(Received::Ignored);
         }
-        let mut words = field("text").unwrap_or_default().split_whitespace();
-        let Some(command) = words.next().and_then(Command::named) else {
+        let Some(Worded {
+            command,
+            project,
+            share,
+        }) = worded(field("text").unwrap_or_default().split_whitespace())
+        else {
             return Ok(Received::Usage);
-        };
-        let rest: Vec<&str> = words.collect();
-        let (project, share) = match rest.as_slice() {
-            [] => (None, false),
-            [word] if word.eq_ignore_ascii_case(SHARE) => (None, true),
-            [project] => (Some(*project), false),
-            [project, word] if word.eq_ignore_ascii_case(SHARE) => (Some(*project), true),
-            _ => return Ok(Received::Usage),
         };
         self.asked(
             destination,
@@ -241,7 +236,7 @@ impl Interacting {
                 url: field("response_url"),
             },
             command,
-            project.map(ToOwned::to_owned),
+            project,
             share,
             false,
         )

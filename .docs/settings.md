@@ -653,8 +653,13 @@ Microsoft Teams, by Workflows webhook or as a bot.
 | `destinations.<name>.app_password` | table | The secret holding the bot's client secret, which its app registration made. |
 | `destinations.<name>.app_password.secret` | string | The secret's name. |
 | `destinations.<name>.cloud` | [Cloud](#cloud) | The Microsoft cloud the bot is registered in: `public` where unset, `gcc-high` or `dod`. It names the hosts below where they are unset. |
-| `destinations.<name>.interactions` | table | How the bot takes what Teams posts to it at herald's endpoint. |
+| `destinations.<name>.interactions` | table | How the bot takes what Teams posts to it at herald's endpoint, and answers the commands members give it there. |
+| `destinations.<name>.interactions.commands` | array of [Command](#command) | The commands it answers, each given to the bot in a message: after its mention in a channel or a group chat, `@herald latest herald`, and alone in a chat with the bot. Each answer replies to the member's message, where everyone in the conversation reads it. |
+| `destinations.<name>.interactions.prereleases` | boolean | Whether `latest` and `changelog` answer with a pre-release newer than every release. |
+| `destinations.<name>.interactions.template` | string | The template `latest` takes its title from and `changelog` its body, in place of the route's own. |
 | `destinations.<name>.interactions.via` | [TeamsVia](#teamsvia) | How Teams carries it. |
+| `destinations.<name>.interactions.wording` | table | What it says back, phrase by phrase, each a template over `project`, `projects`, `named` and `command`; herald's own words for every phrase left out. |
+| `destinations.<name>.interactions.wording.<name>` | string |  |
 | `destinations.<name>.issuer` | string | The issuer each token vouching for an activity names, in place of its cloud's, such as `https://api.botframework.com`. |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.login` | string | The base URL of the sign-in service the bot asks for its token, in place of its cloud's, such as `https://login.microsoftonline.com`. |

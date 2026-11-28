@@ -289,3 +289,42 @@ fn answering_takes_the_commands_it_names_each_once() {
         Err("it names latest twice; name it once".to_owned())
     );
 }
+
+#[test]
+fn a_command_is_worded_as_its_name_then_a_project_and_share_each_where_given() {
+    let worded = |text: &str| worded(text.split_whitespace());
+    let as_worded = |command, project: Option<&str>, share| {
+        Some(Worded {
+            command,
+            project: project.map(ToOwned::to_owned),
+            share,
+        })
+    };
+    assert_eq!(worded("latest"), as_worded(Command::Latest, None, false));
+    assert_eq!(
+        worded("LATEST Share"),
+        as_worded(Command::Latest, None, true)
+    );
+    assert_eq!(
+        worded("changelog herald"),
+        as_worded(Command::Changelog, Some("herald"), false)
+    );
+    assert_eq!(
+        worded("subscribe herald share"),
+        as_worded(Command::Subscribe, Some("herald"), true)
+    );
+    assert_eq!(
+        worded("unsubscribe share share"),
+        as_worded(Command::Unsubscribe, Some("share"), true)
+    );
+    for unworded in [
+        "",
+        "help",
+        "share latest",
+        "latest herald other",
+        "latest herald share more",
+        "latest a b c",
+    ] {
+        assert_eq!(worded(unworded), None, "{unworded}");
+    }
+}

@@ -592,7 +592,7 @@ async fn membered<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
 
 /// Each command `asked` on `destination` answered, and each answer sent
 /// where it goes.
-async fn interacted<S: Store, C, G, V, H: Http, P, K>(
+async fn interacted<S: Store, C: Clock, G, V, H: Http, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     destination: &DestinationName,
     asked: Vec<(Asked, Replying)>,
@@ -600,7 +600,14 @@ async fn interacted<S: Store, C, G, V, H: Http, P, K>(
     let mut interacted = Vec::new();
     for (asked, replying) in asked {
         let answer = interact(serving.config, serving.connected, serving.ports, &asked).await;
-        let sent = replied(serving.connected, destination, &replying, &answer).await;
+        let sent = replied(
+            serving.connected,
+            destination,
+            &replying,
+            &answer,
+            serving.ports.clock.now(),
+        )
+        .await;
         interacted.push(Interacted {
             asked,
             answer,

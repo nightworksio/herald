@@ -141,8 +141,17 @@ the service URL it names is the activity's own and lies on the origin of
 the bot's `service`
 (<https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0>).
 Anything else is refused before its body is read, with an answer that
-says nothing of why. Each activity is taken once and answered; the bot
-takes no command.
+says nothing of why. Each activity is taken once and answered.
+
+A member gives the bot a command in a message: after its mention in a
+channel or a group chat, `@herald latest herald`, and alone in a chat with
+the bot, `latest herald`; `commands` names those it answers, all four
+where unset. herald acts only for the member the activity names by
+Microsoft Entra object id (`from.aadObjectId`), so subscribing changes that
+member's own subscription. Its answer replies to the member's message, where
+everyone in the conversation reads it, through the service URL the
+activity named, with the bot's token; the token goes to that service
+origin alone, and the bot signs in at its `login` host alone.
 
 ### `forgejo-branch`
 

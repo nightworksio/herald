@@ -173,11 +173,14 @@ where
                     asked.command.name()
                 );
                 let answer = unanswerable(serving.connected, &destination, trouble.clone());
-                let sent = match deferral(serving.connected, &destination, &replying, &asked).await
-                {
-                    Ok(()) => replied(serving.connected, &destination, &replying, &answer).await,
-                    Err(trouble) => Err(trouble),
-                };
+                let now = serving.ports.clock.now();
+                let sent =
+                    match deferral(serving.connected, &destination, &replying, &asked, now).await {
+                        Ok(()) => {
+                            replied(serving.connected, &destination, &replying, &answer, now).await
+                        }
+                        Err(trouble) => Err(trouble),
+                    };
                 taker.report(
                     &destination,
                     match sent {
@@ -191,7 +194,9 @@ where
             return;
         };
         taking.push(Box::pin(async move {
-            if let Err(trouble) = deferral(serving.connected, &destination, &replying, &asked).await
+            let now = serving.ports.clock.now();
+            if let Err(trouble) =
+                deferral(serving.connected, &destination, &replying, &asked, now).await
             {
                 taker.report(
                     &destination,

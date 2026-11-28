@@ -180,3 +180,19 @@ fn it_reaches_its_sign_in_service_and_service_url_and_shows_neither_secret_nor_t
         }
     );
 }
+
+#[test]
+fn a_sign_in_that_gave_no_token_says_why_an_answer_goes_unsent() {
+    assert_eq!(
+        unsigned(Sent::RetryAfter(SignedDuration::from_secs(7))),
+        "Microsoft's sign-in service asked herald to wait 7s to sign in"
+    );
+    assert_eq!(
+        unsigned(Sent::Refused("invalid_client (AADSTS7000215)".to_owned())),
+        "invalid_client (AADSTS7000215)"
+    );
+    assert_eq!(
+        unsigned(Sent::Landed(Facts::default())),
+        "Microsoft's sign-in service answered with no token herald can send"
+    );
+}

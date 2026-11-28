@@ -490,7 +490,7 @@ impl Prepared {
         }
         let mut interacting = Vec::new();
         for (name, destination) in self.interacting {
-            let reaching = reach(Base::At(destination.api()))?;
+            let reaching = reach(destination.reaches())?;
             let sessions = destination
                 .sessions()
                 .map(|base| reach(Base::At(base)))

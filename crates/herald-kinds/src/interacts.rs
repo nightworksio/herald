@@ -6,8 +6,8 @@ use herald_core::status;
 use herald_core::{
     Answering, Asked, DestinationName, Markup, Place, Room, Scheme, SecretRef, Text,
 };
-use herald_ports::{DynSecrets, Request, Response, Secret, SecretError};
-use jiff::SignedDuration;
+use herald_ports::{Base, Boxed, DynHttp, DynSecrets, Request, Response, Secret, SecretError};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::{Itself, Session};
 
@@ -17,6 +17,28 @@ use crate::{Itself, Session};
 pub trait Interacts: fmt::Debug + Send + Sync + Itself {
     /// The base URL every answer it gives is sent to.
     fn api(&self) -> &str;
+
+    /// What the `Http` its answers go through may reach: the origin of
+    /// [`Self::api`], unless it signs in elsewhere first.
+    fn reaches(&self) -> Base<'_> {
+        Base::At(self.api())
+    }
+
+    /// `request`, one of its answers, as it is sent at `now` through
+    /// `http`: as it was written, unless it carries a credential it signs
+    /// in for first.
+    ///
+    /// # Errors
+    ///
+    /// Why it could not be made ready to send.
+    fn authorised<'a>(
+        &'a self,
+        _http: &'a dyn DynHttp,
+        request: Request,
+        _now: Timestamp,
+    ) -> Boxed<'a, Result<Request, String>> {
+        Box::pin(std::future::ready(Ok(request)))
+    }
 
     /// The base URL a session herald holds is opened at, where it holds one
     /// beside the answers it sends.
