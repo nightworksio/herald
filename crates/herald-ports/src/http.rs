@@ -190,6 +190,19 @@ impl Request {
     pub fn with_body(&self) -> WithBody<'_> {
         WithBody(self)
     }
+
+    /// Its body as a dry run shows it: in full, or by its length alone
+    /// where it is sealed; none where it has no body.
+    #[must_use]
+    pub fn shown_body(&self) -> Option<String> {
+        if self.sealed {
+            Some(format!("«sealed: {} bytes»", self.body.len()))
+        } else if self.body.is_empty() {
+            None
+        } else {
+            Some(String::from_utf8_lossy(&self.body).into_owned())
+        }
+    }
 }
 
 /// A request shown with its body in full, its secrets still redacted.
@@ -199,10 +212,8 @@ pub struct WithBody<'r>(&'r Request);
 impl fmt::Display for WithBody<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.head(f)?;
-        if self.0.sealed {
-            write!(f, "\n\n«sealed: {} bytes»", self.0.body.len())?;
-        } else if !self.0.body.is_empty() {
-            write!(f, "\n\n{}", String::from_utf8_lossy(&self.0.body))?;
+        if let Some(body) = self.0.shown_body() {
+            write!(f, "\n\n{body}")?;
         }
         Ok(())
     }

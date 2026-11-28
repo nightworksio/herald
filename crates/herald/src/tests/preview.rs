@@ -315,6 +315,10 @@ fn preview_reads_no_secret_and_opens_no_connection() {
         &["--report", "daily"],
         &["--sample", "long"],
         &["--event", &event],
+        &["--format", "wire"],
+        &["--format", "wire", "--event", &event],
+        &["--format", "json"],
+        &["--format", "json", "--report", "daily"],
     ] {
         let mut args = vec!["herald", "--config", &config, "preview"];
         args.extend(asked);
@@ -397,5 +401,278 @@ fn preview_says_why_an_event_file_or_a_template_fails() {
     assert_eq!(
         herald(&setup, &world, &["preview", "--event", &garbled]).code,
         MISTAKEN
+    );
+}
+
+/// The test config, its route crossposting and keeping its pin in the
+/// store, beside a Slack webhook's route and an ActivityPub actor's.
+fn wired() -> String {
+    format!(
+        "{}{}",
+        CONFIG.replace(
+            "template = \"release\"\n",
+            "template = \"release\"\ncrosspost = true\npin = \"store\"\n",
+        ),
+        r#"[destinations.slack]
+kind = "slack"
+webhook = { secret = "HERALD_SLACK_WEBHOOK" }
+[[routes]]
+id = "hooked"
+sources = ["cli"]
+destination = "slack"
+template = "release"
+[destinations.fedi]
+kind = "activitypub"
+domain = "herald.example"
+key = { secret = "HERALD_ACTIVITYPUB_KEY" }
+[[routes]]
+id = "followed"
+sources = ["cli"]
+destination = "fedi"
+template = "release"
+actor = "cli"
+"#
+    )
+}
+
+#[test]
+fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_name() {
+    let shown = previewed(&wired(), &["--format", "wire", "--sample", "plain"]);
+    assert_eq!(
+        (shown.code, shown.err.as_str()),
+        (DONE, ""),
+        "{}",
+        shown.out
+    );
+    let lines: Vec<&str> = shown
+        .out
+        .lines()
+        .filter(|line| !line.starts_with("    User-Agent: "))
+        .collect();
+    let channel = "https://discord.com/api/v10/channels/1566200000000000100/messages";
+    let bot = "    Authorization: Bot «secret:HERALD_DISCORD_TOKEN»";
+    let json = "    Content-Type: application/json; charset=utf-8";
+    assert_eq!(
+        lines,
+        [
+            "releases to discord, sample release (plain):",
+            "  post:",
+            &format!("    POST {channel}"),
+            bot,
+            "    Content-Type: application/json",
+            "    ",
+            lines[6],
+            "  crosspost:",
+            &format!("    POST {channel}/0/crosspost"),
+            bot,
+            "  pin:",
+            &format!("    PUT {channel}/pins/0"),
+            bot,
+            "  unpin: no request",
+            "hooked to slack, sample release (plain):",
+            "  post:",
+            "    POST «secret:HERALD_SLACK_WEBHOOK»",
+            json,
+            "    ",
+            lines[19],
+            "followed to fedi, sample release (plain): herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request",
+        ]
+    );
+    assert!(
+        lines[6].starts_with("    {\"allowed_mentions\"")
+            && lines[6].contains(r###""description":"## Added\n\n- a sample change""###),
+        "{}",
+        lines[6]
+    );
+    assert!(
+        lines[19].starts_with("    {\"blocks\"") && lines[19].contains("a sample change"),
+        "{}",
+        lines[19]
+    );
+    assert!(!shown.out.contains("discord-token"), "{}", shown.out);
+}
+
+#[test]
+fn preview_json_holds_what_each_route_renders_against_its_text_and_its_requests() {
+    let shown = previewed(&wired(), &["--format", "json", "--sample", "plain"]);
+    assert_eq!(
+        (shown.code, shown.err.as_str()),
+        (DONE, ""),
+        "{}",
+        shown.out
+    );
+    assert_eq!(shown.out.lines().count(), 1, "{}", shown.out);
+    let all: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    let discord = &all[0];
+    let post = &discord["steps"][0]["requests"][0];
+    assert_eq!(
+        (
+            &discord["route"],
+            &discord["destination"],
+            &discord["against"],
+            &discord["title"],
+            &discord["thread"],
+            &discord["parts"],
+            &discord["unsent"],
+        ),
+        (
+            &serde_json::json!("releases"),
+            &serde_json::json!("discord"),
+            &serde_json::json!({ "kind": "release", "sample": "plain" }),
+            &serde_json::json!("📦 sample-project v1.2.0"),
+            &serde_json::Value::Null,
+            &serde_json::json!(["## Added\n\n- a sample change"]),
+            &serde_json::Value::Null,
+        )
+    );
+    assert_eq!(
+        (
+            &discord["steps"][0]["step"],
+            &post["method"],
+            &post["url"],
+            &post["body"]["content"],
+        ),
+        (
+            &serde_json::json!("post"),
+            &serde_json::json!("POST"),
+            &serde_json::json!("https://discord.com/api/v10/channels/1566200000000000100/messages"),
+            &serde_json::json!(""),
+        )
+    );
+    assert!(
+        post["headers"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!([
+                "Authorization",
+                "Bot «secret:HERALD_DISCORD_TOKEN»"
+            ])),
+        "{post}"
+    );
+    let crossposted = &discord["steps"][1];
+    assert_eq!(
+        (&crossposted["step"], &crossposted["requests"][0]["body"]),
+        (&serde_json::json!("crosspost"), &serde_json::Value::Null)
+    );
+    assert_eq!(
+        discord["steps"][3],
+        serde_json::json!({ "step": "unpin", "requests": [] })
+    );
+    assert_eq!(
+        all[1]["steps"][0]["requests"][0]["url"],
+        "«secret:HERALD_SLACK_WEBHOOK»"
+    );
+    assert_eq!(
+        (&all[2]["steps"], &all[2]["unsent"]),
+        (
+            &serde_json::json!([]),
+            &serde_json::json!(
+                "herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request"
+            )
+        )
+    );
+    let reported = previewed(KINDS, &["--format", "json", "--report", "daily"]);
+    let report: serde_json::Value = serde_json::from_str(&reported.out).unwrap();
+    assert_eq!(
+        report[0]["against"],
+        serde_json::json!({ "report": "daily" })
+    );
+}
+
+#[test]
+fn preview_json_and_wire_name_an_event_file_a_group_and_a_template_that_fails() {
+    let world = World::default();
+    let setup = setup(CONFIG);
+    let path = setup
+        .directory
+        .path()
+        .join("event.json")
+        .display()
+        .to_string();
+    let evented = herald(
+        &setup,
+        &world,
+        &["preview", "--format", "json", "--event", &path],
+    );
+    let event: serde_json::Value = serde_json::from_str(&evented.out).unwrap();
+    assert_eq!(
+        (&event[0]["against"], &event[0]["title"]),
+        (
+            &serde_json::Value::Null,
+            &serde_json::json!("📦 cli v2.103.3")
+        )
+    );
+    let grouping = super::world::setup(&CONFIG.replace(
+        "template = \"release\"\n",
+        "template = \"release\"\ngroup = { key = \"{{ event.attributes.version }}\" }\n",
+    ));
+    let grouped = herald(
+        &grouping,
+        &world,
+        &["preview", "--format", "json", "--group", "v9"],
+    );
+    let group: serde_json::Value = serde_json::from_str(&grouped.out).unwrap();
+    assert_eq!(group[0]["against"], serde_json::json!({ "group": 4 }));
+    let failing = super::world::setup(&CONFIG.replace(
+        "title = \"📦 {{ event.project }} {{ event.attributes.version }}\"",
+        "title = \"{% if event.project == 'cli' %}{{ nothing.here }}{% endif %}📦\"",
+    ));
+    let wire = herald(
+        &failing,
+        &world,
+        &["preview", "--format", "wire", "--event", &path],
+    );
+    assert_eq!(wire.code, STOPPED);
+    assert!(
+        wire.out
+            .starts_with("releases to discord: the templates cannot render this event:"),
+        "{}",
+        wire.out
+    );
+    let json = herald(
+        &failing,
+        &world,
+        &["preview", "--format", "json", "--event", &path],
+    );
+    let failed: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(json.code, STOPPED);
+    assert_eq!(
+        (
+            &failed[0]["route"],
+            failed[0]["error"].is_string(),
+            &failed[0]["steps"]
+        ),
+        (
+            &serde_json::json!("releases"),
+            true,
+            &serde_json::Value::Null
+        )
+    );
+}
+
+#[test]
+fn a_request_as_json_holds_its_body_as_json_as_text_or_by_its_length_where_sealed() {
+    use herald_ports::{Method, Request, SecretText};
+    let request = |body: &str| {
+        Request::new(Method::Post, SecretText::plain("https://example.org")).body(body)
+    };
+    assert_eq!(
+        crate::preview::request_json(&request(r#"{"a":1}"#))["body"],
+        serde_json::json!({ "a": 1 })
+    );
+    assert_eq!(
+        crate::preview::request_json(&request("To: someone\r\n"))["body"],
+        serde_json::json!("To: someone\r\n")
+    );
+    let sealed = Request::new(Method::Post, SecretText::plain("https://example.org"))
+        .sealed_body("a secret");
+    assert_eq!(
+        crate::preview::request_json(&sealed),
+        serde_json::json!({
+            "method": "POST",
+            "url": "https://example.org",
+            "headers": [],
+            "body": "«sealed: 8 bytes»",
+        })
     );
 }

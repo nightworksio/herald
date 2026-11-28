@@ -7,6 +7,10 @@ use herald_core::{
     Subject, Templates, report_event,
 };
 
+mod wire;
+
+pub use wire::{DRY_ID, FED, FOLLOWED, PUSHED, Recording, UNREACHED, Wire, wired};
+
 /// One route's templates rendered against an event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Previewed {

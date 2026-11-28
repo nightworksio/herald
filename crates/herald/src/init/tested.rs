@@ -55,7 +55,7 @@ pub(crate) async fn tried(
     asking.say("");
     asking.say("The test message:");
     crate::preview::rendered(
-        trial_previewed(config, first, (&run, SystemClock.now())),
+        &trial_previewed(config, first, (&run, SystemClock.now())),
         asking.out,
     );
     let asked = format!("Post it to {}?", first.route.destination.as_str());

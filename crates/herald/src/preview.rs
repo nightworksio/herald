@@ -4,11 +4,16 @@
 use std::io::Write;
 
 use herald_config::{Config, Sample};
-use herald_core::{Event, Kind, RouteId};
-use herald_flows::{Against, Previewed, Sampling, preview, preview_group, preview_samples};
+use herald_core::{Announcement, Event, Kind, RouteId};
+use herald_flows::{
+    Against, Previewed, Sampling, Wire, preview, preview_group, preview_samples, wired,
+};
+use herald_ports::Request;
 use herald_sources_forge::Forge;
+use serde_json::{Map, Value, json};
 
-use super::output::say;
+use super::cli::PreviewFormat;
+use super::output::{say, say_json};
 use super::{DONE, MISTAKEN, STOPPED};
 
 /// What `herald preview` was asked for, as given.
@@ -36,13 +41,12 @@ struct Named {
 /// Each route's templates rendered as `asked` says, against the release of
 /// a forge's event file or the samples of each kind it takes, as its
 /// destination would show them; or, under `group`, each grouping route's
-/// as one group.
-pub(super) fn previewing(
+/// as one group: printed in `format`.
+pub(super) async fn previewing(
     config: &Config,
-    asked: Asked<'_>,
+    (asked, format): (Asked<'_>, PreviewFormat),
     event_file: Option<(Forge, &str)>,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
+    (out, err): (&mut dyn Write, &mut dyn Write),
 ) -> u8 {
     let named = match named(config, asked) {
         Ok(named) => named,
@@ -78,10 +82,34 @@ pub(super) fn previewing(
         say(err, &unpreviewed(asked, event_file.is_some()));
         return MISTAKEN;
     }
-    let mut code = DONE;
-    for shown in shown {
-        if !rendered(shown, out) {
-            code = STOPPED;
+    let code = if shown.iter().all(|shown| shown.rendered.is_ok()) {
+        DONE
+    } else {
+        STOPPED
+    };
+    match format {
+        PreviewFormat::Text => {
+            for shown in &shown {
+                rendered(shown, out);
+            }
+        }
+        PreviewFormat::Wire => {
+            for shown in &shown {
+                match &shown.rendered {
+                    Ok(announcement) => {
+                        let wire = wired(config, &shown.route, announcement).await;
+                        printed_wire(shown, &wire, out);
+                    }
+                    Err(reason) => unrendered(shown, reason, out),
+                }
+            }
+        }
+        PreviewFormat::Json => {
+            let mut all = Vec::new();
+            for shown in &shown {
+                all.push(as_json(config, shown).await);
+            }
+            say_json(out, &Value::Array(all).to_string());
         }
     }
     code
@@ -176,19 +204,34 @@ fn event((forge, path): (Forge, &str)) -> Result<Event, String> {
         .ok_or_else(|| format!("{path} publishes no release"))
 }
 
-/// Whether `shown` rendered, printed as its destination would show it or
-/// with why its templates cannot render the event.
-pub(crate) fn rendered(shown: Previewed, out: &mut dyn Write) -> bool {
+/// What `shown` names: its route, its destination and what it rendered.
+fn head(shown: &Previewed) -> String {
     let to = format!("{} to {}", shown.route.as_str(), shown.destination.as_str());
-    let head = match &shown.against {
+    match &shown.against {
         None => to,
         Some(Against::Sample(kind, sample)) => format!("{to}, sample {kind} ({})", sample.name()),
         Some(Against::Report(name)) => format!("{to}, report {name} (sample view)"),
         Some(Against::Group(members)) => format!("{to}, samples as one group ({members})"),
-    };
-    match shown.rendered {
+    }
+}
+
+/// Why the templates cannot render `shown`'s event, printed after its head.
+fn unrendered(shown: &Previewed, reason: &str, out: &mut dyn Write) {
+    say(
+        out,
+        &format!(
+            "{}: the templates cannot render this event: {reason}",
+            head(shown)
+        ),
+    );
+}
+
+/// `shown` printed as its destination would show it, or with why its
+/// templates cannot render the event.
+pub(crate) fn rendered(shown: &Previewed, out: &mut dyn Write) {
+    match &shown.rendered {
         Ok(announcement) => {
-            say(out, &format!("{head}:"));
+            say(out, &format!("{}:", head(shown)));
             say(out, &format!("  title: {}", announcement.title.plain()));
             if let Some(thread) = &announcement.thread {
                 say(out, &format!("  thread: {thread}"));
@@ -199,14 +242,107 @@ pub(crate) fn rendered(shown: Previewed, out: &mut dyn Write) -> bool {
                     say(out, &format!("    {line}"));
                 }
             }
-            true
         }
-        Err(reason) => {
-            say(
-                out,
-                &format!("{head}: the templates cannot render this event: {reason}"),
-            );
-            false
+        Err(reason) => unrendered(shown, reason, out),
+    }
+}
+
+/// `shown` printed as the requests `wire` holds, each step named and each
+/// request as it is sent, its secrets by name; or with why it shows none.
+fn printed_wire(shown: &Previewed, wire: &Wire, out: &mut dyn Write) {
+    let steps = match wire {
+        Wire::Unsent(why) => return say(out, &format!("{}: {why}", head(shown))),
+        Wire::Sent(steps) => steps,
+    };
+    say(out, &format!("{}:", head(shown)));
+    for (step, requests) in steps {
+        let named = herald_compose::told::steps(std::slice::from_ref(step));
+        if requests.is_empty() {
+            say(out, &format!("  {named}: no request"));
+            continue;
+        }
+        say(out, &format!("  {named}:"));
+        for request in requests {
+            for line in request.with_body().to_string().lines() {
+                say(out, &format!("    {line}"));
+            }
         }
     }
+}
+
+/// `shown` as JSON: what it renders against, its text, and the requests its
+/// first post sends; or why its templates cannot render the event.
+async fn as_json(config: &Config, shown: &Previewed) -> Value {
+    let against = match &shown.against {
+        None => Value::Null,
+        Some(Against::Sample(kind, sample)) => {
+            json!({ "kind": kind.as_str(), "sample": sample.name() })
+        }
+        Some(Against::Report(name)) => json!({ "report": name }),
+        Some(Against::Group(members)) => json!({ "group": members }),
+    };
+    let mut fields = Map::new();
+    fields.insert("route".to_owned(), json!(shown.route.as_str()));
+    fields.insert("destination".to_owned(), json!(shown.destination.as_str()));
+    fields.insert("against".to_owned(), against);
+    match &shown.rendered {
+        Ok(announcement) => {
+            let wire = wired(config, &shown.route, announcement).await;
+            fields.extend(text_json(announcement, &wire));
+        }
+        Err(reason) => {
+            fields.insert("error".to_owned(), json!(reason));
+        }
+    }
+    Value::Object(fields)
+}
+
+/// The text of `announcement` and the requests `wire` holds, as JSON
+/// fields.
+fn text_json(announcement: &Announcement, wire: &Wire) -> Map<String, Value> {
+    let (steps, unsent) = match wire {
+        Wire::Sent(steps) => (
+            steps
+                .iter()
+                .map(|(step, requests)| {
+                    json!({
+                        "step": step,
+                        "requests": requests.iter().map(request_json).collect::<Vec<_>>(),
+                    })
+                })
+                .collect::<Vec<_>>(),
+            Value::Null,
+        ),
+        Wire::Unsent(why) => (Vec::new(), json!(why)),
+    };
+    let parts: Vec<&str> = announcement
+        .parts
+        .iter()
+        .map(|part| part.body.as_str())
+        .collect();
+    Map::from_iter([
+        ("title".to_owned(), json!(announcement.title.plain())),
+        ("thread".to_owned(), json!(announcement.thread)),
+        ("parts".to_owned(), json!(parts)),
+        ("steps".to_owned(), json!(steps)),
+        ("unsent".to_owned(), unsent),
+    ])
+}
+
+/// `request` as JSON, its secrets by name: its body as the JSON it holds,
+/// as a dry run shows it where it holds none.
+pub(crate) fn request_json(request: &Request) -> Value {
+    let body = request.shown_body().map_or(Value::Null, |shown| {
+        serde_json::from_str(&shown).unwrap_or_else(|_| json!(shown))
+    });
+    json!({
+        "method": request.method.as_str(),
+        "url": request.url.redacted(),
+        "headers": request
+            .headers
+            .iter()
+            .map(|(name, value)| json!([name, value.redacted()]))
+            .collect::<Vec<_>>(),
+        "body": body,
+    })
 }

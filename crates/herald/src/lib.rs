@@ -406,6 +406,7 @@ async fn answered(
             event,
             from,
             group,
+            format,
         } => {
             let asked = preview::Asked {
                 route: route.as_deref(),
@@ -415,7 +416,7 @@ async fn answered(
                 group: group.as_deref(),
             };
             let event = event.as_deref().map(|path| (from.forge(), path));
-            previewing(config, asked, event, out, err)
+            previewing(config, (asked, format), event, (out, err)).await
         }
         Reading::Set(setting) => {
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;

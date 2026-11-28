@@ -29,7 +29,7 @@ const ASKED: &str =
 const UNSHARED: &str =
     "the event is not public, and the peer takes no private events, so it is pushed none";
 
-fn config(peer: &str) -> Config {
+pub(crate) fn config(peer: &str) -> Config {
     configured(peer, "")
 }
 

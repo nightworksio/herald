@@ -21,7 +21,7 @@ const KEY: &str = "new-federation-key-of-32-bytes!!";
 const PRIVATE: &str =
     "the event is not public, and a herald feed is served to anyone, so it enters none";
 
-fn config(key: &str, extra: &str) -> Config {
+pub(crate) fn config(key: &str, extra: &str) -> Config {
     let text = format!(
         r#"version = 1
 [store]
