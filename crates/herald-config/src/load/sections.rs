@@ -14,6 +14,7 @@ use toml::de::{DeTable, DeValue};
 use super::{Loader, Value, list};
 use crate::config::{Config, Schedule, Server};
 use crate::file::{FilesFile, HttpFile, MarkersFile, ScheduleFile, ServerFile};
+use crate::files::Files;
 
 /// The top-level keys of `herald.toml`.
 const SECTIONS: [&str; 31] = [
@@ -183,26 +184,33 @@ impl Loader<'_> {
     }
 
     /// The directories `[files] allowed` names, each absolute with no `..`
-    /// step.
-    pub(super) fn allowed(&mut self, value: Option<Value<'_>>) -> Vec<String> {
+    /// step and, every link followed, inside what `files` lets a config
+    /// reach. No refusal repeats the path it refuses.
+    pub(super) fn allowed(&mut self, value: Option<Value<'_>>, files: &dyn Files) -> Vec<String> {
         let file = value
             .and_then(|value| self.typed::<FilesFile>(value, "files"))
             .unwrap_or_default();
+        let reach = files.reach();
         let mut allowed = Vec::new();
         for directory in file.allowed {
             let path = Path::new(directory.get_ref());
-            if path.is_absolute() && !path.components().any(|step| step == Component::ParentDir) {
-                allowed.push(directory.into_inner());
+            let refused = if !path.is_absolute()
+                || path.components().any(|step| step == Component::ParentDir)
+            {
+                "a directory it lists is no absolute directory; name each from the root, such as \"/etc/herald\", with no .. step".to_owned()
+            } else if !files
+                .resolved(directory.get_ref())
+                .is_some_and(|resolved| reach.holds(&resolved))
+            {
+                format!(
+                    "a directory it lists, every link followed, {}; herald doctor names what this host lets [files] allowed reach",
+                    reach.refusal()
+                )
             } else {
-                self.error(
-                    &directory.span(),
-                    "files.allowed",
-                    format!(
-                        "\"{}\" is no absolute directory; name each from the root, such as \"/etc/herald\", with no .. step",
-                        directory.get_ref()
-                    ),
-                );
-            }
+                allowed.push(directory.into_inner());
+                continue;
+            };
+            self.error(&directory.span(), "files.allowed", refused);
         }
         allowed
     }

@@ -1,6 +1,7 @@
 //! `herald preset`: the tables a `[presets.<name>]` table expands to,
 //! printed, or written into the config in its place (ADR-0092 decision 5).
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 
@@ -14,6 +15,7 @@ use crate::{Beside, DONE, STOPPED};
 /// What `herald preset` was asked, answered against the config at `path`.
 pub(crate) async fn presetting(
     path: &str,
+    vars: &BTreeMap<String, String>,
     asked: &Presetting,
     answers: &mut (dyn AsyncBufRead + Send + Unpin),
     out: &mut dyn Write,
@@ -22,13 +24,13 @@ pub(crate) async fn presetting(
     let name = match asked {
         Presetting::Show { name } | Presetting::Eject { name, .. } => name,
     };
-    let expanded = expanded(path, &text, name)?;
+    let expanded = expanded(path, &text, name, vars)?;
     let Presetting::Eject { yes, print, .. } = asked else {
         let _ = write!(out, "{expanded}");
         return Ok(DONE);
     };
     let ejected = ejected(&text, name, &expanded)?;
-    crate::loaded(path, &ejected)?;
+    crate::loaded(path, &ejected, vars)?;
     if *print {
         let _ = write!(out, "{ejected}");
         return Ok(DONE);
@@ -57,9 +59,14 @@ pub(crate) async fn presetting(
 
 /// The tables the config `text` at `path` expands `[presets.<name>]` to,
 /// as `herald.toml` would write them.
-fn expanded(path: &str, text: &str, name: &str) -> Result<String, String> {
+fn expanded(
+    path: &str,
+    text: &str,
+    name: &str,
+    vars: &BTreeMap<String, String>,
+) -> Result<String, String> {
     let directory = Path::new(path).parent().unwrap_or(Path::new(""));
-    let tables = herald_config::expansion(path, text, &Beside { directory }, name)
+    let tables = herald_config::expansion(path, text, &Beside::new(directory, vars)?, name)
         .map_err(|errors| errors.to_string())?;
     Ok(tables.to_string())
 }

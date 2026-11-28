@@ -799,7 +799,7 @@ The directories beside its own whose files the config may name: a template's, a 
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `files.allowed` | array of string | The directories, each an absolute path, whose files a template's `file`, a source's `members.file`, a block list's `file` and `http.ca_file` may name beside the config's own directory; none where absent. Every link is followed before a file is read. |
+| `files.allowed` | array of string | The directories, each an absolute path, whose files a template's `file`, a source's `members.file`, a block list's `file` and `http.ca_file` may name beside the config's own directory; none where absent. Each, every link followed, lies inside a directory the host's `HERALD_FILES_ALLOWED` lists, joined as `PATH` joins its own, or inside the config's own directory where it is not set; a host that reads files by name lets it name none. Every link is followed before a file is read. |
 
 ## `github_apps`
 

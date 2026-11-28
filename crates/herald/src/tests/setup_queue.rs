@@ -71,7 +71,7 @@ fn wizard(
     answer: &str,
 ) -> (Result<u8, String>, String) {
     let path = path_of(setup);
-    let config = crate::read(&path).unwrap();
+    let config = crate::read(&path, &std::collections::BTreeMap::new()).unwrap();
     let mut all = vec!["herald", "setup", "merge-queue"];
     all.extend(args);
     let crate::cli::Command::Read(Reading::Setup(crate::cli::SettingUp::MergeQueue(asked))) =

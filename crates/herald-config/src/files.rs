@@ -1,8 +1,76 @@
 //! The files a config names, as the host reads them, and where they may lie:
-//! beside the config, or in a directory `[files] allowed` names (ADR-0092
-//! decision 8).
+//! beside the config, or in a directory `[files] allowed` names inside what
+//! the host lets a config reach (ADR-0092 decision 8).
 
 use std::path::{Component, Path};
+
+/// The variable listing the directories, each absolute and joined as the
+/// host's `PATH` joins its own, that a config's `[files] allowed` may name
+/// on this host.
+pub const FILES_ALLOWED: &str = "HERALD_FILES_ALLOWED";
+
+/// What a host lets a config's `[files] allowed` name: the directories,
+/// every link followed, a directory it lists must lie inside, and where the
+/// host took them from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reach {
+    /// The directories [`FILES_ALLOWED`] lists.
+    Listed(Vec<String>),
+    /// The config's own directory alone, where [`FILES_ALLOWED`] is not set.
+    Beside(String),
+    /// None: the host reads files by name, not by path.
+    Named,
+}
+
+impl Reach {
+    /// Whether `directory`, every link followed, lies inside a directory of
+    /// the reach, step by step: `/workspace` is not inside `/work`.
+    #[must_use]
+    pub fn holds(&self, directory: &str) -> bool {
+        let directory = Path::new(directory);
+        let inside = |bound: &String| {
+            let bound = Path::new(bound);
+            bound.is_absolute() && directory.starts_with(bound)
+        };
+        match self {
+            Self::Listed(listed) => listed.iter().any(inside),
+            Self::Beside(own) => inside(own),
+            Self::Named => false,
+        }
+    }
+
+    /// Why a directory that does not lie inside the reach is refused,
+    /// naming no directory.
+    #[must_use]
+    pub fn refusal(&self) -> String {
+        match self {
+            Self::Listed(_) => {
+                format!("lies inside no directory {FILES_ALLOWED} lists on this host")
+            }
+            Self::Beside(_) => format!(
+                "lies outside the config's own directory, and {FILES_ALLOWED}, which lists more, is not set on this host"
+            ),
+            Self::Named => "cannot be reached: this host reads files by name".to_owned(),
+        }
+    }
+
+    /// What the reach is and where the host took it from.
+    #[must_use]
+    pub fn said(&self) -> String {
+        match self {
+            Self::Listed(listed) => format!(
+                "[files] allowed may name directories inside those {FILES_ALLOWED} lists on this host: {}",
+                listed.join(", ")
+            ),
+            Self::Beside(own) => format!(
+                "[files] allowed may name directories inside the config's own, {own}, alone: {FILES_ALLOWED} is not set on this host"
+            ),
+            Self::Named => {
+                "[files] allowed may name no directory: this host reads files by name".to_owned()
+            }
+        }
+    }
+}
 
 /// The directory a file the config names must lie in, every link followed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +134,17 @@ pub trait Files {
     /// Why the file could not be read, or where it leads outside the
     /// config's directory.
     fn read_inside(&self, path: &str) -> Result<String, String>;
+
+    /// What this host lets `[files] allowed` name.
+    fn reach(&self) -> Reach {
+        Reach::Named
+    }
+
+    /// The directory at the path given, every link followed, where it is
+    /// one.
+    fn resolved(&self, _directory: &str) -> Option<String> {
+        None
+    }
 }
 
 /// How the config `config` reads each file it names: through `files`

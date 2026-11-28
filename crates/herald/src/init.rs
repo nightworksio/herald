@@ -118,8 +118,8 @@ pub(crate) async fn initialising(
         store: &store,
     };
     let text = first.text();
-    let config =
-        crate::loaded(path, &text).map_err(|why| format!("{why}\nNothing was written."))?;
+    let config = crate::loaded(path, &text, trying.vars)
+        .map_err(|why| format!("{why}\nNothing was written."))?;
     if asked.print {
         let _ = write!(asking.out, "{text}");
         return Ok(DONE);

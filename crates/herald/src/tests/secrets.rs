@@ -93,6 +93,7 @@ fn every_secret_the_run_may_resolve_is_hidden_the_longest_first_line_by_line() {
             .join("herald.toml")
             .display()
             .to_string(),
+        &BTreeMap::new(),
     )
     .unwrap();
     let vars: BTreeMap<String, String> = [

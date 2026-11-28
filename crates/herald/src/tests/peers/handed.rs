@@ -20,7 +20,7 @@ impl<H: Host> Through<H> for Keep {
 }
 
 pub(in crate::tests) fn kept(setup: &Setup, world: &World, held: PeerKeys) {
-    let config = crate::read(&path_of(setup)).unwrap();
+    let config = crate::read(&path_of(setup), &std::collections::BTreeMap::new()).unwrap();
     let connect =
         |_: herald_ports::Base<'_>, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
     let waiting = |_: &str, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
@@ -72,7 +72,7 @@ fn the_set_a_signed_peer_handed_over_to_is_pinned_without_asking() {
     assert!(out.contains("[peers.org]"), "{out}");
     let (code, out) = answered(&setup, &world, &[DOMAIN, "--name", "org", "--update"], "");
     assert_eq!(code, DONE, "{out}");
-    let config = crate::read(&path_of(&setup)).unwrap();
+    let config = crate::read(&path_of(&setup), &std::collections::BTreeMap::new()).unwrap();
     assert_eq!(config.peers["org"].keys, [public(NEWER), public(OLDER)]);
 }
 
@@ -110,7 +110,7 @@ fn a_store_that_keeps_no_peer_s_set_says_so() {
     let world = World::default();
     world.state.lock().unwrap().peer = Some(served(&[NEWER, OLDER], 3));
     let path = path_of(&setup);
-    let config = crate::read(&path).unwrap();
+    let config = crate::read(&path, &std::collections::BTreeMap::new()).unwrap();
     let crate::cli::Command::Read(Reading::Peer(asked)) = crate::cli::Cli::try_parse_from([
         "herald", "peer", "add", DOMAIN, "--name", "org", "--update",
     ])

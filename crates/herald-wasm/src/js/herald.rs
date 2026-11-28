@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use herald_compose::{Artefact, Composed, Hosting, SocketReach, asked_query, public_address, told};
-use herald_config::{Files, Server, UNCONTAINED, Unread, Uses, Within, load_with};
+use herald_config::{Files, Reach, Server, UNCONTAINED, Unread, Uses, Within, load_with};
 use herald_flows::{Admission, Inbound};
-use js_sys::{Function, Promise, Uint8Array};
+use js_sys::{Array, Function, Promise, Uint8Array};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
@@ -11,7 +11,7 @@ use wasm_bindgen_futures::future_to_promise;
 use super::bindings::{HostObject, SocketsObject};
 use super::host::JsHost;
 use super::sessions::{JsSockets, JsTaker, JsTimer};
-use super::{bytes, member, object, pair_array, pairs, strings};
+use super::{bytes, member, object, pair_array, pairs, strings, strings_of};
 use crate::numbers::millis;
 
 /// Whether `address` is on the public internet: what a host that resolves
@@ -40,6 +40,10 @@ impl Herald {
 /// The files a JS host gives a config: an object of texts by name, or a
 /// function answering each name, and the directory it must lie in, with its
 /// text, `null` where its links lead outside that directory, or nothing.
+/// The function's `allowed` lists the directories its host lets
+/// `[files] allowed` reach, or its `beside` names the config's own
+/// directory where the host lists none, each every link followed, and its
+/// `resolved` answers a directory with every link followed.
 pub(super) struct Given<'a>(pub(super) &'a JsValue);
 
 impl Files for Given<'_> {
@@ -66,6 +70,28 @@ impl Files for Given<'_> {
 
     fn read_inside(&self, _: &str) -> Result<String, String> {
         Err(UNCONTAINED.to_owned())
+    }
+
+    fn reach(&self) -> Reach {
+        let Some(reader) = self.0.dyn_ref::<Function>() else {
+            return Reach::Named;
+        };
+        let allowed = member(reader, "allowed");
+        if Array::is_array(&allowed) {
+            return Reach::Listed(strings_of(&allowed));
+        }
+        member(reader, "beside")
+            .as_string()
+            .map_or(Reach::Named, Reach::Beside)
+    }
+
+    fn resolved(&self, directory: &str) -> Option<String> {
+        let reader = self.0.dyn_ref::<Function>()?;
+        member(reader, "resolved")
+            .dyn_ref::<Function>()?
+            .call1(&JsValue::NULL, &JsValue::from_str(directory))
+            .ok()?
+            .as_string()
     }
 }
 

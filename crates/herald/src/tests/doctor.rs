@@ -2,13 +2,19 @@ use super::world::*;
 use crate::*;
 
 /// What `doctor` said with `args` over `setup`, its config's path written as
-/// `herald.toml`.
+/// `herald.toml`, but for what `[files] allowed` may reach, which
+/// `tests::files` judges.
 fn doctored(setup: &Setup, args: &[&str]) -> (u8, String) {
     let run = herald(setup, &World::default(), args);
     let path = setup.directory.path().join("herald.toml");
+    let said: String = run
+        .out
+        .split_inclusive('\n')
+        .filter(|line| !line.starts_with("[files] allowed may name"))
+        .collect();
     (
         run.code,
-        run.out.replace(&path.display().to_string(), "herald.toml"),
+        said.replace(&path.display().to_string(), "herald.toml"),
     )
 }
 

@@ -612,7 +612,7 @@ pub(crate) async fn setting_up(
         keys.push(("repository", text(repository)));
     }
     keys.push(("branch", text(&sourced.branch)));
-    let candidate = super::loaded(path, &table::placed(&file, &name, &keys)?)?;
+    let candidate = super::loaded(path, &table::placed(&file, &name, &keys)?, vars)?;
     let printed = Printed::of(asked.private, config.cli.private);
     let (runs_name, runs, said) = running(
         (vars, connect),
@@ -668,7 +668,7 @@ pub(crate) async fn setting_up(
     .await?;
     finish(
         (path, &file, &name),
-        &keys,
+        (&keys, vars),
         secret.as_deref(),
         asked.print,
         &mut asking,
@@ -889,13 +889,13 @@ async fn updating(
 /// written into the config at `path` once confirmed and read back whole.
 async fn finish(
     (path, file, name): (&str, &str, &str),
-    keys: &Keys,
+    (keys, vars): (&Keys, &BTreeMap<String, String>),
     secret: Option<&str>,
     print: bool,
     asking: &mut Asking<'_>,
 ) -> Result<u8, String> {
     let rewritten = table::placed(file, name, keys)?;
-    super::loaded(path, &rewritten).map_err(|why| format!("{why}\nNothing was written."))?;
+    super::loaded(path, &rewritten, vars).map_err(|why| format!("{why}\nNothing was written."))?;
     let shown = table::shown(name, keys);
     if print {
         let _ = write!(asking.out, "{shown}");

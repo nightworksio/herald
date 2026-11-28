@@ -85,7 +85,7 @@ fn audited(setup: &Setup, world: &World) {
 
 /// The audit `days`, kept in the store `setup` names.
 fn written(setup: &Setup, world: &World, days: Vec<AuditDay>) {
-    let config = crate::read(&path_of(setup)).unwrap();
+    let config = crate::read(&path_of(setup), &std::collections::BTreeMap::new()).unwrap();
     let connect =
         |_: herald_ports::Base<'_>, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
     let waiting = |_: &str, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
@@ -107,7 +107,7 @@ fn written(setup: &Setup, world: &World, days: Vec<AuditDay>) {
 
 fn logged(setup: &Setup, world: &World, args: &[&str]) -> Result<(u8, String), String> {
     let path = path_of(setup);
-    let config = crate::read(&path).unwrap();
+    let config = crate::read(&path, &std::collections::BTreeMap::new()).unwrap();
     let mut all = vec!["herald", "peer", "log"];
     all.extend(args);
     let crate::cli::Command::Read(Reading::Peer(asked)) =

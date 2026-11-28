@@ -15,7 +15,7 @@ function host(env) {
   });
 }
 
-const composed = composeOnce(() => composedFrom(configPath(process.env), host(process.env), "vercel"));
+const composed = composeOnce(() => composedFrom(configPath(process.env), host(process.env), "vercel", process.env.HERALD_FILES_ALLOWED));
 
 export default {
   async fetch(request) {
