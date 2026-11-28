@@ -1150,6 +1150,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-dest-email"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "jiff",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-dest-fediverse"
 version = "0.0.0"
 dependencies = [

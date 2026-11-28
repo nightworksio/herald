@@ -91,6 +91,25 @@ Where a host can open a TCP connection for SMTP, read 2026-11-27:
    - Addresses (`from`, `reply_to` on the table; `to`, `cc`, `bcc` on a
      route) and display names come from the config alone, parsed as it
      loads; no event text reaches a header but the encoded subject.
+     An address is a dot-atom local part of at most 64 bytes and an ASCII
+     domain of host-name labels, at most 254 bytes in all (RFC 5321
+     §4.5.3.1); the quoted local part RFC 5321 §4.1.2 says to avoid is
+     refused, and an international domain is written in its `xn--` form.
+     A display name holds at most 256 bytes and no control character,
+     line separator, quote, backslash or angle bracket. Every address is
+     written between angle brackets.
+   - A route names at least one recipient and at most 100, the fewest an
+     SMTP server must take (RFC 5321 §4.5.3.1.8), each address once; a
+     `bcc` address stands in the envelope alone, never in a field.
+   - The first part's id is `<marker@domain>`, part N's `<marker.N@domain>`;
+     each later part's `In-Reply-To` and `References` name the first.
+   - The message is 7-bit text in CRLF lines. A subject or name that is not
+     printable ASCII, or reads as an encoded-word, is written as UTF-8 Q
+     encoded-words, each line holding one at most 76 characters (RFC 2047
+     §2, §5); other lines fold at 78 (RFC 5322 §2.1.1). Each body is UTF-8
+     in quoted-printable (RFC 2045 §6.7), so no transport needs 8BITMIME
+     (RFC 6152), and the boundary `=_herald` holds `=_`, which no
+     quoted-printable body holds. `Date` is written in UTC.
    - One message per announcement, at most `max_bytes` (256 KiB where
      absent).
 3. **Transports that carry the whole message.**

@@ -311,6 +311,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-dest-email"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "jiff",
+ "schemars",
+ "serde",
+]
+
+[[package]]
 name = "herald-dest-fediverse"
 version = "0.0.0"
 dependencies = [
@@ -404,6 +414,7 @@ dependencies = [
  "herald-config",
  "herald-core",
  "herald-dest-discord",
+ "herald-dest-email",
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
