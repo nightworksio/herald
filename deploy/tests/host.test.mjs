@@ -133,7 +133,7 @@ test("a config's files are read inside the directory each must lie in, every lin
   assert.equal(files("post.md"), "beside");
   assert.equal(files(elsewhere), null);
   assert.equal(files("link.md"), null);
-  assert.equal(files(elsewhere, away), "away");
+  assert.equal(files(elsewhere, realpathSync(away)), null);
   assert.equal(files("absent.md"), undefined);
   assert.equal(files.beside, realpathSync(directory));
   assert.equal(files.allowed, undefined);
@@ -148,6 +148,11 @@ test("the host's HERALD_FILES_ALLOWED lists what [files] allowed may reach, ever
   assert.deepEqual(files.allowed, [realpathSync(work), realpathSync(directory)]);
   assert.equal(files.beside, undefined);
   assert.equal(files.resolved(join(directory, "link")), realpathSync(work));
+  const elsewhere = await mkdtemp(join(tmpdir(), "herald-elsewhere-"));
+  await writeFile(join(elsewhere, "away.md"), "away");
+  await writeFile(join(work, "kept.md"), "kept");
+  assert.equal(files(join(elsewhere, "away.md"), realpathSync(elsewhere)), null);
+  assert.equal(files(join(directory, "link", "kept.md"), realpathSync(work)), "kept");
   for (const listed of ["relative", join(directory, "absent"), join(directory, "link", "..", "absent")]) {
     assert.throws(() => beside(join(directory, "herald.toml"), listed), (error) => {
       assert.match(error.message, /HERALD_FILES_ALLOWED lists a directory that is not absolute/);

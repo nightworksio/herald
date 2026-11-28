@@ -986,6 +986,7 @@ dependencies = [
  "jsonschema",
  "pollster",
  "rpassword",
+ "same-file",
  "schemars",
  "serde",
  "serde_json",

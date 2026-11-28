@@ -310,3 +310,77 @@ fn doctor_says_what_files_allowed_may_reach_and_where_the_host_took_it_from() {
     assert!(run.err.contains("files.allowed"), "{}", run.err);
     assert!(!run.err.contains("may name directories"), "{}", run.err);
 }
+
+#[test]
+fn a_read_outside_the_host_s_list_is_refused_whatever_directory_it_is_asked_within() {
+    use herald_config::Files as _;
+    let secret = canary();
+    let base = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(base.path()).unwrap();
+    let work = base.join("work");
+    let outside = base.join("outside");
+    fs::create_dir(&work).unwrap();
+    fs::create_dir(&outside).unwrap();
+    fs::write(outside.join("secret.md"), &secret).unwrap();
+    let beside = crate::Beside::new(&work, &listing(&[work.to_str().unwrap()])).unwrap();
+    let file = outside.join("secret.md");
+    assert_eq!(
+        beside.read(
+            file.to_str().unwrap(),
+            herald_config::Within::Allowed(outside.to_str().unwrap())
+        ),
+        Err(herald_config::Unread::Outside)
+    );
+}
+
+#[test]
+fn a_link_re_pointed_after_the_load_reads_nothing_outside_the_directory_vouched_for() {
+    use herald_config::Files as _;
+    let secret = canary();
+    let base = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(base.path()).unwrap();
+    let work = base.join("work");
+    let real = work.join("real");
+    let outside = base.join("outside");
+    let config = work.join("config");
+    for directory in [&work, &real, &outside, &config] {
+        fs::create_dir(directory).unwrap();
+    }
+    fs::write(real.join("body.md"), "{{ event.body }}").unwrap();
+    fs::write(outside.join("body.md"), &secret).unwrap();
+    let linked = work.join("linked");
+    symlink(&real, &linked).unwrap();
+    let host = [work.to_str().unwrap()];
+    let body = linked.join("body.md");
+    assert!(hosted(&config, body.to_str().unwrap(), &[&linked], &host).is_ok());
+    fs::remove_file(&linked).unwrap();
+    symlink(&outside, &linked).unwrap();
+    let beside = crate::Beside::new(&config, &listing(&host)).unwrap();
+    assert_eq!(
+        beside.read(
+            body.to_str().unwrap(),
+            herald_config::Within::Allowed(real.to_str().unwrap())
+        ),
+        Err(herald_config::Unread::Outside)
+    );
+    let refused = hosted(&config, body.to_str().unwrap(), &[&linked], &host).unwrap_err();
+    unwidened(&refused, &[&linked]);
+    assert!(!refused.contains(&secret), "{refused}");
+}
+
+#[test]
+fn a_handle_is_unmoved_only_while_it_is_the_file_at_its_link_free_path() {
+    let directory = tempfile::tempdir().unwrap();
+    let directory = fs::canonicalize(directory.path()).unwrap();
+    let (kept, other) = (directory.join("kept.md"), directory.join("other.md"));
+    fs::write(&kept, "kept").unwrap();
+    fs::write(&other, "other").unwrap();
+    let handle = same_file::Handle::from_path(&kept).unwrap();
+    assert!(crate::unmoved(&handle, &kept));
+    assert!(!crate::unmoved(&handle, &other));
+    let linked = directory.join("linked.md");
+    symlink(&kept, &linked).unwrap();
+    assert!(!crate::unmoved(&handle, &linked));
+    assert!(!crate::unmoved(&handle, &directory.join("absent.md")));
+    assert_eq!(crate::opened(&kept), Ok("kept".to_owned()));
+}

@@ -72,22 +72,32 @@ impl Reach {
     }
 }
 
+/// A directory `[files] allowed` lists: as written, and as the host
+/// resolved it, every link followed, once it found it inside its reach.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Allowed {
+    /// As `herald.toml` writes it.
+    pub written: String,
+    /// As the host resolved it.
+    pub resolved: String,
+}
+
 /// The directory a file the config names must lie in, every link followed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Within<'a> {
     /// The config's own directory.
     Beside,
-    /// A directory `[files] allowed` names, absolute.
+    /// A directory `[files] allowed` names, as the host resolved it.
     Allowed(&'a str),
 }
 
 impl Within<'_> {
     /// Where `path`, as the config names it, may be read from: beside the
-    /// config where it is a path of names, or the directory of `allowed`
-    /// that holds it where it is absolute; none where it steps up with `..`
-    /// or lies in no such directory.
+    /// config where it is a path of names, or the directory of `allowed`,
+    /// as written or as resolved, that holds it where it is absolute; none
+    /// where it steps up with `..` or lies in no such directory.
     #[must_use]
-    pub fn of<'a>(path: &str, allowed: &'a [String]) -> Option<Within<'a>> {
+    pub fn of<'a>(path: &str, allowed: &'a [Allowed]) -> Option<Within<'a>> {
         let named = Path::new(path);
         if named.components().any(|step| step == Component::ParentDir) {
             return None;
@@ -95,8 +105,10 @@ impl Within<'_> {
         if named.is_absolute() {
             return allowed
                 .iter()
-                .find(|directory| named.starts_with(directory.as_str()))
-                .map(|directory| Within::Allowed(directory.as_str()));
+                .find(|directory| {
+                    named.starts_with(&directory.written) || named.starts_with(&directory.resolved)
+                })
+                .map(|directory| Within::Allowed(directory.resolved.as_str()));
         }
         let mut steps = named.components().peekable();
         (steps.peek().is_some()
@@ -119,7 +131,9 @@ pub enum Unread {
 /// through `read_inside`.
 pub trait Files {
     /// The text of the file at `path`, as the config names it, where it is
-    /// a file inside `within`.
+    /// a file inside `within` and, where `within` is a directory
+    /// `[files] allowed` names, inside [`Files::reach`], each judged as the
+    /// file is read, every link followed.
     ///
     /// # Errors
     ///
@@ -154,7 +168,7 @@ pub trait Files {
 pub(crate) fn contained<'a>(
     files: &'a dyn Files,
     config: &'a str,
-    allowed: Vec<String>,
+    allowed: Vec<Allowed>,
 ) -> impl Fn(&str) -> Result<String, String> + 'a {
     move |path| {
         let outside = || {

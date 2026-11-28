@@ -23,7 +23,12 @@ Windows).
 Each directory `[files] allowed` lists, and each the host lists, is compared
 with every link followed and step by step, so `/workspace` is not inside
 `/work`, and a link inside a listed directory that leads out of it is outside.
-A directory outside the bound stops the load. The error names the key,
+Each file is judged again as it is read: its real path lies inside the
+directory as the host resolved it at load and inside the host's bound, and
+the native binary and the JavaScript shims read it through the handle they
+opened once that handle is found to be the file at that real path. A link
+re-pointed after the load, or swapped between the check and the open, reads
+nothing. A directory outside the bound stops the load. The error names the key,
 `files.allowed`, its line and why, and never the path written there. A
 `HERALD_FILES_ALLOWED` that lists a relative path or one that is not a
 directory stops the load, naming the variable and none of its value.

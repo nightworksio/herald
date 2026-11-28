@@ -10,9 +10,9 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::future::Future;
-use std::io::{IsTerminal as _, Write};
+use std::io::{IsTerminal as _, Read as _, Write};
 use std::ops::ControlFlow;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -23,6 +23,7 @@ use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
 use herald_ports::{Scrubber, Secret};
 use herald_sources_forge::Forge;
+use same_file::Handle;
 
 mod announce;
 mod apps;
@@ -531,6 +532,7 @@ fn loaded(path: &str, text: &str, vars: &BTreeMap<String, String>) -> Result<Con
 /// from a directory `[files] allowed` names within `reach`.
 struct Beside<'a> {
     directory: &'a Path,
+    own: Option<PathBuf>,
     reach: Reach,
 }
 
@@ -543,6 +545,7 @@ impl<'a> Beside<'a> {
     /// Where [`FILES_ALLOWED`] lists a directory that is not absolute or
     /// not one on this host, naming none of it.
     fn new(directory: &'a Path, vars: &BTreeMap<String, String>) -> Result<Self, String> {
+        let own = canonical(dotted(directory));
         let reach = match var(vars, FILES_ALLOWED) {
             Some(listed) => Reach::Listed(
                 std::env::split_paths(listed)
@@ -551,13 +554,20 @@ impl<'a> Beside<'a> {
                             .is_absolute()
                             .then(|| canonical(&listed))
                             .flatten()
+                            .map(|resolved| resolved.display().to_string())
                             .ok_or_else(|| format!("{FILES_ALLOWED} lists a directory that is not absolute or not a directory on this host; list each directory from the root, joined as PATH joins its own"))
                     })
                     .collect::<Result<_, _>>()?,
             ),
-            None => canonical(dotted(directory)).map_or(Reach::Named, Reach::Beside),
+            None => own.as_ref().map_or(Reach::Named, |own| {
+                Reach::Beside(own.display().to_string())
+            }),
         };
-        Ok(Self { directory, reach })
+        Ok(Self {
+            directory,
+            own,
+            reach,
+        })
     }
 
     /// The config's directory, `.` where its path names none.
@@ -585,29 +595,54 @@ fn reach(path: &str, vars: &BTreeMap<String, String>) -> Option<String> {
 }
 
 /// The directory at `path`, every link followed, where it is one.
-fn canonical(path: &Path) -> Option<String> {
+fn canonical(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path)
         .ok()
         .filter(|resolved| resolved.is_dir())
-        .map(|resolved| resolved.display().to_string())
+}
+
+/// The text of the file at `resolved`, every link followed, read through
+/// the handle it was opened as, where that handle is still the file at
+/// `resolved` and `resolved` still holds no link once it is open.
+fn opened(resolved: &Path) -> Result<String, Unread> {
+    let failed = |error: std::io::Error| Unread::Failed(error.to_string());
+    let handle =
+        Handle::from_file(std::fs::File::open(resolved).map_err(failed)?).map_err(failed)?;
+    unmoved(&handle, resolved)
+        .then_some(())
+        .ok_or(Unread::Outside)?;
+    let mut text = String::new();
+    let mut file = handle.as_file();
+    file.read_to_string(&mut text).map_err(failed)?;
+    Ok(text)
+}
+
+/// Whether `handle` is the file at `resolved`, which holds no link.
+fn unmoved(handle: &Handle, resolved: &Path) -> bool {
+    std::fs::canonicalize(resolved).is_ok_and(|again| again == resolved)
+        && Handle::from_path(resolved).is_ok_and(|now| now == *handle)
 }
 
 impl herald_config::Files for Beside<'_> {
     fn read(&self, file: &str, within: Within<'_>) -> Result<String, Unread> {
         let failed = |error: std::io::Error| Unread::Failed(error.to_string());
-        let base = match within {
-            Within::Beside => self.directory(),
-            Within::Allowed(directory) => Path::new(directory),
-        };
-        let base = std::fs::canonicalize(base).map_err(failed)?;
         let resolved = std::fs::canonicalize(self.directory().join(file)).map_err(failed)?;
-        if !resolved.starts_with(&base) {
+        let inside = match within {
+            Within::Beside => self
+                .own
+                .as_ref()
+                .is_some_and(|own| resolved.starts_with(own)),
+            Within::Allowed(directory) => {
+                resolved.starts_with(directory) && self.reach.holds(&resolved.display().to_string())
+            }
+        };
+        if !inside {
             return Err(Unread::Outside);
         }
         if !resolved.is_file() {
             return Err(Unread::Failed("it is no file".to_owned()));
         }
-        std::fs::read_to_string(resolved).map_err(failed)
+        opened(&resolved)
     }
 
     fn read_inside(&self, file: &str) -> Result<String, String> {
@@ -626,7 +661,7 @@ impl herald_config::Files for Beside<'_> {
     }
 
     fn resolved(&self, directory: &str) -> Option<String> {
-        canonical(Path::new(directory))
+        canonical(Path::new(directory)).map(|resolved| resolved.display().to_string())
     }
 }
 

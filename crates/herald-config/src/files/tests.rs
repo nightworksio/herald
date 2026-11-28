@@ -3,7 +3,20 @@ use super::*;
 #[test]
 fn a_path_of_names_lies_beside_the_config_and_an_absolute_one_in_the_allowed_directory_holding_it()
 {
-    let allowed = ["/srv/herald".to_owned(), "/etc/herald/".to_owned()];
+    let allowed = [
+        Allowed {
+            written: "/srv/herald".to_owned(),
+            resolved: "/srv/herald".to_owned(),
+        },
+        Allowed {
+            written: "/etc/herald/".to_owned(),
+            resolved: "/etc/herald/".to_owned(),
+        },
+        Allowed {
+            written: "/tmp/herald".to_owned(),
+            resolved: "/private/tmp/herald".to_owned(),
+        },
+    ];
     for beside in ["body.md", "./body.md", "templates/body.md", "a/./b.md"] {
         assert_eq!(
             Within::of(beside, &allowed),
@@ -19,6 +32,13 @@ fn a_path_of_names_lies_beside_the_config_and_an_absolute_one_in_the_allowed_dir
         Within::of("/etc/herald/lists/blocks.csv", &allowed),
         Some(Within::Allowed("/etc/herald/"))
     );
+    for linked in ["/tmp/herald/body.md", "/private/tmp/herald/body.md"] {
+        assert_eq!(
+            Within::of(linked, &allowed),
+            Some(Within::Allowed("/private/tmp/herald")),
+            "{linked}"
+        );
+    }
     for refused in [
         "",
         "../body.md",

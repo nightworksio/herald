@@ -14,7 +14,7 @@ use toml::de::{DeTable, DeValue};
 use super::{Loader, Value, list};
 use crate::config::{Config, Schedule, Server};
 use crate::file::{FilesFile, HttpFile, MarkersFile, ScheduleFile, ServerFile};
-use crate::files::Files;
+use crate::files::{Allowed, Files};
 
 /// The top-level keys of `herald.toml`.
 const SECTIONS: [&str; 31] = [
@@ -186,7 +186,7 @@ impl Loader<'_> {
     /// The directories `[files] allowed` names, each absolute with no `..`
     /// step and, every link followed, inside what `files` lets a config
     /// reach. No refusal repeats the path it refuses.
-    pub(super) fn allowed(&mut self, value: Option<Value<'_>>, files: &dyn Files) -> Vec<String> {
+    pub(super) fn allowed(&mut self, value: Option<Value<'_>>, files: &dyn Files) -> Vec<Allowed> {
         let file = value
             .and_then(|value| self.typed::<FilesFile>(value, "files"))
             .unwrap_or_default();
@@ -198,17 +198,20 @@ impl Loader<'_> {
                 || path.components().any(|step| step == Component::ParentDir)
             {
                 "a directory it lists is no absolute directory; name each from the root, such as \"/etc/herald\", with no .. step".to_owned()
-            } else if !files
+            } else if let Some(resolved) = files
                 .resolved(directory.get_ref())
-                .is_some_and(|resolved| reach.holds(&resolved))
+                .filter(|resolved| reach.holds(resolved))
             {
+                allowed.push(Allowed {
+                    written: directory.into_inner(),
+                    resolved,
+                });
+                continue;
+            } else {
                 format!(
                     "a directory it lists, every link followed, {}; herald doctor names what this host lets [files] allowed reach",
                     reach.refusal()
                 )
-            } else {
-                allowed.push(directory.into_inner());
-                continue;
             };
             self.error(&directory.span(), "files.allowed", refused);
         }

@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, resolve, sep } from "node:path";
 import { Herald, load } from "./host.mjs";
@@ -16,22 +16,41 @@ function resolved(path) {
   }
 }
 
+function inside(base, file) {
+  return file === base || file.startsWith(base.endsWith(sep) ? base : base + sep);
+}
+
+function opened(file) {
+  const fd = openSync(file, "r");
+  try {
+    const held = fstatSync(fd);
+    const now = statSync(file);
+    if (realpathSync(file) !== file || held.dev !== now.dev || held.ino !== now.ino) {
+      return null;
+    }
+    return readFileSync(fd, "utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function beside(config, listed) {
   const directory = dirname(config);
-  const read = (name, within = directory) => {
-    let base;
+  const own = resolved(directory);
+  const read = (name, within) => {
     let file;
     try {
-      base = realpathSync(within);
       file = realpathSync(resolve(directory, name));
     } catch {
       return undefined;
     }
-    if (!file.startsWith(base.endsWith(sep) ? base : base + sep)) {
+    const bound = read.allowed ?? (own === undefined ? [] : [own]);
+    const base = within ?? own;
+    if (base === undefined || !inside(base, file) || (within !== undefined && !bound.some((each) => inside(each, file)))) {
       return null;
     }
     try {
-      return readFileSync(file, "utf8");
+      return opened(file);
     } catch {
       return undefined;
     }
@@ -46,7 +65,7 @@ export function beside(config, listed) {
       return real;
     });
   } else {
-    read.beside = resolved(directory);
+    read.beside = own;
   }
   return read;
 }

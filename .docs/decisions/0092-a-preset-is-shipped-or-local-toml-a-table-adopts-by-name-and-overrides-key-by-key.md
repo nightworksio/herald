@@ -109,6 +109,17 @@ already ships named content under a `herald:` prefix: the templates
    directory outside the bound stops the load; the error names
    `files.allowed`, its line and why, and never the path written there.
    `herald doctor` says what the bound is and where the host took it from.
+   The loader keeps each directory as the host resolved it, and a file is
+   read within that resolved directory, never the path as written, so a
+   link re-pointed after the load reaches nothing new. As the file is read
+   the host judges it again: its real path, every link followed, lies inside
+   the resolved directory and inside the host's bound, and the native binary
+   and the JavaScript shims read it through the handle they opened, once that
+   handle is found to be the file at that real path and the path holds no
+   link. A file swapped between the check and the open is therefore refused,
+   and what is read is a file that lay inside. A hard link inside an allowed
+   directory is the file it links, as it is for every reader; a checkout
+   holds none, as git stores no hard link.
    Where the host's own variable comes from a file a pull request may
    change, such as a workflow run on `pull_request`, the pull request may
    change the bound too: `.docs/files.md` names which events run whose
