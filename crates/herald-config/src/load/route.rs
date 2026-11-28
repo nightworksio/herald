@@ -50,7 +50,6 @@ use crate::kinds::At;
 pub(super) struct Read {
     pub(super) config: RouteConfig,
     pub(super) rendered: Option<Rendered>,
-    pub(super) sample_kinds: BTreeSet<Kind>,
     pub(super) origins: bool,
     pub(super) thread: Option<Spanned<String>>,
     pub(super) group: Option<Spanned<String>>,
@@ -803,11 +802,11 @@ impl Loader<'_> {
             } else {
                 self.private_kinds(&sample_kinds)
             },
+            taken: sample_kinds,
         };
         Some(Read {
             config,
             rendered,
-            sample_kinds,
             origins,
             thread: thread_name,
             group: group_key,

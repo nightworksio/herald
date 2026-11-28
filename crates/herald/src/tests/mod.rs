@@ -25,6 +25,7 @@ mod pages;
 mod peers;
 mod poll;
 mod presets;
+mod preview;
 mod queue;
 mod release;
 mod rerun;

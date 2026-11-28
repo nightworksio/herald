@@ -842,7 +842,7 @@ longer than 256 bytes, or one past `most` (25, at most 100) or past what
 the store keeps in a record, is announced alone. The markers store keeps
 no groups, and a route to a herald feed or push, which carries each
 event as an envelope of its own, takes no `group`. `herald preview --group v1.2.0` renders a route's group of
-the sample releases.
+the samples of each kind it takes ([preview](.docs/preview.md)).
 
 ### A deleted release
 

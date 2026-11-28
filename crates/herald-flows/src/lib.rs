@@ -92,7 +92,7 @@ pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced
 pub use prepare::{
     Asking, Connected, PrepareError, Prepared, PreparedPages, UnreadSecret, prepare,
 };
-pub use preview::{Previewed, preview, preview_group};
+pub use preview::{Against, Previewed, Sampling, preview, preview_group, preview_samples};
 pub use publishing::{Publishing, publish};
 pub use report::{queue, report};
 pub use room::{Place, Room, Running};

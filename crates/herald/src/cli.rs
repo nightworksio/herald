@@ -237,11 +237,21 @@ pub(crate) enum Reading {
     #[command(subcommand)]
     Preset(Presetting),
     /// Render each route's templates as its destination would show them,
-    /// against a sample event or a release event's file.
+    /// against the samples of each kind it takes or a release event's file,
+    /// reading no secret and sending nothing (ADR-0095).
     Preview {
         /// Only this route.
         #[arg(long)]
         route: Option<String>,
+        /// Only this kind's samples.
+        #[arg(long, conflicts_with = "event")]
+        kind: Option<String>,
+        /// Only this sample of each kind.
+        #[arg(long, conflicts_with = "event")]
+        sample: Option<String>,
+        /// Only this report, showing a sample view.
+        #[arg(long, conflicts_with = "event")]
+        report: Option<String>,
         /// A release event's file, as the forge sends it, in place of a
         /// sample event.
         #[arg(long)]
@@ -250,7 +260,7 @@ pub(crate) enum Reading {
         #[arg(long, value_enum, default_value_t = RunForge::Github)]
         from: RunForge,
         /// Render each route that groups against the file's release, or
-        /// every sample release, as one group under this key.
+        /// every sample of each kind it takes, as one group under this key.
         #[arg(long)]
         group: Option<String>,
     },
