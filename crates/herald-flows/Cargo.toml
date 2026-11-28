@@ -27,7 +27,6 @@ jiff.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-herald-crypto = { workspace = true, features = ["keygen"] }
 herald-dest-discord.workspace = true
 herald-dest-herald.workspace = true
 herald-dest-matrix.workspace = true

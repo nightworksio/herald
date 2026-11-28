@@ -1265,7 +1265,6 @@ dependencies = [
  "herald-aws",
  "herald-config",
  "herald-core",
- "herald-crypto",
  "herald-dest-discord",
  "herald-dest-fediverse",
  "herald-dest-herald",

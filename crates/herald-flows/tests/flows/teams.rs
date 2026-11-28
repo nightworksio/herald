@@ -1,5 +1,5 @@
-//! What Teams posts to a bot at herald's endpoint, against RSA keys and
-//! tokens made at run time: each activity taken only on a bearer token
+//! What Teams posts to a bot at herald's endpoint, against keys and tokens
+//! made at run time: each activity taken only on a bearer token
 //! signed by a key the Bot Framework's metadata lists and endorses for
 //! Teams, of its issuer, meant for the bot, valid now and naming the
 //! service URL the activity names, on the bot's own service origin; every
@@ -12,13 +12,10 @@ use std::collections::BTreeMap;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use herald_config::{Config, Uses, load};
-use herald_core::der::{BIT_STRING, INTEGER, SEQUENCE, element};
-use herald_crypto::keygen::{Bits, rsa_key};
-use herald_crypto::{RingSigner, RingVerifier};
 use herald_flows::{Answered, Connected, Inbound, Ports, Serving, Webhooks, answer, prepare};
-use herald_ports::{Algorithm, Deliveries as _, Response, Secret, Signer as _};
+use herald_ports::{Deliveries as _, Response};
 use herald_records::MemoryKeyring;
-use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
 
@@ -34,26 +31,18 @@ const SERVICE: &str = "https://smba.example/emea/";
 const PATH: &str = "/interactions/teams";
 const ACTIVITY_ID: &str = "1481567603816";
 
-/// A key pair made at run time: its private half as PEM and its modulus
-/// and exponent as a key set lists them.
+/// A key as a key set lists it, its modulus made at run time from `seed`
+/// so each pair of a test is its own; the fake verifier takes a signature
+/// by it alone.
 struct Pair {
-    private: Secret,
     modulus: Vec<u8>,
     exponent: Vec<u8>,
 }
 
-fn pair() -> Pair {
-    let made = rsa_key(Bits::Rsa2048).unwrap();
-    let (spki, _) = element(&made.public, SEQUENCE).unwrap();
-    let (_, rest) = element(spki, SEQUENCE).unwrap();
-    let (bits, _) = element(rest, BIT_STRING).unwrap();
-    let (public, _) = element(&bits[1..], SEQUENCE).unwrap();
-    let (modulus, rest) = element(public, INTEGER).unwrap();
-    let (exponent, _) = element(rest, INTEGER).unwrap();
+fn pair(seed: u8) -> Pair {
     Pair {
-        private: Secret::new("the test's RSA key", made.private.as_str()),
-        modulus: modulus.to_vec(),
-        exponent: exponent.to_vec(),
+        modulus: [0xc1, seed, 3, 4].to_vec(),
+        exponent: [1, 0, 1].to_vec(),
     }
 }
 
@@ -132,19 +121,16 @@ fn claims(now: Timestamp) -> Value {
     })
 }
 
-/// A token of `claims` under `header`, signed by `pair`.
+/// A token of `claims` under `header`, signed as the fake verifier takes a
+/// signature by `pair`.
 fn token(header: &Value, claims: &Value, pair: &Pair) -> String {
     let signed = format!(
         "{}.{}",
         encoded(&serde_json::to_vec(header).unwrap()),
         encoded(&serde_json::to_vec(claims).unwrap())
     );
-    let signature = pollster::block_on(RingSigner::default().sign(
-        Algorithm::RsaSha256,
-        &pair.private,
-        signed.as_bytes(),
-    ))
-    .unwrap();
+    let key = herald_keys::rsa_public(&pair.modulus, &pair.exponent);
+    let signature = [b"RsaSha256".as_slice(), &key, signed.as_bytes()].join(&b'|');
     format!("{signed}.{}", encoded(&signature))
 }
 
@@ -244,7 +230,7 @@ impl Bot {
             config: &self.config,
             connected: &self.connected,
             ports: &ports,
-            verifier: &RingVerifier,
+            verifier: &FakeVerifier,
             public: &self.script,
             keys: &keys,
             webhooks: &webhooks,
@@ -290,7 +276,7 @@ fn taken(answered: &Answered) {
 
 #[test]
 fn an_activity_vouched_for_by_a_key_endorsed_for_teams_is_taken_once_and_its_keys_kept() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let bot = Bot::new(publishing(&teams, &speech));
     let signed = token(&header("k1"), &claims(at()), &teams);
     taken(&bot.post(&signed, &activity("message", ACTIVITY_ID, SERVICE)));
@@ -324,7 +310,7 @@ fn an_activity_vouched_for_by_a_key_endorsed_for_teams_is_taken_once_and_its_key
 
 #[test]
 fn a_token_that_does_not_hold_is_refused_before_the_body_is_read() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let bot = Bot::new(publishing(&teams, &speech));
     let unread = b"this is no activity";
     let now = at().as_second();
@@ -406,7 +392,7 @@ fn a_token_that_does_not_hold_is_refused_before_the_body_is_read() {
 
 #[test]
 fn a_token_signed_by_another_key_or_one_not_endorsed_for_teams_is_refused() {
-    let (teams, speech, stranger) = (pair(), pair(), pair());
+    let (teams, speech, stranger) = (pair(1), pair(2), pair(3));
     let bot = Bot::new(publishing(&teams, &speech));
     let unread = b"this is no activity";
     let forged = token(&header("k1"), &claims(at()), &stranger);
@@ -456,7 +442,7 @@ fn a_token_signed_by_another_key_or_one_not_endorsed_for_teams_is_refused() {
 
 #[test]
 fn an_activity_naming_another_service_than_its_token_or_another_origin_sends_nothing_anywhere() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let bot = Bot::new(publishing(&teams, &speech));
     let attacker = "https://attacker.example/teams/";
     let signed = token(&header("k1"), &claims(at()), &teams);
@@ -511,7 +497,7 @@ fn an_activity_naming_another_service_than_its_token_or_another_origin_sends_not
 
 #[test]
 fn a_bot_takes_nothing_pushed_to_it_as_an_application_service() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let bot = Bot::new(publishing(&teams, &speech));
     let signed = token(&header("k1"), &claims(at()), &teams);
     let authorization = format!("Bearer {signed}");
@@ -528,7 +514,7 @@ fn a_bot_takes_nothing_pushed_to_it_as_an_application_service() {
 
 #[test]
 fn an_oversized_body_is_refused_before_its_token_or_any_key_is_read() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let bot = Bot::new(publishing(&teams, &speech));
     let signed = token(&header("k1"), &claims(at()), &teams);
     let large = vec![b' '; herald_dest_teams::ACTIVITY + 1];
@@ -548,7 +534,7 @@ fn an_oversized_body_is_refused_before_its_token_or_any_key_is_read() {
 
 #[test]
 fn keys_that_cannot_be_read_from_the_bot_framework_s_own_documents_take_nothing() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let keys = key_set(&[("k1", &teams, &["msteams"]), ("k2", &speech, &["webchat"])]);
     let signed = token(&header("k1"), &claims(at()), &teams);
     let body = activity("message", "1", SERVICE);
@@ -614,7 +600,7 @@ fn keys_that_cannot_be_read_from_the_bot_framework_s_own_documents_take_nothing(
 
 #[test]
 fn an_activity_of_another_channel_or_a_type_the_bot_does_not_take_is_refused() {
-    let (teams, speech) = (pair(), pair());
+    let (teams, speech) = (pair(1), pair(2));
     let bot = Bot::new(publishing(&teams, &speech));
     let signed = token(&header("k1"), &claims(at()), &teams);
     let mut webchat: Value = serde_json::from_slice(&activity("message", "1", SERVICE)).unwrap();
