@@ -62,6 +62,12 @@ pub enum Phrase {
     DescribeShare,
     /// The label of a post's subscribe button.
     SubscribeButton,
+    /// What a press of the subscribe button is answered with at once, where
+    /// the destination shows it to the member and herald's answer follows.
+    Pressed,
+    /// The label each mention of a subscriber shows, where the destination
+    /// writes one: Microsoft Teams.
+    Mentioned,
     /// Why a member was given a project's role, as an audit log records it.
     AuditSubscribed,
     /// Why a member's role was taken away, as an audit log records it.
@@ -77,6 +83,8 @@ impl Phrase {
     pub const DESCRIPTION: usize = 100;
     /// The longest label a button takes: Slack's.
     pub const LABEL: usize = 75;
+    /// The longest label a mention shows.
+    pub const MENTIONED: usize = 32;
 
     /// What herald says where the config words nothing.
     #[must_use]
@@ -109,6 +117,8 @@ impl Phrase {
             Self::DescribeProject => "The project, where more than one is announced here",
             Self::DescribeShare => "Show the answer to the channel",
             Self::SubscribeButton => "Subscribe",
+            Self::Pressed => "herald is on it; its answer follows in this conversation.",
+            Self::Mentioned => "subscriber",
             Self::AuditSubscribed => "Subscribed through herald",
             Self::AuditUnsubscribed => "Unsubscribed through herald",
             Self::TestTitle => "herald test message",
@@ -145,6 +155,8 @@ impl Phrase {
             Self::DescribeProject => "describe_project",
             Self::DescribeShare => "describe_share",
             Self::SubscribeButton => "subscribe_button",
+            Self::Pressed => "pressed",
+            Self::Mentioned => "mentioned",
             Self::AuditSubscribed => "audit_subscribed",
             Self::AuditUnsubscribed => "audit_unsubscribed",
             Self::TestTitle => "test_title",
@@ -153,7 +165,7 @@ impl Phrase {
     }
 
     /// Every phrase.
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 29] = [
         Self::Subscribed,
         Self::AlreadySubscribed,
         Self::Unsubscribed,
@@ -177,6 +189,8 @@ impl Phrase {
         Self::DescribeProject,
         Self::DescribeShare,
         Self::SubscribeButton,
+        Self::Pressed,
+        Self::Mentioned,
         Self::AuditSubscribed,
         Self::AuditUnsubscribed,
         Self::TestTitle,
@@ -209,9 +223,19 @@ impl Phrase {
             Self::ReleaseLink | Self::ChangelogLink | Self::EntryLink | Self::SubscribeButton => {
                 Some(Self::LABEL)
             }
+            Self::Mentioned => Some(Self::MENTIONED),
             _ => None,
         }
     }
+}
+
+/// Whether `label` may be written inside a mention as it is: letters,
+/// digits, spaces, `.` and `-`, starting with a letter or a digit.
+fn mention_label(label: &str) -> bool {
+    label.chars().next().is_some_and(char::is_alphanumeric)
+        && label
+            .chars()
+            .all(|character| character.is_alphanumeric() || matches!(character, ' ' | '.' | '-'))
 }
 
 /// What herald says where it takes commands: each phrase as the config
@@ -251,6 +275,11 @@ impl Wording {
                 && !(1..=most).contains(&text.chars().count())
             {
                 return Err(format!("wording.{name} takes 1 to {most} characters"));
+            }
+            if *phrase == Phrase::Mentioned && !mention_label(text) {
+                return Err(format!(
+                    "wording.{name} is shown as it is written, so it takes letters, digits, spaces, . and - alone"
+                ));
             }
             environment
                 .template_from_str(text)
@@ -305,6 +334,18 @@ impl Wording {
             self.render(Phrase::TestTitle, &values),
             self.render(Phrase::TestBody, &values),
         )
+    }
+
+    /// What a press of the subscribe button is answered with at once.
+    #[must_use]
+    pub fn pressed(&self) -> String {
+        self.render(Phrase::Pressed, &context! {})
+    }
+
+    /// The label each mention of a subscriber shows.
+    #[must_use]
+    pub fn mentioned(&self) -> &str {
+        self.text(Phrase::Mentioned)
     }
 
     /// The day `at`, as `latest` writes it.

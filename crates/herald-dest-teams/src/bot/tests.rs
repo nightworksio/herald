@@ -15,6 +15,7 @@ fn bot(threads: Option<bool>) -> Bot {
         &RouteOptions {
             conversation: Some("19:abc@thread.tacv2".to_owned()),
             threads,
+            ..RouteOptions::default()
         },
     )
 }

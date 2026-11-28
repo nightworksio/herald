@@ -56,7 +56,15 @@ preformatted text, block quotes or HTML
    absent) on the table, and a `conversation` per route. It posts, edits
    (`PUT`), mentions subscribers by Entra object id, and replies in a
    thread where the route says `threads = true`, which doctor names as a
-   Microsoft preview. It does not pin and does not read back, so the
+   Microsoft preview. A route with `mentions = { subscribers = true }`
+   mentions each member subscribed as `<at>` text with a `mention` entity
+   naming their Entra object id
+   (<https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/cards/cards-format>,
+   "User mention in bots with Adaptive Cards"). herald keeps no member's
+   name, so each mention shows a label of herald's own, the wording's
+   `mentioned` phrase ("subscriber" where unworded: letters, digits,
+   spaces, `.` and `-`, at most 32 characters) and a number; members past a
+   card's room are mentioned in cards after it. It does not pin and does not read back, so the
    markers store names its gap (ADR-0011) and `herald init` picks a
    records store (ADR-0091). 429, 412, 502 and 504 are retried within the
    run's limits (ADR-0028); 413 stops the step, named.
@@ -87,7 +95,26 @@ preformatted text, block quotes or HTML
    dialect, with the bot's token. That token goes to the origin of the
    bot's service URL alone, a request elsewhere is not sent, the bot signs
    in at its sign-in host alone, and the `Http` its answers go through
-   reaches those two origins and follows no redirect. Teams shows a bot's
+   reaches those two origins and follows no redirect.
+   A route with `subscribe = {}` (which needs the route to mention its
+   subscribers and the bot to answer `subscribe`) gives each card an
+   `Action.Execute` button with herald's verb and the project, so the card
+   names version 1.5, the lowest Teams takes the action from
+   (<https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/cards/universal-actions-for-adaptive-cards/work-with-universal-actions-for-adaptive-cards>);
+   `subscribe = { button = false }` offers none. A press arrives as the
+   invoke `adaptiveCard/action`
+   (<https://learn.microsoft.com/en-us/adaptive-cards/authoring-cards/universal-action-model>),
+   through the same checks as every activity, and it is the one invoke the
+   bot takes: an `Action.Execute` of herald's verb, pressed by a member
+   (a trigger of `manual`, or none), naming a project of at most 256 bytes
+   with no control character; any other invoke is refused. It subscribes
+   the member the activity names by Entra object id, or unsubscribes one
+   already subscribed, and nobody else. Teams awaits an answer to an
+   invoke, so herald answers it at once with a message Teams shows the
+   member (the wording's `pressed` phrase), and says what it did in a reply
+   under the card the member pressed (its `replyToId`). A press naming no
+   member or card herald can take is answered as not taken, and nothing is
+   done. Teams shows a bot's
    reply to everyone in the conversation, so there is no `replies`
    setting; an error Teams answers is said by its status and its code
    alone.

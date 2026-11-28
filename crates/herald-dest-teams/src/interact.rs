@@ -7,13 +7,14 @@
 //! (ADR-0007, ADR-0016, ADR-0093).
 
 use herald_core::{
-    Answering, Asked, DestinationName, Markup, Place, Room, Text, Waits, Worded, digest, segment,
-    worded,
+    Answering, Asked, Command, DestinationName, Markup, Place, Room, Text, Waits, Worded, digest,
+    segment, worded,
 };
 use herald_kinds::{Interacts, Post, Read, Replying, Said, Vouching};
 use herald_ports::{Base, Boxed, DynHttp, Method, Request, Response, Secret, SecretText};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
+use serde_json::{Value, json};
 use url::Url;
 
 use crate::bot::{BOT_MESSAGE, Bot};
@@ -78,6 +79,39 @@ const TAKEN: &str = "{}";
 /// The type of an activity that carries a member's message.
 const MESSAGE: &str = "message";
 
+/// The type of an activity that asks the bot for an answer at once.
+const INVOKE: &str = "invoke";
+
+/// The name of the invoke a card's `Action.Execute` makes
+/// (<https://learn.microsoft.com/en-us/adaptive-cards/authoring-cards/universal-action-model>,
+/// "adaptiveCard/action Invoke activity").
+const CARD_ACTION: &str = "adaptiveCard/action";
+
+/// The type of the action herald's subscribe button is, as a press of it
+/// names it.
+pub(crate) const EXECUTE: &str = "Action.Execute";
+
+/// The trigger of an action a member pressed, where the invoke names one.
+const MANUAL: &str = "manual";
+
+/// The verb of herald's subscribe button: a press of it subscribes the
+/// member, or unsubscribes one already subscribed.
+pub const SUBSCRIBE: &str = "herald_subscribe";
+
+/// The most bytes of a project's name a press of the button takes.
+const PRESSED_PROJECT: usize = 256;
+
+/// The type of an invoke's answer that Teams shows the member as a message
+/// ("Response format").
+const SHOWN: &str = "application/vnd.microsoft.activity.message";
+
+/// The type of an invoke's answer that says the press was not taken.
+const ERROR: &str = "application/vnd.microsoft.error";
+
+/// What a press herald cannot act on is answered with.
+const UNPRESSED: &str =
+    "herald cannot act on this press: Microsoft Teams named no member or message herald can take";
+
 /// The type of an entity that mentions an account.
 const MENTION: &str = "mention";
 
@@ -126,6 +160,9 @@ struct Activity {
     recipient: Option<Account>,
     text: Option<String>,
     entities: Option<Vec<Entity>>,
+    name: Option<String>,
+    reply_to_id: Option<String>,
+    value: Option<Value>,
 }
 
 /// As much of an activity's conversation as herald reads.
@@ -248,44 +285,103 @@ impl Interacting {
         ) else {
             return Err(Read::Refused(UNNAMED.to_owned()));
         };
-        let Some(kind) = activity
-            .kind
-            .as_deref()
-            .filter(|kind| ACKNOWLEDGED.contains(kind))
-        else {
+        let kind = activity.kind.as_deref();
+        let service = service.trim_end_matches('/');
+        let (asked, answer) = if kind == Some(INVOKE) {
+            let project = pressed(&activity).ok_or(Read::Refused(UNTAKEN.to_owned()))?;
+            let asked = activity.reply_to_id.as_deref().and_then(|message| {
+                asked(
+                    destination,
+                    &activity,
+                    Reply {
+                        service: service.to_owned(),
+                        conversation: conversation.to_owned(),
+                        activity: message.to_owned(),
+                    },
+                    Some(project),
+                )
+            });
+            let answer = match asked {
+                Some(_) => json!({
+                    "statusCode": 200,
+                    "type": SHOWN,
+                    "value": self.answering.wording.pressed(),
+                }),
+                None => json!({
+                    "statusCode": 400,
+                    "type": ERROR,
+                    "value": { "code": "BadRequest", "message": UNPRESSED },
+                }),
+            };
+            (asked, Said::ok(answer.to_string()))
+        } else if kind.is_some_and(|kind| ACKNOWLEDGED.contains(&kind)) {
+            let reply = Reply {
+                service: service.to_owned(),
+                conversation: conversation.to_owned(),
+                activity: id.to_owned(),
+            };
+            let asked = (kind == Some(MESSAGE))
+                .then(|| asked(destination, &activity, reply, None))
+                .flatten();
+            (asked, Said::ok(TAKEN))
+        } else {
             return Err(Read::Refused(UNTAKEN.to_owned()));
         };
-        let reply = Reply {
-            service: service.trim_end_matches('/').to_owned(),
-            conversation: conversation.to_owned(),
-            activity: id.to_owned(),
-        };
-        let then = match (kind == MESSAGE)
-            .then(|| asked(destination, &activity, reply))
-            .flatten()
-        {
+        let then = match asked {
             Some(asked) => Read::Asked {
                 asked: vec![asked],
-                answer: Said::ok(TAKEN),
+                answer: answer.clone(),
             },
-            None => Read::Said(Said::ok(TAKEN)),
+            None => Read::Said(answer.clone()),
         };
         Ok(Read::Delivered {
             delivery: digest(&format!("{conversation}\n{id}")),
-            replayed: Said::ok(TAKEN),
+            replayed: answer,
             then: Box::new(then),
         })
     }
 }
 
-/// The command a member gave the bot in the message `activity`, to
-/// `destination`, as the member its sender names by Microsoft Entra object
-/// id, with its answer going as `reply` says; none where it gives none,
-/// was not addressed to the bot, or names no such member.
+/// The project a press of herald's subscribe button names, where the
+/// invoke `activity` is one: the card action a member pressed, of herald's
+/// verb, naming a project of at most [`PRESSED_PROJECT`] bytes with no
+/// control character.
+fn pressed(activity: &Activity) -> Option<String> {
+    if activity.name.as_deref() != Some(CARD_ACTION) {
+        return None;
+    }
+    let value = activity.value.as_ref()?;
+    let trigger = value.get("trigger");
+    if trigger.is_some_and(|trigger| trigger.as_str() != Some(MANUAL)) {
+        return None;
+    }
+    let action = value.get("action")?;
+    let field = |name: &str| action.get(name).and_then(Value::as_str);
+    if field("type") != Some(EXECUTE) || field("verb") != Some(SUBSCRIBE) {
+        return None;
+    }
+    action
+        .get("data")?
+        .get("project")?
+        .as_str()
+        .filter(|project| {
+            (1..=PRESSED_PROJECT).contains(&project.len())
+                && !project.chars().any(char::is_control)
+                && project.trim() == *project
+        })
+        .map(ToOwned::to_owned)
+}
+
+/// The command a member gave the bot in the message `activity`, or the
+/// subscribe button they pressed for `pressed`, to `destination`, as the
+/// member its sender names by Microsoft Entra object id, with its answer
+/// going as `reply` says; none where it gives none, was not addressed to
+/// the bot, or names no such member.
 fn asked(
     destination: &DestinationName,
     activity: &Activity,
     reply: Reply,
+    pressed: Option<String>,
 ) -> Option<(Asked, Replying)> {
     let bot = activity.recipient.as_ref()?.id.as_deref()?;
     let from = activity.from.as_ref()?;
@@ -297,18 +393,24 @@ fn asked(
         .as_deref()
         .filter(|member| guid(member))?
         .to_ascii_lowercase();
-    let entities = activity.entities.as_deref().unwrap_or_default();
-    let personal = activity
-        .conversation
-        .as_ref()
-        .and_then(|conversation| conversation.conversation_type.as_deref())
-        == Some(PERSONAL);
-    let spoken = spoken(activity.text.as_deref()?, bot, entities, personal)?;
+    if reply.activity.is_empty() {
+        return None;
+    }
+    let toggles = pressed.is_some();
     let Worded {
         command,
         project,
         share,
-    } = worded(spoken.split_whitespace())?;
+    } = pressed.map_or_else(
+        || given(activity, bot),
+        |project| {
+            Some(Worded {
+                command: Command::Subscribe,
+                project: Some(project),
+                share: false,
+            })
+        },
+    )?;
     let place = match reply.conversation.split_once(THREAD) {
         Some((channel, _)) if !channel.is_empty() => Place {
             id: reply.conversation.clone(),
@@ -324,11 +426,23 @@ fn asked(
             command,
             project,
             share,
-            toggles: false,
+            toggles,
             member: None,
         },
         Replying::new(reply),
     ))
+}
+
+/// The command the message `activity` gives `bot`, where it gives one.
+fn given(activity: &Activity, bot: &str) -> Option<Worded> {
+    let entities = activity.entities.as_deref().unwrap_or_default();
+    let personal = activity
+        .conversation
+        .as_ref()
+        .and_then(|conversation| conversation.conversation_type.as_deref())
+        == Some(PERSONAL);
+    let spoken = spoken(activity.text.as_deref()?, bot, entities, personal)?;
+    worded(spoken.split_whitespace())
 }
 
 /// `text` as a command speaks it to `bot`, every mention of the bot left

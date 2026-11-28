@@ -40,6 +40,7 @@ fn route(threads: Option<bool>) -> RouteOptions {
     RouteOptions {
         conversation: Some("19:abc@thread.tacv2".to_owned()),
         threads,
+        ..RouteOptions::default()
     }
 }
 
@@ -513,7 +514,7 @@ fn a_bot_s_route_names_its_conversation_and_a_webhook_s_names_none() {
     for conversation in ["", "19:a b", "19:a\n"] {
         let route = RouteOptions {
             conversation: Some(conversation.to_owned()),
-            threads: None,
+            ..RouteOptions::default()
         };
         assert_eq!(
             placed(&bot, &route),

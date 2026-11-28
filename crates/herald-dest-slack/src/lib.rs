@@ -33,7 +33,7 @@ pub use herald_ports::Credential;
 pub use interact::{
     Interacting, Received, Replying, SUBSCRIBE, UnreadCommand, accepted, subscribe_block,
 };
-pub use interactions::{Interactions, Subscribe, Via};
+pub use interactions::{Interactions, Via};
 pub use markers::SlackMarkers;
 pub use options::{DestinationOptions, OrgShared, RouteOptions};
 pub use slack::{MARKUP, Slack, profile};

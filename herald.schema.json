@@ -1240,7 +1240,7 @@
             },
             "subscribe": {
               "description": "How the route offers subscribing, where it mentions its subscribers.",
-              "$ref": "#/$defs/SlackSubscribe"
+              "$ref": "#/$defs/Subscribe"
             },
             "template": {
               "description": "The template it renders with; none on a route to a herald feed or\npush, which carries each event as an envelope.",
@@ -1379,6 +1379,10 @@
             "private": {
               "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
               "type": "boolean"
+            },
+            "subscribe": {
+              "description": "How the bot's route offers subscribing, where it mentions its\nsubscribers: each member subscribed is mentioned by their Microsoft\nEntra object id.",
+              "$ref": "#/$defs/Subscribe"
             },
             "template": {
               "description": "The template it renders with; none on a route to a herald feed or\npush, which carries each event as an envelope.",
@@ -6809,7 +6813,7 @@
         },
         "subscribe": {
           "description": "How the route offers subscribing, where it mentions its subscribers.",
-          "$ref": "#/$defs/SlackSubscribe"
+          "$ref": "#/$defs/Subscribe"
         },
         "template": {
           "description": "The template it renders with; none on a route to a herald feed or\npush, which carries each event as an envelope.",
@@ -6855,18 +6859,6 @@
         "sources",
         "destination"
       ]
-    },
-    "SlackSubscribe": {
-      "description": "What a route says about subscribing on Slack, where it mentions its\nsubscribers.",
-      "type": "object",
-      "properties": {
-        "button": {
-          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
-          "type": "boolean",
-          "default": true
-        }
-      },
-      "additionalProperties": false
     },
     "SlackVia": {
       "description": "How Slack carries commands to herald.",
@@ -9524,6 +9516,18 @@
         }
       ]
     },
+    "Subscribe": {
+      "description": "How a route that mentions the subscribers herald keeps offers\nsubscribing.",
+      "type": "object",
+      "properties": {
+        "button": {
+          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
     "Symbols": {
       "description": "The characters a destination writes where its markup has none: a task\ndone and to do, a rule (drawn three wide), and a list's bullet where a\nlist is written as text, in Slack and in plain text.",
       "type": "object",
@@ -9780,6 +9784,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "subscribe": {
+          "description": "How the bot's route offers subscribing, where it mentions its\nsubscribers: each member subscribed is mentioned by their Microsoft\nEntra object id.",
+          "$ref": "#/$defs/Subscribe"
         },
         "template": {
           "description": "The template it renders with; none on a route to a herald feed or\npush, which carries each event as an envelope.",

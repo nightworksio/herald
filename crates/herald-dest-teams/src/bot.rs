@@ -6,7 +6,8 @@ use std::fmt;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use herald_core::{
-    Announcement, Declined, Entry, Facts, Sent, Step, Waits, media, status, unreserved,
+    Announcement, Declined, Entry, Facts, Phrase, Sent, Step, Waits, Wording, media, status,
+    unreserved,
 };
 use herald_kinds::Probe;
 use herald_ports::{DynHttp, HttpError, Method, Request, Response, Secret, SecretText};
@@ -15,7 +16,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use url::Url;
 
-use crate::card::{Measured, announced, chunk, of_part};
+use crate::card::{Measured, Offers, announced, chunk, of_part};
 use crate::cloud::Hosts;
 use crate::options::RouteOptions;
 use crate::request::JSON;
@@ -101,6 +102,8 @@ pub struct Bot {
     service: String,
     conversation: String,
     threads: bool,
+    button: bool,
+    wording: Wording,
     bases: Vec<String>,
     held: Arc<Held>,
 }
@@ -111,7 +114,9 @@ impl PartialEq for Bot {
             && self.password == other.password
             && (&self.login, &self.tenant, &self.scope, &self.service)
                 == (&other.login, &other.tenant, &other.scope, &other.service)
-            && (&self.conversation, self.threads) == (&other.conversation, other.threads)
+            && (&self.conversation, self.threads, self.button)
+                == (&other.conversation, other.threads, other.button)
+            && self.wording == other.wording
             && Arc::ptr_eq(&self.held, &other.held)
     }
 }
@@ -247,8 +252,30 @@ impl Bot {
             service,
             conversation: route.conversation.clone().unwrap_or_default(),
             threads: route.threads.unwrap_or_default(),
+            button: route
+                .subscribe
+                .as_ref()
+                .is_some_and(|subscribe| subscribe.button),
+            wording: Wording::default(),
             bases,
             held: Arc::default(),
+        }
+    }
+
+    /// The bot, labelling its mentions and its subscribe button as
+    /// `wording` words them.
+    #[must_use]
+    pub fn worded(self, wording: Wording) -> Self {
+        Self { wording, ..self }
+    }
+
+    /// What its cards carry beyond an announcement.
+    fn offers(&self) -> Offers<'_> {
+        Offers {
+            mentioned: Some(self.wording.mentioned()),
+            button: self
+                .button
+                .then(|| self.wording.text(Phrase::SubscribeButton)),
         }
     }
 
@@ -386,7 +413,7 @@ impl Bot {
             Step::Post => (
                 Method::Post,
                 self.conversation_url("/activities"),
-                Some(announced(announcement)),
+                Some(announced(announcement, self.offers())),
             ),
             Step::Chunk(index) if self.threads => {
                 let root = entry
@@ -396,18 +423,18 @@ impl Bot {
                 (
                     Method::Post,
                     root.and_then(|root| self.conversation_url(&format!("/replyChains/{root}"))),
-                    Some(chunk(announcement, *index)),
+                    Some(chunk(announcement, *index, self.offers())),
                 )
             }
             Step::Chunk(index) => (
                 Method::Post,
                 self.conversation_url("/activities"),
-                Some(chunk(announcement, *index)),
+                Some(chunk(announcement, *index, self.offers())),
             ),
             Step::Edit { part, .. } => (
                 Method::Put,
                 self.activity(entry.part(*part)),
-                Some(of_part(announcement, *part)),
+                Some(of_part(announcement, *part, self.offers())),
             ),
             Step::Delete(part) => (Method::Delete, self.activity(entry.part(*part)), None),
             Step::Crosspost => return Err(cannot("crosspost").to_string()),

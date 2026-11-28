@@ -43,6 +43,22 @@ pub struct Placing<'a> {
 }
 
 impl Placing<'_> {
+    /// Whether the route may offer subscribing: it mentions its
+    /// subscribers, and the destination, answering as `answering`,
+    /// answers `subscribe`.
+    ///
+    /// # Errors
+    ///
+    /// What to give the route or the destination, where either lacks it.
+    pub fn offers_subscribing(self, answering: Option<Answering>) -> Result<(), String> {
+        if !self.subscribers {
+            return Err(
+                "a member subscribes to be mentioned; add mentions = { subscribers = true } to the route".to_owned(),
+            );
+        }
+        self.answers_subscribing(answering)
+    }
+
     /// Whether the destination, answering as `answering`, answers
     /// `subscribe`, which a route offering subscriptions needs.
     ///
@@ -180,5 +196,18 @@ mod tests {
             refused
         );
         assert_eq!(placing.answers_subscribing(None), refused);
+        assert_eq!(placing.offers_subscribing(None), refused);
+        assert_eq!(
+            placing.offers_subscribing(Some(answering(vec![Command::Subscribe]))),
+            Ok(())
+        );
+        let unmentioned = Placing {
+            subscribers: false,
+            ..placing
+        };
+        assert_eq!(
+            unmentioned.offers_subscribing(Some(answering(vec![Command::Subscribe]))),
+            Err("a member subscribes to be mentioned; add mentions = { subscribers = true } to the route".to_owned())
+        );
     }
 }

@@ -28,6 +28,27 @@ pub enum Command {
     Changelog,
 }
 
+/// How a route that mentions the subscribers herald keeps offers
+/// subscribing.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Subscribe {
+    /// Whether each announcement carries a button that subscribes, or
+    /// unsubscribes a member already subscribed.
+    #[serde(default = "yes")]
+    pub button: bool,
+}
+
+impl Default for Subscribe {
+    fn default() -> Self {
+        Self { button: true }
+    }
+}
+
+const fn yes() -> bool {
+    true
+}
+
 impl Command {
     /// Every command, in the order a destination lists them.
     pub const ALL: [Self; 4] = [

@@ -9,4 +9,8 @@ mod config;
 #[cfg(test)]
 mod interact;
 #[cfg(test)]
+mod pressed;
+#[cfg(test)]
 mod replay;
+#[cfg(test)]
+mod subscribe;

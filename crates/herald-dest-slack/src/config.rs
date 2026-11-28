@@ -213,21 +213,12 @@ impl DestinationKind for SlackKind {
             ));
         }
         if route.subscribe.is_some()
-            && let Err(message) = subscribed(options, placing)
+            && let Err(message) = placing.offers_subscribing(options.answering())
         {
             faults.push(Fault::at("subscribe", message));
         }
         faults
     }
-}
-
-fn subscribed(options: &DestinationOptions, placing: Placing<'_>) -> Result<(), String> {
-    if !placing.subscribers {
-        return Err(
-            "a member subscribes to be mentioned; add mentions = { subscribers = true } to the route".to_owned(),
-        );
-    }
-    placing.answers_subscribing(options.answering())
 }
 
 impl Interacts for Interacting {

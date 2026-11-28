@@ -120,6 +120,37 @@ fn a_phrase_that_cannot_be_said_is_refused_and_one_that_fails_later_falls_back()
         Wording::check(&worded(&[(Phrase::Nothing, "Niets.")])),
         Ok(())
     );
+    for label in [
+        "abonnee",
+        "Ab 2",
+        "a.b-c",
+        "é",
+        &"a".repeat(Phrase::MENTIONED),
+    ] {
+        assert_eq!(
+            Wording::check(&worded(&[(Phrase::Mentioned, label)])),
+            Ok(()),
+            "{label}"
+        );
+    }
+    for (label, why) in [
+        ("", "takes 1 to 32 characters"),
+        (
+            &"a".repeat(Phrase::MENTIONED + 1),
+            "takes 1 to 32 characters",
+        ),
+        (" a", "takes letters, digits, spaces, . and - alone"),
+        ("-a", "takes letters, digits, spaces, . and - alone"),
+        ("a</at>", "takes letters, digits, spaces, . and - alone"),
+        ("a{{ b }}", "takes letters, digits, spaces, . and - alone"),
+        ("a\nb", "takes letters, digits, spaces, . and - alone"),
+        ("a_b_", "takes letters, digits, spaces, . and - alone"),
+        ("a&amp;", "takes letters, digits, spaces, . and - alone"),
+    ] {
+        let error = Wording::check(&worded(&[(Phrase::Mentioned, label)])).unwrap_err();
+        assert!(error.ends_with(why), "{label}: {error}");
+        assert!(error.starts_with("wording.mentioned "), "{error}");
+    }
     assert_eq!(
         Wording::check(&worded(&[(Phrase::Date, "%d-%m-%Y")])),
         Ok(())
@@ -128,6 +159,26 @@ fn a_phrase_that_cannot_be_said_is_refused_and_one_that_fails_later_falls_back()
     assert_eq!(
         failing.say(&Said::Unavailable),
         Phrase::Unavailable.default_text()
+    );
+}
+
+#[test]
+fn a_press_is_answered_and_a_mention_labelled_as_the_config_words_them() {
+    let plain = Wording::default();
+    assert_eq!(
+        (plain.pressed(), plain.mentioned()),
+        (
+            "herald is on it; its answer follows in this conversation.".to_owned(),
+            "subscriber"
+        )
+    );
+    let worded = Wording::of(Some(&worded(&[
+        (Phrase::Pressed, "{{ 'Bezig' | upper }}."),
+        (Phrase::Mentioned, "abonnee"),
+    ])));
+    assert_eq!(
+        (worded.pressed(), worded.mentioned()),
+        ("BEZIG.".to_owned(), "abonnee")
     );
 }
 

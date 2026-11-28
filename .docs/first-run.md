@@ -153,6 +153,15 @@ everyone in the conversation reads it, through the service URL the
 activity named, with the bot's token; the token goes to that service
 origin alone, and the bot signs in at its `login` host alone.
 
+A route that says `mentions = { subscribers = true }` mentions each member
+subscribed to the project it announces by their Microsoft Entra object id,
+under the label the wording's `mentioned` phrase gives ("subscriber 1",
+"subscriber 2" where unworded), as herald keeps no member's name. With
+`subscribe = {}` as well, each post carries a Subscribe button
+(`Action.Execute`): a press subscribes the member who pressed it, or
+unsubscribes one already subscribed, is answered at once with the
+wording's `pressed` phrase, and is said in a reply under the post.
+
 ### `forgejo-branch`
 
 A token that may push to the repository's `herald-state` branch: an

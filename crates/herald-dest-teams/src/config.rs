@@ -1,4 +1,4 @@
-use herald_core::{Answering, Delivery, Profile, SecretRef, Symbols, WaitOptions};
+use herald_core::{Answering, Delivery, Profile, SecretRef, Symbols, WaitOptions, Wording};
 use herald_kinds::{
     Carried, Checking, DestinationConfig, DestinationKind, Fault, Interacted, Placed, Placement,
     Placing, Reached,
@@ -98,9 +98,14 @@ impl DestinationConfig for DestinationOptions {
     fn reach(&self, placed: &Placed, _: &str, secret: Secret) -> Option<Reached> {
         let route = placed.of::<RouteOptions>()?;
         let teams = match self.registered().ok()? {
-            Some(registered) => {
-                Teams::bot(Bot::new(registered.app_id, secret, registered.hosts, route))
-            }
+            Some(registered) => Teams::bot(
+                Bot::new(registered.app_id, secret, registered.hosts, route).worded(
+                    self.interactions
+                        .as_ref()
+                        .map(|interactions| Wording::of(interactions.wording.as_ref()))
+                        .unwrap_or_default(),
+                ),
+            ),
             None => Teams::new(secret),
         };
         Some(Reached::new(teams.waiting(self.waits())))
@@ -154,7 +159,11 @@ impl DestinationKind for TeamsKind {
         Ok((options, faults))
     }
 
-    fn placed(options: &DestinationOptions, route: &RouteOptions, _: Placing<'_>) -> Vec<Fault> {
+    fn placed(
+        options: &DestinationOptions,
+        route: &RouteOptions,
+        placing: Placing<'_>,
+    ) -> Vec<Fault> {
         let bot = options.webhook.is_none();
         let mut faults: Vec<Fault> = route
             .unwritten()
@@ -164,6 +173,18 @@ impl DestinationKind for TeamsKind {
         if bot && route.conversation.is_none() {
             faults.push(Fault::here(
                 "a Microsoft Teams bot posts to a channel or chat; give conversation = \"<its id>\"",
+            ));
+        }
+        if bot
+            && route.subscribe.is_some()
+            && let Err(message) = placing.offers_subscribing(options.answering())
+        {
+            faults.push(Fault::at("subscribe", message));
+        }
+        if !bot && route.subscribe.is_some() {
+            faults.push(Fault::at(
+                "subscribe",
+                "a Workflows webhook only posts, so no member subscribes through it; drop it",
             ));
         }
         if !bot {

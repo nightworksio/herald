@@ -328,3 +328,13 @@ fn a_command_is_worded_as_its_name_then_a_project_and_share_each_where_given() {
         assert_eq!(worded(unworded), None, "{unworded}");
     }
 }
+
+#[test]
+fn a_subscribe_carries_a_button_unless_it_says_not() {
+    assert!(Subscribe::default().button);
+    let quiet: Subscribe = serde_json::from_str(r#"{"button": false}"#).unwrap();
+    assert!(!quiet.button);
+    let plain: Subscribe = serde_json::from_str("{}").unwrap();
+    assert!(plain.button);
+    assert!(serde_json::from_str::<Subscribe>(r#"{"role": "1"}"#).is_err());
+}
