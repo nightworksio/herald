@@ -488,6 +488,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_table_s_keys_are_those_of_every_part_and_alternative_it_is_made_of() {
+        let root = serde_json::json!({
+            "defs": { "named": { "properties": { "referred": {} } } },
+            "properties": { "own": {} },
+            "allOf": [{ "properties": { "every": {} } }],
+            "anyOf": [{ "properties": { "any": {} } }],
+            "oneOf": [{ "$ref": "#/defs/named" }],
+        });
+        assert_eq!(keys_of(&root, &root), ["own", "every", "any", "referred"]);
+    }
+
+    #[test]
     fn kinds_list_their_names_in_the_order_they_are_given() {
         let none = Kinds::new();
         assert_eq!(none.destination_kinds(), Vec::<&str>::new());

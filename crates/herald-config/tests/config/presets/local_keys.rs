@@ -117,3 +117,21 @@ fn a_local_preset_still_writes_no_destination_trust_act_or_section_beyond_its_ow
         );
     }
 }
+
+#[test]
+fn a_local_preset_s_table_beside_its_routes_takes_its_own_keys_and_no_destination_kind_s() {
+    let file = TEAM.replace(
+        "body = \"{{ event.body }}\"",
+        "body = \"{{ event.body }}\"\nunheard = 1",
+    );
+    let errors = local(&with(ADOPT_TEAM), &file).unwrap_err();
+    assert!(
+        errors.contains("a local preset does not write unheard: ")
+            && errors.contains(" of a templates table"),
+        "{errors}"
+    );
+    assert!(
+        !errors.contains("each destination kind's own route options"),
+        "{errors}"
+    );
+}
