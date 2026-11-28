@@ -4,24 +4,28 @@
 use std::future::{Future, ready};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use herald_config::Config;
+use herald_config::{Config, RouteConfig};
 use herald_core::{
-    Algorithm, Announcement, Entry, Facts, Pinning, RouteId, SecretRef, Step, status, steps,
+    Algorithm, Announcement, Entry, Event, Facts, Pinning, RouteId, SecretRef, Step, Visibility,
+    itself, status, steps,
 };
-use herald_kinds::Signing;
+use herald_kinds::{Proving, Reached, Signing};
+use herald_peers::discovery::Instance;
+use herald_peers::jcs::canonical;
 use herald_ports::{CryptoError, Http, HttpError, Request, Response, Secret, Signer};
+
+use crate::announce::{PRIVATE, UNSHARED};
 
 /// The id a run that sends nothing reads from every answer: of the post,
 /// its thread and each message a step made.
 pub const DRY_ID: &str = "0";
 
-/// Why a route that delivers to followers shows no request.
+/// Why a route that delivers to followers, of a destination that
+/// publishes no document, shows no request.
 pub const FOLLOWED: &str = "herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request";
-/// Why a route to one of herald's own feeds shows no request.
-pub const FED: &str =
-    "herald serves it in its own feed rather than sending it, so it shows no request";
-/// Why a route that pushes to a peer shows no request.
-pub const PUSHED: &str = "herald pushes it to a peer's inbox, signed by the instance's key, which preview never reads, so it shows no request";
+/// Why a route whose event is too long for an envelope shows none.
+pub const UNENVELOPED: &str =
+    "its event is too long to put in an envelope, so herald publishes none";
 /// Why a route whose destination the config does not reach shows no
 /// request.
 pub const UNREACHED: &str =
@@ -87,8 +91,55 @@ impl Signer for Unsigning {
 pub enum Wire {
     /// Each step it takes, in order, with each request the step sends.
     Sent(Vec<(Step, Vec<Request>)>),
+    /// The document herald publishes in place of a post: served by one of
+    /// its actors or feeds, or pushed to a peer.
+    Served(Served),
     /// It sends no request to a platform, for the reason given.
     Unsent(&'static str),
+}
+
+/// A document herald publishes, as it publishes it, with its proof left
+/// out and named (ADR-0095).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Served {
+    /// Who publishes it.
+    pub by: Publisher,
+    /// The document, as JSON, without its proof.
+    pub document: String,
+    /// What proves it or signs the requests that carry it.
+    pub proof: Proof,
+}
+
+/// Who publishes a document herald serves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Publisher {
+    /// The actor of this id, in its outbox, delivering it to each
+    /// follower's inbox.
+    Actor(String),
+    /// Herald's own feed, which anyone reads.
+    Feed,
+    /// The push to the peer of this name.
+    Peer(String),
+}
+
+/// What proves a document herald serves, by name alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Proof {
+    /// The key the secret of this name holds.
+    Key(String),
+    /// A CI run's ID token, which the peer proves.
+    IdToken,
+}
+
+impl Proof {
+    /// How it is named: a key as `«secret:NAME»`, a token as what it is.
+    #[must_use]
+    pub fn named(&self) -> String {
+        match self {
+            Self::Key(name) => Secret::new(name.clone(), String::new()).redacted(),
+            Self::IdToken => crate::announce::ASKED.to_owned(),
+        }
+    }
 }
 
 /// The secret `reference` names, holding no value: shown as `«secret:NAME»`
@@ -103,25 +154,28 @@ fn placeholder(reference: &SecretRef) -> Secret {
 /// no value, every id an earlier step's answer gives [`DRY_ID`], and nothing
 /// sent (ADR-0095). Where its pins are kept in the store, it unpins
 /// nothing: a route's first post finds no pin of its own there.
-pub async fn wired(config: &Config, id: &RouteId, announcement: &Announcement) -> Wire {
-    let route = config.routes.iter().find(|route| route.route.id == *id);
-    let reached = route.and_then(|route| {
-        let destination = config.destinations.get(&route.route.destination)?;
-        let credential = placeholder(config.credential(destination)?);
-        let read = destination.reads().into_iter().map(placeholder).collect();
-        destination.reach_reading(&route.options, &config.server.base, (credential, read))
-    });
-    let (Some(route), Some(reached)) = (route, reached) else {
+pub async fn wired(
+    config: &Config,
+    id: &RouteId,
+    (announcement, event): (&Announcement, &Event),
+) -> Wire {
+    let Some((route, reached, credential)) = reach(config, id) else {
         return Wire::Unsent(UNREACHED);
     };
     if reached.follows().is_some() {
-        return Wire::Unsent(FOLLOWED);
+        return reached.published(announcement).map_or(
+            Wire::Unsent(FOLLOWED),
+            |(actor, document)| {
+                Wire::Served(Served {
+                    by: Publisher::Actor(actor.to_owned()),
+                    document,
+                    proof: Proof::Key(credential.secret.clone()),
+                })
+            },
+        );
     }
-    if reached.feeds().is_some() {
-        return Wire::Unsent(FED);
-    }
-    if reached.pushes().is_some() {
-        return Wire::Unsent(PUSHED);
+    if let Some(wire) = envelope(config, &reached, event) {
+        return wire;
     }
     let delivery = &route.route.delivery;
     let parts = u32::try_from(announcement.messages()).unwrap_or(u32::MAX);
@@ -149,6 +203,100 @@ pub async fn wired(config: &Config, id: &RouteId, announcement: &Announcement) -
         sent.push((step, recording.taken()));
     }
     Wire::Sent(sent)
+}
+
+/// The envelope the route `id` of `config` publishes `event` in, where it
+/// publishes each event as one rather than rendering it: served by
+/// herald's own feed or pushed to a peer (ADR-0095).
+#[must_use]
+pub fn enveloped(config: &Config, id: &RouteId, event: &Event) -> Wire {
+    reach(config, id)
+        .and_then(|(_, reached, _)| envelope(config, &reached, event))
+        .unwrap_or(Wire::Unsent(UNREACHED))
+}
+
+/// The route `id` of `config`, reached with placeholder secrets, and the
+/// secret its destination's credential names.
+fn reach<'a>(
+    config: &'a Config,
+    id: &RouteId,
+) -> Option<(&'a RouteConfig, Reached, &'a SecretRef)> {
+    let route = config.routes.iter().find(|route| route.route.id == *id)?;
+    let destination = config.destinations.get(&route.route.destination)?;
+    let credential = config.credential(destination)?;
+    let read = destination.reads().into_iter().map(placeholder).collect();
+    let reached = destination.reach_reading(
+        &route.options,
+        &config.server.base,
+        (placeholder(credential), read),
+    )?;
+    Some((route, reached, credential))
+}
+
+/// The envelope `reached` publishes `event` in, where it is a feed of
+/// herald's own or a push to a peer; or why it publishes none.
+fn envelope(config: &Config, reached: &Reached, event: &Event) -> Option<Wire> {
+    if let Some(fed) = reached.feeds() {
+        if seen(event) != Visibility::Public {
+            return Some(Wire::Unsent(PRIVATE));
+        }
+        return Some(served(
+            enveloped_as(config, (event, Visibility::Public), fed.feeding.envelope),
+            Publisher::Feed,
+            Proof::Key(fed.key.name().to_owned()),
+        ));
+    }
+    let pushed = reached.pushes()?;
+    if seen(event) != Visibility::Public && !pushed.private {
+        return Some(Wire::Unsent(UNSHARED));
+    }
+    let proof = match pushed.proving {
+        Proving::Key(key) => Proof::Key(key.name().to_owned()),
+        Proving::IdToken { .. } => Proof::IdToken,
+    };
+    Some(served(
+        enveloped_as(config, (event, seen(event)), pushed.envelope),
+        Publisher::Peer(pushed.peer.to_owned()),
+        proof,
+    ))
+}
+
+/// Who may see `event`: as it is bounded, and anyone where it is not.
+fn seen(event: &Event) -> Visibility {
+    event.bounded_by().unwrap_or(Visibility::Public)
+}
+
+/// The envelope `config`'s instance publishes `event` in, seen as `seen`,
+/// as canonical JSON without its proof, within `most` bytes; none where
+/// the event is too long for one.
+fn enveloped_as(
+    config: &Config,
+    (event, seen): (&Event, Visibility),
+    most: usize,
+) -> Option<String> {
+    let instance = Instance {
+        domain: config.federation.domain.as_deref().unwrap_or_default(),
+        base: config.instance_base(),
+        software: itself::NAME,
+        version: itself::VERSION,
+        repository: herald_core::repository!(),
+    };
+    let envelope = instance
+        .envelope((event, seen), config.kinds.get(event.kind()), most)
+        .ok()?;
+    canonical(&envelope).ok()
+}
+
+/// `document`, published by `by` and proved by `proof`; or why none is,
+/// where there is none.
+fn served(document: Option<String>, by: Publisher, proof: Proof) -> Wire {
+    document.map_or(Wire::Unsent(UNENVELOPED), |document| {
+        Wire::Served(Served {
+            by,
+            document,
+            proof,
+        })
+    })
 }
 
 #[cfg(test)]

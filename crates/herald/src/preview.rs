@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 use herald_config::{Config, Sample};
 use herald_core::{Announcement, Event, Kind, RouteId};
 use herald_flows::{
-    Against, Previewed, Sampling, Wire, preview_delivered, preview_delivered_group,
-    preview_samples, wired,
+    Against, Previewed, Publisher, Sampling, Served, Wire, enveloped, preview_delivered,
+    preview_delivered_group, preview_samples, wired,
 };
 use herald_ports::Request;
 use serde_json::{Map, Value, json};
@@ -162,7 +162,10 @@ async fn shown_as(
         say(err, &unpreviewed(asked, event_file.is_some()));
         return MISTAKEN;
     }
-    let code = if shown.iter().all(|shown| shown.rendered.is_ok()) {
+    let code = if shown
+        .iter()
+        .all(|shown| shown.envelopes || shown.rendered.is_ok())
+    {
         DONE
     } else {
         STOPPED
@@ -179,11 +182,8 @@ async fn shown_as(
         }
         PreviewFormat::Wire => {
             for shown in &shown {
-                match &shown.rendered {
-                    Ok(announcement) => {
-                        let wire = wired(config, &shown.route, announcement).await;
-                        printed_wire(shown, &wire, out);
-                    }
+                match wire_of(config, shown).await {
+                    Ok((wire, _)) => printed_wire(shown, &wire, out),
                     Err(reason) => unrendered(shown, reason, out),
                 }
             }
@@ -327,8 +327,12 @@ fn unrendered(shown: &Previewed, reason: &str, out: &mut dyn Write) {
 }
 
 /// `shown` printed as its destination would show it, or with why its
-/// templates cannot render the event.
+/// templates cannot render the event; a route that publishes envelopes
+/// says so.
 pub(crate) fn rendered(shown: &Previewed, out: &mut dyn Write) {
+    if shown.envelopes {
+        return say(out, &format!("{}: {ENVELOPES}", head(shown)));
+    }
     match &shown.rendered {
         Ok(announcement) => {
             say(out, &format!("{}:", head(shown)));
@@ -347,11 +351,60 @@ pub(crate) fn rendered(shown: &Previewed, out: &mut dyn Write) {
     }
 }
 
+/// What `shown`'s route sends or publishes, and what it rendered where it
+/// renders through a template; or why its templates rendered nothing.
+async fn wire_of<'a>(
+    config: &Config,
+    shown: &'a Previewed,
+) -> Result<(Wire, Option<&'a Announcement>), &'a str> {
+    let event = shown.event.as_ref().ok_or(UNEVENTED)?;
+    if shown.envelopes {
+        return Ok((enveloped(config, &shown.route, event), None));
+    }
+    let announcement = shown.rendered.as_ref().map_err(String::as_str)?;
+    let wire = wired(config, &shown.route, (announcement, event)).await;
+    Ok((wire, Some(announcement)))
+}
+
+/// What a route that publishes each event as an envelope shows as text.
+const ENVELOPES: &str =
+    "it publishes each event as an envelope rather than a message; --format wire shows it";
+
+/// Why a rendered message with no event shows no request.
+const UNEVENTED: &str = "it renders no event";
+
+/// What `served` says of the document it holds: who publishes it, and
+/// what proves it, by name.
+fn served_as(served: &Served) -> String {
+    let proof = served.proof.named();
+    match &served.by {
+        Publisher::Actor(actor) => format!(
+            "served, not sent: the actor {actor} publishes this document in its outbox and delivers it to each follower's inbox in a request signed by {proof}"
+        ),
+        Publisher::Feed => {
+            format!("served, not sent: herald's feed lists this envelope, proved by {proof}")
+        }
+        Publisher::Peer(peer) => format!(
+            "served, not sent: herald pushes this envelope to the peer {peer}'s inbox, proved by {proof}"
+        ),
+    }
+}
+
 /// `shown` printed as the requests `wire` holds, each step named and each
-/// request as it is sent, its secrets by name; or with why it shows none.
+/// request as it is sent, its secrets by name; or the document it serves;
+/// or with why it shows none.
 fn printed_wire(shown: &Previewed, wire: &Wire, out: &mut dyn Write) {
     let steps = match wire {
         Wire::Unsent(why) => return say(out, &format!("{}: {why}", head(shown))),
+        Wire::Served(served) => {
+            say(out, &format!("{}:", head(shown)));
+            say(out, &format!("  {}:", served_as(served)));
+            let pretty = serde_json::to_string_pretty(&document(served)).unwrap_or_default();
+            for line in pretty.lines() {
+                say(out, &format!("    {line}"));
+            }
+            return;
+        }
         Wire::Sent(steps) => steps,
     };
     say(out, &format!("{}:", head(shown)));
@@ -385,9 +438,8 @@ async fn as_json(config: &Config, shown: &Previewed) -> Value {
     fields.insert("route".to_owned(), json!(shown.route.as_str()));
     fields.insert("destination".to_owned(), json!(shown.destination.as_str()));
     fields.insert("against".to_owned(), against);
-    match &shown.rendered {
-        Ok(announcement) => {
-            let wire = wired(config, &shown.route, announcement).await;
+    match wire_of(config, shown).await {
+        Ok((wire, announcement)) => {
             fields.extend(text_json(announcement, &wire));
         }
         Err(reason) => {
@@ -399,8 +451,8 @@ async fn as_json(config: &Config, shown: &Previewed) -> Value {
 
 /// The text of `announcement` and the requests `wire` holds, as JSON
 /// fields.
-fn text_json(announcement: &Announcement, wire: &Wire) -> Map<String, Value> {
-    let (steps, unsent) = match wire {
+fn text_json(announcement: Option<&Announcement>, wire: &Wire) -> Map<String, Value> {
+    let (steps, unsent, served) = match wire {
         Wire::Sent(steps) => (
             steps
                 .iter()
@@ -412,21 +464,53 @@ fn text_json(announcement: &Announcement, wire: &Wire) -> Map<String, Value> {
                 })
                 .collect::<Vec<_>>(),
             Value::Null,
+            Value::Null,
         ),
-        Wire::Unsent(why) => (Vec::new(), json!(why)),
+        Wire::Served(served) => (Vec::new(), Value::Null, served_json(served)),
+        Wire::Unsent(why) => (Vec::new(), json!(why), Value::Null),
     };
-    let parts: Vec<&str> = announcement
-        .parts
-        .iter()
-        .map(|part| part.body.as_str())
-        .collect();
+    let parts: Option<Vec<&str>> = announcement.map(|announcement| {
+        announcement
+            .parts
+            .iter()
+            .map(|part| part.body.as_str())
+            .collect()
+    });
     Map::from_iter([
-        ("title".to_owned(), json!(announcement.title.plain())),
-        ("thread".to_owned(), json!(announcement.thread)),
+        (
+            "title".to_owned(),
+            json!(announcement.map(|announcement| announcement.title.plain())),
+        ),
+        (
+            "thread".to_owned(),
+            json!(announcement.and_then(|announcement| announcement.thread.as_ref())),
+        ),
         ("parts".to_owned(), json!(parts)),
         ("steps".to_owned(), json!(steps)),
         ("unsent".to_owned(), unsent),
+        ("served".to_owned(), served),
     ])
+}
+
+/// `served` as JSON: who publishes it, its name, what proves it, by name,
+/// and the document.
+fn served_json(served: &Served) -> Value {
+    let (by, name) = match &served.by {
+        Publisher::Actor(actor) => ("actor", Some(actor.as_str())),
+        Publisher::Feed => ("feed", None),
+        Publisher::Peer(peer) => ("peer", Some(peer.as_str())),
+    };
+    json!({
+        "by": by,
+        "name": name,
+        "proof": served.proof.named(),
+        "document": document(served),
+    })
+}
+
+/// The document `served` holds, as the JSON it is.
+fn document(served: &Served) -> Value {
+    serde_json::from_str(&served.document).unwrap_or_default()
 }
 
 /// `request` as JSON, its secrets by name: its body as the JSON it holds,

@@ -29,6 +29,7 @@ mod presets;
 mod preview;
 mod preview_email;
 mod preview_event;
+mod preview_served;
 mod queue;
 mod release;
 mod rerun;

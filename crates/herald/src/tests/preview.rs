@@ -40,11 +40,11 @@ body = "{% for group in view.groups %}{{ group.name }}{% endfor %}"
 "#;
 
 /// The lines of `out` that name a route and what it renders.
-fn heads(out: &str) -> Vec<&str> {
+pub(super) fn heads(out: &str) -> Vec<&str> {
     out.lines().filter(|line| !line.starts_with(' ')).collect()
 }
 
-fn previewed(config: &str, args: &[&str]) -> Run {
+pub(super) fn previewed(config: &str, args: &[&str]) -> Run {
     let mut all = vec!["preview"];
     all.extend(args);
     herald(&setup(config), &World::default(), &all)
@@ -293,7 +293,39 @@ fn preview_names_only_what_the_config_has_where_a_flag_names_nothing_of_it() {
 
 #[test]
 fn preview_reads_no_secret_and_opens_no_connection() {
-    let setup = setup(KINDS);
+    unread(
+        KINDS,
+        &[
+            &[],
+            &["--kind", "issue"],
+            &["--report", "daily"],
+            &["--sample", "long"],
+            &["--event", EVENT_FILE],
+            &["--format", "wire"],
+            &["--format", "wire", "--event", EVENT_FILE],
+            &["--format", "json"],
+            &["--format", "json", "--report", "daily"],
+        ],
+    );
+    unread(
+        &super::preview_served::served(),
+        &[
+            &["--format", "wire"],
+            &["--format", "wire", "--event", EVENT_FILE],
+            &["--format", "json"],
+            &["--format", "json", "--event", EVENT_FILE],
+        ],
+    );
+}
+
+/// What stands for the setup's event file among the arguments [`unread`]
+/// is given.
+const EVENT_FILE: &str = "EVENT_FILE";
+
+/// Preview run on `text` as each of `forms` asks, with no environment and
+/// ports that fail the test when called.
+fn unread(text: &str, forms: &[&[&str]]) {
+    let setup = setup(text);
     let config = setup
         .directory
         .path()
@@ -309,19 +341,15 @@ fn preview_reads_no_secret_and_opens_no_connection() {
     let refused = |_: herald_ports::Base<'_>,
                    _: &herald_ports::Outbound|
      -> Result<Connection, String> { panic!("preview opened a connection") };
-    for asked in [
-        &[][..],
-        &["--kind", "issue"],
-        &["--report", "daily"],
-        &["--sample", "long"],
-        &["--event", &event],
-        &["--format", "wire"],
-        &["--format", "wire", "--event", &event],
-        &["--format", "json"],
-        &["--format", "json", "--report", "daily"],
-    ] {
+    for asked in forms {
         let mut args = vec!["herald", "--config", &config, "preview"];
-        args.extend(asked);
+        args.extend(asked.iter().map(|arg| {
+            if *arg == EVENT_FILE {
+                event.as_str()
+            } else {
+                arg
+            }
+        }));
         let args: Vec<String> = args.into_iter().map(ToOwned::to_owned).collect();
         let mut out = Vec::new();
         let mut err = Vec::new();
@@ -410,7 +438,7 @@ fn preview_says_why_an_event_file_or_a_template_fails() {
 
 /// The test config, its route crossposting and keeping its pin in the
 /// store, beside a Slack webhook's route and an ActivityPub actor's.
-fn wired() -> String {
+pub(super) fn wired() -> String {
     format!(
         "{}{}",
         CONFIG.replace(
@@ -452,7 +480,17 @@ fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_n
         .out
         .lines()
         .filter(|line| !line.starts_with("    User-Agent: "))
+        .take(23)
         .collect();
+    let note = &shown.out[shown.out.find("\n    {\n").unwrap()..];
+    let note: serde_json::Value = serde_json::from_str(note).unwrap();
+    assert_eq!(
+        (&note["type"], &note["attributedTo"]),
+        (
+            &serde_json::json!("Note"),
+            &serde_json::json!("https://herald.example/users/cli")
+        )
+    );
     let channel = "https://discord.com/api/v10/channels/1566200000000000100/messages";
     let bot = "    Authorization: Bot «secret:HERALD_DISCORD_TOKEN»";
     let json = "    Content-Type: application/json; charset=utf-8";
@@ -479,7 +517,9 @@ fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_n
             json,
             "    ",
             lines[19],
-            "followed to fedi, sample release (plain): herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request",
+            "followed to fedi, sample release (plain):",
+            "  served, not sent: the actor cli publishes this document in its outbox and delivers it to each follower's inbox in a request signed by «secret:HERALD_ACTIVITYPUB_KEY»:",
+            "    {",
         ]
     );
     assert!(
@@ -746,14 +786,24 @@ fn preview_json_holds_what_each_route_renders_against_its_text_and_its_requests(
         "«secret:HERALD_SLACK_WEBHOOK»"
     );
     assert_eq!(
-        (&all[2]["steps"], &all[2]["unsent"]),
+        (
+            &all[2]["steps"],
+            &all[2]["unsent"],
+            &all[2]["served"]["by"],
+            &all[2]["served"]["name"],
+            &all[2]["served"]["proof"],
+            &all[2]["served"]["document"]["type"],
+        ),
         (
             &serde_json::json!([]),
-            &serde_json::json!(
-                "herald delivers it to each follower's inbox, and preview knows no follower, so it shows no request"
-            )
+            &serde_json::Value::Null,
+            &serde_json::json!("actor"),
+            &serde_json::json!("cli"),
+            &serde_json::json!("«secret:HERALD_ACTIVITYPUB_KEY»"),
+            &serde_json::json!("Note"),
         )
     );
+    assert_eq!(all[0]["served"], serde_json::Value::Null);
     let reported = previewed(KINDS, &["--format", "json", "--report", "daily"]);
     let report: serde_json::Value = serde_json::from_str(&reported.out).unwrap();
     assert_eq!(

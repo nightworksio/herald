@@ -88,9 +88,14 @@ releases to discord, sample release (plain):
   (`pin = "store"`) unpins nothing, while one found among the
   destination's pins (`pin = "markers"`) shows the requests that look.
 - A route to one of herald's own ActivityPub actors, feeds or pushes to a
-  peer says why it shows no request: an actor's deliveries go to followers
-  preview does not know, a feed is served rather than sent, and a push is
-  signed by the instance's key, which preview never reads.
+  peer shows the document herald publishes in place of a request, marked
+  `served, not sent`: an actor's Note as its outbox serves it and each
+  follower's inbox receives it, a feed's envelope, or the envelope a push
+  carries to the peer. Its proof and the signature of the requests that
+  carry it are never shown, only the key that makes them, by name
+  (`«secret:NAME»`), or the run's ID token a peer proves. A feed takes no
+  event that is not public, and a push one only where the peer takes
+  private events; each says so in place of a document.
 
 `--format json` prints one JSON array, on one line, with an object per
 route and what it renders against: `route`, `destination`, `against`
@@ -98,8 +103,10 @@ route and what it renders against: `route`, `destination`, `against`
 file), then either `error` (why its templates cannot render) or `title`,
 `thread`, `parts`, `steps` (each `{"step", "requests"}`, a request as
 `method`, `url`, `headers` as `[name, value]` pairs and `body`, the JSON it
-holds, its text, or `null`) and `unsent` (why it shows no request, or
-`null`).
+holds, its text, or `null`), `unsent` (why it shows no request, or `null`)
+and `served` (the document herald publishes in place of a request: `by` as
+`actor`, `feed` or `peer`, `name` the actor's or peer's name, `proof` the
+key's name or the ID token, and `document` as JSON; or `null`).
 
 A flag that names no route, kind, sample or report of the config says
 which ones it has, never what was given. Where no route takes what the

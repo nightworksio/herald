@@ -35,7 +35,7 @@ pub(crate) fn config(peer: &str) -> Config {
 
 /// The config of a push to `receiver`, the peer's table carrying `peer`
 /// and the push `push`.
-fn configured(peer: &str, push: &str) -> Config {
+pub(crate) fn configured(peer: &str, push: &str) -> Config {
     let text = format!(
         r#"version = 1
 [store]
