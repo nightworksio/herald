@@ -37,9 +37,9 @@ fn config(kind: &str, variant: &Variant) -> String {
 }
 
 #[test]
-fn discord_mastodon_matrix_and_slack_are_offered_first() {
+fn discord_mastodon_matrix_slack_and_teams_are_offered_first() {
     let kinds: Vec<&str> = first_runs().iter().map(|run| run.kind).collect();
-    assert_eq!(kinds, ["discord", "mastodon", "matrix", "slack"]);
+    assert_eq!(kinds, ["discord", "mastodon", "matrix", "slack", "teams"]);
 }
 
 #[test]

@@ -460,6 +460,9 @@ impl Writer {
             Escape::Neutral => self.push(&neutralised(code)),
             Escape::Entities if code.contains('`') => self.push(&entities(code)),
             Escape::Entities => self.push(&format!("`{}`", entities(code))),
+            Escape::Backslash if self.markup.fences == Fences::None => {
+                self.push(&backslashed(code));
+            }
             Escape::Backslash => {
                 let code = unfenced(&neutralised(code));
                 let fence = if code.contains('`') { "``" } else { "`" };
@@ -492,6 +495,8 @@ impl Writer {
             Links::Bracketed => format!("{text} (<{url}>)"),
             Links::Spelled if bare => url,
             Links::Spelled => format!("{text} ({url})"),
+            Links::Shown if bare => format!("[{url}]({url})"),
+            Links::Shown => format!("{text} ([{url}]({url}))"),
         };
         self.push(&link);
         self.spaced = bare && self.markup.links == Links::Spelled;
@@ -501,7 +506,9 @@ impl Writer {
         match self.markup.escape {
             Escape::Entities if self.code => entities(&unfenced(text)),
             Escape::Entities => entities(text),
-            Escape::Backslash if self.code => unfenced(&neutralised(text)),
+            Escape::Backslash if self.code && self.markup.fences != Fences::None => {
+                unfenced(&neutralised(text))
+            }
             Escape::Backslash => backslashed(text),
             Escape::Neutral => neutralised(text),
         }

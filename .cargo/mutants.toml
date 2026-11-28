@@ -27,11 +27,11 @@ exclude_re = [
     "DestinationConfig::platform_waits -> Waits with Default::default\\(\\)",
     # A store names no secret beside its key unless its kind says so, and `Vec::new()` is `vec![]`.
     "StoreConfig::named -> Vec<&str> with vec!\\[\\]",
-    # A herald feed names no secret of its own, and a feed or push places every route as it is, and `Vec::new()` is `vec![]`.
+    # A herald feed names no secret of its own, and a feed, a push or a Teams webhook places every route as it is, and `Vec::new()` is `vec![]`.
     "impl DestinationConfig for FeedOptions>::secret_refs -> Vec<&SecretRef> with vec!\\[\\]",
     # A destination reads no secret beside its credential unless its kind says so, and `Vec::new()` is `vec![]`.
     "DestinationConfig::reads -> Vec<&SecretRef> with vec!\\[\\]",
-    "impl DestinationKind for (HeraldKind|PushKind)>::placed -> Vec<Fault> with vec!\\[\\]",
+    "impl DestinationKind for (HeraldKind|PushKind|TeamsKind)>::placed -> Vec<Fault> with vec!\\[\\]",
     # A source pulling another herald's feed takes every kind the config declares rather than a list of its own, and `Vec::new()` is `vec![]`.
     "impl SourceConfig for HeraldOptions>::kinds -> Vec<Kind> with vec!\\[\\]",
     # A source says nothing to the doctor unless its kind says so, and `Vec::new()` is `vec![]`.

@@ -233,6 +233,7 @@ dependencies = [
  "herald-dest-herald",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-dest-teams",
  "herald-flows",
  "herald-kinds",
  "herald-models",
@@ -362,6 +363,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-dest-teams"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-kinds",
+ "herald-ports",
+ "schemars",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "herald-flows"
 version = "0.0.0"
 dependencies = [
@@ -392,6 +406,7 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-dest-teams",
  "herald-kinds",
  "herald-models",
  "herald-peers",

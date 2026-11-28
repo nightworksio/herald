@@ -1,5 +1,5 @@
 use super::*;
-use crate::profile::fixtures::{DISCORD, MATRIX, PLAIN, SLACK};
+use crate::profile::fixtures::{DISCORD, MATRIX, PLAIN, SLACK, TEAMS};
 
 const SAMPLE: &str = "# Added\n\nSome **bold**, *em*, ~~gone~~ and `code`.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\n> quoted\n> line\n\n```rust\nlet x = 1 < 2;\n```\n\n[the release](https://example.org/r) and <https://example.org/auto>\n\n<b>raw</b> [bad](javascript:alert(1)) a_b*c\n\n---\n\nend";
 
@@ -33,6 +33,25 @@ fn markdown_becomes_plain_text_with_links_spelled_out() {
             body: "Added\n\nSome bold, em, gone and code.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\n> quoted\n> line\n\nlet x = 1 < 2;\n\nthe release (https://example.org/r) and https://example.org/auto\n\n<b>raw</b> bad a_b*c\n\n───\n\nend".to_owned(),
             html: None,
         }
+    );
+}
+
+#[test]
+fn markdown_becomes_card_markdown_its_code_shown_as_text_and_each_link_under_its_own_target() {
+    assert_eq!(
+        convert(SAMPLE, TEAMS),
+        Text {
+            body: "**Added**\n\nSome **bold**\\, _em_\\, gone and code\\.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\n> quoted\n> line\n\nlet x \\= 1 \\< 2\\;\n\nthe release ([https://example.org/r](https://example.org/r)) and [https://example.org/auto](https://example.org/auto)\n\n\\<b\\>raw\\<\\/b\\> bad a\\_b\\*c\n\n───\n\nend".to_owned(),
+            html: None,
+        }
+    );
+    assert_eq!(
+        convert(
+            "[a](https://example.org/a_b) <https://example.org/c>",
+            TEAMS
+        )
+        .body,
+        "a ([https://example.org/a_b](https://example.org/a_b)) [https://example.org/c](https://example.org/c)"
     );
 }
 
@@ -81,6 +100,15 @@ fn the_oracle_refuses_what_could_mention_or_link() {
     assert!(inert(&text("a & b"), SLACK).is_err());
     assert!(inert(&text("#tag"), PLAIN).is_err());
     assert!(inert(&text("\u{FF20}everyone"), DISCORD).is_err());
+    assert!(inert(&text("<https://a.example>"), TEAMS).is_err());
+    assert!(inert(&text("[x](https://a.example)"), TEAMS).is_err());
+    assert!(inert(&text("[https://a.example](https://b.example)"), TEAMS).is_err());
+    assert!(inert(&text("[javascript:x](javascript:x)"), TEAMS).is_err());
+    assert!(inert(&text("[https://a.example/(](https://a.example/()"), TEAMS).is_err());
+    assert_eq!(
+        inert(&text("[https://a.example](https://a.example) b"), TEAMS),
+        Ok(())
+    );
     let masked = Text {
         body: "https://a.example".to_owned(),
         html: Some("<a href=\"https://a.example\">b</a>".to_owned()),
@@ -257,7 +285,7 @@ mod hostile {
     use crate::render::{Context, Form, Templates};
     use crate::{Event, RouteId};
 
-    const DIALECTS: [Markup; 4] = [DISCORD, SLACK, MATRIX, PLAIN];
+    const DIALECTS: [Markup; 5] = [DISCORD, SLACK, MATRIX, PLAIN, TEAMS];
 
     const PIECES: &[&str] = &[
         "@everyone",

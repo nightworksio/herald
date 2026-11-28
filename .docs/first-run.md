@@ -89,6 +89,21 @@ A bot token (`xoxb-…`) of a Slack app installed in the workspace
 (<https://docs.slack.dev/authentication/tokens>). The bot posts to a
 channel it has joined, whose id the first run asks.
 
+### `teams-webhook`
+
+A Workflows webhook's URL: in Microsoft Teams, open the channel's "More
+options" (…), choose "Workflows" and the template "Send webhook alerts to
+a channel", set it up, save it, and copy the webhook link it shows
+(<https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook>).
+Its trigger, "When a Teams webhook request is received", must let anyone
+trigger it: herald sends the URL alone, and the trigger's other choices
+want a Microsoft Entra token with each request
+(<https://learn.microsoft.com/en-us/connectors/teams/>). In Microsoft's
+GCC, GCC High and DoD clouds the workflow's post cannot be made as the Flow
+bot, so it posts as a user (the same page). The workflow belongs to the
+person who made it and is orphaned when they leave unless it has
+co-owners (the first page). The URL can be longer than 255 characters.
+
 ### `forgejo-branch`
 
 A token that may push to the repository's `herald-state` branch: an

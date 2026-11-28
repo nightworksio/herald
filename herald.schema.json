@@ -1297,6 +1297,140 @@
           ]
         },
         {
+          "description": "A route to a Microsoft Teams destination.",
+          "type": "object",
+          "properties": {
+            "area_paths": {
+              "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+              "$ref": "#/$defs/AreaPaths"
+            },
+            "at": {
+              "description": "The wall-clock time a day's first window begins at, as \"HH:MM\":\n\"09:00\" where absent.",
+              "type": "string",
+              "examples": [
+                "09:00"
+              ]
+            },
+            "crosspost": {
+              "description": "Whether to crosspost each announcement.",
+              "type": "boolean",
+              "default": false
+            },
+            "days": {
+              "description": "The days windows begin on, every day where empty.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Day"
+              }
+            },
+            "destination": {
+              "description": "The destination it announces to.",
+              "type": "string",
+              "examples": [
+                "discord"
+              ]
+            },
+            "edits": {
+              "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+              "$ref": "#/$defs/Edits",
+              "default": "none"
+            },
+            "every": {
+              "description": "How long each window lasts within a day, from \"1m\" to \"1d\": \"1d\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "group": {
+              "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+              "$ref": "#/$defs/Group"
+            },
+            "kinds": {
+              "description": "The kinds of event it takes; every kind where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/Kind"
+              }
+            },
+            "late_release": {
+              "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+              "$ref": "#/$defs/LateRelease",
+              "default": "edit"
+            },
+            "match": {
+              "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+              "$ref": "#/$defs/Match"
+            },
+            "mentions": {
+              "description": "Who it mentions.",
+              "$ref": "#/$defs/Mentions"
+            },
+            "pin": {
+              "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+              "$ref": "#/$defs/Pin"
+            },
+            "prereleases": {
+              "description": "Which pre-releases it takes.",
+              "$ref": "#/$defs/Prereleases"
+            },
+            "private": {
+              "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "The template it renders with; none on a route to a herald feed or\npush, which carries each event as an envelope.",
+              "type": "string",
+              "examples": [
+                "package-release"
+              ]
+            },
+            "templates": {
+              "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "examples": [
+                {
+                  "mastodon": "release-short"
+                }
+              ]
+            },
+            "thread": {
+              "description": "The thread to open for each announcement.",
+              "$ref": "#/$defs/Thread"
+            },
+            "versions": {
+              "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+              "type": "string"
+            },
+            "view": {
+              "description": "The view it shows: \"queue\", every source's open pull requests, where\nabsent.",
+              "type": "string"
+            },
+            "vouch_unchecked": {
+              "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+              "type": "boolean"
+            },
+            "withdraw": {
+              "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+              "$ref": "#/$defs/Withdraw",
+              "default": "keep"
+            },
+            "zone": {
+              "description": "The IANA time zone `at` and `days` are read in, such as\n\"Europe/Amsterdam\": \"UTC\" where absent.",
+              "type": "string",
+              "examples": [
+                "Europe/Amsterdam"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "destination"
+          ]
+        },
+        {
           "description": "A route announcing as one of herald's own ActivityPub actors.",
           "type": "object",
           "properties": {
@@ -2323,6 +2457,33 @@
           "additionalProperties": false,
           "required": [
             "kind"
+          ]
+        },
+        {
+          "description": "Microsoft Teams, by Workflows webhook.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "teams"
+            },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "$ref": "#/$defs/Symbols"
+            },
+            "waits": {
+              "description": "How long it waits before sending again where Teams answers that it\nis unwell or limited and names no wait.",
+              "$ref": "#/$defs/WaitOptions"
+            },
+            "webhook": {
+              "description": "The secret holding a Workflows webhook's URL: the URL of a workflow\nwhose trigger is \"When a Teams webhook request is received\", set so\nthat anyone may trigger it. It posts to the channel or chat its\nworkflow names, and only posts.",
+              "$ref": "#/$defs/SecretRef"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "webhook"
           ]
         },
         {
@@ -5894,6 +6055,10 @@
           "$ref": "#/$defs/SlackRoute"
         },
         {
+          "description": "A route to a Microsoft Teams destination.",
+          "$ref": "#/$defs/TeamsRoute"
+        },
+        {
           "description": "A route announcing as one of herald's own ActivityPub actors.",
           "$ref": "#/$defs/ActivityPubRoute"
         },
@@ -9423,6 +9588,137 @@
           "type": "string",
           "const": "forge"
         }
+      ]
+    },
+    "TeamsRoute": {
+      "description": "A route to a Microsoft Teams destination.",
+      "type": "object",
+      "properties": {
+        "area_paths": {
+          "description": "Where the paths a pull request's head changes are read, which the\nareas its `match` narrows by are those of: `kept`, from the pull\nrequest as herald keeps it where its head is the event's, no request\nmore; or `delivery`, from the forge as the event is delivered, one\nrequest more for each pull request event (ADR-0072).",
+          "$ref": "#/$defs/AreaPaths"
+        },
+        "crosspost": {
+          "description": "Whether to crosspost each announcement.",
+          "type": "boolean",
+          "default": false
+        },
+        "destination": {
+          "description": "The destination it announces to.",
+          "type": "string",
+          "examples": [
+            "discord"
+          ]
+        },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
+        },
+        "id": {
+          "description": "The route's stable id, part of every announcement's key.",
+          "type": "string",
+          "examples": [
+            "herald-releases"
+          ]
+        },
+        "kinds": {
+          "description": "The kinds of event it takes; every kind where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Kind"
+          }
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
+        },
+        "living": {
+          "description": "Whether it keeps one post of each report it takes, edited each\nwindow where the destination edits and posted anew each window\nwhere it cannot; it names only reports among its sources.",
+          "type": "boolean",
+          "default": false
+        },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
+        },
+        "mentions": {
+          "description": "Who it mentions.",
+          "$ref": "#/$defs/Mentions"
+        },
+        "pin": {
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found: `true` finds it by its marker, as\n\"markers\" does, and `false` pins nothing. A living route pins its\npost where absent and the destination pins.",
+          "$ref": "#/$defs/Pin"
+        },
+        "prereleases": {
+          "description": "Which pre-releases it takes.",
+          "$ref": "#/$defs/Prereleases"
+        },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).\nA route taking a private kind, such as `alert`, says it either way:\n`false` sends them to a public place on purpose (`[doctor]\nprivate_kinds`).",
+          "type": "boolean"
+        },
+        "sources": {
+          "description": "The sources it takes events from.",
+          "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "description": "The template it renders with; none on a route to a herald feed or\npush, which carries each event as an envelope.",
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
+        },
+        "templates": {
+          "description": "The template it renders with in place of `template` where its\ndestination's dialect is one of these, each keyed by the kind of\ndestination that writes the dialect, such as `{ mastodon =\n\"release-short\" }`. Each is Markdown, converted to the dialect as\n`template` is; `template` where its destination's dialect has none.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "examples": [
+            {
+              "mastodon": "release-short"
+            }
+          ]
+        },
+        "thread": {
+          "description": "The thread to open for each announcement.",
+          "$ref": "#/$defs/Thread"
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": "string"
+        },
+        "vouch_unchecked": {
+          "description": "Whether the operator vouches that its place is private where herald\ncannot check who may read it, as for a Discord or Slack route reached\nby a webhook: with `private = true` it is then shown a view's\nadvisories on the operator's word, which doctor lists. Refused on a\nroute herald checks before each run's first advisory send, and on\none that posts where anyone may read. False where absent.",
+          "type": "boolean"
+        },
+        "withdraw": {
+          "description": "What it does with an announcement whose Release the forge deletes:\nkeeps its post (`keep`), or deletes every message herald recorded of\nit where the destination can (`delete`).",
+          "$ref": "#/$defs/Withdraw",
+          "default": "keep"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sources",
+        "destination"
       ]
     },
     "Template": {
