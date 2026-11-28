@@ -4,18 +4,35 @@ use std::path::Path;
 use super::world::*;
 
 /// The key the random generator makes in these tests, built at run time.
-fn key() -> String {
+pub(super) fn key() -> String {
     "ab".repeat(32)
 }
 
 /// `herald init` as `args` asks in `directory`, the operator answering
 /// `answer` and the random generator making `random`: its code or why it
-/// stopped, and what it printed.
+/// stopped, and what it printed. Nothing it reaches answers, the
+/// environment is empty and no terminal is there.
 fn init(
     directory: &Path,
     args: &[&str],
     answer: &str,
     random: Option<String>,
+) -> (Result<u8, String>, String) {
+    let unreached = |_: herald_ports::Base<'_>, _: &herald_ports::Outbound| Err(String::new());
+    let trying = crate::init::Trying {
+        vars: &std::collections::BTreeMap::new(),
+        connect: &crate::Connector::new(&unreached, &|_, _| Err(String::new())),
+        unechoed: None,
+    };
+    init_trying(directory, args, answer, (random, &trying))
+}
+
+/// [`init`], its test post read and posted as `trying` says.
+pub(super) fn init_trying(
+    directory: &Path,
+    args: &[&str],
+    answer: &str,
+    (random, trying): (Option<String>, &crate::init::Trying<'_>),
 ) -> (Result<u8, String>, String) {
     let path = directory.join("herald.toml").display().to_string();
     let mut all = vec!["herald", "init"];
@@ -30,13 +47,13 @@ fn init(
         &path,
         &asked,
         (&mut answers, &mut out),
-        || random,
+        (|| random, trying),
     ));
     (done, String::from_utf8(out).unwrap())
 }
 
 /// A repository in `directory` whose origin is `url`.
-fn git(directory: &Path, url: &str) {
+pub(super) fn git(directory: &Path, url: &str) {
     std::fs::create_dir_all(directory.join(".git")).unwrap();
     std::fs::write(
         directory.join(".git/config"),
@@ -46,7 +63,7 @@ fn git(directory: &Path, url: &str) {
 }
 
 /// The config written in `directory`, where one was.
-fn written(directory: &Path) -> Option<String> {
+pub(super) fn written(directory: &Path) -> Option<String> {
     std::fs::read_to_string(directory.join("herald.toml")).ok()
 }
 

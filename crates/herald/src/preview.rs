@@ -93,7 +93,7 @@ fn events(
 
 /// Whether `shown` rendered, printed as its destination would show it or
 /// with why its templates cannot render the event.
-fn rendered(shown: Previewed, out: &mut dyn Write) -> bool {
+pub(crate) fn rendered(shown: Previewed, out: &mut dyn Write) -> bool {
     let head = format!("{} to {}", shown.route.as_str(), shown.destination.as_str());
     match shown.rendered {
         Ok(announcement) => {

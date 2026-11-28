@@ -42,7 +42,8 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Write a first herald.toml by answering a few questions, each also a
     /// flag with its default chosen, the store picked for the chat
-    /// (ADR-0091); never over a config that exists.
+    /// (ADR-0091), never over a config that exists; then offer one test
+    /// message.
     Init(Box<crate::init::Answers>),
     /// Make tokens for the HTTP API's apps.
     #[command(subcommand)]

@@ -622,6 +622,13 @@ fn a_test_message_with_no_title_is_not_posted() {
         }
     );
     assert_eq!(script.seen(), Vec::<String>::new());
+    let shown = herald_flows::trial_previewed(
+        &blank,
+        &blank.routes[0],
+        ("doctor", jiff::Timestamp::UNIX_EPOCH),
+    );
+    assert_eq!(shown.rendered, Err("the event has no title".to_owned()));
+    assert_eq!(shown.route.as_str(), "releases");
 }
 
 fn listed_online(config: &Config, script: &Script) -> Findings {

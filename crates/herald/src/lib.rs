@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::future::Future;
-use std::io::Write;
+use std::io::{IsTerminal as _, Write};
 use std::ops::ControlFlow;
 use std::path::Path;
 use std::pin::Pin;
@@ -21,6 +21,7 @@ use herald_config::{Config, Unread, Uses, Within, load_with};
 use herald_core::Printed;
 use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
+use herald_ports::{Scrubber, Secret};
 use herald_sources_forge::Forge;
 
 mod announce;
@@ -123,7 +124,19 @@ async fn stopping(
     let reading = match cli.command {
         Command::Init(asked) => {
             let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
-            let done = init::initialising(&cli.config, &asked, (answers, out), random_secret);
+            let trying = init::Trying {
+                vars,
+                connect,
+                unechoed: std::io::stdin()
+                    .is_terminal()
+                    .then_some(&rpassword::read_password),
+            };
+            let done = init::initialising(
+                &cli.config,
+                &asked,
+                (answers, out),
+                (random_secret, &trying),
+            );
             return finished(done.await, err);
         }
         Command::Token(Tokens::Marker) => return marker(random_secret(), out, err),
@@ -147,18 +160,7 @@ async fn stopping(
         Ok(config) => config,
         Err(code) => return code,
     };
-    let within = connect.within(
-        config
-            .http
-            .clone()
-            .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
-    );
-    let hidden = hidden(&config, vars);
-    let scrubber = config.log.scrubber().timed(herald_environment::SystemClock);
-    for secret in &hidden {
-        scrubber.keep(secret);
-    }
-    let within = within.scrubbing(scrubber.clone());
+    let (within, scrubber, hidden) = guarded(&config, vars, connect);
     let connect = &within;
     let json = doctored.is_some_and(|asked| asked.format == doctoring::Format::Json);
     masked(&hidden, vars, if json { &mut *err } else { &mut *out });
@@ -192,6 +194,28 @@ async fn stopping(
     let _ = out.flush();
     let _ = err.flush();
     code
+}
+
+/// `connect` within `config`'s outbound bounds, and the scrubber it and
+/// every output of the run share, which knows each secret of `config` that
+/// `vars` set, given too (ADR-0089).
+fn guarded<'c>(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'c>,
+) -> (Connector<'c>, Scrubber, Vec<Secret>) {
+    let within = connect.within(
+        config
+            .http
+            .clone()
+            .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
+    );
+    let hidden = hidden(config, vars);
+    let scrubber = config.log.scrubber().timed(herald_environment::SystemClock);
+    for secret in &hidden {
+        scrubber.keep(secret);
+    }
+    (within.scrubbing(scrubber.clone()), scrubber, hidden)
 }
 
 /// The CLI `args` ask for, or the code it ends with once its help, version

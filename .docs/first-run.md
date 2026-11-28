@@ -11,9 +11,30 @@ the default of every question no flag answers and writes without asking;
 config that exists: `herald setup …` adds to one, and `herald doctor`
 judges it.
 
-It names each secret and never asks for its value. After writing it says,
+It names each secret and writes no secret's value. After writing it says,
 for each secret, where the forge keeps it and the section below on making
 it.
+
+## The test message
+
+Once the config is written, `herald init` shows the test message as
+`herald preview` shows a post, and asks whether to post it. It is posted
+once, on the config's first route, by `herald doctor --post`'s trial: a
+message that says it is a test and announces nothing, kept apart from
+every record a real announcement reads.
+
+- Each credential the post needs is read from the environment where its
+  secret's variable is set. Otherwise, on a terminal, it is asked for, and
+  what is typed is not shown. It is held in memory for that one post and
+  never written or printed; everything the post prints is scrubbed of it.
+- With `--yes`, where the operator declines, where no terminal is there to
+  type a credential on, or where nothing is typed, nothing is posted, and
+  it prints the `herald doctor --online --post` command that posts it
+  once the environment sets the secret.
+- Where the chat refuses the message or cannot be reached, it says what
+  the chat answered, scrubbed of the credential, and the secret to check
+  and the command to run again; the files stay written, and it exits with
+  the doctor's code for a test message that did not land, `1`.
 
 ## The store
 

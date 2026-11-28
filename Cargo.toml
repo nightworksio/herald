@@ -71,6 +71,7 @@ pollster = "1"
 ring = "0.17"
 aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys", "prebuilt-nasm"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rpassword = "7"
 rusqlite = { version = "0.43", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 proptest = "1"

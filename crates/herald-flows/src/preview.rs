@@ -3,7 +3,9 @@
 
 use herald_config::Config;
 use herald_config::RouteConfig;
-use herald_core::{Announcement, DestinationName, Event, Group, Marker, Marks, RouteId, Subject};
+use herald_core::{
+    Announcement, DestinationName, Event, Group, Marker, Marks, RouteId, Subject, Templates,
+};
 
 /// One route's templates rendered against an event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,10 +68,21 @@ pub fn preview_group(
 
 /// `route` of `config` rendering `subject` with placeholder markers.
 fn previewed(config: &Config, route: &RouteConfig, subject: Subject<'_>) -> Previewed {
+    rendered(config, route, &config.templates, subject)
+}
+
+/// `route` of `config` rendering `subject` through `templates` with
+/// placeholder markers.
+pub(crate) fn rendered(
+    config: &Config,
+    route: &RouteConfig,
+    templates: &Templates,
+    subject: Subject<'_>,
+) -> Previewed {
     let rendered = herald_core::announce(
         subject,
         &route.route,
-        &config.templates,
+        templates,
         &route.profile,
         herald_core::itself::VERSION,
         Marks {

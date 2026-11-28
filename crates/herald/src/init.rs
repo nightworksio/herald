@@ -1,8 +1,9 @@
 //! `herald init`: a first run's wizard (ADR-0091). It asks the forge, the
 //! repository, the chat and the chat's own questions, each also a flag
-//! with its default chosen; picks the store; and writes `herald.toml` once
-//! confirmed, never over a config that exists. It names each secret and
-//! never asks for, reads or writes a credential's value.
+//! with its default chosen; picks the store; writes `herald.toml` once
+//! confirmed, never over a config that exists; and offers one test post.
+//! It names each secret, never writes a credential's value, and reads one
+//! for the test post alone.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -14,11 +15,13 @@ use herald_sources_forge::Forge;
 use tokio::io::AsyncBufRead;
 
 use self::remote::Remote;
+pub(crate) use self::tested::Trying;
 use self::written::{First, Kept, STORE_KEY, STORE_TOKEN};
 use crate::asking::{Asking, NONE, Question};
 use crate::{DONE, STOPPED};
 
 mod remote;
+mod tested;
 mod written;
 
 /// herald's page on making each credential a first run names.
@@ -66,7 +69,7 @@ pub(crate) struct Answers {
     #[arg(long)]
     pub(crate) store_token: Option<String>,
     /// Take the default of each question no flag answers, and write
-    /// without asking.
+    /// without asking; no test message is posted.
     #[arg(long)]
     pub(crate) yes: bool,
     /// Print the config in place of writing it.
@@ -75,12 +78,13 @@ pub(crate) struct Answers {
 }
 
 /// The first run of the config at `path`, as `asked` and the operator
-/// answer, with the system's random generator for the store's key.
+/// answer, with the system's random generator for the store's key, its
+/// test post as `trying` reads and posts it.
 pub(crate) async fn initialising(
     path: &str,
     asked: &Answers,
     (answers, out): (&mut (dyn AsyncBufRead + Send + Unpin), &mut dyn Write),
-    random: impl FnOnce() -> Option<String>,
+    (random, trying): (impl FnOnce() -> Option<String>, &Trying<'_>),
 ) -> Result<u8, String> {
     if Path::new(path).exists() {
         return Err(format!(
@@ -114,12 +118,17 @@ pub(crate) async fn initialising(
         store: &store,
     };
     let text = first.text();
-    crate::loaded(path, &text).map_err(|why| format!("{why}\nNothing was written."))?;
+    let config =
+        crate::loaded(path, &text).map_err(|why| format!("{why}\nNothing was written."))?;
     if asked.print {
         let _ = write!(asking.out, "{text}");
         return Ok(DONE);
     }
-    finish((path, &text), (&first, variant), random, &mut asking).await
+    let written = finish((path, &text), (&first, variant), random, &mut asking).await?;
+    if written != DONE {
+        return Ok(written);
+    }
+    Ok(tested::tried(&config, path, trying, &mut asking).await)
 }
 
 /// One of `offered`, each said on its own line where the operator is
