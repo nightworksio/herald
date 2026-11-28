@@ -9,7 +9,7 @@ use herald_core::{
     Announcement, Declined, Entry, Facts, Sent, Step, Waits, media, status, unreserved,
 };
 use herald_kinds::Probe;
-use herald_ports::{Http, HttpError, Method, Request, Response, Secret, SecretText};
+use herald_ports::{DynHttp, HttpError, Method, Request, Response, Secret, SecretText};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
 use serde_json::Value;
@@ -281,23 +281,23 @@ impl Bot {
     }
 
     /// A token from its sign-in, and how long it lasts; why not otherwise.
-    async fn signed_in<H: Http>(
+    async fn signed_in(
         &self,
-        http: &H,
+        http: &dyn DynHttp,
         waits: Waits,
     ) -> Result<Result<(Secret, SignedDuration), Sent>, HttpError> {
         let request = match self.signing_in() {
             Ok(request) => request,
             Err(declined) => return Ok(Err(Sent::Refused(declined.to_string()))),
         };
-        Ok(signed(http.send(request).await?, waits))
+        Ok(signed(http.send_boxed(request).await?, waits))
     }
 
     /// The token it sends at `now`: the one it holds, or a new one, held
     /// until shortly before it ends.
-    async fn token<H: Http>(
+    async fn token(
         &self,
-        http: &H,
+        http: &dyn DynHttp,
         now: Timestamp,
         waits: Waits,
     ) -> Result<Result<Secret, Sent>, HttpError> {
@@ -405,9 +405,9 @@ impl Bot {
     /// # Errors
     ///
     /// When a request got no response at all.
-    pub async fn send<H: Http>(
+    pub async fn send(
         &self,
-        http: &H,
+        http: &dyn DynHttp,
         (step, announcement, entry): (&Step, &Announcement, &Entry),
         now: Timestamp,
         waits: Waits,
@@ -420,18 +420,18 @@ impl Bot {
             Ok(token) => token,
             Err(unsigned) => return Ok(unsigned),
         };
-        Ok(read(&http.send(request.bearer(token)).await?, waits))
+        Ok(read(&http.send_boxed(request.bearer(token)).await?, waits))
     }
 
     /// What its sign-in says of its app id and client secret, with
     /// nothing posted, and what doctor names of a route replying in
     /// threads.
-    pub(crate) async fn probe<H: Http>(&self, http: &H) -> Vec<Probe> {
+    pub(crate) async fn probe(&self, http: &dyn DynHttp) -> Vec<Probe> {
         let request = match self.signing_in() {
             Ok(request) => request,
             Err(declined) => return vec![Probe::Credential(declined.to_string())],
         };
-        let taken = match http.send(request).await {
+        let taken = match http.send_boxed(request).await {
             Ok(answer) => probed(answer),
             Err(error) => Probe::credential(LOGIN, &Err(error)),
         };

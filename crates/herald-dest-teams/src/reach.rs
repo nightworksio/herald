@@ -77,7 +77,7 @@ impl Reach for Teams {
     ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(async move {
             match &self.way {
-                Way::Bot(bot) => bot.probe(&Erased(http)).await,
+                Way::Bot(bot) => bot.probe(http).await,
                 Way::Webhook { webhook, origin } => vec![match origin {
                     Some(_) => Probe::Said(UNASKED.to_owned()),
                     None => Probe::Credential(unaddressed(webhook)),
