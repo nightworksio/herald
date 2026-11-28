@@ -1,4 +1,4 @@
-use herald_core::Replies;
+use herald_core::{Command, Replies};
 
 use super::*;
 

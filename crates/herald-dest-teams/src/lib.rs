@@ -26,7 +26,7 @@ mod teams;
 pub use bot::{BOT_MESSAGE, Bot};
 pub use cloud::{Cloud, Hosts};
 pub use config::{KIND, TeamsKind};
-pub use interact::{ACTIVITY, CHANNEL, Interacting};
+pub use interact::{ACTIVITY, CHANNEL, Interacting, Reply};
 pub use interactions::{Interactions, Via};
 pub use options::{DestinationOptions, RouteOptions};
 pub use teams::{MARKUP, MESSAGE, Teams, UNCHECKED, bot_profile, profile};

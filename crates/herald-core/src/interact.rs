@@ -85,6 +85,42 @@ impl Replies {
     }
 }
 
+/// The word after a project that asks for the answer to be shown to the
+/// channel.
+const SHARE: &str = "share";
+
+/// A command as a member words it: its name, then a project and `share`,
+/// each where given.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Worded {
+    /// The command.
+    pub command: Command,
+    /// The project it names, if it names one.
+    pub project: Option<String>,
+    /// Whether the member asked for the answer to be shown to the channel.
+    pub share: bool,
+}
+
+/// The command `words` give: a command's name, then a project, `share`, or
+/// a project and `share`; none where the first names no command or more
+/// words follow.
+pub fn worded<'a>(mut words: impl Iterator<Item = &'a str>) -> Option<Worded> {
+    let command = Command::named(words.next()?)?;
+    let shared = |word: &str| word.eq_ignore_ascii_case(SHARE);
+    let (project, share) = match (words.next(), words.next(), words.next()) {
+        (None, ..) => (None, false),
+        (Some(word), None, _) if shared(word) => (None, true),
+        (Some(project), None, _) => (Some(project), false),
+        (Some(project), Some(word), None) if shared(word) => (Some(project), true),
+        _ => return None,
+    };
+    Some(Worded {
+        command,
+        project: project.map(ToOwned::to_owned),
+        share,
+    })
+}
+
 /// Every command, as a destination answers by default.
 #[must_use]
 pub fn every_command() -> Vec<Command> {

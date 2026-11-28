@@ -52,7 +52,8 @@ pub struct DestinationOptions {
     /// The issuer each token vouching for an activity names, in place of its
     /// cloud's, such as `https://api.botframework.com`.
     pub issuer: Option<String>,
-    /// How the bot takes what Teams posts to it at herald's endpoint.
+    /// How the bot takes what Teams posts to it at herald's endpoint, and
+    /// answers the commands members give it there.
     pub interactions: Option<Interactions>,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
@@ -204,7 +205,7 @@ fn based<'a>(
 
 /// Whether `id` is written as a GUID: five groups of 8, 4, 4, 4 and 12
 /// hexadecimal digits.
-fn guid(id: &str) -> bool {
+pub(crate) fn guid(id: &str) -> bool {
     let groups: Vec<&str> = id.split('-').collect();
     groups.len() == 5
         && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, length)| {
@@ -224,7 +225,7 @@ fn tenant_name(tenant: &str) -> bool {
 
 /// Whether `base` is an https URL of a host, with a path at most: no
 /// credentials, query or fragment.
-fn base_url(base: &str) -> bool {
+pub(crate) fn base_url(base: &str) -> bool {
     Url::parse(base).is_ok_and(|url| {
         url.scheme() == "https"
             && url.host_str().is_some()

@@ -9,7 +9,8 @@ use herald_core::{
     chosen, chunk, completions, escaped, safe_url, title_template,
 };
 use herald_kinds::{Interacted, Replying};
-use herald_ports::{Announcements, Http, Store, StoreError, Subscriptions};
+use herald_ports::{Announcements, Clock, Http, Store, StoreError, Subscriptions};
+use jiff::Timestamp;
 
 use crate::announce::Ports;
 use crate::command_requests::sent;
@@ -89,7 +90,7 @@ fn id<'r>(route: &'r &RouteConfig) -> &'r RouteId {
 
 /// What herald answers `asked`, given on a destination of `connected`, with
 /// what the store of `ports` keeps.
-pub async fn interact<S: Store, C, G, H: Http>(
+pub async fn interact<S: Store, C: Clock, G, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
@@ -119,7 +120,7 @@ fn wording<H>(connected: &Connected<H>, destination: &DestinationName) -> Wordin
         })
 }
 
-async fn reply<S: Store, C, G, H: Http>(
+async fn reply<S: Store, C: Clock, G, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
@@ -152,7 +153,15 @@ async fn reply<S: Store, C, G, H: Http>(
                 .copied()
                 .filter(|route| here.latest.routes.contains(&route.route.id))
                 .collect();
-            subscribing(interacting, http, ports.store, asked, here.latest, &routes).await
+            let now = ports.clock.now();
+            subscribing(
+                (interacting, http, now),
+                ports.store,
+                asked,
+                here.latest,
+                &routes,
+            )
+            .await
         }
         Command::Latest | Command::Changelog => {
             latest_reply(config, &answering, asked, here.latest, here.route)
@@ -185,7 +194,7 @@ pub(crate) fn unlisted(error: &StoreError) -> String {
 }
 
 /// Sends `answer` where `replying` names, on `destination` of `connected`, in
-/// as many parts as its destination needs.
+/// as many parts as its destination needs, at `now`.
 ///
 /// # Errors
 ///
@@ -195,6 +204,7 @@ pub async fn replied<H: Http>(
     destination: &DestinationName,
     replying: &Replying,
     answer: &Answer,
+    now: Timestamp,
 ) -> Result<(), String> {
     let (interacting, http) = connected
         .interacting(destination)
@@ -202,14 +212,14 @@ pub async fn replied<H: Http>(
     let (dialect, room) = interacting.room();
     let parts = chunk(&answer.said, dialect, room);
     for request in interacting.answered(replying, &parts, answer.public) {
-        sent(interacting, http, request).await?;
+        sent(interacting, http, request, now).await?;
     }
     Ok(())
 }
 
 /// Says that the command `asked`, carried where no endpoint answered it,
 /// is being worked, where its destination waits for that: a Discord
-/// interaction the gateway carried.
+/// interaction the gateway carried, sent at `now`.
 ///
 /// # Errors
 ///
@@ -219,12 +229,13 @@ pub async fn deferral<H: Http>(
     destination: &DestinationName,
     replying: &Replying,
     asked: &Asked,
+    now: Timestamp,
 ) -> Result<(), String> {
     let (interacting, http) = connected
         .interacting(destination)
         .ok_or_else(|| format!("{} takes no commands", destination.as_str()))?;
     match interacting.deferred(replying, asked) {
-        Some(request) => sent(interacting, http, request).await,
+        Some(request) => sent(interacting, http, request, now).await,
         None => Ok(()),
     }
 }
@@ -240,19 +251,18 @@ fn decided(asked: &Asked, holds: bool) -> Result<bool, fn(String) -> Said> {
     }
 }
 
-/// `asked` worked for the member who gave it on `routes`, the routes
-/// announcing `latest` where it was given: by the opt-in roles the
+/// `asked` worked at `now` for the member who gave it on `routes`, the
+/// routes announcing `latest` where it was given: by the opt-in roles the
 /// destination gives, or else by the subscriptions the store keeps.
 async fn subscribing<S: Store, H: Http>(
-    interacting: &Interacted,
-    http: &H,
+    (interacting, http, now): (&Interacted, &H, Timestamp),
     store: &S,
     asked: &Asked,
     latest: &Latest,
     routes: &[&RouteConfig],
 ) -> Reply {
     if interacting.gives_roles() {
-        return by_role(interacting, http, asked, &latest.project, routes).await;
+        return by_role((interacting, http, now), asked, &latest.project, routes).await;
     }
     by_store(store, asked, &latest.project, routes).await
 }
@@ -268,11 +278,10 @@ fn toggled(project: &str, give: bool) -> Reply {
     })
 }
 
-/// `asked` worked by giving or taking each opt-in role of `routes`, so the
-/// member is mentioned when `project` announces.
+/// `asked` worked at `now` by giving or taking each opt-in role of
+/// `routes`, so the member is mentioned when `project` announces.
 async fn by_role<H: Http>(
-    interacting: &Interacted,
-    http: &H,
+    (interacting, http, now): (&Interacted, &H, Timestamp),
     asked: &Asked,
     project: &str,
     routes: &[&RouteConfig],
@@ -300,7 +309,7 @@ async fn by_role<H: Http>(
                 "a role could not be asked of Discord: an id is not written as Discord writes one",
             );
         };
-        if let Err(trouble) = sent(interacting, http, request).await {
+        if let Err(trouble) = sent(interacting, http, request, now).await {
             return Reply::unavailable(trouble);
         }
     }

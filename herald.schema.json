@@ -2504,7 +2504,7 @@
               "$ref": "#/$defs/Cloud"
             },
             "interactions": {
-              "description": "How the bot takes what Teams posts to it at herald's endpoint.",
+              "description": "How the bot takes what Teams posts to it at herald's endpoint, and\nanswers the commands members give it there.",
               "$ref": "#/$defs/TeamsInteractions"
             },
             "issuer": {
@@ -9658,12 +9658,35 @@
       ]
     },
     "TeamsInteractions": {
-      "description": "How a Teams bot takes what Teams posts to it.",
+      "description": "How a Teams bot takes what Teams posts to it, and answers the commands\nmembers give it.",
       "type": "object",
       "properties": {
+        "commands": {
+          "description": "The commands it answers, each given to the bot in a message: after\nits mention in a channel or a group chat, `@herald latest herald`,\nand alone in a chat with the bot. Each answer replies to the\nmember's message, where everyone in the conversation reads it.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Command"
+          }
+        },
+        "prereleases": {
+          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+          "type": "boolean",
+          "default": false
+        },
+        "template": {
+          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
+          "type": "string"
+        },
         "via": {
           "description": "How Teams carries it.",
           "$ref": "#/$defs/TeamsVia"
+        },
+        "wording": {
+          "description": "What it says back, phrase by phrase, each a template over `project`,\n`projects`, `named` and `command`; herald's own words for every\nphrase left out.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

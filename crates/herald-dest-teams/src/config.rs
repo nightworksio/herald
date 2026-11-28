@@ -1,4 +1,4 @@
-use herald_core::{Delivery, Profile, SecretRef, Symbols, WaitOptions};
+use herald_core::{Answering, Delivery, Profile, SecretRef, Symbols, WaitOptions};
 use herald_kinds::{
     Carried, Checking, DestinationConfig, DestinationKind, Fault, Interacted, Placed, Placement,
     Placing, Reached,
@@ -7,6 +7,7 @@ use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
 use crate::bot::Bot;
 use crate::interact::Interacting;
+use crate::interactions::Interactions;
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::teams::{self, TEAMS, Teams, UNCHECKED};
 
@@ -60,6 +61,10 @@ impl DestinationConfig for DestinationOptions {
             .map(Placed::new)
     }
 
+    fn answering(&self) -> Option<Answering> {
+        self.interactions.as_ref().map(Interactions::answering)
+    }
+
     fn carried(&self) -> Option<Carried> {
         self.interactions.as_ref().map(|_| Carried {
             posted: true,
@@ -70,14 +75,22 @@ impl DestinationConfig for DestinationOptions {
 
     fn interacts<'a>(
         &'a self,
-        _: &'a Secret,
+        credential: &'a Secret,
         _: &'a dyn DynSecrets,
     ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
         let interacting = self
             .interactions
             .as_ref()
-            .and(self.registered().ok().flatten())
-            .and_then(|registered| Interacting::new(registered.app_id, registered.hosts))
+            .zip(self.registered().ok().flatten())
+            .and_then(|(interactions, registered)| {
+                Interacting::new(registered.app_id, credential.clone(), registered.hosts).map(
+                    |interacting| {
+                        interacting
+                            .taking(interactions.answering())
+                            .waiting(self.waits())
+                    },
+                )
+            })
             .map(Interacted::new);
         Box::pin(std::future::ready(Ok(interacting)))
     }
@@ -130,6 +143,13 @@ impl DestinationKind for TeamsKind {
             .err()
             .map(|(key, message)| Fault::at(key, message))
             .into_iter()
+            .chain(
+                options
+                    .interactions
+                    .as_ref()
+                    .and_then(|interactions| interactions.check().err())
+                    .map(|message| Fault::at("interactions", message)),
+            )
             .collect();
         Ok((options, faults))
     }

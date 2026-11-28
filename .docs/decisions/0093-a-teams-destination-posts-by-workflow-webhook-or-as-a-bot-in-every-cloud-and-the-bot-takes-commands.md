@@ -74,6 +74,23 @@ preformatted text, block quotes or HTML
    failure is refused, saying nothing of why. Each activity is admitted
    once by its conversation and id. This is a new row of ADR-0007
    decision 3's inbound table.
+   A command is a `message` activity's text, read only where it mentions
+   the bot (the mention entity naming the activity's recipient, its text
+   then left out) or comes in a chat with the bot alone, at most 1,024
+   bytes, through the words every destination reads a command with. It
+   acts only for the member the activity names by Microsoft Entra object
+   id (`from.aadObjectId`), which mentions also name; an activity without
+   one asks nothing. The answer replies to the member's message
+   (`POST {serviceUrl}/v3/conversations/{conversation}/activities/{id}`,
+   <https://learn.microsoft.com/en-us/microsoftteams/platform/agents-in-teams/connect-agent-without-sdk>)
+   through the activity's verified service URL, as cards in the bot's
+   dialect, with the bot's token. That token goes to the origin of the
+   bot's service URL alone, a request elsewhere is not sent, the bot signs
+   in at its sign-in host alone, and the `Http` its answers go through
+   reaches those two origins and follows no redirect. Teams shows a bot's
+   reply to everyone in the conversation, so there is no `replies`
+   setting; an error Teams answers is said by its status and its code
+   alone.
 5. **`cloud = "public" | "gcc-high" | "dod"`**, `"public"` where
    absent, picks the login host, the Bot Framework hosts and scope, the
    service URL fallback and the OpenID metadata, from tables kept in one

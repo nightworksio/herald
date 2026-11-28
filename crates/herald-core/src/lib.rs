@@ -111,8 +111,8 @@ pub use inbound::{
 };
 pub use installation::Installation;
 pub use interact::{
-    AnnouncedHere, Answering, Asked, Command, Member, Place, Replies, Said, Unchosen, announced,
-    chosen, completions, every_command,
+    AnnouncedHere, Answering, Asked, Command, Member, Place, Replies, Said, Unchosen, Worded,
+    announced, chosen, completions, every_command, worded,
 };
 pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, SHA256_HEX_DIGITS, digest, hex, unhex};

@@ -111,6 +111,11 @@ pub(crate) fn chunk(announcement: &Announcement, index: u32) -> Value {
     card(&[text(part)], Vec::new())
 }
 
+/// The card of one part of herald's answer to a command.
+pub(crate) fn answer(part: &str) -> Value {
+    card(&[text(part)], Vec::new())
+}
+
 /// The card of part `part`: the announcement's for part 0, else the
 /// overflow part's.
 pub(crate) fn of_part(announcement: &Announcement, part: u32) -> Value {

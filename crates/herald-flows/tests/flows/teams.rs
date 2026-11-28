@@ -4,7 +4,8 @@
 //! Teams, of its issuer, meant for the bot, valid now and naming the
 //! service URL the activity names, on the bot's own service origin; every
 //! other request refused before its body is read, saying nothing of why,
-//! and never quoted.
+//! and never quoted; a command answered by a reply carrying the bot's token
+//! to that service URL alone, its sign-in to the bot's sign-in host alone.
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -12,12 +13,15 @@ use std::collections::BTreeMap;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use herald_config::{Config, Uses, load};
-use herald_flows::{Answered, Connected, Inbound, Ports, Serving, Webhooks, answer, prepare};
+use herald_flows::{
+    Answered, Connected, Did, Inbound, Job, Ports, Serving, Webhooks, answer, prepare, work,
+};
 use herald_ports::{Deliveries as _, Response};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
+use std::sync::{Arc, Mutex};
 
 use crate::harness::{Failing, Script, healthy, keys_in};
 use crate::inbound::at;
@@ -183,6 +187,7 @@ via = "http"
 struct Bot {
     config: Config,
     connected: Connected<Script>,
+    bases: Arc<Mutex<Vec<Option<Vec<String>>>>>,
     store: Failing,
     keyring: MemoryKeyring,
     script: Script,
@@ -195,10 +200,17 @@ impl Bot {
         let secrets = FakeSecrets::default().with("HERALD_TEAMS_APP_PASSWORD", "app-secret");
         let prepared =
             pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Serves)).unwrap();
-        let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+        let bases = Arc::new(Mutex::new(Vec::new()));
+        let connected = prepared
+            .connect(|base| {
+                bases.lock().unwrap().push(base.bases());
+                Ok::<_, ()>(script.clone())
+            })
+            .unwrap();
         Self {
             config,
             connected,
+            bases,
             store: healthy(),
             keyring: MemoryKeyring::new(8),
             script,
@@ -217,6 +229,31 @@ impl Bot {
     }
 
     fn request(&self, inbound: &Inbound<'_>) -> Answered {
+        self.serving(|serving| pollster::block_on(answer(serving, inbound)))
+    }
+
+    /// What `job` did, worked as the server works it.
+    fn work(&self, job: Job) -> Did {
+        let worked = self.serving(|serving| pollster::block_on(work(serving, job, "server")));
+        assert_eq!(worked.unreleased, None);
+        worked.did
+    }
+
+    fn serving<T>(
+        &self,
+        serve: impl FnOnce(
+            &Serving<
+                '_,
+                Failing,
+                FakeClock,
+                FakeSigner,
+                FakeVerifier,
+                Script,
+                Script,
+                MemoryKeyring,
+            >,
+        ) -> T,
+    ) -> T {
         let clock = FakeClock::at(self.now.get());
         let ports = Ports {
             store: &self.store,
@@ -237,7 +274,7 @@ impl Bot {
             admission: herald_flows::Admission::Once,
             merging: None,
         };
-        pollster::block_on(answer(&serving, inbound))
+        serve(&serving)
     }
 
     /// The answer to `body` posted on `token`.
@@ -254,8 +291,10 @@ impl Bot {
 }
 
 /// The status `answered` gives and why it was refused, where it was; which
-/// neither its body nor its reason quotes `token` with.
+/// neither its body nor its reason quotes `token` with, and which hands on
+/// no work.
 fn refused(answered: &Answered, token: &str) -> (u16, String) {
+    assert!(answered.job.is_none());
     let (status, _, body) = said(answered);
     assert!(!body.contains(token), "{body}");
     let why = answered.refused.clone().unwrap_or_default();
@@ -448,7 +487,7 @@ fn an_activity_naming_another_service_than_its_token_or_another_origin_sends_not
     let signed = token(&header("k1"), &claims(at()), &teams);
     assert_eq!(
         refused(
-            &bot.post(&signed, &activity("message", "1", attacker)),
+            &bot.post(&signed, &commanded_at("1", "latest", attacker)),
             &signed
         ),
         (
@@ -461,22 +500,20 @@ fn an_activity_naming_another_service_than_its_token_or_another_origin_sends_not
     let vouched = token(&header("k1"), &theirs, &teams);
     assert_eq!(
         refused(
-            &bot.post(&vouched, &activity("message", "2", attacker)),
+            &bot.post(&vouched, &commanded_at("2", "latest", attacker)),
             &vouched
         ),
         (
             401,
-            "the activity names a service URL that is not on the bot's service origin".to_owned()
+            "the activity names a service URL that is not an https URL on the bot's service origin"
+                .to_owned()
         )
     );
     let mut unnamed = claims(at());
     unnamed.as_object_mut().unwrap().remove("serviceUrl");
     let silent = token(&header("k1"), &unnamed, &teams);
     assert_eq!(
-        refused(
-            &bot.post(&silent, &activity("message", "3", SERVICE)),
-            &silent
-        ),
+        refused(&bot.post(&silent, &commanded("3", "latest")), &silent),
         (
             401,
             "the request's bearer token carries no claim its request is read with".to_owned()
@@ -623,4 +660,196 @@ fn an_activity_of_another_channel_or_a_type_the_bot_does_not_take_is_refused() {
             "the request is not a Bot Framework activity".to_owned()
         )
     );
+}
+
+const SIGN_IN: &str = "https://signin.example/botframework.com/oauth2/v2.0/token";
+
+/// The activity of a member giving the bot `text` after its mention.
+fn commanded(id: &str, text: &str) -> Vec<u8> {
+    commanded_at(id, text, SERVICE)
+}
+
+/// The activity of a member giving the bot `text` after its mention,
+/// naming `service`.
+fn commanded_at(id: &str, text: &str, service: &str) -> Vec<u8> {
+    let mut given: Value = serde_json::from_slice(&activity("message", id, service)).unwrap();
+    given["text"] = json!(format!("<at>herald</at> {text}"));
+    given["entities"] = json!([{
+        "type": "mention",
+        "text": "<at>herald</at>",
+        "mentioned": { "id": format!("28:{APP}"), "name": "herald" },
+    }]);
+    given.to_string().into_bytes()
+}
+
+fn replied_at(id: &str) -> String {
+    format!("https://smba.example/emea/v3/conversations/19%3Aabc%40thread.tacv2/activities/{id}")
+}
+
+/// The Bot Framework publishing `teams`, the sign-in giving `token`, and
+/// a reply to the activity `id` answered `reply`.
+fn answering(teams: &Pair, token: &str, id: &str, reply: Response) -> Script {
+    Script::keyed(BTreeMap::from([
+        (
+            METADATA.to_owned(),
+            answered(200, &metadata(ISSUER, KEYS, &["RS256"])),
+        ),
+        (
+            KEYS.to_owned(),
+            answered(200, &key_set(&[("k1", teams, &["msteams"])])),
+        ),
+        (
+            SIGN_IN.to_owned(),
+            answered(
+                200,
+                &json!({ "access_token": token, "expires_in": 3600 }).to_string(),
+            ),
+        ),
+        (replied_at(id), reply),
+    ]))
+}
+
+/// What the job `answered` handed on did, where it handed on one command.
+fn interacted(bot: &Bot, answered: &Answered) -> herald_flows::Interacted {
+    assert_eq!(said(answered), (200, "application/json", "{}".to_owned()));
+    let job = answered.job.clone().unwrap();
+    let Did::Interacted(mut interacted) = bot.work(job) else {
+        panic!("the job answered no command");
+    };
+    assert_eq!(interacted.len(), 1);
+    interacted.remove(0)
+}
+
+#[test]
+fn a_command_is_answered_by_a_reply_carrying_the_bot_s_token_to_the_service_its_activity_names_alone()
+ {
+    let teams = pair(1);
+    let token = ["made", "-", "at", "-", "run", "-", "time"].concat();
+    let bot = Bot::new(answering(
+        &teams,
+        &token,
+        "7",
+        answered(201, r#"{"id":"1481567603899"}"#),
+    ));
+    let signed = token_of(&teams);
+    let given = interacted(&bot, &bot.post(&signed, &commanded("7", "latest")));
+    assert_eq!(
+        (given.asked.user.as_str(), given.asked.command),
+        (
+            "00000000-0000-0000-0000-000000000001",
+            herald_core::Command::Latest
+        )
+    );
+    assert_eq!((given.sent, given.answer.trouble), (Ok(()), None));
+    assert_eq!(
+        bot.script.seen(),
+        [
+            format!("GET {METADATA}"),
+            format!("GET {KEYS}"),
+            format!("POST {SIGN_IN}"),
+            format!("POST {}", replied_at("7")),
+        ]
+    );
+    let asked = bot.script.asked();
+    let authorised: Vec<bool> = asked
+        .iter()
+        .map(|headers| {
+            headers
+                .iter()
+                .any(|(name, value)| name == "Authorization" && value.contains(&token))
+        })
+        .collect();
+    assert_eq!(authorised, [false, false, false, true]);
+    assert!(
+        bot.script
+            .bodies()
+            .iter()
+            .all(|body| !String::from_utf8_lossy(body).contains(&token))
+    );
+    assert!(bot.bases.lock().unwrap().contains(&Some(vec![
+        "https://signin.example".to_owned(),
+        "https://smba.example".to_owned(),
+    ])));
+    let replay = bot.post(&signed, &commanded("7", "latest"));
+    taken(&replay);
+    let again = interacted(&bot, &bot.post(&signed, &commanded("8", "changelog")));
+    assert!(again.sent.is_err());
+    assert_eq!(
+        bot.script.seen().last(),
+        Some(&format!("POST {}", replied_at("8")))
+    );
+    assert_eq!(
+        bot.script
+            .seen()
+            .iter()
+            .filter(|line| line.contains(SIGN_IN))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_reply_answered_by_a_redirect_is_not_followed_and_its_token_goes_nowhere_else() {
+    let teams = pair(1);
+    let token = ["made", "-", "at", "-", "run", "-", "time"].concat();
+    let redirect = Response {
+        status: 307,
+        headers: vec![(
+            "Location".to_owned(),
+            "https://attacker.example/v3/conversations/a/activities/1".to_owned(),
+        )],
+        body: Vec::new(),
+    };
+    let bot = Bot::new(answering(&teams, &token, "7", redirect));
+    let signed = token_of(&teams);
+    let given = interacted(
+        &bot,
+        &bot.post(&signed, &commanded("7", "latest <at>x</at>")),
+    );
+    assert_eq!(given.sent, Err("Microsoft Teams answered 307".to_owned()));
+    let seen = bot.script.seen();
+    assert_eq!(seen.last(), Some(&format!("POST {}", replied_at("7"))));
+    assert!(
+        seen.iter().all(|line| !line.contains("attacker")),
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn a_command_the_sign_in_refuses_goes_unanswered_and_says_only_the_sign_in_s_error() {
+    let teams = pair(1);
+    let mut script = BTreeMap::from([
+        (
+            METADATA.to_owned(),
+            answered(200, &metadata(ISSUER, KEYS, &["RS256"])),
+        ),
+        (
+            KEYS.to_owned(),
+            answered(200, &key_set(&[("k1", &teams, &["msteams"])])),
+        ),
+    ]);
+    script.insert(
+        SIGN_IN.to_owned(),
+        answered(
+            401,
+            r#"{"error":"invalid_client","error_codes":[7000215],"error_description":"subscribe herald"}"#,
+        ),
+    );
+    let bot = Bot::new(Script::keyed(script));
+    let signed = token_of(&teams);
+    let given = interacted(
+        &bot,
+        &bot.post(&signed, &commanded("7", "subscribe herald")),
+    );
+    let unsent = given.sent.unwrap_err();
+    assert!(
+        unsent.contains("invalid_client (AADSTS7000215)"),
+        "{unsent}"
+    );
+    assert!(!unsent.contains("subscribe herald"), "{unsent}");
+    assert_eq!(bot.script.seen().last(), Some(&format!("POST {SIGN_IN}")));
+}
+
+fn token_of(teams: &Pair) -> String {
+    token(&header("k1"), &claims(at()), teams)
 }

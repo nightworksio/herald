@@ -457,6 +457,37 @@ fn a_bot_s_keys_not_written_as_microsoft_writes_them_are_named() {
     );
 }
 
+#[test]
+fn a_bot_s_commands_are_named_once_each_and_worded_as_herald_reads_wording() {
+    assert_eq!(checked(&json!({ "interactions": {} })), []);
+    assert_eq!(
+        checked(&json!({ "interactions": { "commands": [] } })),
+        [Fault::at(
+            "interactions",
+            "it answers no command; name at least one, or leave out the interactions"
+        )]
+    );
+    assert_eq!(
+        checked(&json!({ "interactions": { "commands": ["latest", "latest"] } })),
+        [Fault::at(
+            "interactions",
+            "it names latest twice; name it once"
+        )]
+    );
+    let unworded =
+        checked(&json!({ "interactions": { "wording": { "subscribed": "{{ project" } } }));
+    assert_eq!(unworded.len(), 1);
+    assert_eq!(
+        unworded.first().map(|fault| fault.key.as_deref()),
+        Some(Some("interactions"))
+    );
+    assert_eq!(
+        checked(&json!({ "interactions": { "commands": [] }, "login": "http://login.example" }))
+            .len(),
+        2
+    );
+}
+
 fn placed(options: &DestinationOptions, route: &RouteOptions) -> Vec<Fault> {
     TeamsKind::placed(
         options,

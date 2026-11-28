@@ -71,6 +71,15 @@ impl Secrets for Named {
     }
 }
 
+/// An `Http` no request is to reach.
+struct Unsent;
+
+impl herald_ports::Http for Unsent {
+    async fn send(&self, _: Request) -> Result<Response, herald_ports::HttpError> {
+        unreachable!("an answer that signs in nowhere sends nothing to be made ready")
+    }
+}
+
 fn response(status: u16) -> Response {
     Response {
         status,
@@ -102,6 +111,16 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
     assert_eq!(interacted.posted(Endpoint::Posted), None);
     assert_eq!(interacted.posted(Endpoint::Pushed), None);
     assert_eq!(interacted.vouching(), None);
+    assert_eq!(interacted.reaches(), Base::At("https://plain.example"));
+    let written = Request::new(Method::Post, SecretText::plain("https://plain.example/a"));
+    assert_eq!(
+        pollster::block_on(interacted.authorised(
+            &Unsent,
+            written.clone(),
+            jiff::Timestamp::UNIX_EPOCH
+        )),
+        Ok(written)
+    );
     let vouched = Vouched {
         claims: vec![("serviceUrl", "https://service.example/".to_owned())],
     };

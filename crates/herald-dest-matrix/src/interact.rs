@@ -5,7 +5,9 @@
 use std::fmt;
 
 use herald_core::media;
-use herald_core::{Answering, Asked, Command, DestinationName, Place, Text, digest, unreserved};
+use herald_core::{
+    Answering, Asked, DestinationName, Place, Text, Worded, digest, unreserved, worded,
+};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use jiff::Timestamp;
 use serde_json::{Value, json};
@@ -14,10 +16,6 @@ use crate::interactions::{Interactions, Via};
 use crate::matrix::MATRIX;
 use crate::read::{error_text, json, waited};
 use crate::request::{CLIENT, HTML, MESSAGE, THREAD};
-
-/// The word after a project that asks for the answer to be posted to the
-/// room rather than in a thread.
-const SHARE: &str = "share";
 
 /// How a Matrix destination takes and answers commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,22 +215,18 @@ impl Interacting {
         if words.next() != Some(self.interactions.prefix.as_str()) {
             return None;
         }
-        let command = Command::named(words.next()?)?;
-        let rest: Vec<&str> = words.collect();
-        let (project, share) = match rest.as_slice() {
-            [] => (None, false),
-            [word] if word.eq_ignore_ascii_case(SHARE) => (None, true),
-            [project] => (Some(*project), false),
-            [project, word] if word.eq_ignore_ascii_case(SHARE) => (Some(*project), true),
-            _ => return None,
-        };
+        let Worded {
+            command,
+            project,
+            share,
+        } = worded(words)?;
         Some((
             Asked {
                 destination: destination.clone(),
                 place: Place::new(room),
                 user: sender.to_owned(),
                 command,
-                project: project.map(ToOwned::to_owned),
+                project,
                 share,
                 toggles: false,
                 member: None,

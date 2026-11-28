@@ -174,6 +174,16 @@ fn tokenless() -> String {
     format!("{LOGIN} answered with no token herald can send")
 }
 
+/// Why a sign-in that gave no token, as `sent` says, leaves an answer
+/// unsent.
+fn unsigned(sent: Sent) -> String {
+    match sent {
+        Sent::RetryAfter(wait) => format!("{LOGIN} asked herald to wait {wait:#} to sign in"),
+        Sent::Refused(why) => why,
+        Sent::Landed(_) => tokenless(),
+    }
+}
+
 /// The token `answer` holds and how long it lasts, where it holds one
 /// herald can send; its body wiped either way.
 fn minted(answer: &mut Response) -> Option<(Secret, SignedDuration)> {
@@ -291,6 +301,20 @@ impl Bot {
             Err(declined) => return Ok(Err(Sent::Refused(declined.to_string()))),
         };
         Ok(signed(http.send_boxed(request).await?, waits))
+    }
+
+    /// The token its answers to commands carry at `now`: the one it holds,
+    /// or a new one; why it has none otherwise.
+    pub(crate) async fn answering(
+        &self,
+        http: &dyn DynHttp,
+        now: Timestamp,
+        waits: Waits,
+    ) -> Result<Secret, String> {
+        match self.token(http, now, waits).await {
+            Ok(token) => token.map_err(unsigned),
+            Err(error) => Err(error.to_string()),
+        }
     }
 
     /// The token it sends at `now`: the one it holds, or a new one, held
