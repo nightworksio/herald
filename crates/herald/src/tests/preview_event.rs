@@ -210,7 +210,7 @@ fn an_event_of_a_private_repository_is_said_private_on_each_route_unless_the_out
 fn preview_reads_an_event_from_standard_input_for_a_dash() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("herald.toml").display().to_string();
-    let config = crate::loaded(&path, SOURCED).unwrap();
+    let config = crate::loaded(&path, SOURCED, &std::collections::BTreeMap::new()).unwrap();
     let flags = crate::preview::Flags {
         route: None,
         kind: None,
