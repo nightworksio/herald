@@ -6,7 +6,9 @@ use herald_core::{Announcement, Delivery, Entry, Facts, Features, Sent, Step, Th
 use herald_dest_teams::{
     Bot, Cloud, DestinationOptions, RouteOptions, Teams, TeamsKind, bot_profile,
 };
-use herald_kinds::{DestinationConfig, DestinationKind, Fault, Placed, Placing, Probe, Recorded};
+use herald_kinds::{
+    DestinationConfig, DestinationKind, Fault, Placed, Placing, Probe, Probing, Recorded,
+};
 use herald_ports::{Base, Secret};
 use herald_testing::{Fixture, Replay, sample};
 use jiff::{SignedDuration, Timestamp};
@@ -264,7 +266,14 @@ fn a_bot_reaches_its_sign_in_and_service_hosts_alone_and_names_its_preview() {
     };
     assert!(reached.declines(&envelope));
     let replay = fixture(include_str!("../../fixtures/bot.reference.json"));
-    let probes = pollster::block_on(reached.probe(&replay, &Delivery::default(), Recorded::Kept));
+    let probes = pollster::block_on(reached.probe(
+        &replay,
+        &Delivery::default(),
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     assert_eq!(probes[0], Probe::Taken);
     assert!(matches!(&probes[1], Probe::Said(said) if said.contains("replyChains")));
     let unthreaded = fixture(include_str!("../../fixtures/bot.reference.json"));
@@ -272,16 +281,34 @@ fn a_bot_reaches_its_sign_in_and_service_hosts_alone_and_names_its_preview() {
         pollster::block_on(reached_unthreaded().probe(
             &unthreaded,
             &Delivery::default(),
-            Recorded::Kept
+            Probing {
+                recorded: Recorded::Kept,
+                now: Timestamp::UNIX_EPOCH
+            }
         )),
         [Probe::Taken]
     );
     let refused = fixture(include_str!("../../fixtures/bot-signed-out.reference.json"));
-    let probes = pollster::block_on(reached.probe(&refused, &Delivery::default(), Recorded::Kept));
+    let probes = pollster::block_on(reached.probe(
+        &refused,
+        &Delivery::default(),
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     assert!(matches!(&probes[0], Probe::Credential(why) if why.contains("AADSTS7000215")));
     let unthreaded = reached_unthreaded();
-    let probe =
-        || pollster::block_on(unthreaded.probe(&refused, &Delivery::default(), Recorded::Kept));
+    let probe = || {
+        pollster::block_on(unthreaded.probe(
+            &refused,
+            &Delivery::default(),
+            Probing {
+                recorded: Recorded::Kept,
+                now: Timestamp::UNIX_EPOCH,
+            },
+        ))
+    };
     assert_eq!(
         probe(),
         [Probe::Credential(
@@ -298,7 +325,10 @@ fn a_bot_reaches_its_sign_in_and_service_hosts_alone_and_names_its_preview() {
     let unreached = pollster::block_on(unthreaded.probe(
         &Replay::of(Fixture::default()),
         &Delivery::default(),
-        Recorded::Kept,
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
     ));
     assert!(
         matches!(&unreached[..], [Probe::Credential(why)] if why.starts_with("Microsoft's sign-in service")),
@@ -638,7 +668,10 @@ fn a_bot_whose_tenant_names_nothing_asks_nobody_and_sends_nothing() {
     let probes = pollster::block_on(herald_kinds::Reached::new(Teams::bot(unnamed)).probe(
         &replay,
         &Delivery::default(),
-        Recorded::Kept,
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
     ));
     assert_eq!(probes, [Probe::Credential(said.to_owned())]);
     replay.finish().unwrap();

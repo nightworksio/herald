@@ -4,10 +4,10 @@
 
 use herald_core::{Delivery, Edits, Mentions, Pinning, RoleId, Thread};
 use herald_dest_discord::{Credential, Discord, RouteOptions, Subscribe};
-use herald_kinds::{Probe, Reach, Recorded};
+use herald_kinds::{Probe, Probing, Reach, Recorded};
 use herald_ports::{Response, Secret};
 use herald_testing::ScriptedHttp;
-use jiff::SignedDuration;
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
 
 const BOT: &str = "1566184281406179999";
@@ -97,7 +97,14 @@ fn probed(
     let mut scripted = vec![answer(200, &json!({ "id": BOT }))];
     scripted.extend(answers);
     let http = ScriptedHttp::new(scripted);
-    let probes = pollster::block_on(discord.probe(&http, delivery, recorded));
+    let probes = pollster::block_on(discord.probe(
+        &http,
+        delivery,
+        Probing {
+            recorded,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     let asked = http.asked().into_iter().map(|(url, _)| url).collect();
     (probes, asked)
 }
@@ -514,7 +521,14 @@ fn doctor_does_not_check_a_thread_nor_a_bot_discord_does_not_name() {
         answer(200, &server("1", &roles())),
         answer(200, &onboarding()),
     ]);
-    let unnamed = pollster::block_on(discord(false, None).probe(&http, plain.0, plain.1));
+    let unnamed = pollster::block_on(discord(false, None).probe(
+        &http,
+        plain.0,
+        Probing {
+            recorded: plain.1,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     assert_eq!(
         unnamed,
         [
@@ -528,7 +542,14 @@ fn doctor_does_not_check_a_thread_nor_a_bot_discord_does_not_name() {
         answer(200, &server("1", &roles())),
         answer(200, &onboarding()),
     ]);
-    let dotted = pollster::block_on(discord(false, None).probe(&http, plain.0, plain.1));
+    let dotted = pollster::block_on(discord(false, None).probe(
+        &http,
+        plain.0,
+        Probing {
+            recorded: plain.1,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     assert!(matches!(dotted.get(1), Some(Probe::Said(_))));
     assert_eq!(dotted.len(), 2);
 }

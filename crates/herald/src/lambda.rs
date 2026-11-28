@@ -99,7 +99,7 @@ impl Handing {
         signed(
             request,
             &self.endpoint.canonical(&path),
-            media::JSON,
+            Some(media::JSON),
             &[("Invocation-Type", "Event")],
             &Signing {
                 access_key_id: &self.access_key_id,

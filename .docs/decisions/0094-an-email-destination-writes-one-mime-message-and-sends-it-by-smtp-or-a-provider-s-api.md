@@ -126,6 +126,37 @@ Where a host can open a TCP connection for SMTP, read 2026-11-27:
      `"gmail"`, `"ses"` (`region`, GovCloud among them) and `"mailgun"`
      (its US or EU host): the message as each takes it, over `Http` to the
      provider's documented host.
+   - `"ses"`: `SendEmail` of SES's API version 2 with the whole message in
+     base64 as `Content.Raw.Data`, its sender as `FromEmailAddress`, `to`,
+     `cc` and `bcc` in `Destination`'s lists, so a blind copy stands beside
+     the message alone, and `ConfigurationOverrides.Tracking` turning open
+     and click tracking off for every message
+     (<https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_SendEmail.html>,
+     <https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_TrackingConfigurationOverrides.html>).
+     Each request is signed with AWS Signature Version 4 by herald's one
+     signer (`herald-aws`), for the service `ses`, over its host, its date,
+     its media type and a session token where one is named; the secret
+     access key leaves the signer only as the signature. `region` names one
+     of the regions AWS lists an SES endpoint for, `fips = true` its FIPS
+     endpoint where AWS lists one, `dual_stack = true` its endpoint under
+     `api.aws`, and `endpoint` any other base URL, such as a VPC
+     endpoint's (<https://docs.aws.amazon.com/general/latest/gr/ses.html>);
+     the request reaches that endpoint alone and follows no redirect. The
+     key's id and secret are `AWS_ACCESS_KEY_ID` and
+     `AWS_SECRET_ACCESS_KEY` where unnamed, and a session token is read only
+     where `session_token` names it. A route names at most the 50
+     recipients SES takes in one message, and `max_bytes` at most
+     30,000,000, the 40 MB SES takes once in base64
+     (<https://docs.aws.amazon.com/ses/latest/dg/quotas.html>). An answer is
+     named by the error its REST JSON protocol names alone, never by its
+     message; `ThrottlingException` and 429 are waited on. Doctor asks
+     `GetAccount`, which sends nothing, and says where the account's
+     sending is paused or it is in SES's sandbox.
+   - A route's `to`, `cc` and `bcc` each take a list of addresses, or one
+     address as text.
+   - `herald preview --format wire` shows each address as the config writes
+     it, and each credential as a placeholder, as every destination's
+     (the owner's answer of 2026-11-28).
 4. **Postmark and Resend are senders of a message's parts**, not of the
    message herald writes. herald gives each the subject, the text and
    HTML bodies, the addresses and its own headers, and the provider

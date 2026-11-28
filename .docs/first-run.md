@@ -162,6 +162,34 @@ under the label the wording's `mentioned` phrase gives ("subscriber 1",
 unsubscribes one already subscribed, is answered at once with the
 wording's `pressed` phrase, and is said in a reply under the post.
 
+### `email-ses`
+
+Amazon SES in one region. Its address `from` must be one SES verified, and
+an account still in SES's sandbox sends only to the addresses and domains
+it verified, at most 200 messages a day and one a second
+(<https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_SendEmail.html>,
+<https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_GetAccount.html>,
+<https://docs.aws.amazon.com/ses/latest/dg/quotas.html>). The access key
+belongs to an IAM user or role whose policy allows `ses:SendEmail` and
+`ses:SendRawEmail` on the identity that verified `from`, which is what
+`SendEmail` with a whole message needs, and `ses:GetAccount`, which
+`herald doctor --online` asks so that it sends nothing
+(<https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonsimpleemailservicev2.html>).
+The secrets hold the key's id and its secret access key; a role's
+temporary credentials also need `session_token`, such as
+`{ secret = "AWS_SESSION_TOKEN" }`.
+
+herald sends each part of an announcement as one message, whole, by
+`SendEmail` to the region's endpoint alone, each request signed with AWS
+Signature Version 4. `to` and `cc` stand in the message's fields, and
+`bcc` beside the message alone; SES takes at most 50 recipients a message,
+and a route naming more is refused as the config loads. Open and click
+tracking is off for every message, whatever the account or a configuration
+set says. `fips = true` reaches the region's FIPS endpoint where AWS lists
+one, `dual_stack = true` its endpoint on IPv6 too, and `endpoint` any
+other, such as a VPC endpoint's
+(<https://docs.aws.amazon.com/general/latest/gr/ses.html>).
+
 ### `forgejo-branch`
 
 A token that may push to the repository's `herald-state` branch: an

@@ -50,14 +50,15 @@ pub(crate) fn signing_key(secret: &str, day: &str, region: &str, service: &str) 
     hmac(&serviced, b"aws4_request")
 }
 
-/// `request`, a POST of `kind` to `path` with the `x-amz-` headers `amz`
-/// beside its date and token, signed at `now` with AWS Signature Version 4.
-/// `path` is written as AWS's canonical URI writes it.
+/// `request` to `path`, its body of the media type `kind` where it has
+/// one, with the `x-amz-` headers `amz` beside its date and token, signed at
+/// `now` with AWS Signature Version 4 under its own method. `path` is
+/// written as AWS's canonical URI writes it.
 #[must_use]
 pub fn signed(
     request: Request,
     path: &str,
-    kind: &str,
+    kind: Option<&str>,
     amz: &[(&str, &str)],
     signing: &Signing<'_>,
     now: Timestamp,
@@ -65,10 +66,12 @@ pub fn signed(
     let stamp = now.strftime("%Y%m%dT%H%M%SZ").to_string();
     let day = now.strftime("%Y%m%d").to_string();
     let mut headers: Vec<(String, String)> = vec![
-        ("content-type".to_owned(), kind.to_owned()),
         ("host".to_owned(), signing.host.to_owned()),
         ("x-amz-date".to_owned(), stamp.clone()),
     ];
+    if let Some(kind) = kind {
+        headers.push(("content-type".to_owned(), kind.to_owned()));
+    }
     if let Some(token) = signing.session_token {
         headers.push(("x-amz-security-token".to_owned(), token.expose().to_owned()));
     }
@@ -91,7 +94,8 @@ pub fn signed(
         .collect::<Vec<_>>()
         .join(";");
     let canonical = format!(
-        "POST\n{path}\n\n{canonical_headers}\n{signed_headers}\n{}",
+        "{}\n{path}\n\n{canonical_headers}\n{signed_headers}\n{}",
+        request.method.as_str(),
         hashed(&request.body)
     );
     let scope = format!("{day}/{}/{}/aws4_request", signing.region, signing.service);
@@ -106,9 +110,11 @@ pub fn signed(
         signing.service,
     );
     let signature = hex(&hmac(&key, to_sign.as_bytes()));
-    let mut request = request
-        .header("Content-Type", SecretText::plain(kind))
-        .header("X-Amz-Date", SecretText::plain(stamp));
+    let mut request = match kind {
+        Some(kind) => request.header("Content-Type", SecretText::plain(kind)),
+        None => request,
+    }
+    .header("X-Amz-Date", SecretText::plain(stamp));
     for (name, value) in amz {
         request = request.header(format!("X-Amz-{name}"), SecretText::plain(*value));
     }
@@ -180,7 +186,7 @@ mod tests {
         let signed = signed(
             request,
             "/",
-            "application/x-www-form-urlencoded",
+            Some("application/x-www-form-urlencoded"),
             &[],
             &signing,
             "2015-08-30T12:36:00Z".parse().unwrap(),
@@ -189,6 +195,40 @@ mod tests {
             header(&signed, "Authorization"),
             "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=ff11897932ad3f4e8b18135d722051e5ac45fc38421b1da7b9d196a0fe09473a"
         );
+    }
+
+    #[test]
+    fn a_request_with_no_body_is_signed_under_its_own_method_without_a_media_type() {
+        let id = Secret::new("AWS_ACCESS_KEY_ID", "id");
+        let key = Secret::new("AWS_SECRET_ACCESS_KEY", "k".repeat(40));
+        let signing = Signing {
+            access_key_id: &id,
+            secret_access_key: &key,
+            session_token: None,
+            region: "eu-west-1",
+            service: "ses",
+            host: "email.eu-west-1.amazonaws.com",
+        };
+        let now: Timestamp = "2026-11-28T12:00:00Z".parse().unwrap();
+        let url = "https://email.eu-west-1.amazonaws.com/v2/email/account";
+        let read = |method| {
+            signed(
+                Request::new(method, SecretText::plain(url)),
+                "/v2/email/account",
+                None,
+                &[],
+                &signing,
+                now,
+            )
+        };
+        let got = read(Method::Get);
+        assert_eq!(header(&got, "Content-Type"), "");
+        let authorization = header(&got, "Authorization");
+        assert!(
+            authorization.starts_with("AWS4-HMAC-SHA256 Credential=id/20261128/eu-west-1/ses/aws4_request, SignedHeaders=host;x-amz-date, Signature="),
+            "{authorization}"
+        );
+        assert_ne!(header(&read(Method::Post), "Authorization"), authorization);
     }
 
     #[test]
@@ -215,7 +255,7 @@ mod tests {
             service: "dynamodb",
             host: "dynamodb.eu-west-1.amazonaws.com",
         };
-        let json = "application/x-amz-json-1.0";
+        let json = Some("application/x-amz-json-1.0");
         let target = [("Target", "DynamoDB_20120810.GetItem")];
         let plain = signed(request(), "/", json, &target, &signing, now);
         assert_eq!(header(&plain, "X-Amz-Date"), "20261105T230000Z");
@@ -249,7 +289,7 @@ mod tests {
         let invoked = signed(
             request(),
             "/2015-03-31/functions/herald/invocations",
-            "application/json",
+            Some("application/json"),
             &[("Invocation-Type", "Event")],
             &Signing {
                 service: "lambda",

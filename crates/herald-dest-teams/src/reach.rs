@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Declined, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Audience, Probe, Reach, Recorded, Signing, UNREAD, UnreadPosts};
+use herald_kinds::{Audience, Probe, Probing, Reach, Signing, UNREAD, UnreadPosts};
 use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError, Response};
 
 use crate::teams::{TEAMS, Teams, UNCHECKED, Way, unaddressed};
@@ -73,7 +73,7 @@ impl Reach for Teams {
         &'a self,
         http: &'a dyn DynHttp,
         _: &'a Delivery,
-        _: Recorded,
+        _: Probing,
     ) -> Boxed<'a, Vec<Probe>> {
         Box::pin(async move {
             match &self.way {

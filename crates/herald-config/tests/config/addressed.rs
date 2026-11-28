@@ -10,12 +10,13 @@ use herald_kinds::Checking;
 /// Every kind of destination herald ships, whether a route to it as set
 /// here posts where anyone may read it, and whether it edits a post again
 /// from what herald kept of the route.
-const DECIDED: [(&str, bool, bool); 8] = [
+const DECIDED: [(&str, bool, bool); 9] = [
     ("discord", false, true),
     ("mastodon", true, true),
     ("matrix", false, true),
     ("slack", false, true),
     ("teams", false, true),
+    ("email", false, true),
     ("activitypub", true, true),
     ("herald", true, false),
     ("herald-push", true, false),
@@ -25,12 +26,13 @@ const DECIDED: [(&str, bool, bool); 8] = [
 /// read a route's place as set here before a run's first advisory send:
 /// by the requests named, not at all, as it cannot ask, or never, as the
 /// kind is never sent a section.
-const CHECKED: [(&str, Learned); 8] = [
+const CHECKED: [(&str, Learned); 9] = [
     ("discord", Learned::Asked(3)),
     ("mastodon", Learned::Never),
     ("matrix", Learned::Asked(7)),
     ("slack", Learned::Asked(1)),
     ("teams", Learned::Unasked),
+    ("email", Learned::Unasked),
     ("activitypub", Learned::Never),
     ("herald", Learned::Never),
     ("herald-push", Learned::Never),
@@ -85,6 +87,12 @@ fn written(kind: &str, extra: &str) -> String {
             "kind = \"sqlite\"",
             "webhook = { secret = \"HERALD_TEAMS_WEBHOOK\" }",
             "",
+            true,
+        ),
+        "email" => (
+            "kind = \"sqlite\"",
+            "transport = \"ses\"\nfrom = \"herald@example.org\"\nregion = \"eu-west-1\"",
+            "to = \"team@example.org\"",
             true,
         ),
         "herald" => ("kind = \"sqlite\"", "", "", false),

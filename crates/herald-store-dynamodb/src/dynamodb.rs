@@ -210,7 +210,7 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
         let request = signed(
             request,
             &self.table.endpoint.canonical(ROOT),
-            JSON,
+            Some(JSON),
             &[("Target", &target)],
             &signing,
             self.clock.now(),

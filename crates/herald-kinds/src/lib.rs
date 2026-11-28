@@ -48,7 +48,7 @@ pub use queue::{
     QueueRead, Relisted, Scope, Teamed,
 };
 pub use reach::{
-    Audience, Posts, Probe, Reach, Reached, Recorded, Signing, UNADVISED, UnreadPosts,
+    Audience, Posts, Probe, Probing, Reach, Reached, Recorded, Signing, UNADVISED, UnreadPosts,
 };
 pub use rerunning::{
     Device, Granted, Polled, Rerunner, RunNow, SignIn, UNSIGNED, UNWRITTEN, WriteCredential,

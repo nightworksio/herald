@@ -3,9 +3,12 @@
 
 use herald_core::{Chore, Delivery, Features, MentionStyle, Pins, Sent, Threads};
 use herald_dest_teams::{DestinationOptions, KIND, RouteOptions, UNCHECKED, bot_profile, profile};
-use herald_kinds::{Audience, Checking, DestinationConfig, Placed, Placement, Probe, Recorded};
+use herald_kinds::{
+    Audience, Checking, DestinationConfig, Placed, Placement, Probe, Probing, Recorded,
+};
 use herald_ports::{Base, Response, Secret};
 use herald_testing::{Fixture, Replay};
+use jiff::Timestamp;
 use serde_json::json;
 
 fn options() -> DestinationOptions {
@@ -21,7 +24,14 @@ fn probed(held: &str) -> Vec<Probe> {
         .reach(&placed(), "", Secret::new("HERALD_TEAMS_WEBHOOK", held))
         .unwrap();
     let replay = Replay::of(Fixture::default());
-    let probes = pollster::block_on(reached.probe(&replay, &Delivery::default(), Recorded::Kept));
+    let probes = pollster::block_on(reached.probe(
+        &replay,
+        &Delivery::default(),
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     replay.finish().unwrap();
     probes
 }

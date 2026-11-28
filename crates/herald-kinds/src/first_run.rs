@@ -42,7 +42,9 @@ impl Variant {
                 key: ask.key,
                 value: match ask.answer {
                     Answer::Secret { .. } => Written::Secret(answer.clone()),
-                    Answer::Text | Answer::Choice { .. } => Written::Text(answer.clone()),
+                    Answer::Text | Answer::Choice { .. } | Answer::Fixed { .. } => {
+                        Written::Text(answer.clone())
+                    }
                 },
             })
             .collect()
@@ -133,6 +135,12 @@ pub enum Answer {
         /// The values it takes, the first the one taken where absent.
         choices: &'static [&'static str],
     },
+    /// `value`, always written and never asked: what the variant is, such
+    /// as the way its messages leave.
+    Fixed {
+        /// What is written.
+        value: &'static str,
+    },
 }
 
 /// The table an answer is written to.
@@ -149,7 +157,7 @@ impl Answer {
     #[must_use]
     pub const fn default(self) -> Option<&'static str> {
         match self {
-            Self::Secret { default } => Some(default),
+            Self::Secret { default } | Self::Fixed { value: default } => Some(default),
             Self::Choice {
                 choices: [first, ..],
             } => Some(first),
@@ -163,7 +171,7 @@ impl Answer {
     pub fn written(self, answer: &str) -> bool {
         match self {
             Self::Choice { choices } => choices.first().is_none_or(|first| *first != answer),
-            Self::Secret { .. } | Self::Text => true,
+            Self::Secret { .. } | Self::Text | Self::Fixed { .. } => true,
         }
     }
 
@@ -191,6 +199,8 @@ impl Answer {
             Self::Text => Ok(()),
             Self::Choice { choices } if choices.contains(&answer) => Ok(()),
             Self::Choice { choices } => Err(format!("answer one of {}", choices.join(", "))),
+            Self::Fixed { value } if answer == value => Ok(()),
+            Self::Fixed { value } => Err(format!("it is always {value}")),
         }
     }
 }
@@ -331,6 +341,15 @@ mod tests {
             assert_eq!(built.answer, Answer::Text);
             assert_eq!(built.lands, lands);
         }
+    }
+
+    #[test]
+    fn a_fixed_answer_is_its_value_alone_and_always_written() {
+        let fixed = Answer::Fixed { value: "ses" };
+        assert_eq!(fixed.default(), Some("ses"));
+        assert!(fixed.written("ses"));
+        assert_eq!(fixed.checked("ses"), Ok(()));
+        assert_eq!(fixed.checked("smtp"), Err("it is always ses".to_owned()));
     }
 
     #[test]

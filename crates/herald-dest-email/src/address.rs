@@ -228,6 +228,22 @@ impl Mailbox {
     pub fn address(&self) -> &AddrSpec {
         &self.address
     }
+
+    /// The mailbox as the config writes it, which [`Self::parse`] reads
+    /// back: `Name <local@domain>`, or its address alone.
+    #[must_use]
+    pub fn written(&self) -> String {
+        match &self.name {
+            Some(name) => format!("{name} <{}>", self.address),
+            None => self.address.to_string(),
+        }
+    }
+
+    /// The mailbox `text` writes, for a reader of the config: why it is
+    /// none, without repeating it, otherwise.
+    pub(crate) fn read<E: de::Error>(text: &str) -> Result<Self, E> {
+        Self::parse(text).map_err(|why| E::custom(format!("the address {why}")))
+    }
 }
 
 /// Whether herald writes `name` as a display name: at most [`NAME_MOST`]
@@ -243,8 +259,7 @@ fn shown(name: &str) -> bool {
 
 impl<'de> Deserialize<'de> for Mailbox {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        Self::parse(&text).map_err(|why| de::Error::custom(format!("the address {why}")))
+        Self::read(&String::deserialize(deserializer)?)
     }
 }
 

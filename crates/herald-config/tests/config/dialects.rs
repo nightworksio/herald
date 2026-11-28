@@ -88,7 +88,7 @@ fn a_dialect_with_its_own_template_renders_it_and_every_other_keeps_the_route_s(
 
 #[test]
 fn a_dialect_no_destination_kind_writes_is_refused_at_load() {
-    let dialects = "the dialects are \"discord\", \"mastodon\", \"matrix\", \"slack\", \"teams\", \"activitypub\"";
+    let dialects = "the dialects are \"discord\", \"mastodon\", \"matrix\", \"slack\", \"teams\", \"email\", \"activitypub\"";
     for dialect in ["nowhere", "herald", "herald-push"] {
         let error = loaded(&route(
             "tooted",

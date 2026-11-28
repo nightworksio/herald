@@ -493,6 +493,86 @@ fn preview_wire_prints_each_request_a_first_post_sends_with_each_secret_by_its_n
 }
 
 #[test]
+fn preview_wire_prints_an_email_sent_through_amazon_ses_to_the_addresses_the_config_writes() {
+    use base64::Engine as _;
+    let config = format!(
+        "{CONFIG}{}",
+        r#"[destinations.mail]
+kind = "email"
+transport = "ses"
+from = "Releases <releases@example.org>"
+reply_to = "desk@example.org"
+region = "eu-west-1"
+[[routes]]
+id = "mailed"
+sources = ["cli"]
+destination = "mail"
+template = "release"
+to = "Team <team@example.org>"
+bcc = ["hidden@example.org"]
+"#
+    );
+    let shown = previewed(&config, &["--format", "wire", "--sample", "plain"]);
+    assert_eq!(
+        (shown.code, shown.err.as_str()),
+        (DONE, ""),
+        "{}",
+        shown.out
+    );
+    let mailed: Vec<&str> = shown
+        .out
+        .lines()
+        .skip_while(|line| !line.starts_with("mailed to mail"))
+        .filter(|line| !line.starts_with("    User-Agent: "))
+        .collect();
+    assert_eq!(
+        mailed.get(..4).unwrap_or_else(|| panic!("{}", shown.out)),
+        [
+            "mailed to mail, sample release (plain):",
+            "  post:",
+            "    POST https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails",
+            "    Content-Type: application/json",
+        ]
+    );
+    let body = mailed
+        .iter()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix('{')
+                .map(|rest| format!("{{{rest}"))
+        })
+        .unwrap_or_else(|| panic!("{}", shown.out));
+    let body: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        body["Destination"],
+        serde_json::json!({
+            "ToAddresses": ["team@example.org"],
+            "BccAddresses": ["hidden@example.org"],
+        })
+    );
+    assert_eq!(body["FromEmailAddress"], "releases@example.org");
+    let message = base64::engine::general_purpose::STANDARD
+        .decode(body["Content"]["Raw"]["Data"].as_str().unwrap())
+        .unwrap();
+    let message = String::from_utf8(message).unwrap();
+    for field in [
+        "\r\nFrom: \"Releases\" <releases@example.org>\r\n",
+        "\r\nReply-To: <desk@example.org>\r\n",
+        "\r\nTo: \"Team\" <team@example.org>\r\n",
+    ] {
+        assert!(message.contains(field), "{field}\n{message}");
+    }
+    assert!(!message.contains("hidden@example.org"), "{message}");
+    assert!(
+        mailed.iter().any(|line| line.starts_with(
+            "    Authorization: AWS4-HMAC-SHA256 Credential=«secret:AWS_ACCESS_KEY_ID»/"
+        )),
+        "{}",
+        shown.out
+    );
+}
+
+#[test]
 fn preview_wire_prints_a_teams_card_posted_to_its_webhook_by_the_secret_s_name() {
     let config = format!(
         "{CONFIG}{}",

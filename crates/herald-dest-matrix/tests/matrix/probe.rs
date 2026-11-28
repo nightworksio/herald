@@ -2,9 +2,10 @@
 
 use herald_core::{Delivery, Pinning};
 use herald_dest_matrix::{Matrix, RouteOptions};
-use herald_kinds::{Probe, Reach, Recorded};
+use herald_kinds::{Probe, Probing, Reach, Recorded};
 use herald_ports::Secret;
 use herald_testing::{Fixture, Replay};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 const ROOM: &str = "!abcdefg:matrix.example";
@@ -37,7 +38,14 @@ fn probed(http: &Replay, pinning: bool) -> Vec<Probe> {
         pin: pinning.then_some(Pinning::Markers),
         ..Delivery::default()
     };
-    let probes = pollster::block_on(matrix().probe(http, &delivery, Recorded::Kept));
+    let probes = pollster::block_on(matrix().probe(
+        http,
+        &delivery,
+        Probing {
+            recorded: Recorded::Kept,
+            now: Timestamp::UNIX_EPOCH,
+        },
+    ));
     http.finish().unwrap();
     probes
 }

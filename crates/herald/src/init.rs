@@ -314,18 +314,19 @@ async fn answered(
     asked: &Answers,
     asking: &mut Asking<'_>,
 ) -> Result<Vec<String>, String> {
-    let keys = variant
-        .asks
-        .iter()
-        .map(|ask| ask.key)
-        .collect::<Vec<_>>()
-        .join(", ");
+    let asks = || {
+        variant
+            .asks
+            .iter()
+            .filter(|ask| !matches!(ask.answer, Answer::Fixed { .. }))
+    };
+    let keys = asks().map(|ask| ask.key).collect::<Vec<_>>().join(", ");
     let mut given = BTreeMap::new();
     for pair in &asked.with {
         let (key, answer) = pair
             .split_once('=')
             .and_then(|(key, answer)| {
-                let known = variant.asks.iter().find(|ask| ask.key == key)?;
+                let known = asks().find(|ask| ask.key == key)?;
                 Some((known.key, answer))
             })
             .ok_or_else(|| {
@@ -341,6 +342,10 @@ async fn answered(
     let mut answers = Vec::new();
     for ask in variant.asks {
         let shown = match ask.answer {
+            Answer::Fixed { value } => {
+                answers.push(value.to_owned());
+                continue;
+            }
             Answer::Secret { .. } => ask.asked.to_owned(),
             Answer::Text => format!("{}, such as {}", ask.asked, ask.example),
             Answer::Choice { .. } => format!("{}: {}", ask.asked, ask.example),
