@@ -60,6 +60,26 @@ fn a_teams_table_names_its_webhook_and_posts_only() {
 }
 
 #[test]
+fn a_teams_table_s_symbols_and_waits_are_read_as_written() {
+    let written: DestinationOptions = serde_json::from_value(json!({
+        "webhook": { "secret": "HERALD_TEAMS_WEBHOOK" },
+        "symbols": { "bullet": "*" },
+        "waits": { "limited": "9s" },
+    }))
+    .unwrap();
+    assert_eq!(
+        written.symbols_written(),
+        Some(serde_json::from_value(json!({ "bullet": "*" })).unwrap())
+    );
+    assert_eq!(
+        written.waits_written(),
+        Some(serde_json::from_value(json!({ "limited": "9s" })).unwrap())
+    );
+    assert_eq!(options().symbols_written(), None);
+    assert_eq!(options().waits_written(), None);
+}
+
+#[test]
 fn a_route_says_nothing_of_teams_and_reads_back_as_written() {
     let route = RouteOptions::default();
     assert_eq!(route.place(), None);

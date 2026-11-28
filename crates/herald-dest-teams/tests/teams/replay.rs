@@ -2,7 +2,7 @@
 //! fixture holds it, and each answer read back into what the ledger
 //! records.
 
-use herald_core::{Announcement, Button, Facts, Sent, Step, Text};
+use herald_core::{Announcement, Button, Facts, Sent, Step, Text, WaitOptions, Waits};
 use herald_dest_teams::{MESSAGE, Teams};
 use std::future::{Future, ready};
 
@@ -186,10 +186,95 @@ struct Answering;
 
 impl Http for Answering {
     fn send(&self, _: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
-        ready(Ok(Response {
-            status: 202,
-            headers: Vec::new(),
-            body: Vec::new(),
-        }))
+        ready(Ok(answer(202, b"")))
     }
+}
+
+/// An `Http` answering every request with its response.
+struct Answered(Response);
+
+impl Http for Answered {
+    fn send(&self, _: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
+        ready(Ok(self.0.clone()))
+    }
+}
+
+fn answer(status: u16, body: &[u8]) -> Response {
+    Response {
+        status,
+        headers: Vec::new(),
+        body: body.to_vec(),
+    }
+}
+
+fn answered(teams: &Teams, response: Response) -> Sent {
+    pollster::block_on(teams.send(&Answered(response), &Step::Post, &sample::announcement()))
+        .unwrap()
+}
+
+#[test]
+fn a_refusal_says_what_teams_said_however_it_says_it_and_cut_short() {
+    let long = "x".repeat(300);
+    for (body, said) in [
+        (
+            br#"{"error":{"code":"OnlyCode"}}"#.to_vec(),
+            "OnlyCode".to_owned(),
+        ),
+        (
+            br#"{"error":{"message":"Only a message"}}"#.to_vec(),
+            "Only a message".to_owned(),
+        ),
+        (br#"{"other":1}"#.to_vec(), r#"{"other":1}"#.to_owned()),
+        (long.as_bytes().to_vec(), "x".repeat(200)),
+    ] {
+        assert_eq!(
+            answered(&teams(), answer(400, &body)),
+            refused(&format!("Microsoft Teams refused it with 400: {said}"))
+        );
+    }
+}
+
+#[test]
+fn the_waits_the_config_sets_are_waited_where_teams_names_none() {
+    let set: WaitOptions = serde_json::from_value(serde_json::json!({ "limited": "9s" })).unwrap();
+    let patient = teams().waiting(Waits::of(Some(set), Waits::DEFAULT));
+    assert_eq!(
+        answered(&patient, answer(429, b"")),
+        Sent::RetryAfter(SignedDuration::from_secs(9))
+    );
+    assert_eq!(
+        answered(&teams(), answer(429, b"")),
+        Sent::RetryAfter(SignedDuration::from_secs(5))
+    );
+}
+
+#[test]
+fn a_card_of_exactly_what_a_message_holds_is_sent_and_one_byte_more_is_not() {
+    let sized = |extra: usize| {
+        let mut announcement = sample::announcement();
+        announcement.buttons = vec![Button {
+            name: "release".to_owned(),
+            label: None,
+            url: format!("https://example.org/{}", "a".repeat(extra)),
+        }];
+        let recorder = Recorder::new(Answering);
+        let sent = pollster::block_on(teams().send(&recorder, &Step::Post, &announcement)).unwrap();
+        let length = recorder
+            .fixture(&Scrub::default())
+            .unwrap()
+            .exchanges
+            .first()
+            .and_then(|exchange| exchange.request.body.as_ref())
+            .map(|body| body.to_string().len());
+        (sent, length)
+    };
+    let (_, least) = sized(0);
+    let fill = MESSAGE - least.unwrap();
+    assert_eq!(sized(fill), (Sent::Landed(Facts::default()), Some(MESSAGE)));
+    let (over, none) = sized(fill + 1);
+    assert_eq!(none, None);
+    assert_eq!(
+        over,
+        refused("the card is 28001 bytes, more than the 28000 Microsoft Teams takes in a message")
+    );
 }
