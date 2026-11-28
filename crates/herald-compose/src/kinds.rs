@@ -64,9 +64,12 @@ mod tests {
                 "{}: an addressing key a local preset does not write",
                 kind.kind
             );
-            for trusted in ["private", "vouch_unchecked", "viewers"] {
-                assert!(!writes.contains(trusted), "{}: {trusted}", kind.kind);
-            }
+            let marks: BTreeSet<&str> = ["private", "vouch_unchecked", "viewers"].into();
+            assert!(
+                writes.is_disjoint(&marks),
+                "{}: a local preset writes a mark of what a route may show",
+                kind.kind
+            );
         }
     }
 }
