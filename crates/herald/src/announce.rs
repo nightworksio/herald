@@ -14,7 +14,6 @@ use herald_sources_forge::{
     Forge, ForgeSource, Signals, SourceOptions, ci_milestone, ci_run, of_a_milestone, of_a_run,
 };
 
-use super::dry_run::Dry;
 use super::output::Logged;
 use super::release::{Ci, event_file, evented, project, pushed, tagged, variable};
 use super::stores::{Native, composed};
@@ -229,7 +228,7 @@ pub(super) async fn announcing(
     (dry_run, printed): (bool, Printed),
     out: &mut Logged<'_>,
 ) -> Result<u8, String> {
-    let dry = Dry::default();
+    let dry = herald_flows::Recording::default();
     let reaching = |_: Base<'_>, _: &Outbound| Ok(Connection::new(dry.clone()));
     let dried = Connector::new(&reaching, &waiting);
     let composed = if dry_run {
@@ -248,7 +247,7 @@ pub(super) async fn announcing(
     };
     let announced = composed.run(Announcing(routed)).await;
     if dry_run {
-        dry.print(out.out());
+        super::dry_run::print(&dry, out.out());
         return Ok(reported(announced, printed, out));
     }
     let code = reported(announced, printed, out);

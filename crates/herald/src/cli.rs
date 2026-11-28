@@ -237,8 +237,9 @@ pub(crate) enum Reading {
     #[command(subcommand)]
     Preset(Presetting),
     /// Render each route's templates as its destination would show them,
-    /// against the samples of each kind it takes or a release event's file,
-    /// reading no secret and sending nothing (ADR-0095).
+    /// or print the requests its first post sends, against the samples of
+    /// each kind it takes or a release event's file, reading no secret and
+    /// sending nothing (ADR-0095).
     Preview {
         /// Only this route.
         #[arg(long)]
@@ -263,6 +264,9 @@ pub(crate) enum Reading {
         /// every sample of each kind it takes, as one group under this key.
         #[arg(long)]
         group: Option<String>,
+        /// What is printed of each route's message.
+        #[arg(long, value_enum, default_value_t = PreviewFormat::Text)]
+        format: PreviewFormat,
     },
 }
 
@@ -599,6 +603,18 @@ impl RunForge {
             Self::Forgejo => Forge::Forgejo,
         }
     }
+}
+
+/// What `herald preview` prints of each route's message (ADR-0095).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum PreviewFormat {
+    /// Its title and each part, as its destination shows them.
+    Text,
+    /// Each request its first post sends, as its destination writes it,
+    /// every secret shown by its name alone.
+    Wire,
+    /// Both, as JSON, for tools.
+    Json,
 }
 
 /// How `herald queue` prints a view.
