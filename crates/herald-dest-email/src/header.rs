@@ -70,12 +70,13 @@ impl Field<'_> {
     /// `text` as encoded-words, each sized to the line it starts on.
     pub(crate) fn encoded(&mut self, text: &str) {
         let mut characters = text.chars().peekable();
-        while characters.peek().is_some() {
+        while let Some(first) = characters.next() {
             if self.width + 1 + OPEN.len() + ENCODED_CHARACTER + CLOSE.len() > ENCODED_LINE {
                 self.fold();
             }
             let room = ENCODED_WORD.min(ENCODED_LINE - self.width - 1);
             let mut word = String::from(OPEN);
+            word.push_str(&q_encoded(first));
             while let Some(&character) = characters.peek() {
                 let written = q_encoded(character);
                 if word.len() + written.len() + CLOSE.len() > room {

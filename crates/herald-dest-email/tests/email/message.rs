@@ -17,6 +17,16 @@ fn at(second: i64) -> Timestamp {
 
 const NOON: i64 = 1_795_853_051;
 
+/// The lines `message` writes its field `name` on, as written.
+fn field_lines<'a>(message: &'a str, name: &str) -> Vec<&'a str> {
+    let start = format!("{name}:");
+    message
+        .split("\r\n")
+        .skip_while(|line| !line.starts_with(&start))
+        .take_while(|line| line.starts_with(&start) || line.starts_with(' '))
+        .collect()
+}
+
 struct Fixture {
     from: Mailbox,
     recipients: Recipients,
@@ -316,12 +326,7 @@ fn a_long_plain_subject_folds_between_its_words_within_78_characters() {
         .letter(&subject, "Body")
         .written(MOST_BYTES)
         .expect("small");
-    let head = written.message.split("\r\n\r\n").next().expect("a header");
-    let folded: Vec<&str> = head
-        .split("\r\n")
-        .skip_while(|line| !line.starts_with("Subject:"))
-        .take_while(|line| line.starts_with("Subject:") || line.starts_with(' '))
-        .collect();
+    let folded = field_lines(&written.message, "Subject");
     assert!(folded.len() > 3, "{folded:?}");
     assert!(
         folded
@@ -496,12 +501,7 @@ fn encoded_words_fill_the_room_left_on_their_line_and_fold_only_where_none_is_le
         .written(MOST_BYTES)
         .expect("small");
     let message = read(&written.message);
-    let head = written.message.split("\r\n\r\n").next().expect("a header");
-    let subject: Vec<&str> = head
-        .split("\r\n")
-        .skip_while(|line| !line.starts_with("Subject:"))
-        .take_while(|line| line.starts_with("Subject:") || line.starts_with(' '))
-        .collect();
+    let subject = field_lines(&written.message, "Subject");
     assert_eq!(
         subject,
         [
@@ -528,17 +528,62 @@ fn encoded_words_fill_the_room_left_on_their_line_and_fold_only_where_none_is_le
     }
     .written(MOST_BYTES)
     .expect("small");
-    let to: Vec<&str> = written
-        .message
-        .split("\r\n")
-        .skip_while(|line| !line.starts_with("To:"))
-        .take_while(|line| line.starts_with("To:") || line.starts_with(' '))
-        .collect();
+    let to = field_lines(&written.message, "To");
     assert_eq!(
         to,
         [
             "To: \"Plain\" <watcher-number-one@lists.example.org>, =?UTF-8?Q?Zo=C3=AB?=",
             " <z@example.org>",
+        ]
+    );
+}
+
+#[test]
+fn each_line_folds_at_its_exact_limit_and_an_encoded_word_fills_its_room_exactly() {
+    let fixture = Fixture::new();
+    let lines = |subject: &str| {
+        let written = fixture
+            .letter(subject, "B")
+            .written(MOST_BYTES)
+            .expect("small");
+        field_lines(&written.message, "Subject")
+            .iter()
+            .map(|line| (*line).to_owned())
+            .collect::<Vec<_>>()
+    };
+    let fits = "y".repeat(LINE - "Subject: ".len());
+    assert_eq!(lines(&fits), [format!("Subject: {fits}")]);
+    let over = "y".repeat(LINE - "Subject: ".len() + 1);
+    assert_eq!(lines(&over), ["Subject:".to_owned(), format!(" {over}")]);
+    let filled = "x".repeat(LINE);
+    assert_eq!(
+        lines(&filled),
+        [
+            format!("Subject: =?UTF-8?Q?{}?=", "x".repeat(55)),
+            format!(" =?UTF-8?Q?{}?=", "x".repeat(23)),
+        ]
+    );
+
+    let recipients = Recipients::new(
+        vec![
+            mailbox("Plain <watcher-number-ones@lists.example.org>"),
+            mailbox("Zoë <z@example.org>"),
+        ],
+        vec![],
+        vec![],
+    )
+    .expect("two");
+    let written = Letter {
+        recipients: &recipients,
+        ..fixture.letter("S", "B")
+    }
+    .written(MOST_BYTES)
+    .expect("small");
+    assert_eq!(
+        field_lines(&written.message, "To"),
+        [
+            "To: \"Plain\" <watcher-number-ones@lists.example.org>,",
+            " =?UTF-8?Q?Zo=C3=AB?= <z@example.org>",
         ]
     );
 }
