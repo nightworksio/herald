@@ -53,3 +53,30 @@ impl Forge {
             .map(|(_, value)| *value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_forge_names_its_event_in_its_own_header_read_ignoring_case() {
+        for (forge, header, release) in [
+            (Forge::GitHub, "X-GitHub-Event", "release"),
+            (Forge::GitLab, "X-Gitlab-Event", "Release Hook"),
+            (Forge::Forgejo, "X-Forgejo-Event", "release"),
+        ] {
+            assert!(forge.event_header().eq_ignore_ascii_case(header));
+            assert_eq!(forge.event_headers()[0], forge.event_header());
+            assert_eq!(forge.release_event(), release);
+            assert_eq!(
+                forge.event_name(&[("Other", "push"), (header, "named")]),
+                Some("named")
+            );
+            assert_eq!(forge.event_name(&[("Other", "push")]), None);
+        }
+        assert_eq!(
+            Forge::Forgejo.event_name(&[("X-Gitea-Event", "release")]),
+            Some("release")
+        );
+    }
+}
