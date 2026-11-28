@@ -706,3 +706,38 @@ fn a_bot_takes_activities_where_its_table_says_so_and_a_layer_serves_an_endpoint
             .is_none()
     );
 }
+
+#[test]
+fn a_sign_in_that_asks_herald_to_wait_leaves_the_answer_unsent_for_the_table_s_wait() {
+    let limited = || {
+        ScriptedHttp::new(vec![Response {
+            status: 429,
+            headers: Vec::new(),
+            body: Vec::new(),
+        }])
+    };
+    let now = Timestamp::from_second(1_800_000_000).unwrap();
+    let url = "https://smba.trafficmanager.net/emea/v3/conversations/a/activities/1";
+    let unsent = |interacting: &dyn Interacts| {
+        pollster::block_on(interacting.authorised(&limited(), answering_request(url), now))
+            .unwrap_err()
+    };
+    assert_eq!(
+        unsent(&bot()),
+        "Microsoft's sign-in service asked herald to wait 5s to sign in"
+    );
+    let table = serde_json::from_value::<DestinationOptions>(json!({
+        "app_id": APP,
+        "app_password": { "secret": "HERALD_TEAMS_APP_PASSWORD" },
+        "interactions": {},
+        "waits": { "limited": "13s" },
+    }))
+    .unwrap();
+    let interacted = pollster::block_on(table.interacts(&password(), &FakeSecrets::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        unsent(&*interacted),
+        "Microsoft's sign-in service asked herald to wait 13s to sign in"
+    );
+}
