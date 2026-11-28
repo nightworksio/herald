@@ -382,5 +382,5 @@ fn a_handle_is_unmoved_only_while_it_is_the_file_at_its_link_free_path() {
     symlink(&kept, &linked).unwrap();
     assert!(!crate::unmoved(&handle, &linked));
     assert!(!crate::unmoved(&handle, &directory.join("absent.md")));
-    assert_eq!(crate::opened(&kept), Ok("kept".to_owned()));
+    assert_eq!(crate::opened(&kept).unwrap(), Some("kept".to_owned()));
 }

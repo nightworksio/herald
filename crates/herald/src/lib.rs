@@ -603,18 +603,16 @@ fn canonical(path: &Path) -> Option<PathBuf> {
 
 /// The text of the file at `resolved`, every link followed, read through
 /// the handle it was opened as, where that handle is still the file at
-/// `resolved` and `resolved` still holds no link once it is open.
-fn opened(resolved: &Path) -> Result<String, Unread> {
-    let failed = |error: std::io::Error| Unread::Failed(error.to_string());
-    let handle =
-        Handle::from_file(std::fs::File::open(resolved).map_err(failed)?).map_err(failed)?;
+/// `resolved` and `resolved` still holds no link once it is open; none
+/// where it is not.
+fn opened(resolved: &Path) -> std::io::Result<Option<String>> {
+    let handle = Handle::from_file(std::fs::File::open(resolved)?)?;
     unmoved(&handle, resolved)
-        .then_some(())
-        .ok_or(Unread::Outside)?;
-    let mut text = String::new();
-    let mut file = handle.as_file();
-    file.read_to_string(&mut text).map_err(failed)?;
-    Ok(text)
+        .then(|| {
+            let mut text = String::new();
+            handle.as_file().read_to_string(&mut text).map(|_| text)
+        })
+        .transpose()
 }
 
 /// Whether `handle` is the file at `resolved`, which holds no link.
@@ -642,7 +640,7 @@ impl herald_config::Files for Beside<'_> {
         if !resolved.is_file() {
             return Err(Unread::Failed("it is no file".to_owned()));
         }
-        opened(&resolved)
+        opened(&resolved).map_err(failed)?.ok_or(Unread::Outside)
     }
 
     fn read_inside(&self, file: &str) -> Result<String, String> {
