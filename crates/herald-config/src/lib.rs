@@ -30,7 +30,7 @@ pub use config::{
 pub use error::{ConfigError, Errors};
 pub use files::{Allowed, FILES_ALLOWED, Files, Reach, UNCONTAINED, Unread, Within};
 pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
-pub use kinds::Kinds;
+pub use kinds::{Kinds, PresetOptions};
 pub use load::{expansion, load, load_with};
 pub use merging::MergeQueue;
 pub use models::{MOST_ASKED, ModelConfig, Task};

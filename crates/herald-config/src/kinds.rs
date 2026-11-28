@@ -75,6 +75,23 @@ impl Kinds {
             .collect()
     }
 
+    /// Each destination kind's name, every key its own route options take,
+    /// and those a local preset may write, says where a post goes, and may
+    /// not write (ADR-0092 decision 4).
+    #[must_use]
+    pub fn preset_route_options(&self) -> Vec<PresetOptions> {
+        self.destinations
+            .iter()
+            .map(|kind| PresetOptions {
+                kind: kind.name(),
+                taken: kind.route_keys(),
+                writes: kind.preset_writes(),
+                addressing: kind.addressing(),
+                refuses: kind.preset_refuses(),
+            })
+            .collect()
+    }
+
     pub(crate) fn destinations(&self) -> impl Iterator<Item = &dyn Kinded> {
         self.destinations.iter().map(AsRef::as_ref)
     }
@@ -196,6 +213,29 @@ pub(crate) trait Kinded: Send + Sync {
     fn destination_schema(&self, generator: &mut SchemaGenerator) -> Schema;
 
     fn route_schema(&self, generator: &mut SchemaGenerator) -> Schema;
+
+    fn route_keys(&self) -> Vec<String>;
+
+    fn preset_writes(&self) -> &'static [&'static str];
+
+    fn addressing(&self) -> &'static [&'static str];
+
+    fn preset_refuses(&self) -> &'static [&'static str];
+}
+
+/// What a destination kind's own route options are to a local preset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PresetOptions {
+    /// The kind's name.
+    pub kind: &'static str,
+    /// Every key its own route options take.
+    pub taken: Vec<String>,
+    /// Those a local preset may write.
+    pub writes: &'static [&'static str],
+    /// Of those, the ones that say where a post goes or who sees it.
+    pub addressing: &'static [&'static str],
+    /// Those a local preset may not write.
+    pub refuses: &'static [&'static str],
 }
 
 struct Of<K>(PhantomData<fn() -> K>);
@@ -269,6 +309,51 @@ where
     fn route_schema(&self, generator: &mut SchemaGenerator) -> Schema {
         routed::<K::Route>(generator, K::ROUTE, K::ROUTE_DESCRIPTION)
     }
+
+    fn preset_writes(&self) -> &'static [&'static str] {
+        K::PRESET_WRITES
+    }
+
+    fn addressing(&self) -> &'static [&'static str] {
+        K::ADDRESSING
+    }
+
+    fn preset_refuses(&self) -> &'static [&'static str] {
+        K::PRESET_REFUSES
+    }
+
+    fn route_keys(&self) -> Vec<String> {
+        let schema = SchemaGenerator::default().into_root_schema_for::<K::Route>();
+        keys_of(schema.as_value(), schema.as_value())
+    }
+}
+
+/// The keys a table `schema` describes takes, each alternative's and each
+/// flattened part's among them, its references read in `root`.
+fn keys_of(schema: &serde_json::Value, root: &serde_json::Value) -> Vec<String> {
+    let referenced = schema
+        .get("$ref")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|reference| reference.strip_prefix("#/"))
+        .and_then(|path| root.pointer(&format!("/{path}")));
+    let mut keys: Vec<String> = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flat_map(|properties| properties.keys().cloned())
+        .chain(referenced.into_iter().flat_map(|part| keys_of(part, root)))
+        .collect();
+    for combined in ["allOf", "anyOf", "oneOf"] {
+        for part in schema
+            .get(combined)
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            keys.extend(keys_of(part, root));
+        }
+    }
+    keys
 }
 
 /// `schema` with every key of `inherits` left out of what it requires, as

@@ -59,10 +59,22 @@ already ships named content under a `herald:` prefix: the templates
      only, and no secret reference anywhere: no destination, source,
      store, host or API base, merge queue or person;
    - of each table it writes only the keys that pick and shape what
-     herald announces from what `herald.toml` already lets it read, and
-     where `herald.toml` already lets it post. A route: `id`, `sources`,
-     `kinds`, `prereleases`, `versions`, `match`, `area_paths`,
-     `template`, `templates` and `group`. A template: `title` and `body`.
+     herald announces from what `herald.toml` already lets it read, and,
+     of a route, how it treats its posts and where on its destination it
+     posts. A route: `id`, `sources`, `kinds`, `prereleases`, `versions`,
+     `match`, `area_paths`, `template`, `templates`, `group`, `thread`,
+     `pin`, `edits`, `withdraw`, `late_release` and `mentions`, and of
+     each destination kind's own route options those the kind lists as a
+     local preset's to write, such as `channel` or `room`. Each kind lists
+     every route option it takes as written or refused, and a test fails
+     on one it lists as neither, so a new option is refused until a kind
+     lists it. An option a kind lists as saying where a post goes or who
+     sees it (`channel`, `forum`, `room`, `conversation`, `actor`,
+     `visibility`) is refused on a route whose adopting table states what
+     herald trusts of its place (`private`, `vouch_unchecked`, `viewers`),
+     naming the key and never its value, so a shared file cannot move
+     what herald.toml vouched private elsewhere.
+     A template: `title` and `body`.
      A view: what it reads and how (`sources`, `states`, `bots`,
      `repositories`, `authors`, `labels`, `areas`, `stale`, `stale_only`,
      `group_by`, `bumps`, `rules`, `release`, `flaky`, `deciding`,
@@ -70,18 +82,16 @@ already ships named content under a `herald:` prefix: the templates
      `broken_at`). A report: its view and window (`view`, `every`, `at`,
      `days`, `zone`). A rule: its view, window, `stages`, `most`,
      `dequeued` and `release`;
-   - every other key is refused with the key, the line and why: where a
-     route posts (`destination`, `crosspost`, `thread`, `living` and each
-     destination kind's own route options, such as `channel`, so a new
-     kind opens nothing), whom it calls on (`mentions`), what it does to
-     its posts (`pin`, `edits`, `withdraw`, `late_release`), what herald
-     trusts of its place (`private`, `vouch_unchecked`), acting (`act`),
-     a template's `file`, a view's overviews of advisories, members and
-     teams and its `decide`, which hands pull requests to a model, and a
-     rule's `flaky` re-runs. A key a new herald adds to these tables is
-     refused until it is allowed. The adopting table in `herald.toml`
-     gives any of them, so where herald writes, whom it reaches, what it
-     trusts and what it does stays in `herald.toml`. A shipped `herald:`
+   - every other key is refused with the key, the line and why: which
+     destination a route posts to (`destination`, `crosspost`, `living`),
+     what herald trusts of its place (`private`, `vouch_unchecked`, and
+     Discord's `viewers`), acting (`act`), a template's `file`, a view's
+     overviews of advisories, members and teams and its `decide`, which
+     hands pull requests to a model, and a rule's `flaky` re-runs. A key a
+     new herald adds to a route's common keys or these tables is refused
+     until it is allowed. The adopting table in `herald.toml` gives any of
+     them, so which destination herald writes to, what it trusts and what
+     it does on the forge stays in `herald.toml`. A shipped `herald:`
      preset is herald's own data and is not read against this list;
    - a local preset does not `use` another preset.
    - Every other file the config names is contained as decision 8 says.
@@ -161,6 +171,7 @@ already ships named content under a `herald:` prefix: the templates
 | **The list on the host alone, never in `herald.toml`** | A config could not narrow what it reads below what its host allows, and a reviewer could not read a config's reach in the file. |
 | **The working directory as the bound where the host sets none** | A server or container often runs in `/`, so that bound would reach every file. |
 | **A local preset with the full config's reach** | A preset file is reviewed less closely than `herald.toml`; secrets, hosts, privacy statements and acting rights in it would let a change to a shared file widen where herald writes or what it trusts. |
+| **A local preset that writes no route behaviour or destination kind option** | A team's shared file could not say which channel or room a route posts in, or how it threads, pins and edits, and every adopting table would repeat them. |
 
 ## Consequences
 

@@ -170,6 +170,8 @@ impl DestinationKind for MatrixKind {
     const LABEL: &str = MATRIX;
     const ROUTE: &str = "MatrixRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Matrix destination.";
+    const PRESET_WRITES: &[&str] = &["room"];
+    const ADDRESSING: &[&str] = &["room"];
 
     type Options = DestinationOptions;
     type Route = RouteOptions;

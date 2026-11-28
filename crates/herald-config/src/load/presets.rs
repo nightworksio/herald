@@ -54,16 +54,22 @@ const NAMED_SECTIONS: [&str; 5] = ["templates", "views", "reports", "rules", "me
 
 /// What a local preset may write of one section's tables: the keys that
 /// pick and shape what herald announces from what `herald.toml` already
-/// lets it read and where it already lets it post. Every other key, those
-/// below with why and each destination kind's own route options, is
+/// lets it read, how a route treats its posts, and, of a route, each
+/// destination kind's own route options but those stating what herald
+/// trusts of the route's place. Every other key, those below with why, is
 /// refused, and the adopting table in `herald.toml` gives it (ADR-0092
 /// decision 4). A shipped `herald:` preset is herald's own data and is not
 /// read against these.
 struct Writable {
     section: &'static str,
     allowed: &'static [&'static str],
+    kind_options: bool,
     refused: &'static [(&'static [&'static str], &'static str)],
 }
+
+/// The keys that state what herald trusts of a route's place, which a
+/// local preset never writes, a destination kind's own among them.
+const TRUSTED: [&str; 3] = ["private", "vouch_unchecked", "viewers"];
 
 /// What a local preset may write, section by section.
 const WRITABLE: [Writable; 5] = [
@@ -80,19 +86,21 @@ const WRITABLE: [Writable; 5] = [
             "template",
             "templates",
             "group",
+            "thread",
+            "pin",
+            "edits",
+            "withdraw",
+            "late_release",
+            "mentions",
         ],
+        kind_options: true,
         refused: &[
             (
-                &["destination", "crosspost", "thread", "living"],
-                "it decides where the route posts",
-            ),
-            (&["mentions"], "it decides whom the route calls on"),
-            (
-                &["pin", "edits", "withdraw", "late_release"],
-                "it decides what the route does to posts it made",
+                &["destination", "crosspost", "living"],
+                "it decides which destination the route posts to",
             ),
             (
-                &["private", "vouch_unchecked"],
+                &TRUSTED,
                 "it states what herald trusts of the route's place",
             ),
             (&["act"], "it lets the route act on the forge"),
@@ -101,6 +109,7 @@ const WRITABLE: [Writable; 5] = [
     Writable {
         section: "templates",
         allowed: &["title", "body"],
+        kind_options: false,
         refused: &[(&["file"], "it reads a file herald.toml does not name")],
     },
     Writable {
@@ -129,6 +138,7 @@ const WRITABLE: [Writable; 5] = [
             "most_pulls",
             "broken_at",
         ],
+        kind_options: false,
         refused: &[
             (
                 &[
@@ -149,6 +159,7 @@ const WRITABLE: [Writable; 5] = [
     Writable {
         section: "reports",
         allowed: &["view", "every", "at", "days", "zone"],
+        kind_options: false,
         refused: &[],
     },
     Writable {
@@ -156,9 +167,38 @@ const WRITABLE: [Writable; 5] = [
         allowed: &[
             "view", "every", "at", "days", "zone", "stages", "most", "dequeued", "release",
         ],
+        kind_options: false,
         refused: &[(&["flaky"], "it plans re-runs of checks on the forge")],
     },
 ];
+
+/// The destination kinds' own route options as a local preset sees them:
+/// each key some kind lets it write, each some kind refuses, and each some
+/// kind says decides where a post goes.
+#[derive(Default)]
+struct KindOptions {
+    writable: BTreeSet<&'static str>,
+    refused: BTreeSet<&'static str>,
+    addressing: BTreeSet<&'static str>,
+}
+
+impl KindOptions {
+    fn of(kinds: &crate::Kinds) -> Self {
+        let mut options = Self::default();
+        for kind in kinds.preset_route_options() {
+            options.writable.extend(kind.writes);
+            options.refused.extend(kind.refuses);
+            options.addressing.extend(kind.addressing);
+        }
+        options
+    }
+
+    /// Whether a local preset writes `key`: some kind lets it, and none
+    /// refuses it or says it states what herald trusts.
+    fn writes(&self, key: &str) -> bool {
+        self.writable.contains(key) && !self.refused.contains(key) && !TRUSTED.contains(&key)
+    }
+}
 
 /// What a `use` that names no preset is told.
 const USE: &str = "use names a preset herald ships, as \"herald:<name>\", or a local preset, a file inside herald.toml's directory named from it as \"./<path>\" with no \"..\" in it";
@@ -368,15 +408,17 @@ impl Loader<'_> {
         }
         let mut root = shifted_table(root.into_inner(), start);
         if matches!(adopted.preset, Adopted::Local { .. }) {
-            self.local(&mut root, (start, path));
+            let trusted = TRUSTED.iter().any(|key| adopted.keys.contains_key(*key));
+            self.local(&mut root, (start, path), trusted);
         }
         self.split(root, path)
     }
 
     /// `root`, a local preset's tables read from `start`, with its
     /// version checked and every section and key it may not write
-    /// refused and taken out.
-    fn local(&mut self, root: &mut DeTable<'_>, (start, path): (usize, &str)) {
+    /// refused and taken out, `trusted` where its adopting table states
+    /// what herald trusts of its routes' place.
+    fn local(&mut self, root: &mut DeTable<'_>, (start, path): (usize, &str), trusted: bool) {
         match root.remove("version") {
             Some(version) if is_version(version.get_ref()) => {}
             Some(version) => self.error(
@@ -420,7 +462,7 @@ impl Loader<'_> {
                 .filter(|writable| writable.section == section)
             {
                 for table in tables_of(&section, value.get_mut()) {
-                    self.refused(writable, table, path);
+                    self.refused(writable, table, (path, trusted));
                 }
             }
         }
@@ -428,14 +470,30 @@ impl Loader<'_> {
 
     /// `table`, of the section of a local preset `writable` gives the keys
     /// of, with every key it may not write refused and taken out.
-    fn refused(&mut self, writable: &Writable, table: &mut DeTable<'_>, path: &str) {
+    fn refused(
+        &mut self,
+        writable: &Writable,
+        table: &mut DeTable<'_>,
+        (path, trusted): (&str, bool),
+    ) {
+        let options = if writable.kind_options {
+            KindOptions::of(self.kinds)
+        } else {
+            KindOptions::default()
+        };
         let named: Vec<(String, Range<usize>, String)> = table
             .iter()
             .filter_map(|(key, value)| {
                 let name = key.get_ref().to_string();
                 let why = if names_secret(value.get_ref()) {
                     format!("a local preset names no secret; give {name} in the adopting table in herald.toml")
-                } else if writable.allowed.contains(&name.as_str()) {
+                } else if trusted && options.addressing.contains(name.as_str()) {
+                    format!(
+                        "a local preset does not write {name} of a route its adopting table states what herald trusts of: it decides where the route's posts go; give it in the adopting table in herald.toml"
+                    )
+                } else if writable.allowed.contains(&name.as_str())
+                    || options.writes(name.as_str())
+                {
                     return None;
                 } else {
                     writable.refusal(&name)
@@ -549,8 +607,13 @@ impl Writable {
             .map_or_else(
                 || {
                     format!(
-                        "it writes only {} of a {} table",
+                        "it writes only {}{} of a {} table",
                         list(self.allowed),
+                        if self.kind_options {
+                            " and each destination kind's own route options"
+                        } else {
+                            ""
+                        },
                         self.section
                     )
                 },
@@ -867,7 +930,7 @@ mod tests {
             );
             let unknown: Vec<&&str> = once
                 .iter()
-                .filter(|key| !written.contains(**key) && **key != "act")
+                .filter(|key| !written.contains(**key) && !["act", "viewers"].contains(*key))
                 .collect();
             assert!(unknown.is_empty(), "{section}: no such key {unknown:?}");
         }

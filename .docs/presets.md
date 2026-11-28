@@ -36,12 +36,16 @@ A local preset is a file inside `herald.toml`'s directory,
 it. It declares `version = 1`, writes `routes`, `templates`, `views`,
 `reports` and `rules` only, names no secret, and writes only the keys that
 pick and shape what herald announces: a route's `id`, `sources`, `kinds`,
-`prereleases`, `versions`, `match`, `area_paths`, `template`, `templates`
-and `group`, a template's `title` and `body`, and of views, reports and
-rules what they read and when. Every other key is refused with why: where
-a route posts, whom it calls on, what it does to its posts, what herald
-trusts of its place, a view's overviews and models and a rule's re-runs
-come from the adopting table. Only herald's native binary reads one.
+`prereleases`, `versions`, `match`, `area_paths`, `template`, `templates`,
+`group`, `thread`, `pin`, `edits`, `withdraw`, `late_release` and
+`mentions` and the route options its destination kind lists for a local
+preset, such as `channel` or `room` (not Discord's `viewers`, and none
+that says where a post goes on a route its adopting table states is
+`private`, `vouch_unchecked` or seen by `viewers`); a template's `title` and `body`; and of
+views, reports and rules what they read and when. Every other key is
+refused with why: which destination a route posts to, what herald trusts
+of its place, acting on the forge, a view's overviews and models and a
+rule's re-runs come from the adopting table. Only herald's native binary reads one.
 
 A mistake in a preset's tables is told at the line of the table that
 adopts it, and a local preset's with its own file, line and column.

@@ -179,6 +179,8 @@ impl DestinationKind for SlackKind {
     const LABEL: &str = SLACK;
     const ROUTE: &str = "SlackRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Slack destination.";
+    const PRESET_WRITES: &[&str] = &["channel", "subscribe"];
+    const ADDRESSING: &[&str] = &["channel"];
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
