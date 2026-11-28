@@ -407,6 +407,54 @@ fn preview_wire_shows_the_envelope_a_feed_serves_or_a_push_carries_its_proof_by_
     );
 }
 
+#[test]
+fn preview_says_why_a_feed_or_a_push_to_a_peer_taking_no_private_events_publishes_none_of_a_private_event()
+ {
+    let setup = setup(&served());
+    let file = setup.directory.path().join("event.json");
+    let private = EVENT
+        .replace("\"private\": false", "\"private\": true")
+        .replace("\"visibility\": \"public\"", "\"visibility\": \"private\"");
+    std::fs::write(&file, private).unwrap();
+    let file = file.display().to_string();
+    let asked = |format: &'static str| {
+        herald(
+            &setup,
+            &World::default(),
+            &["preview", "--event", &file, "--private", "--format", format],
+        )
+    };
+    let wire = asked("wire");
+    for (route, why) in [
+        ("fed to feed", "so it enters none"),
+        ("pushed to mirror", "so it is pushed none"),
+        ("tokened to tokened", "so it is pushed none"),
+    ] {
+        assert!(
+            wire.out
+                .lines()
+                .any(|line| line.starts_with(route) && line.ends_with(why)),
+            "{route}: {}",
+            wire.out
+        );
+    }
+    let json: serde_json::Value = serde_json::from_str(&asked("json").out).unwrap();
+    let fed = json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|shown| shown["route"] == "fed")
+        .unwrap();
+    assert_eq!(fed["served"], serde_json::Value::Null);
+    assert!(
+        fed["unsent"]
+            .as_str()
+            .unwrap()
+            .ends_with("so it enters none"),
+        "{fed}"
+    );
+}
+
 /// What stands for the setup's event file among the arguments [`unread`]
 /// is given.
 const EVENT_FILE: &str = "EVENT_FILE";
