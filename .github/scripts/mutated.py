@@ -238,7 +238,7 @@ def asked(found: Scope, shard: str, examined: str) -> Scope:
     if not shard:
         return found
     parts = re.fullmatch(r"(\d+)/(\d+)", shard)
-    if parts is None or not int(parts.group(1)) < int(parts.group(2)):
+    if parts is None or int(parts.group(1)) >= int(parts.group(2)):
         raise ValueError(f"a shard is named as K/N, K below N, not {shard!r}")
     index, of = int(parts.group(1)), int(parts.group(2))
     return found._replace(shard=Shard(index, of), why=f"{found.why}; only shard {index} of {of}")

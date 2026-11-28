@@ -25,11 +25,11 @@ readonly TICKS_A_REPORT=12
 read -r -a mutated <<< "${MUTATED:?}"
 read -r -a excluded <<< "${EXCLUDED:?}"
 examined=()
-if [ -n "${EXAMINED:-}" ]; then
+if [[ -n "${EXAMINED:-}" ]]; then
   examined=(--re "$EXAMINED")
 fi
 scope=()
-if [ "$EVENT" = "pull_request" ]; then
+if [[ "$EVENT" = "pull_request" ]]; then
   git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
   scope=(--in-diff "${RUNNER_TEMP}/change.diff")
 fi
@@ -42,14 +42,15 @@ sudo mkdir -p "$GROUP"
 echo "$MEMORY_CAP" | sudo tee "${GROUP}/memory.max" > /dev/null
 echo 0 | sudo tee "${GROUP}/memory.swap.max" > /dev/null
 echo "$$" | sudo tee "${GROUP}/cgroup.procs" > /dev/null
-if [ "$(cat /proc/self/cgroup)" != "0::/${GROUP#/sys/fs/cgroup/}" ] || [ "$(cat "${GROUP}/memory.max")" != "$MEMORY_CAP" ]; then
+if [[ "$(cat /proc/self/cgroup)" != "0::/${GROUP#/sys/fs/cgroup/}" ]] || [[ "$(cat "${GROUP}/memory.max")" != "$MEMORY_CAP" ]]; then
   echo "::error::The mutants run is not held in ${GROUP} at ${MEMORY_CAP} bytes."
   exit 1
 fi
 echo "The mutants run is held in ${GROUP}: memory.max $(cat "${GROUP}/memory.max"), memory.swap.max $(cat "${GROUP}/memory.swap.max")."
 
 mebibytes() {
-  echo $(($1 / 1024 / 1024))
+  local bytes=$1
+  echo $((bytes / 1024 / 1024))
 }
 
 killed() {
@@ -59,43 +60,45 @@ killed() {
 running() {
   local log name
   for log in "${OUT}"/log/*.log; do
-    [ -e "$log" ] || continue
+    [[ -e "$log" ]] || continue
     name=$(sed -n '/^\*\*\* /{s///p;q}' "$log")
-    if [ -n "$name" ] && ! grep -qxF "$name" "${OUT}"/caught.txt "${OUT}"/missed.txt "${OUT}"/unviable.txt "${OUT}"/timeout.txt 2> /dev/null; then
+    if [[ -n "$name" ]] && ! grep -qxF "$name" "${OUT}"/caught.txt "${OUT}"/missed.txt "${OUT}"/unviable.txt "${OUT}"/timeout.txt 2> /dev/null; then
       echo "$name"
     fi
   done
 }
 
 report() {
-  echo "memory $(mebibytes "$(cat "${GROUP}/memory.current")") MiB now, $(mebibytes "$(cat "${GROUP}/memory.peak")") MiB at most, cap $(mebibytes "$MEMORY_CAP") MiB; processes killed at the cap $(killed); disk free $(($1 / 1024)) MiB; processes $(cat "${GROUP}/pids.current" 2> /dev/null || echo uncounted)"
+  local free=$1
+  echo "memory $(mebibytes "$(cat "${GROUP}/memory.current")") MiB now, $(mebibytes "$(cat "${GROUP}/memory.peak")") MiB at most, cap $(mebibytes "$MEMORY_CAP") MiB; processes killed at the cap $(killed); disk free $((free / 1024)) MiB; processes $(cat "${GROUP}/pids.current" 2> /dev/null || echo uncounted)"
 }
 
 watch() {
+  local mutants=$1
   local -A started=()
   local tick=0 log name free oom seen_oom
   seen_oom=$(killed)
   while sleep "$TICK_SECONDS"; do
     for log in "${OUT}"/log/*.log; do
-      [ -e "$log" ] && [ -z "${started[$log]:-}" ] || continue
+      [[ -e "$log" ]] && [[ -z "${started[$log]:-}" ]] || continue
       name=$(sed -n '/^\*\*\* /{s///p;q}' "$log")
-      [ -n "$name" ] || continue
+      [[ -n "$name" ]] || continue
       started[$log]=1
       echo "started  ${name}"
     done
     free=$(df --output=avail -k / | tail -n 1 | tr -d ' ')
     oom=$(killed)
-    if [ "$oom" != "$seen_oom" ]; then
+    if [[ "$oom" != "$seen_oom" ]]; then
       seen_oom=$oom
       echo "::warning::The memory cap killed a process while these mutants ran: $(running | paste -sd ';' -)"
     fi
     tick=$((tick + 1))
-    if [ $((tick % TICKS_A_REPORT)) -eq 0 ]; then
+    if [[ $((tick % TICKS_A_REPORT)) -eq 0 ]]; then
       report "$free"
     fi
-    if [ "$free" -lt "$DISK_FLOOR_KIB" ]; then
+    if [[ "$free" -lt "$DISK_FLOOR_KIB" ]]; then
       echo "::error::The disk has ${free} KiB free, under ${DISK_FLOOR_KIB}, so the run stops; these mutants were running: $(running | paste -sd ';' -)"
-      kill -TERM "$1"
+      kill -TERM "$mutants"
       return
     fi
   done
@@ -111,7 +114,7 @@ status=0
 wait "$mutants" || status=$?
 kill "$watcher" 2> /dev/null || true
 report "$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
-if [ "$(killed)" != 0 ]; then
+if [[ "$(killed)" != 0 ]]; then
   sudo dmesg | grep -i 'killed process' || true
 fi
 exit "$status"
