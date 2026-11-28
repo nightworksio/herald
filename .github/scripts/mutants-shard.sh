@@ -77,8 +77,8 @@ running() {
 }
 
 report() {
-  local free=$1
-  echo "memory: anonymous $(mebibytes "$(held anon)") MiB now, $(mebibytes "$(cat "$MOST_ANON")") MiB the most seen; page cache $(mebibytes "$(held file)") MiB; cap $(mebibytes "$MEMORY_CAP") MiB; processes killed at the cap $(killed); disk free $((free / 1024)) MiB; processes $(cat "${GROUP}/pids.current" 2> /dev/null || echo uncounted)"
+  local free=$1 anon=$2
+  echo "memory: anonymous $(mebibytes "$anon") MiB now, $(mebibytes "$(cat "$MOST_ANON")") MiB the most seen; page cache $(mebibytes "$(held file)") MiB; cap $(mebibytes "$MEMORY_CAP") MiB; processes killed at the cap $(killed); disk free $((free / 1024)) MiB; processes $(cat "${GROUP}/pids.current" 2> /dev/null || echo uncounted)"
 }
 
 watch() {
@@ -107,7 +107,7 @@ watch() {
     fi
     tick=$((tick + 1))
     if [[ $((tick % TICKS_A_REPORT)) -eq 0 ]]; then
-      report "$free"
+      report "$free" "$anon"
     fi
     if [[ "$free" -lt "$DISK_FLOOR_KIB" ]]; then
       echo "::error::The disk has ${free} KiB free, under ${DISK_FLOOR_KIB}, so the run stops; these mutants were running: $(running | paste -sd ';' -)"
@@ -127,7 +127,7 @@ watcher=$!
 status=0
 wait "$mutants" || status=$?
 kill "$watcher" 2> /dev/null || true
-report "$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+report "$(df --output=avail -k / | tail -n 1 | tr -d ' ')" "$(held anon)"
 if [[ "$(killed)" != 0 ]]; then
   sudo dmesg | grep -i 'killed process' || true
 fi
