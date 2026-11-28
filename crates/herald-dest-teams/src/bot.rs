@@ -190,6 +190,28 @@ fn minted(answer: &mut Response) -> Option<(Secret, SignedDuration)> {
     Some((Secret::new(TOKEN, token), lasts))
 }
 
+/// What a sign-in's `answer` gives: a token and how long it lasts, a
+/// wait, or why not; its body wiped either way.
+fn signed(mut answer: Response, waits: Waits) -> Result<(Secret, SignedDuration), Sent> {
+    if let Some(failed) = answer.failure(waits, None, LOGIN, || refused(&answer)) {
+        answer.wipe();
+        return Err(failed);
+    }
+    minted(&mut answer).ok_or_else(|| Sent::Refused(tokenless()))
+}
+
+/// What a sign-in's `answer` says of the bot's credential; its body wiped
+/// either way.
+fn probed(mut answer: Response) -> Probe {
+    let taken = match answer.accepted(None, LOGIN, || refused(&answer)) {
+        Ok(()) if minted(&mut answer).is_some() => Probe::Taken,
+        Ok(()) => Probe::Credential(tokenless()),
+        Err(why) => Probe::Credential(why),
+    };
+    answer.wipe();
+    taken
+}
+
 /// Whether `token` may go in a header as it is: printable ASCII, no space.
 fn sendable(token: &str) -> bool {
     !token.is_empty() && token.bytes().all(|byte| byte.is_ascii_graphic())
@@ -268,12 +290,7 @@ impl Bot {
             Ok(request) => request,
             Err(declined) => return Ok(Err(Sent::Refused(declined.to_string()))),
         };
-        let mut answer = http.send(request).await?;
-        if let Some(failed) = answer.failure(waits, None, LOGIN, || refused(&answer)) {
-            answer.wipe();
-            return Ok(Err(failed));
-        }
-        Ok(minted(&mut answer).ok_or_else(|| Sent::Refused(tokenless())))
+        Ok(signed(http.send(request).await?, waits))
     }
 
     /// The token it sends at `now`: the one it holds, or a new one, held
@@ -287,12 +304,21 @@ impl Bot {
         if let Some(token) = self.held.current(now) {
             return Ok(Ok(token));
         }
-        Ok(self.signed_in(http, waits).await?.map(|(token, lasts)| {
-            if let Ok(until) = now.checked_add(lasts - MARGIN) {
-                self.held.keep(token.clone(), until);
-            }
-            token
-        }))
+        Ok(self.kept(self.signed_in(http, waits).await?, now))
+    }
+
+    /// The token a sign-in at `now` gave, held until shortly before it
+    /// ends; why it gave none otherwise.
+    fn kept(
+        &self,
+        signed: Result<(Secret, SignedDuration), Sent>,
+        now: Timestamp,
+    ) -> Result<Secret, Sent> {
+        let (token, lasts) = signed?;
+        if let Ok(until) = now.checked_add(lasts - MARGIN) {
+            self.held.keep(token.clone(), until);
+        }
+        Ok(token)
     }
 
     /// The URL of `path` under its conversation.
@@ -405,16 +431,10 @@ impl Bot {
             Ok(request) => request,
             Err(declined) => return vec![Probe::Credential(declined.to_string())],
         };
-        let mut answer = match http.send(request).await {
-            Ok(answer) => answer,
-            Err(error) => return vec![Probe::credential(LOGIN, &Err(error))],
+        let taken = match http.send(request).await {
+            Ok(answer) => probed(answer),
+            Err(error) => Probe::credential(LOGIN, &Err(error)),
         };
-        let taken = match answer.accepted(None, LOGIN, || refused(&answer)) {
-            Ok(()) if minted(&mut answer).is_some() => Probe::Taken,
-            Ok(()) => Probe::Credential(tokenless()),
-            Err(why) => Probe::Credential(why),
-        };
-        answer.wipe();
         let mut probes = vec![taken];
         if self.threads {
             probes.push(Probe::Said(PREVIEW.to_owned()));
