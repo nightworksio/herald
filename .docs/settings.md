@@ -309,6 +309,8 @@ The living boards, by name: each a report and a route that keeps one post of it,
 | `boards.<name>.pin` | [Pin](#pin) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found: `true` finds it by its marker, as "markers" does, and `false` pins nothing. A living route pins its post where absent and the destination pins. |
 | `boards.<name>.prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `boards.<name>.private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
+| `boards.<name>.subscribe` | table | How the bot's route offers subscribing, where it mentions its subscribers: each member subscribed is mentioned by their Microsoft Entra object id. |
+| `boards.<name>.subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `boards.<name>.template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
 | `boards.<name>.templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
 | `boards.<name>.templates.<name>` | string |  |
@@ -1331,6 +1333,8 @@ Which events go where, rendered how.
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). A route taking a private kind, such as `alert`, says it either way: `false` sends them to a public place on purpose (`[doctor] private_kinds`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
+| `routes[].subscribe` | table | How the bot's route offers subscribing, where it mentions its subscribers: each member subscribed is mentioned by their Microsoft Entra object id. |
+| `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `routes[].template` | string | The template it renders with; none on a route to a herald feed or push, which carries each event as an envelope. |
 | `routes[].templates` | table | The template it renders with in place of `template` where its destination's dialect is one of these, each keyed by the kind of destination that writes the dialect, such as `{ mastodon = "release-short" }`. Each is Markdown, converted to the dialect as `template` is; `template` where its destination's dialect has none. |
 | `routes[].templates.<name>` | string |  |

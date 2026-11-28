@@ -853,3 +853,85 @@ fn a_command_the_sign_in_refuses_goes_unanswered_and_says_only_the_sign_in_s_err
 fn token_of(teams: &Pair) -> String {
     token(&header("k1"), &claims(at()), teams)
 }
+
+/// The invoke of a member pressing herald's subscribe button for `project`
+/// on the card `card`.
+fn pressed(id: &str, card: &str, project: &str) -> Vec<u8> {
+    let mut given: Value = serde_json::from_slice(&activity("invoke", id, SERVICE)).unwrap();
+    given["name"] = json!("adaptiveCard/action");
+    given["replyToId"] = json!(card);
+    given["value"] = json!({
+        "action": {
+            "type": "Action.Execute",
+            "verb": "herald_subscribe",
+            "data": { "project": project },
+        },
+        "trigger": "manual",
+    });
+    given.as_object_mut().unwrap().remove("text");
+    given.to_string().into_bytes()
+}
+
+#[test]
+fn a_press_of_the_subscribe_button_is_answered_at_once_and_toggles_for_its_member_alone() {
+    let teams = pair(1);
+    let token = ["made", "-", "at", "-", "run", "-", "time"].concat();
+    let card = "1481567603816";
+    let bot = Bot::new(answering(
+        &teams,
+        &token,
+        card,
+        answered(201, r#"{"id":"1481567603899"}"#),
+    ));
+    let signed = token_of(&teams);
+    let answered = bot.post(&signed, &pressed("f:9", card, "herald"));
+    let at_once = json!({
+        "statusCode": 200,
+        "type": "application/vnd.microsoft.activity.message",
+        "value": "herald is on it; its answer follows in this conversation.",
+    })
+    .to_string();
+    assert_eq!(
+        (said(&answered), &answered.refused),
+        ((200, "application/json", at_once.clone()), &None)
+    );
+    let job = answered.job.clone().unwrap();
+    let Did::Interacted(mut interacted) = bot.work(job) else {
+        panic!("the press asked nothing");
+    };
+    let given = interacted.remove(0);
+    assert_eq!(
+        (
+            given.asked.user.as_str(),
+            given.asked.command,
+            given.asked.project.as_deref(),
+            given.asked.toggles,
+        ),
+        (
+            "00000000-0000-0000-0000-000000000001",
+            herald_core::Command::Subscribe,
+            Some("herald"),
+            true,
+        )
+    );
+    assert_eq!(
+        bot.script.seen().last(),
+        Some(&format!("POST {}", replied_at(card)))
+    );
+    let replay = bot.post(&signed, &pressed("f:9", card, "herald"));
+    assert_eq!(
+        (said(&replay), &replay.job),
+        ((200, "application/json", at_once), &None)
+    );
+    let mut unsigned: Value = serde_json::from_slice(&pressed("f:10", card, "herald")).unwrap();
+    unsigned["from"] = json!({ "id": "29:member" });
+    let refused = bot.post(&signed, unsigned.to_string().as_bytes());
+    let (_, _, body) = said(&refused);
+    assert_eq!(
+        (
+            refused.job.is_none(),
+            serde_json::from_str::<Value>(&body).unwrap()["statusCode"].clone()
+        ),
+        (true, json!(400))
+    );
+}

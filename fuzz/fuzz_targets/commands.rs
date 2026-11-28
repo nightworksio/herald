@@ -2,8 +2,9 @@
 //! answers what it asks or why it cannot read it, and every command it reads
 //! names where it was given and by whom, with Slack's answers going to Slack
 //! alone; a Teams bot takes an activity only of Teams, naming the service URL
-//! its token vouches for, and a command in it only as the member its sender
-//! names, answered through that service URL.
+//! its token vouches for, and a command in it, or a press of its subscribe
+//! button, only as the member its sender names, answered through that
+//! service URL under the message the member gave or the card they pressed.
 
 #![no_main]
 
@@ -13,7 +14,7 @@ use herald_dest_discord::{
 };
 use herald_dest_matrix::{Interacting as Matrix, Interactions as MatrixInteractions};
 use herald_dest_slack::{Interacting as Slack, Interactions as SlackInteractions, Received};
-use herald_dest_teams::{CHANNEL, Cloud, Interacting as Teams, Reply};
+use herald_dest_teams::{CHANNEL, Cloud, Interacting as Teams, Reply, SUBSCRIBE};
 use herald_kinds::{Interacts as _, Post, Read, Vouched};
 use herald_ports::Secret;
 use libfuzzer_sys::fuzz_target;
@@ -105,7 +106,9 @@ fuzz_target!(|bytes: &[u8]| {
                 if let Read::Asked { asked, .. } = *then {
                     for (asked, replying) in &asked {
                         placed(asked);
-                        assert_eq!(activity["type"], "message");
+                        let pressed = activity["type"] == "invoke";
+                        assert!(pressed || activity["type"] == "message");
+                        assert_eq!(pressed, asked.toggles);
                         assert_eq!(
                             activity["from"]["aadObjectId"]
                                 .as_str()
@@ -115,7 +118,15 @@ fuzz_target!(|bytes: &[u8]| {
                         let reply = replying.of::<Reply>().unwrap();
                         assert_eq!(format!("{}/", reply.service), TEAMS_SERVICE);
                         assert_eq!(activity["conversation"]["id"], reply.conversation.as_str());
-                        assert_eq!(activity["id"], reply.activity.as_str());
+                        let answered = if pressed { "replyToId" } else { "id" };
+                        assert_eq!(activity[answered], reply.activity.as_str());
+                        if pressed {
+                            assert_eq!(activity["value"]["action"]["verb"], SUBSCRIBE);
+                            assert_eq!(
+                                activity["value"]["action"]["data"]["project"].as_str(),
+                                asked.project.as_deref()
+                            );
+                        }
                     }
                 }
             }

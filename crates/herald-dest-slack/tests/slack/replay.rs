@@ -735,8 +735,9 @@ fn a_destination_takes_one_credential_a_channel_is_named_by_its_id_and_slack_doe
 
 #[cfg(test)]
 mod subscribing {
+    use herald_core::Subscribe;
     use herald_core::{Entry, Step};
-    use herald_dest_slack::{Credential, RouteOptions, Slack, Subscribe, subscribe_block};
+    use herald_dest_slack::{Credential, RouteOptions, Slack, subscribe_block};
     use herald_ports::Secret;
     use herald_testing::sample;
     use serde_json::Value;

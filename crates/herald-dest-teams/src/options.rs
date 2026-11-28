@@ -1,4 +1,4 @@
-use herald_core::{SecretRef, Symbols, WaitOptions};
+use herald_core::{SecretRef, Subscribe, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -77,6 +77,11 @@ pub struct RouteOptions {
     /// a preview; each part is posted on its own where unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<bool>,
+    /// How the bot's route offers subscribing, where it mentions its
+    /// subscribers: each member subscribed is mentioned by their Microsoft
+    /// Entra object id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscribe: Option<Subscribe>,
 }
 
 /// What a bot's table names, each host its cloud's where the table names

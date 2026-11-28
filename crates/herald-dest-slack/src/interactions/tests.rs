@@ -107,15 +107,6 @@ fn a_slash_command_and_commands_written_wrongly_are_refused() {
 }
 
 #[test]
-fn a_subscribe_carries_a_button_unless_it_says_not() {
-    assert!(Subscribe::default().button);
-    let quiet: Subscribe = serde_json::from_str(r#"{"button": false}"#).unwrap();
-    assert!(!quiet.button);
-    let plain: Subscribe = serde_json::from_str("{}").unwrap();
-    assert!(plain.button);
-}
-
-#[test]
 fn what_it_says_is_worded_as_the_config_words_it() {
     let worded = read(&format!(
         r#"{SIGNED}, "wording": {{"nothing": "Niets."}}}}"#

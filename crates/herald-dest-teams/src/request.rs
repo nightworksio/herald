@@ -2,7 +2,7 @@ use herald_core::{Announcement, Declined, Step};
 use herald_ports::{Method, Request, Secret, SecretText};
 use serde_json::Value;
 
-use crate::card::{Measured, announced, chunk};
+use crate::card::{Measured, Offers, announced, chunk};
 use crate::teams::MESSAGE;
 
 /// What a Workflows webhook is, as a refusal names it.
@@ -36,8 +36,8 @@ pub(crate) fn request(
     announcement: &Announcement,
 ) -> Result<Request, String> {
     let declined = match step {
-        Step::Post => return posted(url, &announced(announcement)),
-        Step::Chunk(index) => return posted(url, &chunk(announcement, *index)),
+        Step::Post => return posted(url, &announced(announcement, Offers::NONE)),
+        Step::Chunk(index) => return posted(url, &chunk(announcement, *index, Offers::NONE)),
         Step::Crosspost => cannot("crosspost"),
         Step::OpenThread | Step::Rename(_) => cannot("open a thread"),
         Step::Pin | Step::Unpin => cannot("pin"),

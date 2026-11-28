@@ -2,7 +2,7 @@ use std::fmt;
 
 use herald_core::{
     Announcement, Bullet, Emphases, Entry, Escape, Facts, Features, Fences, Heading, Limits, Links,
-    Markup, Measure, MentionStyle, Pins, Profile, Sent, Step, Symbols, Threads, Waits,
+    Markup, Measure, MentionRoom, MentionStyle, Pins, Profile, Sent, Step, Symbols, Threads, Waits,
 };
 use herald_ports::{Base, Http, HttpError, Response, Secret};
 use jiff::Timestamp;
@@ -230,8 +230,32 @@ pub const fn profile() -> Profile {
     )
 }
 
+/// The bytes a bot's card keeps for the mentions of its announcement: room
+/// beside its title, text, envelope and buttons within
+/// [`crate::BOT_MESSAGE`] as UTF-16 counts it.
+const MENTIONS_FIRST: usize = 3_000;
+
+/// The bytes of mentions a card holding mentions alone takes: within
+/// [`crate::BOT_MESSAGE`], beside its envelope, as UTF-16 counts it.
+const MENTIONS_REST: usize = 30_000;
+
+/// The bytes a mention writes beyond its member's id: its label in its text,
+/// its entity's text and its entity's name, each at most
+/// [`herald_core::Phrase::MENTIONED`] characters of four bytes and a number
+/// of four digits, and its entity's JSON.
+const MENTION_OVERHEAD: usize = 3 * (herald_core::Phrase::MENTIONED * 4 + 5 + 9) + 64;
+
+/// How many mentions a bot's cards hold.
+const MENTION_ROOM: MentionRoom = MentionRoom {
+    first: MENTIONS_FIRST,
+    rest: MENTIONS_REST,
+    copies: 1,
+    overhead: MENTION_OVERHEAD,
+};
+
 /// What a Microsoft Teams bot can do: post, edit and delete its posts,
-/// and, where its route says `threads = true`, reply in their threads.
+/// mention the members subscribed, take commands, and, where its route says
+/// `threads = true`, reply in their threads.
 #[must_use]
 pub const fn bot_profile(threads: bool) -> Profile {
     profiled(
@@ -246,8 +270,8 @@ pub const fn bot_profile(threads: bool) -> Profile {
             pins: Pins::None,
             reads_back: false,
             edits: true,
-            mentions: MentionStyle::None,
-            interactions: false,
+            mentions: MentionStyle::Users(MENTION_ROOM),
+            interactions: true,
         },
     )
 }

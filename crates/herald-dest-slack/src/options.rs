@@ -1,9 +1,11 @@
-use herald_core::{PinLookups, ReadBack, SecretRef, Symbols, WaitOptions, bot_or_webhook};
+use herald_core::{
+    PinLookups, ReadBack, SecretRef, Subscribe, Symbols, WaitOptions, bot_or_webhook,
+};
 
 use crate::domain::Domain;
 use crate::slack::SLACK;
 
-use crate::interactions::{Interactions, Subscribe};
+use crate::interactions::Interactions;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

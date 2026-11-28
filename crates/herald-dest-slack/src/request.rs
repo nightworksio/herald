@@ -1,9 +1,10 @@
-use herald_core::{Announcement, Declined, Entry, NO_PART, Phrase, Step, safe_url, unreserved};
+use herald_core::{
+    Announcement, Declined, Entry, NO_PART, Phrase, Step, Subscribe, safe_url, unreserved,
+};
 use herald_ports::{Credential, Method, Request, SecretText};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
-use crate::interactions::Subscribe;
 use crate::slack::{SLACK, Slack};
 use crate::web_api::{CHAT_DELETE, CHAT_POST_MESSAGE, CHAT_UPDATE, PINS_ADD, PINS_LIST, WebMethod};
 

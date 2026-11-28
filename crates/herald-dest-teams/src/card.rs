@@ -4,6 +4,8 @@
 use herald_core::{Announcement, Wording, safe_url};
 use serde_json::{Value, json};
 
+use crate::interact::{EXECUTE, SUBSCRIBE};
+use crate::options::guid;
 use crate::teams::{MARKUP, TEAMS};
 
 /// The content type of an Adaptive Card attachment.
@@ -15,6 +17,28 @@ const SCHEMA: &str = "http://adaptivecards.io/schemas/adaptive-card.json";
 /// and `Action.OpenUrl` (<https://github.com/microsoft/AdaptiveCards/blob/main/schemas/1.1.0/adaptive-card.json>
 /// marks none of them newer than 1.0).
 const VERSION: &str = "1.0";
+/// The Adaptive Card version a card holding an `Action.Execute` names:
+/// Teams takes the action from cards of 1.5
+/// (<https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/cards/universal-actions-for-adaptive-cards/work-with-universal-actions-for-adaptive-cards>,
+/// "Schema for Universal Actions for Adaptive Cards").
+const EXECUTING: &str = "1.5";
+
+/// What a bot's cards carry beyond an announcement: the label its mentions
+/// show, where it mentions, and the subscribe button's label, where its
+/// route offers one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Offers<'a> {
+    pub(crate) mentioned: Option<&'a str>,
+    pub(crate) button: Option<&'a str>,
+}
+
+impl Offers<'_> {
+    /// What a card carries where it mentions no one and offers nothing.
+    pub(crate) const NONE: Offers<'static> = Offers {
+        mentioned: None,
+        button: None,
+    };
+}
 
 /// How a message's size is counted against what it may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,18 +73,49 @@ fn text(text: &str) -> Value {
     json!({ "type": "TextBlock", "text": text, "wrap": true })
 }
 
-/// The message holding one Adaptive Card of `body` and `actions`.
-fn card(body: &[Value], actions: Vec<Value>) -> Value {
+/// The mentions of `users` as card text and its entities, each labelled
+/// `label` and numbered, where any is a Microsoft Entra object id.
+fn mentioning(users: &[String], label: &str) -> Option<(Value, Vec<Value>)> {
+    let (written, entities): (Vec<String>, Vec<Value>) = users
+        .iter()
+        .filter(|user| guid(user))
+        .zip(1..)
+        .map(|(user, number)| {
+            let name = format!("{label} {number}");
+            let text = format!("<at>{name}</at>");
+            let entity = json!({
+                "type": "mention",
+                "text": text,
+                "mentioned": { "id": user, "name": name },
+            });
+            (text, entity)
+        })
+        .unzip();
+    (!written.is_empty()).then(|| (text(&written.join(" ")), entities))
+}
+
+/// The message holding one Adaptive Card of `body`, `actions` and the
+/// mention `entities`.
+fn card(body: &[Value], actions: Vec<Value>, entities: Vec<Value>) -> Value {
+    let executes = actions
+        .iter()
+        .any(|action| action.get("type").and_then(Value::as_str) == Some(EXECUTE));
     let mut content = json!({
         "$schema": SCHEMA,
         "type": "AdaptiveCard",
-        "version": VERSION,
+        "version": if executes { EXECUTING } else { VERSION },
         "body": body,
     });
-    if !actions.is_empty()
-        && let Some(fields) = content.as_object_mut()
-    {
-        fields.insert("actions".to_owned(), Value::Array(actions));
+    if let Some(fields) = content.as_object_mut() {
+        if !actions.is_empty() {
+            fields.insert("actions".to_owned(), Value::Array(actions));
+        }
+        if !entities.is_empty() {
+            fields.insert(
+                "msteams".to_owned(),
+                json!({ "entities": Value::Array(entities) }),
+            );
+        }
     }
     json!({
         "type": "message",
@@ -68,9 +123,10 @@ fn card(body: &[Value], actions: Vec<Value>) -> Value {
     })
 }
 
-/// The card of the announcement itself: its title, its first part, and a
-/// button to each of its kind's links, or else its link shown.
-pub(crate) fn announced(announcement: &Announcement) -> Value {
+/// The card of the announcement itself: its title, its first part, a
+/// button to each of its kind's links, or else its link shown, the members
+/// it mentions, and the subscribe button where `offers` holds one.
+pub(crate) fn announced(announcement: &Announcement, offers: Offers<'_>) -> Value {
     let wording = Wording::default();
     let mut body = vec![json!({
         "type": "TextBlock",
@@ -86,7 +142,7 @@ pub(crate) fn announced(announcement: &Announcement) -> Value {
             .filter(|part| !part.body.is_empty())
             .map(|part| text(&part.body)),
     );
-    let actions: Vec<Value> = announcement
+    let mut actions: Vec<Value> = announcement
         .buttons
         .iter()
         .map(|button| {
@@ -99,29 +155,56 @@ pub(crate) fn announced(announcement: &Announcement) -> Value {
             text(&format!("[{shown}]({shown})"))
         }));
     }
-    card(&body, actions)
+    let mut entities = Vec::new();
+    if let Some((mentions, mentioned)) = offers
+        .mentioned
+        .and_then(|label| mentioning(&announcement.mentioned, label))
+    {
+        body.push(mentions);
+        entities = mentioned;
+    }
+    actions.extend(offers.button.map(|label| {
+        json!({
+            "type": EXECUTE,
+            "title": label,
+            "verb": SUBSCRIBE,
+            "data": { "project": announcement.project },
+        })
+    }));
+    card(&body, actions, entities)
 }
 
-/// The card of the overflow part `index`.
-pub(crate) fn chunk(announcement: &Announcement, index: u32) -> Value {
+/// The card of the overflow message `index`: one of the announcement's
+/// parts, or else the members mentioned after them.
+pub(crate) fn chunk(announcement: &Announcement, index: u32, offers: Offers<'_>) -> Value {
+    let after = usize::try_from(index)
+        .ok()
+        .and_then(|index| announcement.mentioned_in(index));
+    if let Some(users) = after {
+        let (body, entities) = offers
+            .mentioned
+            .and_then(|label| mentioning(users, label))
+            .unwrap_or_else(|| (text(""), Vec::new()));
+        return card(&[body], Vec::new(), entities);
+    }
     let part = announcement
         .part(index)
         .map(|part| part.body.as_str())
         .unwrap_or_default();
-    card(&[text(part)], Vec::new())
+    card(&[text(part)], Vec::new(), Vec::new())
 }
 
 /// The card of one part of herald's answer to a command.
 pub(crate) fn answer(part: &str) -> Value {
-    card(&[text(part)], Vec::new())
+    card(&[text(part)], Vec::new(), Vec::new())
 }
 
 /// The card of part `part`: the announcement's for part 0, else the
-/// overflow part's.
-pub(crate) fn of_part(announcement: &Announcement, part: u32) -> Value {
+/// overflow message's.
+pub(crate) fn of_part(announcement: &Announcement, part: u32, offers: Offers<'_>) -> Value {
     match part {
-        0 => announced(announcement),
-        index => chunk(announcement, index),
+        0 => announced(announcement, offers),
+        index => chunk(announcement, index, offers),
     }
 }
 

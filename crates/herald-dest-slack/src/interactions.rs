@@ -163,28 +163,6 @@ impl Interactions {
     }
 }
 
-/// What a route says about subscribing on Slack, where it mentions its
-/// subscribers.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[schemars(rename = "SlackSubscribe")]
-pub struct Subscribe {
-    /// Whether each announcement carries a button that subscribes, or
-    /// unsubscribes a member already subscribed.
-    #[serde(default = "yes")]
-    pub button: bool,
-}
-
-impl Default for Subscribe {
-    fn default() -> Self {
-        Self { button: true }
-    }
-}
-
-const fn yes() -> bool {
-    true
-}
-
 /// The longest name a slash command takes after its `/`.
 const SLASH_COMMAND: usize = 31;
 
