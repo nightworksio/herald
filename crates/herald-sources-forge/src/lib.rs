@@ -16,6 +16,7 @@ mod ghcr;
 mod github;
 mod gitlab;
 mod graphql;
+mod headers;
 mod hooks;
 mod hosts;
 mod issues;

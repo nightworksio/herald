@@ -7,8 +7,10 @@ use herald_core::{
     Subject, Templates, report_event,
 };
 
+mod delivered;
 mod wire;
 
+pub use delivered::{Sourced, Unmapped, delivered, preview_delivered, preview_delivered_group};
 pub use wire::{DRY_ID, FED, FOLLOWED, PUSHED, Recording, UNREACHED, Wire, wired};
 
 /// One route's templates rendered against an event.

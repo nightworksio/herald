@@ -70,6 +70,8 @@ mod poll;
 #[cfg(test)]
 mod preview;
 #[cfg(test)]
+mod preview_delivered;
+#[cfg(test)]
 mod preview_wire;
 #[cfg(test)]
 mod private_kinds;

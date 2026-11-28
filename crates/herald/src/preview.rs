@@ -1,20 +1,66 @@
 //! `herald preview`: each route's templates rendered as its destination
 //! would show them, reading no secret and sending nothing (ADR-0095).
 
-use std::io::Write;
+use std::io::{Read, Write};
 
 use herald_config::{Config, Sample};
 use herald_core::{Announcement, Event, Kind, RouteId};
 use herald_flows::{
-    Against, Previewed, Sampling, Wire, preview, preview_group, preview_samples, wired,
+    Against, Previewed, Sampling, Wire, preview_delivered, preview_delivered_group,
+    preview_samples, wired,
 };
 use herald_ports::Request;
-use herald_sources_forge::Forge;
 use serde_json::{Map, Value, json};
 
-use super::cli::PreviewFormat;
+mod event;
+
+use event::EventFile;
+
+use super::cli::{PreviewFormat, RunForge};
 use super::output::{say, say_json};
 use super::{DONE, MISTAKEN, STOPPED};
+
+/// The flags `herald preview` takes.
+#[derive(Debug, clap::Args)]
+pub(crate) struct Flags {
+    /// Only this route.
+    #[arg(long)]
+    pub(crate) route: Option<String>,
+    /// Only this kind's samples.
+    #[arg(long, conflicts_with = "event")]
+    pub(crate) kind: Option<String>,
+    /// Only this sample of each kind.
+    #[arg(long, conflicts_with = "event")]
+    pub(crate) sample: Option<String>,
+    /// Only this report, showing a sample view.
+    #[arg(long, conflicts_with = "event")]
+    pub(crate) report: Option<String>,
+    /// A forge's event file, as its webhook delivers it, `-` for
+    /// standard input, read by each source of the config as its
+    /// webhook reads it, in place of a sample event.
+    #[arg(long)]
+    pub(crate) event: Option<String>,
+    /// The forge whose event the file is.
+    #[arg(long, value_enum, default_value_t = RunForge::Github)]
+    pub(crate) from: RunForge,
+    /// The event's name, as the forge's event header names it
+    /// (`pull_request`, `Merge Request Hook`); its release event where
+    /// absent.
+    #[arg(long, requires = "event")]
+    pub(crate) event_name: Option<String>,
+    /// Say this output is private, so an event of a private or internal
+    /// repository is shown; without it, or `[cli] private`, each route
+    /// it reaches says "(private)" alone (ADR-0080).
+    #[arg(long, requires = "event")]
+    pub(crate) private: bool,
+    /// Render each route that groups against the file's event, or
+    /// every sample of each kind it takes, as one group under this key.
+    #[arg(long)]
+    pub(crate) group: Option<String>,
+    /// What is printed of each route's message.
+    #[arg(long, value_enum, default_value_t = PreviewFormat::Text)]
+    pub(crate) format: PreviewFormat,
+}
 
 /// What `herald preview` was asked for, as given.
 #[derive(Debug, Clone, Copy, Default)]
@@ -38,14 +84,40 @@ struct Named {
     sample: Option<Sample>,
 }
 
-/// Each route's templates rendered as `asked` says, against the release of
-/// a forge's event file or the samples of each kind it takes, as its
-/// destination would show them; or, under `group`, each grouping route's
-/// as one group: printed in `format`.
+/// Each route's templates rendered as `flags` say, standard input read
+/// from `input` where `--event -` names it (ADR-0095).
 pub(super) async fn previewing(
     config: &Config,
+    flags: &Flags,
+    input: &mut dyn Read,
+    (out, err): (&mut dyn Write, &mut dyn Write),
+) -> u8 {
+    let asked = Asked {
+        route: flags.route.as_deref(),
+        kind: flags.kind.as_deref(),
+        sample: flags.sample.as_deref(),
+        report: flags.report.as_deref(),
+        group: flags.group.as_deref(),
+    };
+    let file = flags.event.as_deref().map(|path| EventFile {
+        forge: flags.from.forge(),
+        path,
+        name: flags.event_name.as_deref(),
+        printed: herald_core::Printed::of(flags.private, config.cli.private),
+    });
+    shown_as(config, (asked, flags.format), (file, input), (out, err)).await
+}
+
+/// Each route's templates rendered as `asked` says, against the events the
+/// config's sources map a forge's event file to, standard input read from
+/// `input` where it names it, or the samples of each kind it takes, as its
+/// destination would show them; or, under `group`, each grouping route's
+/// as one group: printed in `format`, each route an event the output
+/// withholds reaches saying "(private)" alone.
+async fn shown_as(
+    config: &Config,
     (asked, format): (Asked<'_>, PreviewFormat),
-    event_file: Option<(Forge, &str)>,
+    (event_file, input): (Option<EventFile<'_>>, &mut dyn Read),
     (out, err): (&mut dyn Write, &mut dyn Write),
 ) -> u8 {
     let named = match named(config, asked) {
@@ -56,26 +128,34 @@ pub(super) async fn previewing(
         }
     };
     let only = named.route.as_ref();
-    let shown = match event_file {
-        Some(file) => match event(file) {
-            Ok(event) => match asked.group {
-                Some(key) => preview_group(config, (key, std::slice::from_ref(&event)), only),
-                None => preview(config, &event, only),
-            },
+    let (shown, withheld) = match event_file {
+        Some(file) => match event::events(config, file, input) {
+            Ok(events) => (
+                match asked.group {
+                    Some(key) => preview_delivered_group(config, (key, &events), only),
+                    None => preview_delivered(config, &events, only),
+                },
+                event::withheld(&events, file.printed),
+            ),
             Err(message) => {
-                say(err, &message);
+                for line in message.lines() {
+                    say(err, line);
+                }
                 return MISTAKEN;
             }
         },
-        None => preview_samples(
-            config,
-            Sampling {
-                only,
-                kind: named.kind.as_ref(),
-                sample: named.sample,
-                report: asked.report,
-                group: asked.group,
-            },
+        None => (
+            preview_samples(
+                config,
+                Sampling {
+                    only,
+                    kind: named.kind.as_ref(),
+                    sample: named.sample,
+                    report: asked.report,
+                    group: asked.group,
+                },
+            ),
+            false,
         ),
     };
     if shown.is_empty() {
@@ -87,6 +167,10 @@ pub(super) async fn previewing(
     } else {
         STOPPED
     };
+    if withheld {
+        private(&shown, format, out);
+        return code;
+    }
     match format {
         PreviewFormat::Text => {
             for shown in &shown {
@@ -194,14 +278,30 @@ fn unpreviewed(asked: Asked<'_>, evented: bool) -> String {
     format!("nothing to preview: no route{route}{grouping} takes {what}{sample}")
 }
 
-/// The release a forge's event file publishes, or why the file gives none.
-fn event((forge, path): (Forge, &str)) -> Result<Event, String> {
-    let payload =
-        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    forge
-        .event(&payload, herald_core::PrereleaseRule::default())
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("{path} publishes no release"))
+/// Each of `shown` printed in `format` as a route an event the output
+/// withholds reaches: its head and "(private)" alone.
+fn private(shown: &[Previewed], format: PreviewFormat, out: &mut dyn Write) {
+    match format {
+        PreviewFormat::Text | PreviewFormat::Wire => {
+            for shown in shown {
+                say(out, &format!("{}: {}", head(shown), Event::PRIVATELY_NAMED));
+            }
+        }
+        PreviewFormat::Json => {
+            let all: Vec<Value> = shown
+                .iter()
+                .map(|shown| {
+                    json!({
+                        "route": shown.route.as_str(),
+                        "destination": shown.destination.as_str(),
+                        "against": Value::Null,
+                        "private": true,
+                    })
+                })
+                .collect();
+            say_json(out, &Value::Array(all).to_string());
+        }
+    }
 }
 
 /// What `shown` names: its route, its destination and what it rendered.

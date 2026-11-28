@@ -36,16 +36,13 @@ struct Moved {
     installation: Option<Installed>,
 }
 
-/// The event-name headers of `forge`'s deliveries, and the events among
-/// them that say the owner's repositories changed; none on GitLab.
-const fn named(forge: Forge) -> (&'static [&'static str], &'static [&'static str]) {
+/// The events of `forge`'s deliveries that say the owner's repositories
+/// changed; none on GitLab.
+const fn named(forge: Forge) -> &'static [&'static str] {
     match forge {
-        Forge::GitHub => (
-            &["x-github-event"],
-            &["repository", "installation_repositories"],
-        ),
-        Forge::Forgejo => (&["x-forgejo-event", "x-gitea-event"], &["repository"]),
-        Forge::GitLab => (&[], &[]),
+        Forge::GitHub => &["repository", "installation_repositories"],
+        Forge::Forgejo => &["repository"],
+        Forge::GitLab => &[],
     }
 }
 
@@ -58,15 +55,9 @@ pub(crate) fn moved(
     headers: &[(&str, &str)],
     payload: &[u8],
 ) -> Option<Result<String, SourceError>> {
-    let (headers_named, kinds) = named(forge);
-    headers
-        .iter()
-        .find(|(name, _)| {
-            headers_named
-                .iter()
-                .any(|header| name.eq_ignore_ascii_case(header))
-        })
-        .filter(|(_, value)| kinds.contains(value))?;
+    forge
+        .event_name(headers)
+        .filter(|name| named(forge).contains(name))?;
     Some(read::<Moved>(MOVED, payload).and_then(|moved| {
         match (moved.repository, moved.installation) {
             (Some(repository), _) => Ok(repository

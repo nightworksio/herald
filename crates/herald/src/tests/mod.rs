@@ -26,6 +26,7 @@ mod peers;
 mod poll;
 mod presets;
 mod preview;
+mod preview_event;
 mod queue;
 mod release;
 mod rerun;

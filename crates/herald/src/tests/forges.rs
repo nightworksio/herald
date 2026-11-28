@@ -234,7 +234,10 @@ fn a_release_or_a_repository_the_forge_cannot_give_stops_the_run() {
 
 #[test]
 fn preview_reads_the_event_file_of_the_forge_it_names() {
-    let setup = setup(CONFIG);
+    let setup = setup(&CONFIG.replace(
+        "[sources.cli]\nkind = \"github\"\nrepository = \"cli/cli\"\n",
+        "[sources.cli]\nkind = \"gitlab\"\nrepository = \"gitlab-org/cli\"\n",
+    ));
     let world = World::default();
     let path = setup.directory.path().join("hook.json");
     std::fs::write(&path, HOOK).unwrap();
@@ -251,13 +254,32 @@ fn preview_reads_the_event_file_of_the_forge_it_names() {
         "{}",
         previewed.out
     );
-    let misread = herald(&setup, &world, &["preview", "--event", &path]);
-    assert_eq!(misread.code, MISTAKEN);
+    let (forged, _) = forgejo();
+    let release = forged
+        .directory
+        .path()
+        .join("event.json")
+        .display()
+        .to_string();
+    let previewed = herald(
+        &forged,
+        &world,
+        &["preview", "--from", "forgejo", "--event", &release],
+    );
     assert!(
-        misread
-            .err
-            .starts_with("GitHub's release event could not be read"),
-        "{}",
-        misread.err
+        previewed
+            .out
+            .starts_with("releases to discord:\n  title: 📦 forgejo v17.0.1\n"),
+        "{}{}",
+        previewed.out,
+        previewed.err
+    );
+    let misread = herald(&setup, &world, &["preview", "--event", &path]);
+    assert_eq!(
+        (misread.code, misread.err.as_str()),
+        (
+            MISTAKEN,
+            "nothing to preview: no source of the config reads the event file as an event it announces\n  source \"cli\": the delivery is not of a release, a tag or a package\n"
+        )
     );
 }

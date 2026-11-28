@@ -95,8 +95,9 @@ pub use prepare::{
     Asking, Connected, PrepareError, Prepared, PreparedPages, UnreadSecret, prepare,
 };
 pub use preview::{
-    Against, DRY_ID, FED, FOLLOWED, PUSHED, Previewed, Recording, Sampling, UNREACHED, Wire,
-    preview, preview_group, preview_samples, wired,
+    Against, DRY_ID, FED, FOLLOWED, PUSHED, Previewed, Recording, Sampling, Sourced, UNREACHED,
+    Unmapped, Wire, delivered, preview, preview_delivered, preview_delivered_group, preview_group,
+    preview_samples, wired,
 };
 pub use publishing::{Publishing, publish};
 pub use report::{queue, report};
